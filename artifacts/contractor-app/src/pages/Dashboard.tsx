@@ -1,0 +1,120 @@
+import { useGetDashboardStats } from "@workspace/api-client-react";
+import { cn, formatCurrency } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from "recharts";
+import { Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight } from "lucide-react";
+import { Link } from "wouter";
+
+export default function Dashboard() {
+  const { data: stats, isLoading } = useGetDashboardStats({ period: "month" });
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
+  }
+
+  if (!stats) return null;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-3xl font-display font-bold text-foreground">Business Overview</h1>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard title="Total Revenue (MTD)" value={formatCurrency(stats.totalRevenue)} icon={DollarSign} trend="+12.5%" />
+        <MetricCard title="Total Expenses (MTD)" value={formatCurrency(stats.totalExpenses)} icon={Receipt} trend="-2.4%" />
+        <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} trend="+2" />
+        <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2 shadow-md border-border/50">
+          <CardHeader>
+            <CardTitle className="font-display">Revenue vs Expenses (6 Months)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.monthlyRevenue} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(val) => `$${val/1000}k`} />
+                  <Tooltip 
+                    cursor={{ fill: 'hsl(var(--muted)/0.4)' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)' }}
+                    formatter={(value: number) => formatCurrency(value)}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                  <Bar dataKey="revenue" name="Revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="expenses" name="Expenses" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="shadow-md border-border/50">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="font-display text-lg">Recent Jobs</CardTitle>
+              <Link href="/jobs" className="text-sm text-accent hover:underline flex items-center">View All <ArrowRight className="w-4 h-4 ml-1"/></Link>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {stats.recentJobs.slice(0, 4).map(job => (
+                  <div key={job.id} className="flex justify-between items-center border-b border-border/40 pb-3 last:border-0 last:pb-0">
+                    <div>
+                      <p className="font-medium text-sm">{job.title}</p>
+                      <p className="text-xs text-muted-foreground">{job.clientName || 'No Client'}</p>
+                    </div>
+                    <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
+                      {job.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="shadow-md border-border/50 bg-accent/5 border-accent/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-1">YTD Mileage Deduction</p>
+              <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ title, value, icon: Icon, trend, isAlert }: any) {
+  return (
+    <Card className="shadow-md border-border/50 hover:shadow-lg transition-shadow duration-300">
+      <CardContent className="p-6">
+        <div className="flex justify-between items-start">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className={cn("text-3xl font-display font-bold tracking-tight", isAlert ? "text-destructive" : "text-foreground")}>
+              {value}
+            </p>
+          </div>
+          <div className={cn("p-3 rounded-xl", isAlert ? "bg-destructive/10 text-destructive" : "bg-primary/5 text-primary")}>
+            <Icon className="w-5 h-5" />
+          </div>
+        </div>
+        {trend && (
+          <div className="mt-4 flex items-center text-sm">
+            <span className={cn("font-medium", trend.startsWith('+') ? "text-emerald-600" : "text-rose-600")}>
+              {trend}
+            </span>
+            <span className="text-muted-foreground ml-2">vs last month</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

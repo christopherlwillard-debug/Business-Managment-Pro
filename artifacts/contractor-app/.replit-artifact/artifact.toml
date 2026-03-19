@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Contractor Management App"
+version = "1.0.0"
+id = "artifacts/contractor-app"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18167
+
+[services.development]
+run = "pnpm --filter @workspace/contractor-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/contractor-app", "run", "build" ]
+publicDir = "artifacts/contractor-app/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18167"
+BASE_PATH = "/"

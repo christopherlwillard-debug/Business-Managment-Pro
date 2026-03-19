@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "For premium page transitions and interactive micro-animations"
+  "recharts": "For the dashboard business health analytics charts"
+  "date-fns": "For formatting dates in reports and lists"
+  "clsx": "For conditional class names in UI components"
+  "tailwind-merge": "For merging tailwind classes in UI components"
+
+images:
+  - path: "artifacts/contractor-app/public/images/auth-bg.png"
+    description: "Abstract architectural blueprint lines blending into a clean minimal dark navy gradient background"
+    aspect_ratio: "16:9"
+  - path: "artifacts/contractor-app/public/images/empty-state.png"
+    description: "Minimalist 3D illustration of a yellow hardhat and blueprints on a clean white desk, soft lighting"
+    aspect_ratio: "4:3"
+
+notes:
+  - "App uses hooks directly from @workspace/api-client-react as specified in implementation notes"
+  - "Using wouter for routing and TanStack Query for state"

@@ -1,22 +1,42 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Contractor Management App API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: jobs
+    description: Job management
+  - name: invoices
+    description: Invoice management
+  - name: expenses
+    description: Expense management
+  - name: mileage
+    description: Mileage tracking
+  - name: subcontractors
+    description: Subcontractor management
+  - name: estimates
+    description: Job estimating
+  - name: daily-logs
+    description: Daily job logs
+  - name: settings
+    description: App settings
+  - name: reports
+    description: Reports and analytics
+  - name: clients
+    description: Client management
+  - name: uploads
+    description: File uploads
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +44,995 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # CLIENTS
+  /clients:
+    get:
+      operationId: listClients
+      tags: [clients]
+      summary: List all clients
+      responses:
+        "200":
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      operationId: createClient
+      tags: [clients]
+      summary: Create a client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientRequest"
+      responses:
+        "201":
+          description: Created client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+
+  /clients/{id}:
+    get:
+      operationId: getClient
+      tags: [clients]
+      summary: Get a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+    put:
+      operationId: updateClient
+      tags: [clients]
+      summary: Update a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientRequest"
+      responses:
+        "200":
+          description: Updated client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+    delete:
+      operationId: deleteClient
+      tags: [clients]
+      summary: Delete a client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # JOBS
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List all jobs
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: clientId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobRequest"
+      responses:
+        "201":
+          description: Created job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+    put:
+      operationId: updateJob
+      tags: [jobs]
+      summary: Update a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobRequest"
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # INVOICES
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [invoices]
+      summary: List all invoices
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: clientId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoice"
+    post:
+      operationId: createInvoice
+      tags: [invoices]
+      summary: Create an invoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvoiceRequest"
+      responses:
+        "201":
+          description: Created invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [invoices]
+      summary: Get an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+    put:
+      operationId: updateInvoice
+      tags: [invoices]
+      summary: Update an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvoiceRequest"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+    delete:
+      operationId: deleteInvoice
+      tags: [invoices]
+      summary: Delete an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /invoices/{id}/status:
+    patch:
+      operationId: updateInvoiceStatus
+      tags: [invoices]
+      summary: Update invoice status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [draft, sent, paid, overdue, cancelled]
+              required: [status]
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/tax-report:
+    get:
+      operationId: getInvoiceTaxReport
+      tags: [invoices]
+      summary: Get invoice tax report (jobs, dates, amounts, locations)
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tax report data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaxReportRow"
+
+  # EXPENSES
+  /expenses:
+    get:
+      operationId: listExpenses
+      tags: [expenses]
+      summary: List all expenses
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: jobId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Expense"
+    post:
+      operationId: createExpense
+      tags: [expenses]
+      summary: Create an expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseRequest"
+      responses:
+        "201":
+          description: Created expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+
+  /expenses/{id}:
+    get:
+      operationId: getExpense
+      tags: [expenses]
+      summary: Get an expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+    put:
+      operationId: updateExpense
+      tags: [expenses]
+      summary: Update an expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseRequest"
+      responses:
+        "200":
+          description: Updated expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+    delete:
+      operationId: deleteExpense
+      tags: [expenses]
+      summary: Delete an expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /expenses/{id}/receipt:
+    post:
+      operationId: uploadExpenseReceipt
+      tags: [expenses]
+      summary: Upload a receipt for an expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                receipt:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Receipt uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+
+  # MILEAGE
+  /mileage:
+    get:
+      operationId: listMileageLogs
+      tags: [mileage]
+      summary: List mileage logs
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+        - name: classified
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of mileage logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MileageLog"
+    post:
+      operationId: createMileageLog
+      tags: [mileage]
+      summary: Create a mileage log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMileageLogRequest"
+      responses:
+        "201":
+          description: Created mileage log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MileageLog"
+
+  /mileage/{id}:
+    put:
+      operationId: updateMileageLog
+      tags: [mileage]
+      summary: Update a mileage log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMileageLogRequest"
+      responses:
+        "200":
+          description: Updated mileage log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MileageLog"
+    delete:
+      operationId: deleteMileageLog
+      tags: [mileage]
+      summary: Delete a mileage log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /mileage/summary:
+    get:
+      operationId: getMileageSummary
+      tags: [mileage]
+      summary: Get mileage summary and deduction total
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mileage summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MileageSummary"
+
+  # SUBCONTRACTORS
+  /subcontractors:
+    get:
+      operationId: listSubcontractors
+      tags: [subcontractors]
+      summary: List all subcontractors
+      responses:
+        "200":
+          description: List of subcontractors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Subcontractor"
+    post:
+      operationId: createSubcontractor
+      tags: [subcontractors]
+      summary: Create a subcontractor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubcontractorRequest"
+      responses:
+        "201":
+          description: Created subcontractor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subcontractor"
+
+  /subcontractors/{id}:
+    get:
+      operationId: getSubcontractor
+      tags: [subcontractors]
+      summary: Get a subcontractor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Subcontractor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subcontractor"
+    put:
+      operationId: updateSubcontractor
+      tags: [subcontractors]
+      summary: Update a subcontractor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubcontractorRequest"
+      responses:
+        "200":
+          description: Updated subcontractor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subcontractor"
+    delete:
+      operationId: deleteSubcontractor
+      tags: [subcontractors]
+      summary: Delete a subcontractor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /subcontractors/1099-report:
+    get:
+      operationId: get1099Report
+      tags: [subcontractors]
+      summary: Get 1099 eligibility report
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 1099 report
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NineninenineReport"
+
+  # ESTIMATES
+  /estimates:
+    get:
+      operationId: listEstimates
+      tags: [estimates]
+      summary: List all estimates
+      responses:
+        "200":
+          description: List of estimates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Estimate"
+    post:
+      operationId: createEstimate
+      tags: [estimates]
+      summary: Create an estimate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEstimateRequest"
+      responses:
+        "201":
+          description: Created estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+
+  /estimates/{id}:
+    get:
+      operationId: getEstimate
+      tags: [estimates]
+      summary: Get an estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+    put:
+      operationId: updateEstimate
+      tags: [estimates]
+      summary: Update an estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEstimateRequest"
+      responses:
+        "200":
+          description: Updated estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+    delete:
+      operationId: deleteEstimate
+      tags: [estimates]
+      summary: Delete an estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /estimates/{id}/convert-to-job:
+    post:
+      operationId: convertEstimateToJob
+      tags: [estimates]
+      summary: Convert an estimate to a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Created job from estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  # DAILY LOGS
+  /daily-logs:
+    get:
+      operationId: listDailyLogs
+      tags: [daily-logs]
+      summary: List daily logs
+      parameters:
+        - name: jobId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of daily logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DailyLog"
+    post:
+      operationId: createDailyLog
+      tags: [daily-logs]
+      summary: Create a daily log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDailyLogRequest"
+      responses:
+        "201":
+          description: Created daily log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+
+  /daily-logs/{id}:
+    get:
+      operationId: getDailyLog
+      tags: [daily-logs]
+      summary: Get a daily log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Daily log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+    put:
+      operationId: updateDailyLog
+      tags: [daily-logs]
+      summary: Update a daily log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDailyLogRequest"
+      responses:
+        "200":
+          description: Updated daily log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+    delete:
+      operationId: deleteDailyLog
+      tags: [daily-logs]
+      summary: Delete a daily log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # SETTINGS
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get app settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update app settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppSettings"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+
+  # REPORTS / ANALYTICS
+  /reports/dashboard:
+    get:
+      operationId: getDashboardStats
+      tags: [reports]
+      summary: Get dashboard statistics
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /reports/compliance:
+    get:
+      operationId: getComplianceReport
+      tags: [reports]
+      summary: Get compliance alerts (1099, mileage, licenses)
+      responses:
+        "200":
+          description: Compliance report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceReport"
+
+  # FILE UPLOADS
+  /uploads:
+    post:
+      operationId: uploadFile
+      tags: [uploads]
+      summary: Upload a file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Uploaded file info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadedFile"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +1040,868 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, name, createdAt]
+
+    CreateClientRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required: [name]
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        clientId:
+          type: integer
+          nullable: true
+        clientName:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled]
+        jobType:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+        estimatedAmount:
+          type: number
+          nullable: true
+        actualAmount:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, title, status, createdAt]
+
+    CreateJobRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        clientId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled]
+        jobType:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+        estimatedAmount:
+          type: number
+          nullable: true
+        actualAmount:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required: [title, status]
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: integer
+        invoiceNumber:
+          type: string
+        clientId:
+          type: integer
+          nullable: true
+        clientName:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        jobTitle:
+          type: string
+          nullable: true
+        jobCity:
+          type: string
+          nullable: true
+        jobState:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [draft, sent, paid, overdue, cancelled]
+        issueDate:
+          type: string
+        dueDate:
+          type: string
+          nullable: true
+        subtotal:
+          type: number
+        taxRate:
+          type: number
+          nullable: true
+        taxAmount:
+          type: number
+          nullable: true
+        total:
+          type: number
+        amountPaid:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        terms:
+          type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceLineItem"
+        createdAt:
+          type: string
+      required: [id, invoiceNumber, status, issueDate, subtotal, total, createdAt]
+
+    InvoiceLineItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        total:
+          type: number
+      required: [id, description, quantity, unitPrice, total]
+
+    CreateInvoiceRequest:
+      type: object
+      properties:
+        clientId:
+          type: integer
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [draft, sent, paid, overdue, cancelled]
+        issueDate:
+          type: string
+        dueDate:
+          type: string
+          nullable: true
+        taxRate:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        terms:
+          type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            type: object
+            properties:
+              description:
+                type: string
+              quantity:
+                type: number
+              unitPrice:
+                type: number
+            required: [description, quantity, unitPrice]
+      required: [issueDate, status]
+
+    TaxReportRow:
+      type: object
+      properties:
+        invoiceNumber:
+          type: string
+        issueDate:
+          type: string
+        jobTitle:
+          type: string
+          nullable: true
+        clientName:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        subtotal:
+          type: number
+        taxRate:
+          type: number
+          nullable: true
+        taxAmount:
+          type: number
+          nullable: true
+        total:
+          type: number
+        status:
+          type: string
+      required: [invoiceNumber, issueDate, subtotal, total, status]
+
+    Expense:
+      type: object
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        amount:
+          type: number
+        category:
+          type: string
+        date:
+          type: string
+        vendor:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        jobTitle:
+          type: string
+          nullable: true
+        receiptUrl:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, description, amount, category, date, createdAt]
+
+    CreateExpenseRequest:
+      type: object
+      properties:
+        description:
+          type: string
+        amount:
+          type: number
+        category:
+          type: string
+        date:
+          type: string
+        vendor:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        receiptUrl:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required: [description, amount, category, date]
+
+    MileageLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+        startLocation:
+          type: string
+          nullable: true
+        endLocation:
+          type: string
+          nullable: true
+        miles:
+          type: number
+        purpose:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        jobTitle:
+          type: string
+          nullable: true
+        classification:
+          type: string
+          enum: [business, personal]
+        ratePerMile:
+          type: number
+        deductionAmount:
+          type: number
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, date, miles, classification, ratePerMile, deductionAmount, createdAt]
+
+    CreateMileageLogRequest:
+      type: object
+      properties:
+        date:
+          type: string
+        startLocation:
+          type: string
+          nullable: true
+        endLocation:
+          type: string
+          nullable: true
+        miles:
+          type: number
+        purpose:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        classification:
+          type: string
+          enum: [business, personal]
+        notes:
+          type: string
+          nullable: true
+      required: [date, miles, classification]
+
+    MileageSummary:
+      type: object
+      properties:
+        totalMiles:
+          type: number
+        businessMiles:
+          type: number
+        personalMiles:
+          type: number
+        totalDeduction:
+          type: number
+        ratePerMile:
+          type: number
+        tripCount:
+          type: integer
+      required: [totalMiles, businessMiles, personalMiles, totalDeduction, ratePerMile, tripCount]
+
+    Subcontractor:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        trade:
+          type: string
+          nullable: true
+        licenseNumber:
+          type: string
+          nullable: true
+        licenseExpiry:
+          type: string
+          nullable: true
+        insuranceExpiry:
+          type: string
+          nullable: true
+        w9OnFile:
+          type: boolean
+        ytdPayments:
+          type: number
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, name, w9OnFile, ytdPayments, createdAt]
+
+    CreateSubcontractorRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        trade:
+          type: string
+          nullable: true
+        licenseNumber:
+          type: string
+          nullable: true
+        licenseExpiry:
+          type: string
+          nullable: true
+        insuranceExpiry:
+          type: string
+          nullable: true
+        w9OnFile:
+          type: boolean
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required: [name, w9OnFile]
+
+    NineninenineReport:
+      type: object
+      properties:
+        subcontractorId:
+          type: integer
+        name:
+          type: string
+        ytdPayments:
+          type: number
+        threshold:
+          type: number
+        needsForm:
+          type: boolean
+        w9OnFile:
+          type: boolean
+        alerts:
+          type: array
+          items:
+            type: string
+      required: [subcontractorId, name, ytdPayments, threshold, needsForm, w9OnFile, alerts]
+
+    Estimate:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        clientId:
+          type: integer
+          nullable: true
+        clientName:
+          type: string
+          nullable: true
+        template:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [draft, sent, won, lost]
+        subtotal:
+          type: number
+        markupPercent:
+          type: number
+          nullable: true
+        contingencyPercent:
+          type: number
+          nullable: true
+        total:
+          type: number
+        jobType:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        createdAt:
+          type: string
+      required: [id, title, status, subtotal, total, createdAt]
+
+    EstimateLineItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        category:
+          type: string
+        description:
+          type: string
+        quantity:
+          type: number
+        unit:
+          type: string
+          nullable: true
+        unitCost:
+          type: number
+        total:
+          type: number
+      required: [id, category, description, quantity, unitCost, total]
+
+    CreateEstimateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        clientId:
+          type: integer
+          nullable: true
+        template:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [draft, sent, won, lost]
+        markupPercent:
+          type: number
+          nullable: true
+        contingencyPercent:
+          type: number
+          nullable: true
+        jobType:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              description:
+                type: string
+              quantity:
+                type: number
+              unit:
+                type: string
+                nullable: true
+              unitCost:
+                type: number
+            required: [category, description, quantity, unitCost]
+      required: [title, status]
+
+    DailyLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        jobId:
+          type: integer
+          nullable: true
+        jobTitle:
+          type: string
+          nullable: true
+        date:
+          type: string
+        weather:
+          type: string
+          nullable: true
+        crewCount:
+          type: integer
+          nullable: true
+        workCompleted:
+          type: string
+          nullable: true
+        issues:
+          type: string
+          nullable: true
+        materialsUsed:
+          type: string
+          nullable: true
+        hoursWorked:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        photoUrls:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+      required: [id, date, photoUrls, createdAt]
+
+    CreateDailyLogRequest:
+      type: object
+      properties:
+        jobId:
+          type: integer
+          nullable: true
+        date:
+          type: string
+        weather:
+          type: string
+          nullable: true
+        crewCount:
+          type: integer
+          nullable: true
+        workCompleted:
+          type: string
+          nullable: true
+        issues:
+          type: string
+          nullable: true
+        materialsUsed:
+          type: string
+          nullable: true
+        hoursWorked:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        photoUrls:
+          type: array
+          items:
+            type: string
+      required: [date]
+
+    AppSettings:
+      type: object
+      properties:
+        companyName:
+          type: string
+          nullable: true
+        companyAddress:
+          type: string
+          nullable: true
+        companyCity:
+          type: string
+          nullable: true
+        companyState:
+          type: string
+          nullable: true
+        companyZip:
+          type: string
+          nullable: true
+        companyPhone:
+          type: string
+          nullable: true
+        companyEmail:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        defaultTaxRate:
+          type: number
+          nullable: true
+        defaultPaymentTerms:
+          type: string
+          nullable: true
+        lateFeePercent:
+          type: number
+          nullable: true
+        invoicePrefix:
+          type: string
+          nullable: true
+        invoiceNextNumber:
+          type: integer
+          nullable: true
+        mileageRate:
+          type: number
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        enabledFeatures:
+          type: array
+          items:
+            type: string
+        thresholdAmount1099:
+          type: number
+          nullable: true
+      required: [enabledFeatures]
+
+    DashboardStats:
+      type: object
+      properties:
+        totalRevenue:
+          type: number
+        pendingInvoices:
+          type: number
+        activeJobs:
+          type: integer
+        totalExpenses:
+          type: number
+        mileageDeduction:
+          type: number
+        overdueInvoices:
+          type: integer
+        recentJobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+        recentInvoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invoice"
+        monthlyRevenue:
+          type: array
+          items:
+            type: object
+            properties:
+              month:
+                type: string
+              revenue:
+                type: number
+              expenses:
+                type: number
+            required: [month, revenue, expenses]
+      required: [totalRevenue, pendingInvoices, activeJobs, totalExpenses, mileageDeduction, overdueInvoices, recentJobs, recentInvoices, monthlyRevenue]
+
+    ComplianceReport:
+      type: object
+      properties:
+        subcontractor1099Alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              ytdPayments:
+                type: number
+              threshold:
+                type: number
+              w9OnFile:
+                type: boolean
+              alert:
+                type: string
+            required: [name, ytdPayments, threshold, w9OnFile, alert]
+        mileageAlerts:
+          type: array
+          items:
+            type: string
+        licenseAlerts:
+          type: array
+          items:
+            type: object
+            properties:
+              subName:
+                type: string
+              type:
+                type: string
+              expiryDate:
+                type: string
+              daysUntilExpiry:
+                type: integer
+            required: [subName, type, expiryDate, daysUntilExpiry]
+        uncategorizedMileageCount:
+          type: integer
+      required: [subcontractor1099Alerts, mileageAlerts, licenseAlerts, uncategorizedMileageCount]
+
+    UploadedFile:
+      type: object
+      properties:
+        url:
+          type: string
+        filename:
+          type: string
+        size:
+          type: integer
+      required: [url, filename, size]

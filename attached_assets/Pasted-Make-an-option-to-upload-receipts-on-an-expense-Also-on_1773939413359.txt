@@ -1,0 +1,137 @@
+Make an option to upload receipts on an expense
+
+Also on expense after adding it make the receipt viewable by link “click to view receipt”
+
+Invoice needs to auto populate a spread sheet of jobs, date, amount and locations cause in certain citys I have to pay an operating tax so I need to have clear records of everything I do and when I do them. I need my tax records very clear and organized throughout the apps features
+
+In the settings I want someone to be able to pick all the features they want for their app, like if they only want invoice, expenses then they can select the options they want but i also want it to be able to add later on as they find the need for them
+ Business Profile & Branding
+Update company name, LLC details   
+Upload/change logo (used in invoices, reports, PDFs, app header) make the logo size and location on invoice editable 
+Set default invoice terms (e.g., "Net 30", late fees %)
+Default tax rate (KY sales tax if applicable, or per-job override)
+Business address/phone/email (auto-fills on invoices/reports)
+3. Mileage Tracking Settings
+Current IRS mileage rate (default to 72.5¢/mile for 2026; allow manual override for future changes)
+Auto-tracking toggle (on/off for background GPS; battery-saving mode)
+Default trip classification (e.g., "Business" for most drives)
+Units (miles vs. km – though miles for US/IRS)
+Auto-pause tracking when stopped > X minutes
+Reminder to classify uncategorized trips daily/weekly
+4. Invoicing & Payments
+Default invoice template/layout (if you have multiple styles)
+Currency (USD default)
+Auto-numbering prefix (e.g., "INV-2026-")
+Payment terms defaults (due in 15/30/60 days)
+Late fee percentage and grace period
+Integrate payment processor API key (e.g., Stripe for client payment links)
+Email/SMS notification templates for sent/paid invoices
+5. Expenses & Receipts
+Default expense categories (e.g., Materials, Tools, Fuel, Subcontractors, Office)
+Auto-categorize rules (e.g., gas stations → Fuel)
+Receipt photo quality/compression settings (save storage)
+Link expenses to jobs/clients automatically
+6. Jobs & Scheduling
+Job status options (customize: Scheduled, In Progress, Awaiting Approval, Completed, Invoiced)
+Default job reminders (e.g., notify 1 day before start)
+Calendar sync (Google Calendar/Outlook if you add integration later)
+Working hours/preferred dispatch radius
+7. Subcontractors & 1099
+1099 threshold reminder ($600 default; edit for changes)
+Auto-generate 1099s at year-end toggle
+Default W-9 request email template
+Sub portal access settings (e.g., allow photo uploads only, or job notes too)
+8. Reports & Taxes
+Report date range defaults (this month/quarter/year)
+Include mileage in Schedule C auto-summary toggle
+Export format preferences (PDF default; CSV for ZenBusiness import)
+Tax year start month (for fiscal year if not calendar)
+9. Notifications & Preferences
+Push notification toggles:
+New job assigned (for subs)
+Invoice paid/overdue
+Low balance alert
+Mileage trip ready to classify
+Report generation complete
+Dark mode / theme toggle
+Language (English default; add Spanish if useful in KY)
+Units/formats (date: MM/DD/YYYY, currency: $)
+10. App & Data Management
+Offline mode behavior (sync when online)
+Data backup frequency (auto to Firebase Storage)
+Clear cache / reset app data
+App version & feedback link
+About screen (with your contact, terms of use)
+Quick Firebase Studio Implementation Tips
+Prompt the agent: "Add a Settings screen accessible from the bottom nav or profile icon. Use sections/accordions for: Account & Security, Business Profile, Mileage Tracking, Invoicing, Expenses, Jobs, Subcontractors/1099, Reports, Notifications, App Preferences. Include toggles, text inputs for defaults like IRS mileage rate, logo upload, and secure options like 2FA."
+Start simple: Prototype just 3–4 categories first (e.g., Mileage, Invoicing, Business Profile) → test on mobile preview → expand.
+Use Firebase Auth/Firestore: Store user-specific settings in a users/{uid}/settings doc for easy read/write.
+Make it role-aware: Subs see a minimal version (e.g., only notifications + profile).
+These will make your app feel polished and customizable — contractors love control over rates, templates, and alerts without digging through menus.
+Estimating & Bidding Section (Pre-Job Phase)
+Quick estimate builder: Templates for common jobs (e.g., roofing, remodels, additions) with material/labor markups, auto-calculate totals, and PDF export for clients.
+Bid tracking: Log sent bids, status (pending/won/lost), win rate stats, and reminders to follow up.
+Material price lookup/integration: Simple database or future API pull for local supplier prices (e.g., lumber, concrete in KY area).
+Why add it: Many contractors lose money on under-bidding — this helps you price accurately and turn estimates into jobs faster.
+2. Daily Logs & Field Documentation (On-Site Core)
+Daily job logs: Crew sign-in/out, weather notes, work completed, delays/issues, photos/videos attached — auto-timestamped and stored per job.
+Punch lists / inspections: Create checklists for walkthroughs, assign fixes to subs or yourself, mark as resolved with before/after photos.
+Safety checklists: OSHA-style forms (e.g., toolbox talks, hazard reports) with digital signatures.
+Why add it: Prevents disputes, supports change orders, and creates a paper trail for insurance/claims — super useful for general contracting.
+3. Time & Crew Management (Labor Tracking)
+GPS-verified time clock: Crew clocks in/out via mobile (with location proof), auto-links hours to specific jobs.
+Crew scheduling: Calendar view to assign workers/subs to jobs, conflict alerts, availability checker.
+Labor cost tracking: Real-time job costing (hours × rate) to see if you're over/under budget mid-project.
+Why add it: Helps control payroll, spot inefficiencies, and bill accurately for time-and-materials jobs.
+4. Change Orders & Variations
+Dedicated change order workflow: Client requests, add costs/labor/time, get approval (digital signature), auto-update job budget/invoice.
+Notification chain: Alert subs/crew of changes via push or email.
+Why add it: Change orders are a huge profit source (and headache) in contracting — streamlining them reduces lost revenue and arguments.
+5. Client Portal / Communication Hub
+Client-facing login (separate from sub portal): View job progress, timelines, photos, invoices, pay online, approve change orders, leave feedback.
+Automated updates: Send progress photos/notes/SMS (e.g., "Foundation poured today") without manual emailing.
+Why add it: Builds trust, reduces "where are we at?" calls, and encourages referrals/repeat business.
+6. Inventory & Material Management (If You Stock or Order Often)
+Simple tool/material tracker: Log what's used per job, low-stock alerts, reorder lists.
+Supplier contacts/quick order forms: Save vendor info for fast quotes.
+Why add it: Prevents running out mid-job or over-ordering — especially helpful for smaller GCs handling their own supplies.
+7. Analytics & Insights Dashboard (Business Health Overview)
+High-level metrics: Monthly revenue, profit per job type, top clients, average job duration, mileage/expense trends.
+Alerts: Over-budget jobs, overdue invoices, subs with high YTD payments (1099 flag).
+Exportable summaries: For your accountant or loan applications.
+Why add it: Gives you a quick "business pulse" without spreadsheets — helps spot growth opportunities or issues early.
+8. Integrations & Exports (Bridge to Other Tools)
+QuickBooks/Excel/CSV exports for accounting (since you're moving away from ZenBusiness limits).
+Google Calendar sync for scheduling.
+Stripe/PayPal for in-app payments (clients pay deposits/invoices directly).
+Why add it: Lets you keep what works (e.g., banking) while centralizing ops in your app.
+Quick Prioritization for Firebase Studio
+Start with 2–3 that solve your biggest daily pains:
+If paperwork/delays frustrate you → Daily logs + punch lists first.
+If estimating/bidding is time-consuming → Estimating section.
+If crew tracking or client updates are issues → Time clock + client portal.
+In Firebase Studio, you can prompt the agent like:
+"Add a Daily Logs section to the app: mobile-friendly form for crew to log work, weather, photos, issues per job, with auto-save to Firestore and owner dashboard view."
+
+Prototyping Agent: “Add a ‘Compliance Agent’ tab or dashboard widget (non-safety only). It scans Firestore data for:
+•  Subcontractor payments: flag any sub over $500 YTD toward $600 IRS 1099 threshold, check for W-9 upload completeness.
+•  Mileage logs: warn on uncategorized trips or missing business purposes.
+•  License/COI expirations: remind on upcoming dates for owner license and sub insurance. Use Gemini to analyze and suggest fixes. No OSHA, safety, PPE, or hazard checks. Include alerts, checklists, and one-tap reminders. Make it role-aware (owner only).”
+You can iterate: Generate → test in preview → prompt “Make the 1099 checker more detailed with YTD totals and export button.”
+This keeps everything tax/financial/licensing-focused — practical for your solo/small LLC without venturing into safety territory.
+
+
+Add a ‘Job Estimator’ screen/tab in the app for general contractors. Include:
+•  Start from existing job or new.
+•  Template selector for common projects (remodels, roofing, additions).
+•  Line item entry with categories (materials, labor, subs, etc.), quantities, unit costs from a Firestore cost catalog.
+•  Real-time calculations: subtotals, markups (profit/overhead), contingencies, grand total.
+•  Assemblies for reusable groups.
+•  Generate branded PDF proposals with itemized breakdown and export/email.
+•  Change order support.
+•  AI suggestions via Gemini for costs or contingencies.
+•  Link to jobs, invoices, and reports. Mobile-friendly, clean UI with cards/tables for items. No safety/OSHA features.”
+After generating, iterate: “Make the cost catalog editable in settings” or “Add KY-specific defaults like local material rates.”
+This keeps bids fast/accurate (win more work), reduces errors (no spreadsheets), and ties everything together for better profitability.
+Does this align with what you had in mind? Want to prioritize mobile-first takeoff (e.g., simple measurements from photos/plans) or start with basic templates? Or need tweaks for Owensboro-specific costs (e.g., labor rates around $25–45/hr for skilled trades in KY)? Let me know and we can refine the prompt or add more details!
+
