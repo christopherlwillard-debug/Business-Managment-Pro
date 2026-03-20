@@ -54,13 +54,14 @@ function InvoicePreview({
   settings: any;
   previewNumber: string;
 }) {
-  const companyName = settings?.businessName || "Your LLC Name";
-  const companyEmail = settings?.businessEmail || "";
-  const companyPhone = settings?.businessPhone || "";
-  const companyAddress = settings?.businessAddress || "";
-  const companyCity = settings?.businessCity || "";
-  const companyState = settings?.businessState || "KY";
-  const companyZip = settings?.businessZip || "";
+  const s = settings as any;
+  const companyName = s?.companyName || "Your LLC Name";
+  const companyEmail = s?.companyEmail || "";
+  const companyPhone = s?.companyPhone || "";
+  const companyAddress = s?.companyAddress || "";
+  const companyCity = s?.companyCity || "";
+  const companyState = s?.companyState || "KY";
+  const companyZip = s?.companyZip || "";
 
   const filledLines = lineItems.filter((l) => l.description.trim());
 
