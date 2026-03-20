@@ -11,6 +11,7 @@ export const expensesTable = pgTable("expenses", {
   date: text("date").notNull(),
   vendor: text("vendor"),
   jobId: integer("job_id").references(() => jobsTable.id),
+  subcontractorId: integer("subcontractor_id"),
   receiptUrl: text("receipt_url"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

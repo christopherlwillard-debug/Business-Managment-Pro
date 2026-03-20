@@ -15,6 +15,7 @@ export const subcontractorsTable = pgTable("subcontractors", {
   ytdPayments: numeric("ytd_payments", { precision: 12, scale: 2 }).notNull().default("0"),
   address: text("address"),
   notes: text("notes"),
+  portalToken: text("portal_token").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

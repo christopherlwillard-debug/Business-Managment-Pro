@@ -2,12 +2,14 @@ import { pgTable, serial, text, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
+import { subcontractorsTable } from "./subcontractors";
 
 export const jobsTable = pgTable("jobs", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
   clientId: integer("client_id").references(() => clientsTable.id),
+  subcontractorId: integer("subcontractor_id").references(() => subcontractorsTable.id),
   status: text("status").notNull().default("scheduled"),
   jobType: text("job_type"),
   address: text("address"),

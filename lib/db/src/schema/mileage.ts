@@ -11,6 +11,7 @@ export const mileageLogsTable = pgTable("mileage_logs", {
   miles: numeric("miles", { precision: 8, scale: 2 }).notNull(),
   purpose: text("purpose"),
   jobId: integer("job_id").references(() => jobsTable.id),
+  subcontractorId: integer("subcontractor_id"),
   classification: text("classification").notNull().default("business"),
   ratePerMile: numeric("rate_per_mile", { precision: 5, scale: 3 }).notNull().default("0.725"),
   deductionAmount: numeric("deduction_amount", { precision: 10, scale: 2 }).notNull().default("0"),
