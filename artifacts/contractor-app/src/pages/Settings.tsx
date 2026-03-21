@@ -34,9 +34,9 @@ const LOGO_POSITIONS = [
 ];
 
 const LOGO_SIZES = [
-  { key: "small", label: "Small", px: 48 },
-  { key: "medium", label: "Medium", px: 72 },
-  { key: "large", label: "Large", px: 104 },
+  { key: "small", label: "Small", px: 64 },
+  { key: "medium", label: "Medium", px: 100 },
+  { key: "large", label: "Large", px: 160 },
 ];
 
 const TABS = [
@@ -54,8 +54,8 @@ function InvoiceLogoPreview({
 }: {
   logoUrl: string | null; position: string; size: string; companyName: string;
 }) {
-  const px = LOGO_SIZES.find(s => s.key === size)?.px ?? 72;
-  const imgStyle = { width: px, height: px, objectFit: "contain" as const };
+  const px = LOGO_SIZES.find(s => s.key === size)?.px ?? 100;
+  const imgStyle = { height: px, width: "auto", maxWidth: px * 2.5, objectFit: "contain" as const };
 
   const logoEl = logoUrl
     ? <img src={`${BASE}${logoUrl}`} style={imgStyle} alt="Logo" className="rounded" />

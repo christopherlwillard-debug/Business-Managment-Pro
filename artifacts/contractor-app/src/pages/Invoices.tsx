@@ -59,7 +59,7 @@ function InvoiceBuilder({
   const logoUrl: string | null  = s.logoUrl ?? null;
   const logoSize: string        = s.invoiceLogoSize     ?? "medium";
   const logoPos: string         = s.invoiceLogoPosition ?? "top-left";
-  const logoPx = logoSize === "small" ? 48 : logoSize === "large" ? 104 : 72;
+  const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const subtotal  = lineItems.reduce((a, l) => a + l.quantity * l.unitPrice, 0);
@@ -128,11 +128,11 @@ function InvoiceBuilder({
             {(() => {
               const logoEl = logoUrl ? (
                 <img src={`${base}${logoUrl}`} alt="Logo" className="flex-shrink-0"
-                  style={{ width: logoPx, height: logoPx, objectFit: "contain" }} />
+                  style={{ height: logoPx, width: "auto", maxWidth: logoPx * 2.5, objectFit: "contain" }} />
               ) : (
                 <div className="rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0"
-                  style={{ width: 40, height: 40 }}>
-                  <Building2 className="w-5 h-5 text-amber-500" />
+                  style={{ width: 48, height: 48 }}>
+                  <Building2 className="w-6 h-6 text-amber-500" />
                 </div>
               );
 
@@ -486,7 +486,7 @@ function InvoiceViewModal({
   const logoUrl: string | null  = s.logoUrl ?? null;
   const logoSize: string        = s.invoiceLogoSize     ?? "medium";
   const logoPos: string         = s.invoiceLogoPosition ?? "top-left";
-  const logoPx = logoSize === "small" ? 48 : logoSize === "large" ? 104 : 72;
+  const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const lineItems: any[] = Array.isArray(invoice.lineItems) ? invoice.lineItems : [];
@@ -538,11 +538,11 @@ function InvoiceViewModal({
               {(() => {
                 const logoEl = logoUrl ? (
                   <img src={`${base}${logoUrl}`} alt="Logo" className="flex-shrink-0"
-                    style={{ width: logoPx, height: logoPx, objectFit: "contain" }} />
+                    style={{ height: logoPx, width: "auto", maxWidth: logoPx * 2.5, objectFit: "contain" }} />
                 ) : (
                   <div className="rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0"
-                    style={{ width: 40, height: 40 }}>
-                    <Building2 className="w-5 h-5 text-amber-500" />
+                    style={{ width: 48, height: 48 }}>
+                    <Building2 className="w-6 h-6 text-amber-500" />
                   </div>
                 );
 
