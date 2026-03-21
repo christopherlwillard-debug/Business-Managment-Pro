@@ -43,7 +43,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   );
 
   const companyName = (settings as any)?.companyName || "BuildPro";
+  const logoUrl = (settings as any)?.logoUrl ?? null;
   const initials = companyName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const pageTransition = {
     initial: { opacity: 0, y: 10 },
@@ -81,7 +83,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Logo */}
         <div className="flex items-center justify-between h-16 px-6 bg-primary border-b border-primary-foreground/10 flex-shrink-0">
           <Link href="/" className="flex items-center gap-2 text-xl font-display font-bold tracking-wider" onClick={() => setMobileMenuOpen(false)}>
-            <Building2 className="w-6 h-6 text-accent" />
+            {logoUrl ? (
+              <img src={`${base}${logoUrl}`} className="w-8 h-8 rounded object-contain bg-white/10" alt="Logo" />
+            ) : (
+              <Building2 className="w-6 h-6 text-accent" />
+            )}
             <span className="truncate">{companyName}</span>
           </Link>
           <button className="lg:hidden text-primary-foreground/70 hover:text-white p-1" onClick={() => setMobileMenuOpen(false)}>

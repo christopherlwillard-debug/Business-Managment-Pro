@@ -21,6 +21,10 @@ export const settingsTable = pgTable("settings", {
   currency: text("currency").default("USD"),
   enabledFeatures: jsonb("enabled_features").default('["invoices","expenses","mileage","estimates","subcontractors","daily_logs","compliance","clients"]'),
   thresholdAmount1099: numeric("threshold_amount_1099", { precision: 10, scale: 2 }).default("600"),
+  entityType: text("entity_type"),
+  ein: text("ein"),
+  invoiceLogoPosition: text("invoice_logo_position").default("top-left"),
+  invoiceLogoSize: text("invoice_logo_size").default("medium"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

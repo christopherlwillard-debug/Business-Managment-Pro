@@ -63,54 +63,87 @@ function InvoicePreview({
   const companyCity = s?.companyCity || "";
   const companyState = s?.companyState || "KY";
   const companyZip = s?.companyZip || "";
+  const logoUrl: string | null = s?.logoUrl ?? null;
+  const logoPosition: string = s?.invoiceLogoPosition ?? "top-left";
+  const logoSize: string = s?.invoiceLogoSize ?? "medium";
+  const logoPx = logoSize === "small" ? 48 : logoSize === "large" ? 104 : 72;
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const filledLines = lineItems.filter((l) => l.description.trim());
+
+  const LogoImg = logoUrl ? (
+    <img src={`${base}${logoUrl}`} alt="Logo" style={{ width: logoPx, height: logoPx, objectFit: "contain" }} />
+  ) : (
+    <div className="flex items-center gap-2">
+      <Building2 className="w-5 h-5 text-amber-500" />
+    </div>
+  );
+
+  const CompanyBlock = (
+    <div>
+      {logoPosition !== "top-left" && (
+        <span className="text-xl font-bold text-gray-900 tracking-tight block mb-1">{companyName}</span>
+      )}
+      {logoPosition === "top-left" && (
+        <div className="flex items-center gap-2 mb-1">
+          {LogoImg}
+          <span className="text-xl font-bold text-gray-900 tracking-tight">{companyName}</span>
+        </div>
+      )}
+      {companyAddress && (
+        <p className="text-xs text-gray-500 leading-relaxed">
+          {companyAddress}<br />
+          {[companyCity, companyState, companyZip].filter(Boolean).join(", ")}
+        </p>
+      )}
+      {companyEmail && <p className="text-xs text-gray-500 mt-0.5">{companyEmail}</p>}
+      {companyPhone && <p className="text-xs text-gray-500">{companyPhone}</p>}
+    </div>
+  );
+
+  const InvoiceNumberBlock = (
+    <div className="text-right">
+      <p className="text-3xl font-extrabold tracking-widest text-gray-300 uppercase">Invoice</p>
+      <p className="text-sm font-bold text-amber-600 mt-1">{previewNumber}</p>
+      <div className="mt-2 space-y-0.5 text-xs text-gray-500">
+        {form.issueDate && <p><span className="font-medium text-gray-700">Date: </span>{formatDate(form.issueDate)}</p>}
+        {form.dueDate && <p><span className="font-medium text-gray-700">Due: </span>{formatDate(form.dueDate)}</p>}
+        {form.terms && <p><span className="font-medium text-gray-700">Terms: </span>{form.terms}</p>}
+      </div>
+    </div>
+  );
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden text-gray-900 text-[13px] font-sans select-none w-full">
       <div className="h-2 bg-gradient-to-r from-amber-500 to-amber-400" />
 
       <div className="px-8 py-7">
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Building2 className="w-5 h-5 text-amber-500" />
-              <span className="text-xl font-bold text-gray-900 tracking-tight">{companyName}</span>
+        {/* Header — logo position variants */}
+        {logoPosition === "top-center" ? (
+          <div className="mb-8">
+            <div className="flex flex-col items-center mb-4">
+              {LogoImg}
             </div>
-            {companyAddress && (
-              <p className="text-xs text-gray-500 leading-relaxed mt-1">
-                {companyAddress}<br />
-                {[companyCity, companyState, companyZip].filter(Boolean).join(", ")}
-              </p>
-            )}
-            {companyEmail && <p className="text-xs text-gray-500 mt-0.5">{companyEmail}</p>}
-            {companyPhone && <p className="text-xs text-gray-500">{companyPhone}</p>}
-          </div>
-          <div className="text-right">
-            <p className="text-3xl font-extrabold tracking-widest text-gray-300 uppercase">Invoice</p>
-            <p className="text-sm font-bold text-amber-600 mt-1">{previewNumber}</p>
-            <div className="mt-2 space-y-0.5 text-xs text-gray-500">
-              {form.issueDate && (
-                <p>
-                  <span className="font-medium text-gray-700">Date: </span>
-                  {formatDate(form.issueDate)}
-                </p>
-              )}
-              {form.dueDate && (
-                <p>
-                  <span className="font-medium text-gray-700">Due: </span>
-                  {formatDate(form.dueDate)}
-                </p>
-              )}
-              {form.terms && (
-                <p>
-                  <span className="font-medium text-gray-700">Terms: </span>
-                  {form.terms}
-                </p>
-              )}
+            <div className="flex justify-between items-start">
+              {CompanyBlock}
+              {InvoiceNumberBlock}
             </div>
           </div>
-        </div>
+        ) : logoPosition === "top-right" ? (
+          <div className="flex justify-between items-start mb-8">
+            {CompanyBlock}
+            <div className="flex flex-col items-end gap-3">
+              {LogoImg}
+              {InvoiceNumberBlock}
+            </div>
+          </div>
+        ) : (
+          /* top-left (default) */
+          <div className="flex justify-between items-start mb-8">
+            {CompanyBlock}
+            {InvoiceNumberBlock}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-6 mb-7">
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">

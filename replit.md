@@ -50,7 +50,7 @@ artifacts-monorepo/
 - **Daily Logs** - Field documentation with weather, crew, work completed, photos
 - **Compliance** - Alerts for 1099 thresholds, uncategorized mileage, license expirations
 - **Clients** - Client contact management
-- **Settings** - Business profile, financial defaults (IRS rate, tax rate, invoice prefix), feature module toggles
+- **Settings** - Tabbed settings: Business Profile (name, entity type, EIN, address, contact), Logo & Branding (upload, invoice position/size picker with live preview), Invoice Defaults (payment terms, late fee, prefix, tax rate), Financial (mileage rate, 1099 threshold), Feature Modules
 
 ### Settings Feature Toggles
 Users can enable/disable modules from Settings. Disabled modules are hidden from the sidebar.
@@ -66,13 +66,14 @@ Feature keys (stored in DB): `jobs`, `invoices`, `expenses`, `mileage`, `estimat
 - `/api/portal` - Subcontractor self-serve portal: `POST /generate/:subId`, `GET /:token`, `PUT /:token/w9`, `PUT /:token/features`, CRUD for `/:token/expenses` and `/:token/mileage`
 - `/api/estimates` - CRUD + `/:id/convert-to-job`
 - `/api/daily-logs` - CRUD for daily field logs
-- `/api/settings` - GET/PUT for app settings
+- `/api/settings` - GET/PUT for app settings; `POST /logo` for logo upload (multipart); `DELETE /logo` for removal
 - `/api/reports/dashboard` - Dashboard stats
 - `/api/reports/compliance` - Compliance alerts
 - `/api/uploads` - File upload endpoint (static files served from `uploads/` dir)
 
 ### Database Schema (lib/db/src/schema/)
 Tables: clients, jobs, invoices, expenses, mileage_logs, subcontractors, estimates, daily_logs, settings
+Settings table includes: entity_type, ein, invoice_logo_position, invoice_logo_size columns for branding
 Subcontractors table includes: W-9 fields (w9_legal_name, w9_business_name, w9_tax_classification, w9_llc_type, w9_address, w9_city, w9_state, w9_zip, w9_tax_id_type, w9_tax_id, w9_signature, w9_signed_at) and portal_features jsonb column
 
 ## TypeScript & Composite Projects

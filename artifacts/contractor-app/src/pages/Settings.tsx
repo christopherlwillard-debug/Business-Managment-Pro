@@ -1,52 +1,250 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useGetSettings, useUpdateSettings } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Building2, Settings2, Receipt, Check, AlertCircle } from "lucide-react";
+import {
+  Building2, Settings2, Receipt, Check, AlertCircle, Upload,
+  X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
+  ChevronRight, DollarSign, Navigation, FileText, ShieldCheck
+} from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const FEATURE_OPTIONS = [
-  { key: "jobs", label: "Jobs" },
-  { key: "invoices", label: "Invoices" },
-  { key: "expenses", label: "Expenses" },
-  { key: "mileage", label: "Mileage Tracking" },
-  { key: "estimates", label: "Estimates & Bidding" },
-  { key: "subcontractors", label: "Subcontractors" },
-  { key: "daily_logs", label: "Daily Logs" },
-  { key: "compliance", label: "Compliance Agent" },
-  { key: "clients", label: "Clients" },
+  { key: "jobs", label: "Jobs", desc: "Job management and tracking" },
+  { key: "invoices", label: "Invoices", desc: "Create and send invoices" },
+  { key: "expenses", label: "Expenses", desc: "Expense logging and receipts" },
+  { key: "mileage", label: "Mileage Tracking", desc: "IRS mileage deduction tracking" },
+  { key: "estimates", label: "Estimates & Bidding", desc: "Job estimator with line items" },
+  { key: "subcontractors", label: "Subcontractors", desc: "Sub management and portal" },
+  { key: "daily_logs", label: "Daily Logs", desc: "Field documentation" },
+  { key: "compliance", label: "Compliance Agent", desc: "1099 and license alerts" },
+  { key: "clients", label: "Clients", desc: "Client contact management" },
 ];
 
-function field(label: string, node: React.ReactNode, hint?: string) {
+const PAYMENT_TERMS_OPTIONS = ["Due on Receipt", "Net 7", "Net 15", "Net 30", "Net 45", "Net 60"];
+const ENTITY_TYPES = ["LLC", "Single-Member LLC", "Multi-Member LLC", "S Corporation", "C Corporation", "Sole Proprietor", "Partnership", "DBA"];
+
+const LOGO_POSITIONS = [
+  { key: "top-left", label: "Left", icon: AlignLeft },
+  { key: "top-center", label: "Center", icon: AlignCenter },
+  { key: "top-right", label: "Right", icon: AlignRight },
+];
+
+const LOGO_SIZES = [
+  { key: "small", label: "Small", px: 48 },
+  { key: "medium", label: "Medium", px: 72 },
+  { key: "large", label: "Large", px: 104 },
+];
+
+const TABS = [
+  { key: "profile", label: "Business Profile", icon: Building2 },
+  { key: "branding", label: "Logo & Branding", icon: ImagePlus },
+  { key: "invoice", label: "Invoice Defaults", icon: FileText },
+  { key: "financial", label: "Financial", icon: DollarSign },
+  { key: "modules", label: "Modules", icon: Settings2 },
+];
+
+// ─── Mini invoice preview showing logo placement ──────────────────────────────
+function InvoiceLogoPreview({
+  logoUrl, position, size, companyName,
+}: {
+  logoUrl: string | null; position: string; size: string; companyName: string;
+}) {
+  const px = LOGO_SIZES.find(s => s.key === size)?.px ?? 72;
+  const imgStyle = { width: px, height: px, objectFit: "contain" as const };
+
+  const logoEl = logoUrl
+    ? <img src={`${BASE}${logoUrl}`} style={imgStyle} alt="Logo" className="rounded" />
+    : (
+      <div style={{ width: px, height: px }} className="rounded bg-amber-100 flex items-center justify-center">
+        <Building2 className="text-amber-500" style={{ width: px * 0.4, height: px * 0.4 }} />
+      </div>
+    );
+
+  const nameCol = (
+    <div className="min-w-0">
+      <p className="text-[10px] font-bold text-gray-900 truncate">{companyName || "Your Company"}</p>
+      <p className="text-[8px] text-gray-400">Lexington, KY 40501</p>
+    </div>
+  );
+
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-foreground">{label}</label>
-      {node}
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm text-[10px] select-none">
+      <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400" />
+      <div className="px-4 py-3">
+        {position === "top-center" ? (
+          <div className="flex flex-col items-center gap-1 mb-2">
+            {logoEl}
+            {nameCol}
+          </div>
+        ) : position === "top-right" ? (
+          <div className="flex justify-between items-start mb-2">
+            {nameCol}
+            {logoEl}
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 mb-2">
+            {logoEl}
+            {nameCol}
+          </div>
+        )}
+        {/* Fake invoice content lines */}
+        <div className="space-y-1 mt-1">
+          {[60, 80, 50].map((w, i) => (
+            <div key={i} className="flex justify-between">
+              <div className="h-1.5 bg-gray-100 rounded" style={{ width: `${w}%` }} />
+              <div className="h-1.5 bg-gray-100 rounded w-10" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Logo drop zone ───────────────────────────────────────────────────────────
+function LogoUpload({
+  logoUrl, onUploaded, onRemoved,
+}: {
+  logoUrl: string | null; onUploaded: (url: string) => void; onRemoved: () => void;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function upload(file: File) {
+    if (!file.type.startsWith("image/")) return setError("Please upload an image file (PNG, JPG, SVG, etc.)");
+    if (file.size > 5 * 1024 * 1024) return setError("File must be under 5 MB");
+    setError("");
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("logo", file);
+      const res = await fetch(`${BASE}/api/settings/logo`, { method: "POST", body: form });
+      if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
+      const { logoUrl: url } = await res.json();
+      onUploaded(url);
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) upload(file);
+  }, []);
+
+  async function handleRemove() {
+    setUploading(true);
+    try {
+      await fetch(`${BASE}/api/settings/logo`, { method: "DELETE" });
+      onRemoved();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (logoUrl) {
+    return (
+      <div className="flex items-center gap-4">
+        <div className="w-24 h-24 rounded-xl border-2 border-border bg-muted/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+          <img src={`${BASE}${logoUrl}`} className="w-full h-full object-contain p-1" alt="Company logo" />
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Logo uploaded</p>
+          <p className="text-xs text-muted-foreground">PNG, JPG, or SVG · Max 5 MB</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted/60 transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" /> Replace
+            </button>
+            <button
+              type="button"
+              onClick={handleRemove}
+              disabled={uploading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/5 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Remove
+            </button>
+          </div>
+        </div>
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`relative flex flex-col items-center justify-center gap-3 p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
+          dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/30"
+        }`}
+      >
+        {uploading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            Uploading…
+          </div>
+        ) : (
+          <>
+            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+              <ImagePlus className="w-6 h-6 text-primary" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-foreground">Drop your logo here</p>
+              <p className="text-xs text-muted-foreground mt-1">or click to browse · PNG, JPG, SVG · Max 5 MB</p>
+            </div>
+          </>
+        )}
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+    </div>
+  );
+}
+
+// ─── Field helper ─────────────────────────────────────────────────────────────
+function LF({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-semibold text-foreground">{label}</label>
+      {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
 
+// ─── Main Settings ────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetSettings();
   const updateMutation = useUpdateSettings();
 
+  const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
-    companyName: "",
-    companyEmail: "",
-    companyPhone: "",
-    companyAddress: "",
-    companyCity: "",
-    companyState: "KY",
-    companyZip: "",
-    defaultTaxRate: "",
-    invoicePrefix: "INV-2026-",
-    defaultPaymentTerms: "Net 30",
-    lateFeePercent: "",
-    mileageRate: "0.725",
-    thresholdAmount1099: "600",
+    companyName: "", entityType: "", ein: "",
+    companyEmail: "", companyPhone: "",
+    companyAddress: "", companyCity: "", companyState: "KY", companyZip: "",
+    defaultTaxRate: "", invoicePrefix: "INV-2026-",
+    defaultPaymentTerms: "Net 30", lateFeePercent: "",
+    mileageRate: "0.725", thresholdAmount1099: "600",
+    invoiceLogoPosition: "top-left", invoiceLogoSize: "medium",
   });
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
@@ -57,6 +255,8 @@ export default function Settings() {
       const s = settings as any;
       setForm({
         companyName: s.companyName ?? "",
+        entityType: s.entityType ?? "",
+        ein: s.ein ?? "",
         companyEmail: s.companyEmail ?? "",
         companyPhone: s.companyPhone ?? "",
         companyAddress: s.companyAddress ?? "",
@@ -69,27 +269,22 @@ export default function Settings() {
         lateFeePercent: s.lateFeePercent != null ? String(s.lateFeePercent) : "",
         mileageRate: s.mileageRate != null ? String(s.mileageRate) : "0.725",
         thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "600",
+        invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
+        invoiceLogoSize: s.invoiceLogoSize ?? "medium",
       });
+      setLogoUrl(s.logoUrl ?? null);
       const feat: Record<string, boolean> = {};
-      FEATURE_OPTIONS.forEach((f) => {
-        feat[f.key] = Array.isArray(s.enabledFeatures)
-          ? s.enabledFeatures.includes(f.key)
-          : true;
+      FEATURE_OPTIONS.forEach(f => {
+        feat[f.key] = Array.isArray(s.enabledFeatures) ? s.enabledFeatures.includes(f.key) : true;
       });
       setFeatures(feat);
       setSeeded(true);
     }
   }, [settings, seeded]);
 
-  function setF(k: keyof typeof form, v: string) {
-    setForm((p) => ({ ...p, [k]: v }));
-  }
+  const setF = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  function toggleFeature(key: string) {
-    setFeatures((p) => ({ ...p, [key]: !p[key] }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess(false);
@@ -97,6 +292,8 @@ export default function Settings() {
       await updateMutation.mutateAsync({
         data: {
           companyName: form.companyName || undefined,
+          entityType: form.entityType || null,
+          ein: form.ein || null,
           companyEmail: form.companyEmail || undefined,
           companyPhone: form.companyPhone || undefined,
           companyAddress: form.companyAddress || undefined,
@@ -109,7 +306,9 @@ export default function Settings() {
           lateFeePercent: form.lateFeePercent ? parseFloat(form.lateFeePercent) : undefined,
           mileageRate: form.mileageRate ? parseFloat(form.mileageRate) : 0.725,
           thresholdAmount1099: form.thresholdAmount1099 ? parseFloat(form.thresholdAmount1099) : 600,
-          enabledFeatures: FEATURE_OPTIONS.filter((f) => features[f.key]).map((f) => f.key),
+          invoiceLogoPosition: form.invoiceLogoPosition,
+          invoiceLogoSize: form.invoiceLogoSize,
+          enabledFeatures: FEATURE_OPTIONS.filter(f => features[f.key]).map(f => f.key),
         } as any,
       });
       queryClient.invalidateQueries();
@@ -120,148 +319,335 @@ export default function Settings() {
     }
   }
 
+  const inp = "w-full px-3 py-2.5 rounded-xl border border-border bg-background focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none text-sm transition-colors";
+
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto space-y-4 pb-12">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-48 rounded-2xl bg-muted animate-pulse" />
-        ))}
+      <div className="max-w-3xl mx-auto space-y-4 pb-12">
+        {[1, 2, 3].map(i => <div key={i} className="h-48 rounded-2xl bg-muted animate-pulse" />)}
       </div>
     );
   }
 
-  const inp = "w-full px-3 py-2 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-ring outline-none text-sm transition-colors";
-
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-foreground">App Settings</h1>
-        <p className="text-muted-foreground mt-1">Configure your business profile, rates, and enabled modules.</p>
+    <div className="max-w-3xl mx-auto pb-12">
+      <div className="mb-6">
+        <h1 className="text-3xl font-display font-bold text-foreground">Settings</h1>
+        <p className="text-muted-foreground mt-1">Manage your business profile, branding, and app configuration.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Tab bar */}
+      <div className="flex overflow-x-auto scrollbar-hide gap-1 mb-6 bg-muted/40 rounded-2xl p-1.5 border border-border">
+        {TABS.map(tab => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all ${
+                active
+                  ? "bg-card text-foreground shadow-sm border border-border"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" /> {tab.label}
+            </button>
+          );
+        })}
+      </div>
 
-        <Card className="border-border/50 shadow-md bg-card">
-          <CardHeader className="border-b border-border/50 bg-muted/20">
-            <CardTitle className="font-display flex items-center">
-              <Building2 className="w-5 h-5 mr-2 text-primary" /> Business Profile
-            </CardTitle>
-            <CardDescription>Details appear on invoices, estimates, and reports.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {field("Company Name",
-              <input className={inp} value={form.companyName} onChange={(e) => setF("companyName", e.target.value)} placeholder="Your LLC Name" />
-            )}
-            {field("Email",
-              <input className={inp} type="email" value={form.companyEmail} onChange={(e) => setF("companyEmail", e.target.value)} placeholder="contact@yourbusiness.com" />
-            )}
-            {field("Phone",
-              <input className={inp} value={form.companyPhone} onChange={(e) => setF("companyPhone", e.target.value)} placeholder="(270) 555-0000" />
-            )}
-            {field("Street Address",
-              <input className={inp} value={form.companyAddress} onChange={(e) => setF("companyAddress", e.target.value)} placeholder="123 Main St" />
-            )}
-            {field("City",
-              <input className={inp} value={form.companyCity} onChange={(e) => setF("companyCity", e.target.value)} placeholder="Owensboro" />
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              {field("State",
-                <input className={inp} value={form.companyState} onChange={(e) => setF("companyState", e.target.value)} placeholder="KY" />
-              )}
-              {field("ZIP",
-                <input className={inp} value={form.companyZip} onChange={(e) => setF("companyZip", e.target.value)} placeholder="42301" />
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      <form onSubmit={handleSave} className="space-y-5">
 
-        <Card className="border-border/50 shadow-md bg-card">
-          <CardHeader className="border-b border-border/50 bg-muted/20">
-            <CardTitle className="font-display flex items-center">
-              <Receipt className="w-5 h-5 mr-2 text-primary" /> Financial Defaults & Rates
-            </CardTitle>
-            <CardDescription>These defaults apply to new invoices and mileage logs.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {field("Default Tax Rate (%)",
-              <input className={inp} type="number" step="0.01" min="0" max="100" value={form.defaultTaxRate} onChange={(e) => setF("defaultTaxRate", e.target.value)} placeholder="e.g. 6" />,
-              "Used on new invoices"
-            )}
-            {field("Invoice Prefix",
-              <input className={inp} value={form.invoicePrefix} onChange={(e) => setF("invoicePrefix", e.target.value)} />,
-              "e.g. INV-2026-"
-            )}
-            {field("Payment Terms",
-              <select className={inp} value={form.defaultPaymentTerms} onChange={(e) => setF("defaultPaymentTerms", e.target.value)}>
-                <option>Net 15</option>
-                <option>Net 30</option>
-                <option>Net 60</option>
-                <option>Due on Receipt</option>
-              </select>
-            )}
-            {field("Late Fee (%)",
-              <input className={inp} type="number" step="0.1" min="0" value={form.lateFeePercent} onChange={(e) => setF("lateFeePercent", e.target.value)} placeholder="e.g. 1.5" />
-            )}
-            {field("IRS Mileage Rate ($/mile)",
-              <input className={inp} type="number" step="0.001" min="0" value={form.mileageRate} onChange={(e) => setF("mileageRate", e.target.value)} />,
-              "2026 IRS standard: $0.725/mile"
-            )}
-            {field("1099 Threshold ($)",
-              <input className={inp} type="number" value={form.thresholdAmount1099} onChange={(e) => setF("thresholdAmount1099", e.target.value)} />,
-              "IRS default: $600"
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-md bg-card">
-          <CardHeader className="border-b border-border/50 bg-muted/20">
-            <CardTitle className="font-display flex items-center">
-              <Settings2 className="w-5 h-5 mr-2 text-primary" /> Feature Modules
-            </CardTitle>
-            <CardDescription>Enable or disable modules — disabled ones are hidden from the sidebar.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {FEATURE_OPTIONS.map((feature) => (
-              <button
-                key={feature.key}
-                type="button"
-                onClick={() => toggleFeature(feature.key)}
-                className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all text-left ${
-                  features[feature.key]
-                    ? "border-primary bg-primary/5"
-                    : "border-border bg-background hover:border-muted-foreground/40"
-                }`}
-              >
-                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                  features[feature.key] ? "border-primary bg-primary" : "border-muted-foreground/40"
-                }`}>
-                  {features[feature.key] && <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+        {/* ── Profile ── */}
+        {activeTab === "profile" && (
+          <>
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-primary" /> Business Profile
+                </CardTitle>
+                <CardDescription>This information appears on all invoices, estimates, and reports.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <LF label="Company / Business Name">
+                      <input className={inp} value={form.companyName} onChange={e => setF("companyName", e.target.value)} placeholder="Smith Construction LLC" />
+                    </LF>
+                  </div>
+                  <LF label="Legal Entity Type">
+                    <select className={inp} value={form.entityType} onChange={e => setF("entityType", e.target.value)}>
+                      <option value="">Select type…</option>
+                      {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </LF>
+                  <LF label="EIN (Employer ID Number)" hint="Format: XX-XXXXXXX">
+                    <input className={inp} value={form.ein} onChange={e => setF("ein", e.target.value)} placeholder="12-3456789" />
+                  </LF>
                 </div>
-                <span className={`ml-3 font-medium text-sm transition-colors ${features[feature.key] ? "text-foreground" : "text-muted-foreground"}`}>
-                  {feature.label}
-                </span>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
 
-        <div className="flex items-center justify-end gap-4 pt-2 border-t border-border">
-          {error && (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
-              <AlertCircle className="w-4 h-4" /> {error}
-            </span>
-          )}
-          {success && (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-600">
-              <Check className="w-4 h-4" /> Settings saved!
-            </span>
-          )}
+                <div className="border-t border-border/50 pt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Contact Information</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <LF label="Business Email">
+                      <input className={inp} type="email" value={form.companyEmail} onChange={e => setF("companyEmail", e.target.value)} placeholder="contact@smithconstruction.com" />
+                    </LF>
+                    <LF label="Business Phone">
+                      <input className={inp} value={form.companyPhone} onChange={e => setF("companyPhone", e.target.value)} placeholder="(270) 555-0123" />
+                    </LF>
+                  </div>
+                </div>
+
+                <div className="border-t border-border/50 pt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Business Address</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <LF label="Street Address">
+                        <input className={inp} value={form.companyAddress} onChange={e => setF("companyAddress", e.target.value)} placeholder="123 Main Street" />
+                      </LF>
+                    </div>
+                    <LF label="City">
+                      <input className={inp} value={form.companyCity} onChange={e => setF("companyCity", e.target.value)} placeholder="Owensboro" />
+                    </LF>
+                    <div className="grid grid-cols-2 gap-3">
+                      <LF label="State">
+                        <input className={inp} value={form.companyState} onChange={e => setF("companyState", e.target.value.toUpperCase())} placeholder="KY" maxLength={2} />
+                      </LF>
+                      <LF label="ZIP Code">
+                        <input className={inp} value={form.companyZip} onChange={e => setF("companyZip", e.target.value)} placeholder="42301" />
+                      </LF>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {/* ── Branding ── */}
+        {activeTab === "branding" && (
+          <>
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <ImagePlus className="w-5 h-5 text-primary" /> Company Logo
+                </CardTitle>
+                <CardDescription>Your logo appears on invoices, estimates, and reports. PNG or SVG recommended for crisp quality.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <LogoUpload
+                  logoUrl={logoUrl}
+                  onUploaded={url => { setLogoUrl(url); queryClient.invalidateQueries(); }}
+                  onRemoved={() => { setLogoUrl(null); queryClient.invalidateQueries(); }}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" /> Invoice Logo Placement
+                </CardTitle>
+                <CardDescription>Choose where and how big your logo appears on invoices. Preview updates in real time.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {/* Position picker */}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-foreground">Logo Position</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {LOGO_POSITIONS.map(pos => {
+                      const Icon = pos.icon;
+                      const active = form.invoiceLogoPosition === pos.key;
+                      return (
+                        <button
+                          key={pos.key}
+                          type="button"
+                          onClick={() => setF("invoiceLogoPosition", pos.key)}
+                          className={`flex flex-col items-center gap-2 py-4 rounded-xl border-2 transition-all ${
+                            active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"
+                          }`}
+                        >
+                          <Icon className={`w-5 h-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
+                          <span className={`text-xs font-semibold ${active ? "text-primary" : "text-muted-foreground"}`}>{pos.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Size picker */}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-foreground">Logo Size</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {LOGO_SIZES.map(sz => {
+                      const active = form.invoiceLogoSize === sz.key;
+                      return (
+                        <button
+                          key={sz.key}
+                          type="button"
+                          onClick={() => setF("invoiceLogoSize", sz.key)}
+                          className={`flex flex-col items-center gap-2 py-4 rounded-xl border-2 transition-all ${
+                            active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"
+                          }`}
+                        >
+                          <div className={`rounded bg-primary/20 flex items-center justify-center ${active ? "bg-primary/20" : "bg-muted"}`} style={{ width: sz.px * 0.4, height: sz.px * 0.4 }}>
+                            <ImagePlus className={`${active ? "text-primary" : "text-muted-foreground"}`} style={{ width: sz.px * 0.2, height: sz.px * 0.2 }} />
+                          </div>
+                          <span className={`text-xs font-semibold ${active ? "text-primary" : "text-muted-foreground"}`}>{sz.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Live preview */}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Preview</p>
+                  <InvoiceLogoPreview
+                    logoUrl={logoUrl}
+                    position={form.invoiceLogoPosition}
+                    size={form.invoiceLogoSize}
+                    companyName={form.companyName}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {/* ── Invoice ── */}
+        {activeTab === "invoice" && (
+          <Card className="border-border/50 shadow-md bg-card">
+            <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+              <CardTitle className="font-display flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" /> Invoice Defaults
+              </CardTitle>
+              <CardDescription>These settings pre-fill on every new invoice. You can override them per invoice.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <LF label="Default Payment Terms">
+                  <select className={inp} value={form.defaultPaymentTerms} onChange={e => setF("defaultPaymentTerms", e.target.value)}>
+                    {PAYMENT_TERMS_OPTIONS.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </LF>
+                <LF label="Late Fee (%)" hint="Charged if payment is past due">
+                  <div className="relative">
+                    <input className={inp + " pr-8"} type="number" step="0.1" min="0" max="30" value={form.lateFeePercent} onChange={e => setF("lateFeePercent", e.target.value)} placeholder="e.g. 1.5" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                  </div>
+                </LF>
+                <LF label="Invoice Number Prefix" hint="e.g. INV-2026- → INV-2026-1001">
+                  <input className={inp} value={form.invoicePrefix} onChange={e => setF("invoicePrefix", e.target.value)} placeholder="INV-2026-" />
+                </LF>
+                <LF label="Default Tax Rate (%)" hint="KY sales tax or per-city occupational">
+                  <div className="relative">
+                    <input className={inp + " pr-8"} type="number" step="0.01" min="0" max="25" value={form.defaultTaxRate} onChange={e => setF("defaultTaxRate", e.target.value)} placeholder="e.g. 6" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                  </div>
+                </LF>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <p className="text-xs text-blue-800">
+                  <strong>KY Occupational Tax:</strong> Cities like Louisville and Lexington charge an occupational tax (1–2.2%) on income earned within city limits. Set the default here and override per invoice under the city field. Use the Accounting page's "Income by City" report for city-level tax filing.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Financial ── */}
+        {activeTab === "financial" && (
+          <Card className="border-border/50 shadow-md bg-card">
+            <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+              <CardTitle className="font-display flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-primary" /> Financial Defaults
+              </CardTitle>
+              <CardDescription>IRS rates and reporting thresholds used across the app.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <LF label="IRS Mileage Rate ($/mile)" hint="2026 IRS standard rate: $0.725/mile">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                    <input className={inp + " pl-7"} type="number" step="0.001" min="0" value={form.mileageRate} onChange={e => setF("mileageRate", e.target.value)} />
+                  </div>
+                </LF>
+                <LF label="1099-NEC Threshold ($)" hint="IRS requires 1099 at $600+ per sub per year">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                    <input className={inp + " pl-7"} type="number" value={form.thresholdAmount1099} onChange={e => setF("thresholdAmount1099", e.target.value)} />
+                  </div>
+                </LF>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <p className="text-xs text-amber-800">
+                  <strong>Tip:</strong> The IRS mileage rate applies to all mileage logs and subcontractor mileage in the portal. When the IRS updates the rate each year, update it here and all deduction calculations will reflect the new rate automatically.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Modules ── */}
+        {activeTab === "modules" && (
+          <Card className="border-border/50 shadow-md bg-card">
+            <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+              <CardTitle className="font-display flex items-center gap-2">
+                <Settings2 className="w-5 h-5 text-primary" /> Feature Modules
+              </CardTitle>
+              <CardDescription>Enable or disable modules — disabled ones are hidden from the sidebar. Dashboard and Settings always show.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-3">
+              {FEATURE_OPTIONS.map(feature => (
+                <button
+                  key={feature.key}
+                  type="button"
+                  onClick={() => setFeatures(p => ({ ...p, [feature.key]: !p[feature.key] }))}
+                  className={`w-full flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all text-left ${
+                    features[feature.key] ? "border-primary bg-primary/5" : "border-border bg-background hover:border-muted-foreground/40"
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                    features[feature.key] ? "border-primary bg-primary" : "border-muted-foreground/40"
+                  }`}>
+                    {features[feature.key] && <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`font-semibold text-sm ${features[feature.key] ? "text-foreground" : "text-muted-foreground"}`}>{feature.label}</p>
+                    <p className="text-xs text-muted-foreground">{feature.desc}</p>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 flex-shrink-0 ${features[feature.key] ? "text-primary" : "text-muted-foreground/40"}`} />
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Save bar */}
+        <div className="flex items-center justify-between gap-4 pt-4 border-t border-border">
+          <div>
+            {error && (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+                <AlertCircle className="w-4 h-4" /> {error}
+              </span>
+            )}
+            {success && (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-600">
+                <Check className="w-4 h-4" /> All settings saved successfully!
+              </span>
+            )}
+          </div>
           <button
             type="submit"
             disabled={updateMutation.isPending}
             className="px-8 py-3 rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
           >
-            {updateMutation.isPending ? "Saving..." : "Save Settings"}
+            {updateMutation.isPending ? "Saving…" : "Save Settings"}
           </button>
         </div>
       </form>
