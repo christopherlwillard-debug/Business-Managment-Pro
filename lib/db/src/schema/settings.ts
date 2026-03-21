@@ -25,6 +25,13 @@ export const settingsTable = pgTable("settings", {
   ein: text("ein"),
   invoiceLogoPosition: text("invoice_logo_position").default("top-left"),
   invoiceLogoSize: text("invoice_logo_size").default("medium"),
+  // Mileage tracking settings
+  mileageAutoTrack: integer("mileage_auto_track").default(0),
+  mileageBatterySaving: integer("mileage_battery_saving").default(0),
+  mileageDefaultClassification: text("mileage_default_classification").default("business"),
+  mileageUnits: text("mileage_units").default("miles"),
+  mileageAutoPauseMinutes: integer("mileage_auto_pause_minutes").default(5),
+  mileageReminderFrequency: text("mileage_reminder_frequency").default("daily"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -48,6 +48,24 @@ function metersToMiles(m: number) {
   return m / 1609.344;
 }
 
+function metersToDisplay(m: number, units: string) {
+  if (units === "km") return m / 1000;
+  return metersToMiles(m);
+}
+
+function unitLabel(units: string) {
+  return units === "km" ? "km" : "miles";
+}
+
+function speedLabel(units: string) {
+  return units === "km" ? "km/h" : "mph";
+}
+
+function metersPerSecToDisplay(mps: number, units: string) {
+  if (units === "km") return mps * 3.6;
+  return mps * 2.237;
+}
+
 function fmtDuration(ms: number) {
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
@@ -82,13 +100,28 @@ export default function Mileage() {
   const [tripJobId, setTripJobId] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
+  const [reminderDismissed, setReminderDismissed] = useState(false);
 
   const watchId = useRef<number | null>(null);
   const waypoints = useRef<Waypoint[]>([]);
   const distMeters = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastMovementRef = useRef<number>(Date.now());
 
   const rate = parseFloat((settings as any)?.mileageRate ?? "0.725");
+  const mileageUnits: string = (settings as any)?.mileageUnits ?? "miles";
+  const mileageBatterySaving: boolean = !!(settings as any)?.mileageBatterySaving;
+  const mileageDefaultClassification: "business" | "personal" = (settings as any)?.mileageDefaultClassification === "personal" ? "personal" : "business";
+  const mileageAutoPauseMinutes: number = parseInt((settings as any)?.mileageAutoPauseMinutes ?? "5") || 0;
+  const mileageReminderFrequency: string = (settings as any)?.mileageReminderFrequency ?? "daily";
+
+  // Seed default classification from settings when loaded
+  useEffect(() => {
+    if (settings) {
+      setTripClassification(mileageDefaultClassification);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(settings as any)?.mileageDefaultClassification]);
 
   useEffect(() => {
     return () => {
@@ -117,6 +150,8 @@ export default function Mileage() {
 
     setPhase("tracking");
 
+    lastMovementRef.current = Date.now();
+
     watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const wp: Waypoint = {
@@ -125,14 +160,19 @@ export default function Mileage() {
           ts: pos.timestamp,
         };
         if (pos.coords.speed != null) {
-          setLiveSpeed(Math.max(0, pos.coords.speed * 2.237));
+          const displaySpeed = metersPerSecToDisplay(Math.max(0, pos.coords.speed), mileageUnits);
+          setLiveSpeed(displaySpeed);
+          if (pos.coords.speed > 0.5) {
+            lastMovementRef.current = Date.now();
+          }
         }
         if (waypoints.current.length > 0) {
           const prev = waypoints.current[waypoints.current.length - 1];
           const d = haversineMeters(prev, wp);
           if (d > 5) {
             distMeters.current += d;
-            setLiveMiles(metersToMiles(distMeters.current));
+            lastMovementRef.current = Date.now();
+            setLiveMiles(metersToDisplay(distMeters.current, mileageUnits));
           }
         }
         waypoints.current.push(wp);
@@ -141,9 +181,9 @@ export default function Mileage() {
         setGeoError(`GPS error: ${err.message}`);
         stopTracking();
       },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      { enableHighAccuracy: !mileageBatterySaving, maximumAge: mileageBatterySaving ? 5000 : 2000, timeout: 15000 }
     );
-  }, []);
+  }, [mileageUnits, mileageBatterySaving]);
 
   const stopTracking = useCallback(() => {
     if (watchId.current !== null) {
@@ -157,20 +197,34 @@ export default function Mileage() {
     setPhase("classify");
   }, []);
 
+  // Auto-pause: stop tracking when stationary for too long
+  useEffect(() => {
+    if (phase !== "tracking" || mileageAutoPauseMinutes <= 0) return;
+    const checkInterval = setInterval(() => {
+      const idleMs = Date.now() - lastMovementRef.current;
+      if (idleMs >= mileageAutoPauseMinutes * 60 * 1000) {
+        setGeoError(`Auto-paused: No movement detected for ${mileageAutoPauseMinutes} minute${mileageAutoPauseMinutes !== 1 ? "s" : ""}. Trip saved to classify.`);
+        stopTracking();
+      }
+    }, 15000);
+    return () => clearInterval(checkInterval);
+  }, [phase, mileageAutoPauseMinutes, stopTracking]);
+
   const discardTrip = useCallback(() => {
     setPhase("idle");
     setLiveMiles(0);
     setLiveSpeed(0);
     setTripPurpose("");
     setTripJobId("");
-    setTripClassification("business");
+    setTripClassification(mileageDefaultClassification);
     setSavedMsg("");
     distMeters.current = 0;
     waypoints.current = [];
-  }, []);
+  }, [mileageDefaultClassification]);
 
   const saveTrip = useCallback(async () => {
-    const miles = parseFloat(liveMiles.toFixed(2));
+    // Always save in miles for IRS compliance regardless of display units
+    const miles = parseFloat(metersToMiles(distMeters.current).toFixed(2));
     if (miles < 0.01) {
       setGeoError("No distance recorded — make sure GPS is enabled and you moved.");
       setPhase("idle");
@@ -213,15 +267,18 @@ export default function Mileage() {
       }
 
       queryClient.invalidateQueries();
+      const displayDist = metersToDisplay(distMeters.current, mileageUnits).toFixed(2);
       setSavedMsg(
         tripClassification === "business"
-          ? `Saved! ${miles.toFixed(2)} mi logged + $${(miles * rate).toFixed(2)} expense auto-created.`
-          : `Saved. ${miles.toFixed(2)} personal miles logged.`
+          ? `Saved! ${displayDist} ${unitLabel(mileageUnits)} logged + $${(miles * rate).toFixed(2)} expense auto-created.`
+          : `Saved. ${displayDist} personal ${unitLabel(mileageUnits)} logged.`
       );
       setTripPurpose("");
       setTripJobId("");
-      setTripClassification("business");
+      setTripClassification(mileageDefaultClassification);
       setPhase("idle");
+      distMeters.current = 0;
+      waypoints.current = [];
     } catch {
       setGeoError("Failed to save trip. Please try again.");
     } finally {
@@ -259,6 +316,27 @@ export default function Mileage() {
           <button onClick={() => setGeoError("")} className="ml-auto text-red-400 hover:text-red-700">✕</button>
         </div>
       )}
+
+      {/* Reminder banner: trips without a purpose */}
+      {!reminderDismissed && mileageReminderFrequency !== "never" && phase === "idle" && (() => {
+        const cutoffDays = mileageReminderFrequency === "weekly" ? 7 : 1;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - cutoffDays);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        const incomplete = (logs as any[])?.filter(
+          (l: any) => l.date >= cutoffStr && l.classification === "business" && !l.purpose
+        ) ?? [];
+        if (!incomplete.length) return null;
+        return (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-blue-500" />
+            <span className="text-sm">
+              <span className="font-semibold">{incomplete.length} business trip{incomplete.length > 1 ? "s" : ""}</span> from the past {cutoffDays === 1 ? "day" : "week"} {incomplete.length > 1 ? "are" : "is"} missing a purpose — add details to strengthen your IRS records.
+            </span>
+            <button onClick={() => setReminderDismissed(true)} className="ml-auto text-blue-400 hover:text-blue-700">✕</button>
+          </div>
+        );
+      })()}
 
       {phase === "idle" && (
         <Card className="border-border/50 shadow-md bg-card overflow-hidden">
@@ -306,17 +384,17 @@ export default function Mileage() {
                 <p className="text-6xl font-display font-extrabold text-foreground tracking-tight">
                   {liveMiles.toFixed(2)}
                 </p>
-                <p className="text-muted-foreground text-sm font-medium mt-1">miles</p>
+                <p className="text-muted-foreground text-sm font-medium mt-1">{unitLabel(mileageUnits)}</p>
               </div>
               <div className="text-center border-l border-border">
                 <p className="text-4xl font-display font-bold text-foreground mt-2">
                   {liveSpeed.toFixed(0)}
                 </p>
                 <p className="text-muted-foreground text-sm font-medium mt-1 flex items-center justify-center gap-1">
-                  <Gauge className="w-3.5 h-3.5" /> mph
+                  <Gauge className="w-3.5 h-3.5" /> {speedLabel(mileageUnits)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Est. deduction: {formatCurrency(liveMiles * rate)}
+                  Est. deduction: {formatCurrency(metersToMiles(distMeters.current) * rate)}
                 </p>
               </div>
             </div>
@@ -336,9 +414,9 @@ export default function Mileage() {
           <div className="h-1 bg-gradient-to-r from-blue-400 to-primary" />
           <CardContent className="p-8 space-y-6">
             <div className="text-center">
-              <p className="text-4xl font-display font-extrabold text-foreground">{liveMiles.toFixed(2)} mi</p>
+              <p className="text-4xl font-display font-extrabold text-foreground">{liveMiles.toFixed(2)} {unitLabel(mileageUnits)}</p>
               <p className="text-muted-foreground text-sm mt-1">
-                {fmtDuration(elapsed)} · Est. {formatCurrency(liveMiles * rate)} deduction if business
+                {fmtDuration(elapsed)} · Est. {formatCurrency(metersToMiles(distMeters.current) * rate)} deduction if business
               </p>
             </div>
 
@@ -401,7 +479,7 @@ export default function Mileage() {
                 </div>
                 <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
                   <span className="font-semibold">Auto-expense:</span> A{" "}
-                  <span className="font-bold">{formatCurrency(liveMiles * rate)}</span> mileage
+                  <span className="font-bold">{formatCurrency(metersToMiles(distMeters.current) * rate)}</span> mileage
                   expense will be added automatically to your Expenses log.
                 </div>
               </div>
@@ -444,9 +522,12 @@ export default function Mileage() {
 
         <Card className="border-border/50 shadow-sm">
           <CardContent className="p-6">
-            <p className="text-muted-foreground text-sm font-medium">Business Miles</p>
+            <p className="text-muted-foreground text-sm font-medium">Business {mileageUnits === "km" ? "Km" : "Miles"}</p>
             <p className="text-3xl font-display font-bold text-foreground mt-2">
-              {((summary as any)?.businessMiles || 0).toFixed(1)} mi
+              {(mileageUnits === "km"
+                ? ((summary as any)?.businessMiles || 0) * 1.60934
+                : ((summary as any)?.businessMiles || 0)
+              ).toFixed(1)} {mileageUnits === "km" ? "km" : "mi"}
             </p>
             <p className="text-xs text-muted-foreground mt-4 text-right">
               {(summary as any)?.tripCount || 0} total trips
@@ -456,9 +537,12 @@ export default function Mileage() {
 
         <Card className="border-border/50 shadow-sm">
           <CardContent className="p-6">
-            <p className="text-muted-foreground text-sm font-medium">Personal Miles</p>
+            <p className="text-muted-foreground text-sm font-medium">Personal {mileageUnits === "km" ? "Km" : "Miles"}</p>
             <p className="text-3xl font-display font-bold text-foreground mt-2">
-              {((summary as any)?.personalMiles || 0).toFixed(1)} mi
+              {(mileageUnits === "km"
+                ? ((summary as any)?.personalMiles || 0) * 1.60934
+                : ((summary as any)?.personalMiles || 0)
+              ).toFixed(1)} {mileageUnits === "km" ? "km" : "mi"}
             </p>
             <p className="text-xs text-muted-foreground mt-4 text-right">Not deductible</p>
           </CardContent>
@@ -473,7 +557,7 @@ export default function Mileage() {
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Route</th>
                 <th className="px-6 py-4">Purpose</th>
-                <th className="px-6 py-4 text-right">Miles</th>
+                <th className="px-6 py-4 text-right">{mileageUnits === "km" ? "Km" : "Miles"}</th>
                 <th className="px-6 py-4 text-right">Deduction</th>
                 <th className="px-6 py-4 text-center">Type</th>
                 <th className="px-6 py-4 text-center">Delete</th>
@@ -507,7 +591,9 @@ export default function Mileage() {
                     </td>
                     <td className="px-6 py-4 text-muted-foreground max-w-[160px] truncate">{log.purpose || "—"}</td>
                     <td className="px-6 py-4 text-right font-display font-bold text-foreground">
-                      {parseFloat(log.miles).toFixed(2)}
+                      {mileageUnits === "km"
+                        ? (parseFloat(log.miles) * 1.60934).toFixed(2)
+                        : parseFloat(log.miles).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 text-right text-emerald-600 font-medium">
                       {log.classification === "business" ? `+${formatCurrency(log.deductionAmount)}` : "—"}

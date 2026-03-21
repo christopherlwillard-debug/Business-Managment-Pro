@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import {
   Building2, Settings2, Receipt, Check, AlertCircle, Upload,
   X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
-  ChevronRight, DollarSign, Navigation, FileText, ShieldCheck
+  ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
+  Zap, Battery, Bell, MapPin, ToggleLeft, ToggleRight, Gauge
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -43,6 +44,7 @@ const TABS = [
   { key: "branding", label: "Logo & Branding", icon: ImagePlus },
   { key: "invoice", label: "Invoice Defaults", icon: FileText },
   { key: "financial", label: "Financial", icon: DollarSign },
+  { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "modules", label: "Modules", icon: Settings2 },
 ];
 
@@ -243,7 +245,14 @@ export default function Settings() {
     defaultPaymentTerms: "Net 30", lateFeePercent: "",
     mileageRate: "0.725", thresholdAmount1099: "600",
     invoiceLogoPosition: "top-left", invoiceLogoSize: "medium",
+    // mileage tracking
+    mileageDefaultClassification: "business",
+    mileageUnits: "miles",
+    mileageAutoPauseMinutes: "5",
+    mileageReminderFrequency: "daily",
   });
+  const [mileageAutoTrack, setMileageAutoTrack] = useState(false);
+  const [mileageBatterySaving, setMileageBatterySaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [success, setSuccess] = useState(false);
@@ -271,7 +280,13 @@ export default function Settings() {
         thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "600",
         invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
         invoiceLogoSize: s.invoiceLogoSize ?? "medium",
+        mileageDefaultClassification: s.mileageDefaultClassification ?? "business",
+        mileageUnits: s.mileageUnits ?? "miles",
+        mileageAutoPauseMinutes: String(s.mileageAutoPauseMinutes ?? 5),
+        mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
       });
+      setMileageAutoTrack(!!s.mileageAutoTrack);
+      setMileageBatterySaving(!!s.mileageBatterySaving);
       setLogoUrl(s.logoUrl ?? null);
       const feat: Record<string, boolean> = {};
       FEATURE_OPTIONS.forEach(f => {
@@ -308,6 +323,12 @@ export default function Settings() {
           thresholdAmount1099: form.thresholdAmount1099 ? parseFloat(form.thresholdAmount1099) : 600,
           invoiceLogoPosition: form.invoiceLogoPosition,
           invoiceLogoSize: form.invoiceLogoSize,
+          mileageAutoTrack,
+          mileageBatterySaving,
+          mileageDefaultClassification: form.mileageDefaultClassification,
+          mileageUnits: form.mileageUnits,
+          mileageAutoPauseMinutes: parseInt(form.mileageAutoPauseMinutes) || 5,
+          mileageReminderFrequency: form.mileageReminderFrequency,
           enabledFeatures: FEATURE_OPTIONS.filter(f => features[f.key]).map(f => f.key),
         } as any,
       });
@@ -591,6 +612,176 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* ── Mileage ── */}
+        {activeTab === "mileage" && (
+          <div className="space-y-5">
+            {/* GPS Auto-Tracking */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-primary" /> GPS Tracking
+                </CardTitle>
+                <CardDescription>Configure how the app tracks and records your trips.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-5">
+                {/* Auto-track toggle */}
+                <div className="flex items-center justify-between rounded-xl border border-border px-5 py-4 bg-muted/20">
+                  <div className="flex items-center gap-3">
+                    <Zap className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Auto-Track Trips</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Highlight GPS tracking as the primary way to log trips on the Mileage page.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMileageAutoTrack(v => !v)}
+                    className="flex-shrink-0 ml-4"
+                    aria-pressed={mileageAutoTrack}
+                  >
+                    {mileageAutoTrack
+                      ? <ToggleRight className="w-10 h-10 text-primary" />
+                      : <ToggleLeft className="w-10 h-10 text-muted-foreground" />
+                    }
+                  </button>
+                </div>
+
+                {/* Battery saving mode toggle */}
+                <div className={`flex items-center justify-between rounded-xl border px-5 py-4 transition-opacity ${mileageAutoTrack ? "border-border bg-muted/20 opacity-100" : "border-border/40 bg-muted/10 opacity-40 pointer-events-none"}`}>
+                  <div className="flex items-center gap-3">
+                    <Battery className="w-5 h-5 text-green-500 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Battery Saving Mode</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Uses lower GPS accuracy to reduce battery drain during long trips.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMileageBatterySaving(v => !v)}
+                    className="flex-shrink-0 ml-4"
+                    aria-pressed={mileageBatterySaving}
+                  >
+                    {mileageBatterySaving
+                      ? <ToggleRight className="w-10 h-10 text-primary" />
+                      : <ToggleLeft className="w-10 h-10 text-muted-foreground" />
+                    }
+                  </button>
+                </div>
+
+                {/* Auto-pause */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <Gauge className="w-4 h-4 text-primary" /> Auto-Pause When Stopped (minutes)
+                  </label>
+                  <p className="text-xs text-muted-foreground">Automatically stop tracking after you've been stationary for this many minutes. Set to 0 to disable.</p>
+                  <select
+                    className={inp}
+                    value={form.mileageAutoPauseMinutes}
+                    onChange={e => setF("mileageAutoPauseMinutes", e.target.value)}
+                  >
+                    <option value="0">Disabled (never auto-pause)</option>
+                    <option value="2">2 minutes</option>
+                    <option value="5">5 minutes (recommended)</option>
+                    <option value="10">10 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                  </select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Trip Defaults */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <Navigation className="w-5 h-5 text-primary" /> Trip Defaults
+                </CardTitle>
+                <CardDescription>Pre-fill settings when a new trip is recorded.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-5">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Default Trip Classification</label>
+                  <p className="text-xs text-muted-foreground">This will be pre-selected when classifying a completed trip.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(["business", "personal"] as const).map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setF("mileageDefaultClassification", c)}
+                        className={`py-3 rounded-xl border-2 text-sm font-semibold capitalize transition-all ${
+                          form.mileageDefaultClassification === c
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {c === "business" ? "Business (default)" : "Personal"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Distance Units</label>
+                  <p className="text-xs text-muted-foreground">The Mileage page will display distances in your chosen unit. IRS deductions always use miles.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(["miles", "km"] as const).map(u => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setF("mileageUnits", u)}
+                        className={`py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                          form.mileageUnits === u
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {u === "miles" ? "Miles (mi)" : "Kilometers (km)"}
+                      </button>
+                    ))}
+                  </div>
+                  {form.mileageUnits === "km" && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                      IRS deductions are always calculated in miles. Km display is for your reference only.
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Reminders */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-primary" /> Trip Reminders
+                </CardTitle>
+                <CardDescription>Get notified about trips that haven't been reviewed.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Reminder Frequency</label>
+                  <p className="text-xs text-muted-foreground">Shows a banner on the Mileage page when there are recent trips without a purpose or notes entered.</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(["daily", "weekly", "never"] as const).map(f => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setF("mileageReminderFrequency", f)}
+                        className={`py-3 rounded-xl border-2 text-sm font-semibold capitalize transition-all ${
+                          form.mileageReminderFrequency === f
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* ── Modules ── */}
