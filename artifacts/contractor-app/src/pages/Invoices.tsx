@@ -13,7 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { FileText, Download, Plus, Trash2, X, Building2, Printer, Eye, ClipboardList } from "lucide-react";
+import { FileText, Download, Plus, Trash2, X, Building2, Printer } from "lucide-react";
 
 interface LineItem {
   description: string;
@@ -226,7 +226,6 @@ export default function Invoices() {
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-  const [mobilePanel, setMobilePanel] = useState<"form" | "preview">("form");
 
   const subtotal = lineItems.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
   const taxRate = parseFloat(form.taxRate) || 0;
@@ -337,7 +336,7 @@ export default function Invoices() {
             </button>
           )}
           <button
-            onClick={() => { resetForm(); setMobilePanel("form"); setOpen(true); }}
+            onClick={() => { resetForm(); setOpen(true); }}
             className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
           >
             <Plus className="w-5 h-5 mr-2" /> New Invoice
@@ -457,43 +456,20 @@ export default function Invoices() {
       </Card>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !submitting && setOpen(false)} />
 
-          <div className="relative ml-auto flex h-full w-full max-w-[1100px] bg-background shadow-2xl">
-            <form
-              onSubmit={handleSubmit}
-              className="flex flex-col w-full h-full overflow-hidden"
-            >
-              <div className="md:hidden flex-shrink-0 flex border-b border-border bg-card">
-                <button
-                  type="button"
-                  onClick={() => setMobilePanel("form")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${mobilePanel === "form" ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground"}`}
-                >
-                  <ClipboardList className="w-4 h-4" /> Form
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMobilePanel("preview")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${mobilePanel === "preview" ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground"}`}
-                >
-                  <Eye className="w-4 h-4" />
-                  <span>Live Preview</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                </button>
-              </div>
+          <div className="relative w-full sm:max-w-2xl bg-background shadow-2xl rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[95dvh] sm:max-h-[92vh]">
+            <div className="px-6 pt-5 pb-4 border-b border-border flex items-center justify-between flex-shrink-0">
+              <h2 className="text-xl font-display font-bold text-foreground">New Invoice</h2>
+              <button type="button" onClick={() => !submitting && setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              <div className="flex flex-1 overflow-hidden min-h-0">
-              <div className={`${mobilePanel === "form" ? "flex" : "hidden"} md:flex w-full md:w-[420px] md:flex-shrink-0 border-r border-border flex-col h-full`}>
-                <div className="px-6 pt-6 pb-4 border-b border-border flex items-center justify-between">
-                  <h2 className="text-xl font-display font-bold text-foreground">New Invoice</h2>
-                  <button type="button" onClick={() => !submitting && setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
+                <div className="px-6 py-5 space-y-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client</label>
@@ -656,41 +632,20 @@ export default function Invoices() {
                   {formError && <p className="text-sm text-destructive font-medium">{formError}</p>}
                 </div>
 
-                <div className="px-6 py-4 border-t border-border flex gap-3 justify-end bg-card">
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    disabled={submitting}
-                    className="px-5 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="px-5 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95 text-sm disabled:opacity-60"
-                  >
-                    {submitting ? "Creating..." : "Create Invoice"}
-                  </button>
-                </div>
-              </div>
-
-              <div className={`${mobilePanel === "preview" ? "flex" : "hidden"} md:flex flex-1 flex-col h-full bg-muted/30 overflow-hidden`}>
-                <div className="hidden md:flex px-6 py-4 border-b border-border items-center justify-between bg-card">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-sm font-medium text-foreground">Live Preview</span>
-                  </div>
+                <div className="border-t border-border" />
+                <div className="px-6 py-3 flex items-center gap-2 bg-muted/40">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-sm font-semibold text-foreground">Live Preview</span>
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <Printer className="w-4 h-4" /> Print
+                    <Printer className="w-3.5 h-3.5" /> Print
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="px-4 pb-6 bg-muted/40">
                   <InvoicePreview
                     form={form}
                     lineItems={lineItems}
@@ -704,6 +659,23 @@ export default function Invoices() {
                   />
                 </div>
               </div>
+
+              <div className="px-6 py-4 border-t border-border flex gap-3 justify-end bg-card flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  disabled={submitting}
+                  className="px-5 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95 text-sm disabled:opacity-60"
+                >
+                  {submitting ? "Creating..." : "Create Invoice"}
+                </button>
               </div>
             </form>
           </div>
