@@ -16,6 +16,8 @@ import DailyLogs from "./pages/DailyLogs";
 import Compliance from "./pages/Compliance";
 import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
+import Accounting from "./pages/Accounting";
+import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -30,22 +32,31 @@ const queryClient = new QueryClient({
 
 function Router() {
   return (
-    <AppLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/jobs" component={Jobs} />
-        <Route path="/invoices" component={Invoices} />
-        <Route path="/expenses" component={Expenses} />
-        <Route path="/mileage" component={Mileage} />
-        <Route path="/estimates" component={Estimates} />
-        <Route path="/subcontractors" component={Subcontractors} />
-        <Route path="/daily-logs" component={DailyLogs} />
-        <Route path="/compliance" component={Compliance} />
-        <Route path="/clients" component={Clients} />
-        <Route path="/settings" component={Settings} />
-        <Route component={NotFound} />
-      </Switch>
-    </AppLayout>
+    <Switch>
+      {/* Public portal route — no AppLayout */}
+      <Route path="/portal/:token" component={SubcontractorPortal} />
+
+      {/* All main app routes inside AppLayout */}
+      <Route>
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/jobs" component={Jobs} />
+            <Route path="/invoices" component={Invoices} />
+            <Route path="/expenses" component={Expenses} />
+            <Route path="/mileage" component={Mileage} />
+            <Route path="/estimates" component={Estimates} />
+            <Route path="/subcontractors" component={Subcontractors} />
+            <Route path="/daily-logs" component={DailyLogs} />
+            <Route path="/compliance" component={Compliance} />
+            <Route path="/clients" component={Clients} />
+            <Route path="/settings" component={Settings} />
+            <Route path="/accounting" component={Accounting} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Route>
+    </Switch>
   );
 }
 

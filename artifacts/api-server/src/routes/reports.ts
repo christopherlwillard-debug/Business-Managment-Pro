@@ -138,4 +138,114 @@ router.get("/compliance", async (_req, res) => {
   }
 });
 
+router.get("/accounting", async (req, res) => {
+  try {
+    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const [invoices, expenses, mileageLogs, subs, settings] = await Promise.all([
+      db.select({
+        id: invoicesTable.id,
+        status: invoicesTable.status,
+        subtotal: invoicesTable.subtotal,
+        taxAmount: invoicesTable.taxAmount,
+        total: invoicesTable.total,
+        issueDate: invoicesTable.issueDate,
+        invoiceCity: invoicesTable.city,
+        invoiceState: invoicesTable.state,
+        jobCity: jobsTable.city,
+        jobState: jobsTable.state,
+        clientName: clientsTable.name,
+        invoiceNumber: invoicesTable.invoiceNumber,
+      })
+        .from(invoicesTable)
+        .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+        .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
+      db.select().from(subcontractorsTable),
+      db.select().from(settingsTable).limit(1),
+    ]);
+
+    const rate = parseFloat(settings[0]?.mileageRate ?? "0.725");
+
+    const grossRevenue = invoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const paidRevenue = invoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const pendingRevenue = invoices.filter(i => ["sent", "overdue"].includes(i.status)).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+
+    const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+
+    const businessMiles = mileageLogs.filter(m => m.classification === "business");
+    const totalMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
+    const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+
+    const totalSubPayments = subs.reduce((s, sub) => s + parseFloat(sub.ytdPayments ?? "0"), 0);
+    const netProfit = paidRevenue - totalExpenses - mileageDeduction;
+
+    // Income by city
+    const cityMap = new Map<string, { city: string; state: string; invoiceCount: number; gross: number; paid: number; taxCollected: number }>();
+    for (const inv of invoices) {
+      const city = inv.invoiceCity || inv.jobCity || "Unspecified";
+      const state = inv.invoiceState || inv.jobState || "";
+      const key = `${city}||${state}`;
+      const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, taxCollected: 0 };
+      existing.invoiceCount++;
+      existing.gross += parseFloat(inv.total ?? "0");
+      if (inv.status === "paid") existing.paid += parseFloat(inv.total ?? "0");
+      existing.taxCollected += parseFloat(inv.taxAmount ?? "0");
+      cityMap.set(key, existing);
+    }
+    const incomeByCity = Array.from(cityMap.values()).sort((a, b) => b.gross - a.gross);
+
+    // Expenses by category
+    const catMap = new Map<string, { category: string; amount: number; count: number }>();
+    for (const e of expenses) {
+      const cat = e.category || "Uncategorized";
+      const existing = catMap.get(cat) ?? { category: cat, amount: 0, count: 0 };
+      existing.amount += parseFloat(e.amount ?? "0");
+      existing.count++;
+      catMap.set(cat, existing);
+    }
+    const expensesByCategory = Array.from(catMap.values()).sort((a, b) => b.amount - a.amount);
+
+    // Monthly income trend
+    const monthlyIncome = [];
+    for (let m = 1; m <= 12; m++) {
+      const ms = `${year}-${String(m).padStart(2, "0")}`;
+      const monthInvs = invoices.filter(i => i.issueDate.startsWith(ms));
+      const monthExp = expenses.filter(e => e.date.startsWith(ms));
+      monthlyIncome.push({
+        month: ms,
+        gross: monthInvs.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0),
+        paid: monthInvs.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0),
+        expenses: monthExp.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+      });
+    }
+
+    const threshold = parseFloat(settings[0]?.thresholdAmount1099 ?? "600");
+    const subcontractor1099 = subs.map(s => ({
+      id: s.id,
+      name: s.name,
+      ytdPayments: parseFloat(s.ytdPayments ?? "0"),
+      threshold,
+      requires1099: parseFloat(s.ytdPayments ?? "0") >= threshold,
+      w9OnFile: s.w9OnFile,
+    }));
+
+    res.json({
+      year,
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit },
+      incomeByCity,
+      expensesByCategory,
+      monthlyIncome,
+      subcontractor1099,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate accounting report" });
+  }
+});
+
 export default router;

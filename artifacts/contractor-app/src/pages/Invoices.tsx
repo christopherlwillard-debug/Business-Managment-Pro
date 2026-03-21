@@ -14,7 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { FileText, Download, Plus, Trash2, X, Building2, Printer } from "lucide-react";
+import { FileText, Download, Plus, Trash2, X, Building2, Printer, MapPin } from "lucide-react";
 
 interface LineItem {
   description: string;
@@ -222,6 +222,8 @@ export default function Invoices() {
     dueDate: "",
     status: "draft",
     taxRate: "",
+    city: "",
+    state: "KY",
     notes: "",
     terms: "Net 30",
   });
@@ -287,6 +289,8 @@ export default function Invoices() {
       dueDate: "",
       status: "draft",
       taxRate: "",
+      city: "",
+      state: "KY",
       notes: "",
       terms: "Net 30",
     });
@@ -320,6 +324,8 @@ export default function Invoices() {
           dueDate: form.dueDate || undefined,
           status: form.status as any,
           taxRate: form.taxRate ? parseFloat(form.taxRate) : undefined,
+          city: form.city || undefined,
+          state: form.state || undefined,
           notes: form.notes || undefined,
           terms: form.terms || undefined,
           lineItems: lineItems
@@ -690,6 +696,32 @@ export default function Invoices() {
                       onChange={(e) => setField("taxRate", e.target.value)}
                       className="h-9 text-sm"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> Work City
+                      </label>
+                      <Input
+                        type="text"
+                        placeholder="e.g. Louisville"
+                        value={form.city}
+                        onChange={(e) => setField("city", e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">State</label>
+                      <Input
+                        type="text"
+                        placeholder="KY"
+                        maxLength={2}
+                        value={form.state}
+                        onChange={(e) => setField("state", e.target.value.toUpperCase())}
+                        className="h-9 text-sm"
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">

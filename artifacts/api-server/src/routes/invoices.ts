@@ -64,8 +64,10 @@ router.get("/tax-report", async (req, res) => {
         total: invoicesTable.total,
         clientName: clientsTable.name,
         jobTitle: jobsTable.title,
-        city: jobsTable.city,
-        state: jobsTable.state,
+        invoiceCity: invoicesTable.city,
+        invoiceState: invoicesTable.state,
+        jobCity: jobsTable.city,
+        jobState: jobsTable.state,
       })
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
@@ -75,6 +77,8 @@ router.get("/tax-report", async (req, res) => {
 
     res.json(invoices.map(inv => ({
       ...inv,
+      city: inv.invoiceCity || inv.jobCity || null,
+      state: inv.invoiceState || inv.jobState || null,
       subtotal: parseFloat(inv.subtotal ?? "0"),
       taxRate: inv.taxRate ? parseFloat(inv.taxRate) : null,
       taxAmount: inv.taxAmount ? parseFloat(inv.taxAmount) : null,
@@ -112,7 +116,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [] } = req.body;
+    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state } = req.body;
     const invoiceNumber = await getNextInvoiceNumber();
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
@@ -127,6 +131,8 @@ router.post("/", async (req, res) => {
       taxRate: taxRate?.toString() ?? null,
       taxAmount: taxAmount.toString(),
       total: total.toString(),
+      city: city || null,
+      state: state || null,
       notes,
       terms,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
