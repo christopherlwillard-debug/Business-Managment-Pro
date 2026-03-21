@@ -15,7 +15,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import {
   FileText, Download, Plus, Trash2, X,
-  Building2, MapPin, Check,
+  Building2, MapPin, Check, Eye, AlertTriangle, Printer,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -397,6 +397,235 @@ function InvoiceBuilder({
   );
 }
 
+// ─── Delete Confirmation Modal ────────────────────────────────────────────────
+function DeleteConfirmModal({
+  invoice, onConfirm, onCancel, deleting,
+}: {
+  invoice: any; onConfirm: () => void; onCancel: () => void; deleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
+        <div className="flex items-start gap-4">
+          <div className="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 text-base">Permanently delete invoice?</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              <span className="font-semibold text-gray-700">{invoice.invoiceNumber}</span>
+              {invoice.clientName ? ` · ${invoice.clientName}` : ""} will be{" "}
+              <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={deleting}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={deleting}
+            className="px-5 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
+            <Trash2 className="w-3.5 h-3.5" />
+            {deleting ? "Deleting…" : "Yes, Delete Permanently"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Invoice View Modal ───────────────────────────────────────────────────────
+function InvoiceViewModal({
+  invoice, settings, onClose, onDelete,
+}: {
+  invoice: any; settings: any; onClose: () => void; onDelete: () => void;
+}) {
+  const s = settings ?? {};
+  const companyName    = s.companyName    || "";
+  const companyEmail   = s.companyEmail   || "";
+  const companyPhone   = s.companyPhone   || "";
+  const companyAddress = s.companyAddress || "";
+  const companyCity    = s.companyCity    || "";
+  const companyState   = s.companyState   || "";
+  const companyZip     = s.companyZip     || "";
+  const logoUrl: string | null = s.logoUrl ?? null;
+  const logoSize: string       = s.invoiceLogoSize ?? "medium";
+  const logoPx = logoSize === "small" ? 48 : logoSize === "large" ? 100 : 68;
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const lineItems: any[] = Array.isArray(invoice.lineItems) ? invoice.lineItems : [];
+  const subtotal  = invoice.subtotal  ?? lineItems.reduce((a: number, l: any) => a + l.quantity * l.unitPrice, 0);
+  const taxRate   = invoice.taxRate   ?? 0;
+  const taxAmount = invoice.taxAmount ?? 0;
+  const total     = invoice.total     ?? subtotal + taxAmount;
+
+  function handlePrint() { window.print(); }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-gray-100 shadow-2xl rounded-2xl flex flex-col"
+        style={{ maxHeight: "92vh" }}>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-5 py-3 bg-white rounded-t-2xl border-b border-gray-200 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-amber-500" />
+            <span className="font-bold text-gray-900 text-sm">{invoice.invoiceNumber}</span>
+            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${STATUS_COLORS[invoice.status] ?? "bg-gray-100 text-gray-600"}`}>
+              {invoice.status}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors">
+              <Printer className="w-3.5 h-3.5" /> Print
+            </button>
+            <button onClick={onDelete}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
+            <button onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors ml-1">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Invoice document */}
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden text-[12.5px] text-gray-900">
+            <div className="h-2 bg-gradient-to-r from-amber-500 to-amber-400" />
+            <div className="p-8 space-y-6">
+
+              {/* Company header */}
+              <div className="flex justify-between items-start gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    {logoUrl ? (
+                      <img src={`${base}${logoUrl}`} alt="Logo"
+                        style={{ width: logoPx, height: logoPx, objectFit: "contain" }} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                        <Building2 className="w-5 h-5 text-amber-500" />
+                      </div>
+                    )}
+                    <p className="text-xl font-extrabold text-gray-900">{companyName || "Your Company"}</p>
+                  </div>
+                  <div className="text-xs text-gray-400 space-y-0.5 ml-0.5">
+                    {companyAddress && <p>{companyAddress}</p>}
+                    {(companyCity || companyState) && (
+                      <p>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
+                    )}
+                    {companyPhone && <p>{companyPhone}</p>}
+                    {companyEmail && <p>{companyEmail}</p>}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-black tracking-widest text-gray-200 uppercase">Invoice</p>
+                  <p className="text-sm font-bold text-amber-600 -mt-1">{invoice.invoiceNumber}</p>
+                  <div className="mt-2 space-y-0.5 text-xs">
+                    <div className="flex justify-end gap-2 text-gray-500">
+                      <span className="font-semibold text-gray-600">Date:</span>
+                      <span>{formatDate(invoice.issueDate)}</span>
+                    </div>
+                    {invoice.dueDate && (
+                      <div className="flex justify-end gap-2 text-gray-500">
+                        <span className="font-semibold text-gray-600">Due:</span>
+                        <span>{formatDate(invoice.dueDate)}</span>
+                      </div>
+                    )}
+                    {invoice.terms && (
+                      <div className="flex justify-end gap-2 text-gray-500">
+                        <span className="font-semibold text-gray-600">Terms:</span>
+                        <span>{invoice.terms}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bill To + Location */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
+                  {invoice.clientName
+                    ? <p className="font-semibold text-gray-900 text-sm">{invoice.clientName}</p>
+                    : <p className="text-gray-300 italic text-xs">No client specified</p>}
+                  {invoice.jobTitle && <p className="text-xs text-gray-500 mt-0.5">Re: {invoice.jobTitle}</p>}
+                </div>
+                {(invoice.city || invoice.state) && (
+                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-amber-400 mb-2 flex items-center gap-1">
+                      <MapPin className="w-2.5 h-2.5" /> Work Location
+                    </p>
+                    <p className="font-semibold text-gray-800 text-sm">
+                      {[invoice.city, invoice.state].filter(Boolean).join(", ")}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Line items */}
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="border-b-2 border-gray-800">
+                    <th className="text-left pb-2 font-bold uppercase tracking-wide text-gray-500 w-[50%]">Description</th>
+                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-500 w-[12%]">Qty</th>
+                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-500 w-[19%]">Unit Price</th>
+                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-500 w-[19%]">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {lineItems.length > 0 ? lineItems.map((li: any, i: number) => (
+                    <tr key={i} className={i % 2 === 0 ? "" : "bg-gray-50/60"}>
+                      <td className="py-2 pr-3 text-gray-800">{li.description}</td>
+                      <td className="py-2 text-right text-gray-500">{li.quantity}</td>
+                      <td className="py-2 text-right text-gray-500">{formatCurrency(li.unitPrice)}</td>
+                      <td className="py-2 text-right font-semibold text-gray-900">{formatCurrency(li.quantity * li.unitPrice)}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={4} className="py-4 text-center text-gray-300 italic">No line items</td></tr>
+                  )}
+                </tbody>
+              </table>
+
+              {/* Totals */}
+              <div className="flex justify-end">
+                <div className="w-52 space-y-1.5 text-xs">
+                  <div className="flex justify-between text-gray-500">
+                    <span>Subtotal</span><span>{formatCurrency(subtotal)}</span>
+                  </div>
+                  {taxRate > 0 && (
+                    <div className="flex justify-between text-gray-500">
+                      <span>Tax ({taxRate}%)</span><span>{formatCurrency(taxAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-extrabold text-sm text-gray-900 border-t-2 border-gray-800 pt-2">
+                    <span>Total Due</span>
+                    <span className="text-amber-600">{formatCurrency(total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {invoice.notes && (
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Notes</p>
+                  <p className="text-gray-600 text-xs leading-relaxed whitespace-pre-wrap">{invoice.notes}</p>
+                </div>
+              )}
+            </div>
+            <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-500" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Invoices page ────────────────────────────────────────────────────────
 export default function Invoices() {
   const queryClient = useQueryClient();
@@ -424,6 +653,9 @@ export default function Invoices() {
   const [formError,  setFormError]  = useState("");
   const [isNewClient, setIsNewClient] = useState(false);
   const [clientInput, setClientInput] = useState("");
+  const [viewInvoice,  setViewInvoice]  = useState<any | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleting,     setDeleting]     = useState(false);
 
   const s = settings as any;
   const prefix        = s?.invoicePrefix     ?? "INV-2026-";
@@ -494,10 +726,17 @@ export default function Invoices() {
     queryClient.invalidateQueries();
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm("Delete this invoice?")) return;
-    await deleteInvoice.mutateAsync({ id });
-    queryClient.invalidateQueries();
+  async function handleDeleteConfirmed() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteInvoice.mutateAsync({ id: deleteTarget.id });
+      queryClient.invalidateQueries();
+      if (viewInvoice?.id === deleteTarget.id) setViewInvoice(null);
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
   }
 
   return (
@@ -570,15 +809,19 @@ export default function Invoices() {
                   </td></tr>
                 ) : (
                   (invoices as any[]).map((inv: any) => (
-                    <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-4 font-medium text-foreground">{inv.invoiceNumber}</td>
+                    <tr key={inv.id}
+                      onClick={() => setViewInvoice(inv)}
+                      className="hover:bg-muted/30 transition-colors cursor-pointer group">
+                      <td className="px-6 py-4 font-medium text-foreground group-hover:text-primary transition-colors">
+                        {inv.invoiceNumber}
+                      </td>
                       <td className="px-6 py-4 text-muted-foreground">{formatDate(inv.issueDate)}</td>
                       <td className="px-6 py-4">
                         <div className="font-medium text-foreground">{inv.clientName || "—"}</div>
                         <div className="text-xs text-muted-foreground">{inv.jobTitle || "—"}</div>
                       </td>
                       <td className="px-6 py-4 text-right font-display font-semibold text-foreground">{formatCurrency(inv.total)}</td>
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
                         <select
                           value={inv.status}
                           onChange={e => handleStatusChange(inv.id, e.target.value)}
@@ -589,11 +832,17 @@ export default function Invoices() {
                           ))}
                         </select>
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <button onClick={() => handleDelete(inv.id)}
-                          className="text-muted-foreground hover:text-destructive transition-colors" title="Delete">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => setViewInvoice(inv)}
+                            className="text-muted-foreground hover:text-primary transition-colors" title="View invoice">
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setDeleteTarget(inv)}
+                            className="text-muted-foreground hover:text-destructive transition-colors" title="Delete invoice">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -643,6 +892,29 @@ export default function Invoices() {
             />
           </div>
         </div>
+      )}
+
+      {/* Invoice View Modal */}
+      {viewInvoice && (
+        <InvoiceViewModal
+          invoice={viewInvoice}
+          settings={settings}
+          onClose={() => setViewInvoice(null)}
+          onDelete={() => {
+            setDeleteTarget(viewInvoice);
+            setViewInvoice(null);
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          invoice={deleteTarget}
+          deleting={deleting}
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
     </div>
   );
