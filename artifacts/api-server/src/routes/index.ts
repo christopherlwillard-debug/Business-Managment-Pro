@@ -13,6 +13,7 @@ import reportsRouter from "./reports";
 import uploadsRouter from "./uploads";
 import portalRouter from "./portal";
 import vendorsRouter from "./vendors";
+import complianceItemsRouter from "./compliance-items";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/portal", portalRouter);
 router.use("/vendors", vendorsRouter);
+router.use("/compliance-items", complianceItemsRouter);
 
 export default router;
