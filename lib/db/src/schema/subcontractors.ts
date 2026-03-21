@@ -16,6 +16,7 @@ export const subcontractorsTable = pgTable("subcontractors", {
   address: text("address"),
   notes: text("notes"),
   portalToken: text("portal_token").unique(),
+  portalApproved: boolean("portal_approved").notNull().default(false),
   // W-9 fields
   w9LegalName: text("w9_legal_name"),
   w9BusinessName: text("w9_business_name"),
@@ -30,7 +31,7 @@ export const subcontractorsTable = pgTable("subcontractors", {
   w9Signature: text("w9_signature"),
   w9SignedAt: text("w9_signed_at"),
   // Portal feature flags chosen by the sub
-  portalFeatures: jsonb("portal_features").default('["payments","jobs","expenses","mileage","w9"]'),
+  portalFeatures: jsonb("portal_features").default('["payments","jobs","expenses","mileage","w9","tax_reports"]'),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

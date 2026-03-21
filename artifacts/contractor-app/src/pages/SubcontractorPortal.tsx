@@ -5,17 +5,27 @@ import { formatCurrency } from "@/lib/utils";
 import {
   HardHat, Briefcase, Receipt, Navigation, DollarSign, Settings,
   Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
-  Save, LayoutDashboard, ClipboardList, ChevronRight
+  Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+class PortalApiError extends Error {
+  status: number;
+  pendingApproval: boolean;
+  constructor(message: string, status: number, pendingApproval = false) {
+    super(message);
+    this.status = status;
+    this.pendingApproval = pendingApproval;
+  }
+}
+
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`${BASE}/api${path}`, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || "Request failed");
+    throw new PortalApiError(err.error || "Request failed", res.status, !!err.pendingApproval);
   }
   if (res.status === 204) return null;
   return res.json();
@@ -29,6 +39,7 @@ const ALL_FEATURES = [
   { key: "w9", label: "W-9 Form", desc: "Complete your W-9 for 1099 reporting", icon: FileText },
   { key: "expenses", label: "My Expenses", desc: "Track job-related expenses", icon: Receipt },
   { key: "mileage", label: "Mileage Tracker", desc: "Log business miles and see deductions", icon: Navigation },
+  { key: "tax_reports", label: "Tax Reports", desc: "Profit & loss, mileage deduction, SE tax estimate", icon: BarChart3 },
 ];
 
 const TAX_CLASSIFICATIONS = [
@@ -53,6 +64,7 @@ function Header({ name, trade, activeTab, setTab, features }: {
     ...(features.includes("w9") ? [{ key: "w9", label: "W-9", icon: FileText }] : []),
     ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt }] : []),
     ...(features.includes("mileage") ? [{ key: "mileage", label: "Mileage", icon: Navigation }] : []),
+    ...(features.includes("tax_reports") ? [{ key: "tax_reports", label: "Tax Reports", icon: BarChart3 }] : []),
     { key: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -104,6 +116,36 @@ function InvalidLink() {
         </div>
         <h1 className="text-xl font-display font-bold">Invalid Portal Link</h1>
         <p className="text-sm text-muted-foreground">This link may be expired or incorrect. Please ask your contractor for a new link.</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pending Approval ─────────────────────────────────────────────────────────
+function PendingApproval() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="max-w-sm w-full text-center space-y-5">
+        <div className="w-20 h-20 rounded-3xl bg-amber-100 flex items-center justify-center mx-auto">
+          <Clock className="w-10 h-10 text-amber-600" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-display font-bold text-foreground">Access Pending</h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Your portal link is set up, but your contractor hasn't approved your access yet.
+            Check back soon or reach out to them directly.
+          </p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 text-left space-y-1.5">
+          <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">What happens next</p>
+          <p className="text-sm text-amber-800">Your contractor will approve your access from their Subcontractors page. You'll be able to use the portal as soon as they do — just reload this page.</p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full py-3 rounded-xl bg-foreground text-background font-semibold text-sm hover:bg-foreground/90 transition-colors"
+        >
+          Check Again
+        </button>
       </div>
     </div>
   );
@@ -724,6 +766,194 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
   );
 }
 
+// ─── Tax Reports Tab ──────────────────────────────────────────────────────────
+function TaxReportsTab({ token }: { token: string }) {
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["portal-tax-report", token, year],
+    queryFn: () => apiFetch(`/portal/${token}/tax-report?year=${year}`),
+    staleTime: 60000,
+  });
+
+  const years = [currentYear, currentYear - 1, currentYear - 2];
+
+  function handlePrint() { window.print(); }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-display font-bold">Tax Reports</h2>
+          <p className="text-sm text-muted-foreground">Profit & loss, deductions, and tax estimates</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={e => setYear(parseInt(e.target.value))}
+            className="px-3 py-1.5 rounded-lg border border-border bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted/60 transition-colors"
+          >
+            <Printer className="w-4 h-4" /> Print
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-10 text-muted-foreground animate-pulse">Generating report…</div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">
+          Could not load tax report. Please try again.
+        </div>
+      ) : data ? (
+        <div className="space-y-4" id="tax-report-print">
+          {/* Header */}
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Self-Employed</p>
+                <h3 className="text-xl font-display font-bold text-foreground">{data.w9LegalName || data.subName}</h3>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Tax Year</p>
+                <p className="text-2xl font-display font-bold text-primary">{data.year}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Income */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
+            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-3">Gross Income</p>
+            <div className="flex items-end justify-between">
+              <p className="text-sm text-emerald-700">Payments from contractor</p>
+              <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(data.grossIncome)}</p>
+            </div>
+            {data.grossIncome >= 600 && (
+              <p className="text-xs text-emerald-600 mt-2 bg-emerald-100 rounded-lg px-3 py-1.5">
+                ⚠️ You will receive a 1099-NEC for {data.year} — income ≥ $600
+              </p>
+            )}
+          </div>
+
+          {/* Deductions */}
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Deductions</p>
+
+            {/* Business expenses */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-foreground">Business Expenses</p>
+                <p className="text-sm font-bold text-red-600">−{formatCurrency(data.expenses.total)}</p>
+              </div>
+              {data.expenses.count === 0 ? (
+                <p className="text-xs text-muted-foreground ml-1">No expenses logged for {data.year}</p>
+              ) : (
+                <div className="space-y-1 ml-1">
+                  {Object.entries(data.expenses.byCategory as Record<string, number>).map(([cat, amt]) => (
+                    <div key={cat} className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">{cat}</span>
+                      <span className="font-medium">{formatCurrency(amt)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-xs font-semibold border-t border-border/50 pt-1 mt-1">
+                    <span>Total Expenses ({data.expenses.count} items)</span>
+                    <span>{formatCurrency(data.expenses.total)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border/50" />
+
+            {/* Mileage deduction */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-foreground">Mileage Deduction</p>
+                <p className="text-sm font-bold text-red-600">−{formatCurrency(data.mileage.deduction)}</p>
+              </div>
+              {data.mileage.count === 0 ? (
+                <p className="text-xs text-muted-foreground ml-1">No business miles logged for {data.year}</p>
+              ) : (
+                <div className="text-xs text-muted-foreground ml-1 space-y-0.5">
+                  <p>{data.mileage.totalMiles.toFixed(1)} business miles × ${data.mileage.ratePerMile}/mi (IRS rate)</p>
+                  <p>{data.mileage.count} trips logged</p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border/50" />
+
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-foreground">Total Deductions</p>
+              <p className="text-base font-bold text-red-600">−{formatCurrency(data.totalDeductions)}</p>
+            </div>
+          </div>
+
+          {/* Net Income */}
+          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-5">
+            <p className="text-xs font-bold text-violet-700 uppercase tracking-wide mb-3">Net Self-Employment Income</p>
+            <div className="flex items-end justify-between">
+              <p className="text-sm text-violet-700">After all deductions</p>
+              <p className="text-2xl font-display font-bold text-violet-700">{formatCurrency(data.netIncome)}</p>
+            </div>
+          </div>
+
+          {/* SE Tax Estimate */}
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Self-Employment Tax Estimate</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">SE Tax (15.3% on 92.35% of net income)</span>
+                <span className="font-semibold">{formatCurrency(data.seTaxEstimate)}</span>
+              </div>
+              <div className="flex justify-between text-emerald-700">
+                <span>Deductible half of SE tax</span>
+                <span className="font-semibold">−{formatCurrency(data.seDeduction)}</span>
+              </div>
+              <div className="border-t border-border/50 pt-2 flex justify-between font-bold">
+                <span>Estimated Federal Taxable Income</span>
+                <span className="text-primary">{formatCurrency(data.federalTaxableIncome)}</span>
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              <p className="text-xs text-amber-800">
+                <strong>Disclaimer:</strong> These are estimates based on your logged income, expenses, and mileage. Consult a CPA or tax professional for accurate tax filing advice.
+              </p>
+            </div>
+          </div>
+
+          {/* What you need for taxes callout */}
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Forms You'll Need</p>
+            <div className="space-y-2">
+              {[
+                { form: "Schedule C", desc: "Report self-employment income & expenses (attach to Form 1040)" },
+                { form: "Schedule SE", desc: "Calculate self-employment tax owed" },
+                { form: "1099-NEC", desc: data.grossIncome >= 600 ? "Your contractor will send this — shows your gross income" : "Not required (income below $600)" },
+              ].map(({ form, desc }) => (
+                <div key={form} className="flex items-start gap-3">
+                  <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-md flex-shrink-0 mt-0.5">{form}</span>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-xs text-center text-muted-foreground pb-2">
+            Report generated {new Date().toLocaleDateString()} · {data.year} Tax Year
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
 function PortalSettings({ token, features, onChange }: { token: string; features: string[]; onChange: (f: string[]) => void }) {
   const [local, setLocal] = useState<string[]>(features);
@@ -824,7 +1054,14 @@ export default function SubcontractorPortal() {
     );
   }
 
-  if (error || !data) return <InvalidLink />;
+  if (error) {
+    if ((error as PortalApiError).pendingApproval || (error as PortalApiError).status === 403) {
+      return <PendingApproval />;
+    }
+    return <InvalidLink />;
+  }
+
+  if (!data) return <InvalidLink />;
 
   const { subcontractor, jobs, stats } = data;
 
@@ -856,6 +1093,9 @@ export default function SubcontractorPortal() {
         )}
         {activeTab === "mileage" && features.includes("mileage") && (
           <MileageTab token={token!} jobs={jobs} ratePerMile={stats.ratePerMile} />
+        )}
+        {activeTab === "tax_reports" && features.includes("tax_reports") && (
+          <TaxReportsTab token={token!} />
         )}
         {activeTab === "settings" && (
           <PortalSettings token={token!} features={features} onChange={handleFeaturesChange} />

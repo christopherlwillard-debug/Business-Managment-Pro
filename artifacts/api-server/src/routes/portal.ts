@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { subcontractorsTable, jobsTable, expensesTable, mileageLogsTable, settingsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import crypto from "crypto";
 
 const router = Router();
@@ -15,6 +15,24 @@ async function getRate() {
   const [s] = await db.select().from(settingsTable).limit(1);
   return parseFloat(s?.mileageRate ?? "0.725");
 }
+
+// Approve or revoke portal access
+router.post("/approve/:subId", async (req, res) => {
+  try {
+    const id = parseInt(req.params.subId);
+    const { approved } = req.body; // boolean
+    const [sub] = await db
+      .update(subcontractorsTable)
+      .set({ portalApproved: !!approved })
+      .where(eq(subcontractorsTable.id, id))
+      .returning();
+    if (!sub) return res.status(404).json({ error: "Subcontractor not found" });
+    res.json({ portalApproved: sub.portalApproved });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update portal approval" });
+  }
+});
 
 // Generate portal token for a sub
 router.post("/generate/:subId", async (req, res) => {
@@ -34,11 +52,91 @@ router.post("/generate/:subId", async (req, res) => {
   }
 });
 
+// Tax report for a year
+router.get("/:token/tax-report", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const [expenses, mileage] = await Promise.all([
+      db.select().from(expensesTable).where(
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          gte(expensesTable.date, startDate),
+          lte(expensesTable.date, endDate)
+        )
+      ),
+      db.select().from(mileageLogsTable).where(
+        and(
+          eq(mileageLogsTable.subcontractorId, sub.id),
+          gte(mileageLogsTable.date, startDate),
+          lte(mileageLogsTable.date, endDate)
+        )
+      ),
+    ]);
+
+    const rate = await getRate();
+    const grossIncome = parseFloat(sub.ytdPayments ?? "0");
+
+    // Expenses by category
+    const expensesByCategory: Record<string, number> = {};
+    let totalExpenses = 0;
+    for (const e of expenses) {
+      const amt = parseFloat(e.amount);
+      expensesByCategory[e.category] = (expensesByCategory[e.category] ?? 0) + amt;
+      totalExpenses += amt;
+    }
+
+    // Mileage
+    const businessMiles = mileage.filter(m => m.classification === "business");
+    const totalBusinessMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles), 0);
+    const mileageDeduction = totalBusinessMiles * rate;
+
+    const totalDeductions = totalExpenses + mileageDeduction;
+    const netIncome = Math.max(0, grossIncome - totalDeductions);
+    const seTaxEstimate = netIncome * 0.9235 * 0.153; // SE tax on 92.35% of net income at 15.3%
+    const seDeduction = seTaxEstimate / 2; // Deductible half of SE tax
+    const federalTaxableIncome = Math.max(0, netIncome - seDeduction);
+
+    res.json({
+      year,
+      grossIncome,
+      expenses: {
+        total: totalExpenses,
+        byCategory: expensesByCategory,
+        count: expenses.length,
+      },
+      mileage: {
+        totalMiles: totalBusinessMiles,
+        ratePerMile: rate,
+        deduction: mileageDeduction,
+        count: businessMiles.length,
+      },
+      totalDeductions,
+      netIncome,
+      seTaxEstimate,
+      seDeduction,
+      federalTaxableIncome,
+      subName: sub.name,
+      w9LegalName: sub.w9LegalName,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate tax report" });
+  }
+});
+
 // Get full portal data
 router.get("/:token", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved", pendingApproval: true });
 
     const [jobs, expenses, mileage] = await Promise.all([
       db.select().from(jobsTable).where(eq(jobsTable.subcontractorId, sub.id)),
