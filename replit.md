@@ -45,7 +45,8 @@ artifacts-monorepo/
 - **Expenses** - Expense logging with receipt upload + "Click to View Receipt" link
 - **Mileage** - Trip logging with IRS deduction calculator (default 72.5¢/mile for 2026)
 - **Estimates** - Job estimator with templates, line items by category, markup %, contingency %
-- **Subcontractors** - Sub management with W-9 tracking, YTD payments, license/insurance expiry
+- **Subcontractors** - Sub management with W-9 tracking, YTD payments, license/insurance expiry, portal invite system
+- **SubcontractorPortal** - Public self-serve portal for subs (no login required, accessed via unique token URL at `/portal/:token`)
 - **Daily Logs** - Field documentation with weather, crew, work completed, photos
 - **Compliance** - Alerts for 1099 thresholds, uncategorized mileage, license expirations
 - **Clients** - Client contact management
@@ -62,6 +63,7 @@ Feature keys (stored in DB): `jobs`, `invoices`, `expenses`, `mileage`, `estimat
 - `/api/expenses` - CRUD for expenses + `/:id/receipt` for file upload
 - `/api/mileage` - CRUD for mileage logs + `/summary` endpoint
 - `/api/subcontractors` - CRUD + `/1099-report`
+- `/api/portal` - Subcontractor self-serve portal: `POST /generate/:subId`, `GET /:token`, `PUT /:token/w9`, `PUT /:token/features`, CRUD for `/:token/expenses` and `/:token/mileage`
 - `/api/estimates` - CRUD + `/:id/convert-to-job`
 - `/api/daily-logs` - CRUD for daily field logs
 - `/api/settings` - GET/PUT for app settings
@@ -71,6 +73,7 @@ Feature keys (stored in DB): `jobs`, `invoices`, `expenses`, `mileage`, `estimat
 
 ### Database Schema (lib/db/src/schema/)
 Tables: clients, jobs, invoices, expenses, mileage_logs, subcontractors, estimates, daily_logs, settings
+Subcontractors table includes: W-9 fields (w9_legal_name, w9_business_name, w9_tax_classification, w9_llc_type, w9_address, w9_city, w9_state, w9_zip, w9_tax_id_type, w9_tax_id, w9_signature, w9_signed_at) and portal_features jsonb column
 
 ## TypeScript & Composite Projects
 

@@ -1,118 +1,820 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
-  HardHat, Briefcase, Receipt, Navigation, DollarSign,
-  Plus, Trash2, AlertCircle, CheckCircle2, X, ChevronDown, ChevronUp
+  HardHat, Briefcase, Receipt, Navigation, DollarSign, Settings,
+  Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
+  Save, LayoutDashboard, ClipboardList, ChevronRight
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-async function fetchPortal(token: string) {
-  const res = await fetch(`${BASE}/api/portal/${token}`);
-  if (!res.ok) throw new Error("Invalid or expired portal link");
+async function apiFetch(path: string, opts?: RequestInit) {
+  const res = await fetch(`${BASE}/api${path}`, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Request failed");
+  }
+  if (res.status === 204) return null;
   return res.json();
 }
 
-async function fetchExpenses(token: string) {
-  const res = await fetch(`${BASE}/api/portal/${token}/expenses`);
-  if (!res.ok) throw new Error("Failed to load expenses");
-  return res.json();
+const EXPENSE_CATS = ["Materials", "Fuel", "Equipment", "Insurance", "Office", "Tools", "Other"];
+
+const ALL_FEATURES = [
+  { key: "payments", label: "My Payments", desc: "View what your contractor pays you", icon: DollarSign },
+  { key: "jobs", label: "My Jobs", desc: "See jobs assigned to you", icon: Briefcase },
+  { key: "w9", label: "W-9 Form", desc: "Complete your W-9 for 1099 reporting", icon: FileText },
+  { key: "expenses", label: "My Expenses", desc: "Track job-related expenses", icon: Receipt },
+  { key: "mileage", label: "Mileage Tracker", desc: "Log business miles and see deductions", icon: Navigation },
+];
+
+const TAX_CLASSIFICATIONS = [
+  "Individual/Sole proprietor or single-member LLC",
+  "C Corporation",
+  "S Corporation",
+  "Partnership",
+  "Trust/estate",
+  "Limited liability company (LLC)",
+  "Other",
+];
+
+// ─── Header ──────────────────────────────────────────────────────────────────
+function Header({ name, trade, activeTab, setTab, features }: {
+  name: string; trade?: string | null; activeTab: string;
+  setTab: (t: string) => void; features: string[];
+}) {
+  const tabs = [
+    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ...(features.includes("payments") ? [{ key: "payments", label: "My Pay", icon: DollarSign }] : []),
+    ...(features.includes("jobs") ? [{ key: "jobs", label: "Jobs", icon: Briefcase }] : []),
+    ...(features.includes("w9") ? [{ key: "w9", label: "W-9", icon: FileText }] : []),
+    ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt }] : []),
+    ...(features.includes("mileage") ? [{ key: "mileage", label: "Mileage", icon: Navigation }] : []),
+    { key: "settings", label: "Settings", icon: Settings },
+  ];
+
+  return (
+    <div className="bg-foreground text-background sticky top-0 z-10 shadow-lg">
+      <div className="max-w-2xl mx-auto px-4 pt-4 pb-0">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
+            <HardHat className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-[10px] text-background/40 font-semibold uppercase tracking-widest">Subcontractor Portal</p>
+            <h1 className="text-base font-display font-bold leading-tight">{name}</h1>
+          </div>
+          {trade && <span className="ml-auto text-xs px-2.5 py-1 rounded-full bg-primary/20 text-primary font-medium">{trade}</span>}
+        </div>
+        {/* Tab bar */}
+        <div className="flex overflow-x-auto scrollbar-hide gap-0.5 pb-0">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setTab(tab.key)}
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+                  active
+                    ? "border-primary text-primary bg-primary/10"
+                    : "border-transparent text-background/50 hover:text-background/80 hover:border-background/20"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" /> {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-async function fetchMileage(token: string) {
-  const res = await fetch(`${BASE}/api/portal/${token}/mileage`);
-  if (!res.ok) throw new Error("Failed to load mileage");
-  return res.json();
+// ─── Loading / Error ─────────────────────────────────────────────────────────
+function InvalidLink() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="max-w-sm w-full text-center space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto">
+          <AlertCircle className="w-8 h-8 text-destructive" />
+        </div>
+        <h1 className="text-xl font-display font-bold">Invalid Portal Link</h1>
+        <p className="text-sm text-muted-foreground">This link may be expired or incorrect. Please ask your contractor for a new link.</p>
+      </div>
+    </div>
+  );
 }
 
-const EXPENSE_CATEGORIES = ["Materials", "Fuel", "Equipment", "Insurance", "Office", "Tools", "Subcontractors", "Other"];
+// ─── Dashboard Tab ────────────────────────────────────────────────────────────
+function DashboardTab({ data, features, setTab }: { data: any; features: string[]; setTab: (t: string) => void }) {
+  const s = data.stats;
+  const sub = data.subcontractor;
+  const quickActions = ALL_FEATURES.filter(f => features.includes(f.key) && f.key !== "payments" && f.key !== "jobs");
 
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-display font-bold text-foreground">Welcome back, {sub.name.split(" ")[0]}!</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Here's a snapshot of your activity.</p>
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 gap-3">
+        {features.includes("payments") && (
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+            <p className="text-xs text-muted-foreground font-medium">YTD Payments</p>
+            <p className="text-2xl font-display font-bold text-emerald-600 mt-1">{formatCurrency(s.ytdPayments)}</p>
+            <p className="text-xs text-muted-foreground mt-1">From your contractor</p>
+          </div>
+        )}
+        {features.includes("expenses") && (
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+            <p className="text-xs text-muted-foreground font-medium">My Expenses</p>
+            <p className="text-2xl font-display font-bold text-red-500 mt-1">{formatCurrency(s.totalExpenses)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{s.expenseCount} logged</p>
+          </div>
+        )}
+        {features.includes("mileage") && (
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+            <p className="text-xs text-muted-foreground font-medium">Business Miles</p>
+            <p className="text-2xl font-display font-bold text-violet-600 mt-1">{s.totalMiles.toFixed(1)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{formatCurrency(s.mileageDeduction)} deduction</p>
+          </div>
+        )}
+        {features.includes("jobs") && (
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+            <p className="text-xs text-muted-foreground font-medium">Assigned Jobs</p>
+            <p className="text-2xl font-display font-bold text-blue-600 mt-1">{data.jobs.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">{data.jobs.filter((j: any) => j.status === "active" || j.status === "in_progress").length} active</p>
+          </div>
+        )}
+      </div>
+
+      {/* W-9 prompt */}
+      {features.includes("w9") && !sub.w9Complete && (
+        <button
+          onClick={() => setTab("w9")}
+          className="w-full flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left hover:bg-amber-100 transition-colors"
+        >
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-900">W-9 not completed</p>
+            <p className="text-xs text-amber-700 mt-0.5">Your contractor needs your W-9 for 1099 filing. Tap to fill it out.</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-amber-600 flex-shrink-0" />
+        </button>
+      )}
+
+      {features.includes("w9") && sub.w9Complete && (
+        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">W-9 on file</p>
+            <p className="text-xs text-emerald-700">Signed {sub.w9SignedAt} — your contractor has your info.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Quick actions */}
+      {quickActions.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Quick Actions</p>
+          <div className="grid grid-cols-1 gap-2">
+            {quickActions.map(f => {
+              const Icon = f.icon;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setTab(f.key)}
+                  className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{f.label}</p>
+                    <p className="text-xs text-muted-foreground">{f.desc}</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Payments Tab ─────────────────────────────────────────────────────────────
+function PaymentsTab({ data }: { data: any }) {
+  const s = data.stats;
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-display font-bold">My Payments</h2>
+        <p className="text-sm text-muted-foreground">YTD amounts recorded by your contractor</p>
+      </div>
+      <div className="bg-card border border-border rounded-2xl p-6 text-center shadow-sm">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Year-to-Date Payments</p>
+        <p className="text-5xl font-display font-bold text-emerald-600 mt-2">{formatCurrency(s.ytdPayments)}</p>
+        <p className="text-sm text-muted-foreground mt-2">
+          {s.ytdPayments >= 600
+            ? "⚠️ You will receive a 1099-NEC for this tax year."
+            : `You need ${formatCurrency(600 - s.ytdPayments)} more before a 1099-NEC is required.`}
+        </p>
+      </div>
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <p className="text-xs text-amber-800">
+          <strong>IRS Rule:</strong> If you receive $600 or more from a single contractor in a tax year, they are required to file a 1099-NEC reporting your income to the IRS.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Jobs Tab ─────────────────────────────────────────────────────────────────
+function JobsTab({ jobs }: { jobs: any[] }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-display font-bold">My Jobs</h2>
+        <p className="text-sm text-muted-foreground">Jobs assigned to you by your contractor</p>
+      </div>
+      {jobs.length === 0 ? (
+        <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground">
+          <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-20" />
+          <p className="text-sm">No jobs assigned yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {jobs.map(job => (
+            <div key={job.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-foreground">{job.title}</p>
+                  {(job.city || job.state) && <p className="text-xs text-muted-foreground mt-0.5">{[job.city, job.state].filter(Boolean).join(", ")}</p>}
+                  {job.description && <p className="text-sm text-muted-foreground mt-1">{job.description}</p>}
+                  {(job.startDate || job.endDate) && (
+                    <p className="text-xs text-muted-foreground mt-1">{job.startDate} {job.endDate ? `→ ${job.endDate}` : ""}</p>
+                  )}
+                </div>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex-shrink-0 ${
+                  job.status === "active" || job.status === "in_progress" ? "bg-emerald-100 text-emerald-700" :
+                  job.status === "completed" ? "bg-blue-100 text-blue-700" :
+                  "bg-muted text-muted-foreground"
+                }`}>{job.status?.replace("_", " ")}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── W-9 Tab ─────────────────────────────────────────────────────────────────
+function W9Tab({ token, sub, onSaved }: { token: string; sub: any; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    w9LegalName: sub.w9LegalName ?? sub.name ?? "",
+    w9BusinessName: sub.w9BusinessName ?? "",
+    w9TaxClassification: sub.w9TaxClassification ?? "",
+    w9LlcType: sub.w9LlcType ?? "",
+    w9Address: sub.w9Address ?? "",
+    w9City: sub.w9City ?? "",
+    w9State: sub.w9State ?? "",
+    w9Zip: sub.w9Zip ?? "",
+    w9TaxIdType: sub.w9TaxIdType ?? "SSN",
+    w9TaxId: "",
+    w9Signature: sub.w9Signature ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const signed = !!sub.w9Signature;
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!form.w9TaxId && !signed) return setError("Taxpayer ID (SSN or EIN) is required.");
+    if (!form.w9Signature) return setError("Your typed signature is required to certify the W-9.");
+    setSaving(true);
+    try {
+      await apiFetch(`/portal/${token}/w9`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      setSuccess(true);
+      onSaved();
+    } catch (err: any) {
+      setError(err.message || "Failed to save W-9.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (success || (signed && !form.w9TaxId)) {
+    return (
+      <div className="space-y-4">
+        <div className="text-center py-6 space-y-3">
+          <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto" />
+          <h2 className="text-xl font-display font-bold text-foreground">W-9 On File</h2>
+          <p className="text-sm text-muted-foreground">Signed on {sub.w9SignedAt}</p>
+        </div>
+        <div className="bg-card border border-border rounded-2xl p-5 space-y-2 text-sm">
+          <Row label="Legal Name" value={sub.w9LegalName} />
+          {sub.w9BusinessName && <Row label="Business Name" value={sub.w9BusinessName} />}
+          <Row label="Tax Classification" value={sub.w9TaxClassification} />
+          <Row label="Address" value={[sub.w9Address, sub.w9City, sub.w9State, sub.w9Zip].filter(Boolean).join(", ")} />
+          <Row label="TIN Type" value={sub.w9TaxIdType} />
+          {sub.w9TaxIdMasked && <Row label="TIN (masked)" value={sub.w9TaxIdMasked} />}
+          <Row label="Signature" value={sub.w9Signature} />
+        </div>
+        <button
+          onClick={() => setSuccess(false)}
+          className="w-full py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/50 transition-colors"
+        >
+          Update W-9
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSave} className="space-y-5">
+      <div>
+        <h2 className="text-lg font-display font-bold">IRS Form W-9</h2>
+        <p className="text-sm text-muted-foreground">Required for 1099-NEC reporting. All information is stored securely.</p>
+      </div>
+
+      {/* Part I — Taxpayer Info */}
+      <Section title="Part I — Taxpayer Information">
+        <Field label="Legal Name (as shown on tax return) *">
+          <Input value={form.w9LegalName} onChange={e => set("w9LegalName", e.target.value)} required placeholder="Your full legal name" />
+        </Field>
+        <Field label="Business / DBA Name (if different)">
+          <Input value={form.w9BusinessName} onChange={e => set("w9BusinessName", e.target.value)} placeholder="Optional" />
+        </Field>
+        <Field label="Federal Tax Classification *">
+          <select
+            value={form.w9TaxClassification}
+            onChange={e => set("w9TaxClassification", e.target.value)}
+            required
+            className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">Select classification…</option>
+            {TAX_CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        {form.w9TaxClassification === "Limited liability company (LLC)" && (
+          <Field label="LLC Tax Treatment *">
+            <select value={form.w9LlcType} onChange={e => set("w9LlcType", e.target.value)} required className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+              <option value="">Select…</option>
+              <option value="C">C — taxed as corporation</option>
+              <option value="S">S — taxed as S-corp</option>
+              <option value="P">P — taxed as partnership</option>
+            </select>
+          </Field>
+        )}
+      </Section>
+
+      {/* Address */}
+      <Section title="Address">
+        <Field label="Street Address *">
+          <Input value={form.w9Address} onChange={e => set("w9Address", e.target.value)} required placeholder="123 Main St" />
+        </Field>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <Field label="City *">
+              <Input value={form.w9City} onChange={e => set("w9City", e.target.value)} required placeholder="Louisville" />
+            </Field>
+          </div>
+          <Field label="State *">
+            <Input value={form.w9State} onChange={e => set("w9State", e.target.value.toUpperCase())} required placeholder="KY" maxLength={2} />
+          </Field>
+        </div>
+        <Field label="ZIP Code *">
+          <Input value={form.w9Zip} onChange={e => set("w9Zip", e.target.value)} required placeholder="40201" />
+        </Field>
+      </Section>
+
+      {/* Part II — Taxpayer ID */}
+      <Section title="Part II — Taxpayer Identification Number">
+        <Field label="TIN Type *">
+          <div className="flex gap-3">
+            {["SSN", "EIN"].map(t => (
+              <label key={t} className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="taxIdType" value={t} checked={form.w9TaxIdType === t} onChange={() => set("w9TaxIdType", t)} className="accent-primary" />
+                <span className="text-sm font-medium">{t === "SSN" ? "Social Security Number (SSN)" : "Employer Identification Number (EIN)"}</span>
+              </label>
+            ))}
+          </div>
+        </Field>
+        <Field label={`${form.w9TaxIdType} *`}>
+          <Input
+            value={form.w9TaxId}
+            onChange={e => set("w9TaxId", e.target.value)}
+            required
+            placeholder={form.w9TaxIdType === "SSN" ? "XXX-XX-XXXX" : "XX-XXXXXXX"}
+            type="password"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground mt-1">Your TIN is encrypted and stored securely. Only the last 4 digits will be visible after saving.</p>
+        </Field>
+      </Section>
+
+      {/* Part III — Certification */}
+      <Section title="Part III — Certification">
+        <div className="bg-muted/50 rounded-xl p-3 text-xs text-muted-foreground space-y-1">
+          <p className="font-semibold text-foreground">Under penalties of perjury, I certify that:</p>
+          <p>1. The number shown on this form is my correct taxpayer identification number.</p>
+          <p>2. I am not subject to backup withholding.</p>
+          <p>3. I am a U.S. citizen or other U.S. person.</p>
+          <p>4. The FATCA code(s) entered on this form indicating that I am exempt from FATCA reporting is correct.</p>
+        </div>
+        <Field label="Typed Signature (full legal name) *">
+          <Input
+            value={form.w9Signature}
+            onChange={e => set("w9Signature", e.target.value)}
+            required
+            placeholder="Type your full legal name to sign"
+            className="font-medium"
+          />
+          <p className="text-xs text-muted-foreground mt-1">Today's date will be recorded automatically.</p>
+        </Field>
+      </Section>
+
+      {error && <p className="text-sm text-destructive bg-destructive/10 px-4 py-2.5 rounded-xl">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={saving}
+        className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md flex items-center justify-center gap-2"
+      >
+        <Save className="w-4 h-4" />
+        {saving ? "Submitting W-9…" : "Submit W-9 Form"}
+      </button>
+    </form>
+  );
+}
+
+function Row({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 border-b border-border/50 pb-1.5">
+      <span className="text-muted-foreground text-xs flex-shrink-0">{label}</span>
+      <span className="font-medium text-sm text-right">{value || "—"}</span>
+    </div>
+  );
+}
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+      <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">{title}</h3>
+      {children}
+    </div>
+  );
+}
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-semibold text-muted-foreground">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+// ─── Expenses Tab ─────────────────────────────────────────────────────────────
+function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
+  const qc = useQueryClient();
+  const { data: expenses = [] } = useQuery({
+    queryKey: ["portal-expenses", token],
+    queryFn: () => apiFetch(`/portal/${token}/expenses`),
+  });
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", jobId: "" });
+  const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const addMut = useMutation({
+    mutationFn: () => apiFetch(`/portal/${token}/expenses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...form, amount: parseFloat(form.amount), jobId: form.jobId ? parseInt(form.jobId) : undefined }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["portal-expenses", token] });
+      qc.invalidateQueries({ queryKey: ["portal", token] });
+      setFormOpen(false);
+      setForm({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", jobId: "" });
+    },
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id: number) => apiFetch(`/portal/${token}/expenses/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["portal-expenses", token] });
+      qc.invalidateQueries({ queryKey: ["portal", token] });
+    },
+  });
+
+  const total = (expenses as any[]).reduce((s: number, e: any) => s + e.amount, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-display font-bold">My Expenses</h2>
+          <p className="text-sm text-muted-foreground">Total: <strong className="text-foreground">{formatCurrency(total)}</strong></p>
+        </div>
+        <button
+          onClick={() => setFormOpen(!formOpen)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Add
+        </button>
+      </div>
+
+      {formOpen && (
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Description *"><Input value={form.description} onChange={e => setF("description", e.target.value)} placeholder="What was it for?" /></Field>
+            <Field label="Amount *"><Input type="number" min="0" step="0.01" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="0.00" /></Field>
+            <Field label="Date *"><Input type="date" value={form.date} onChange={e => setF("date", e.target.value)} /></Field>
+            <Field label="Category">
+              <select value={form.category} onChange={e => setF("category", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
+                {EXPENSE_CATS.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </Field>
+            <Field label="Vendor"><Input value={form.vendor} onChange={e => setF("vendor", e.target.value)} placeholder="Store/supplier" /></Field>
+            {jobs.length > 0 && (
+              <Field label="Job">
+                <select value={form.jobId} onChange={e => setF("jobId", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
+                  <option value="">None</option>
+                  {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                </select>
+              </Field>
+            )}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={!form.description || !form.amount || addMut.isPending}
+              className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {addMut.isPending ? "Saving…" : "Save Expense"}
+            </button>
+            <button onClick={() => setFormOpen(false)} className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+      )}
+
+      {(expenses as any[]).length === 0 ? (
+        <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground">
+          <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
+          <p className="text-sm">No expenses yet. Tap Add to get started.</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm divide-y divide-border/50">
+          {(expenses as any[]).map(e => (
+            <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{e.description}</p>
+                <p className="text-xs text-muted-foreground">{e.date} · {e.category}{e.vendor ? ` · ${e.vendor}` : ""}</p>
+              </div>
+              <span className="font-semibold text-sm flex-shrink-0">{formatCurrency(e.amount)}</span>
+              <button onClick={() => delMut.mutate(e.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors flex-shrink-0">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Mileage Tab ─────────────────────────────────────────────────────────────
+function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; ratePerMile: number }) {
+  const qc = useQueryClient();
+  const { data: logs = [] } = useQuery({
+    queryKey: ["portal-mileage", token],
+    queryFn: () => apiFetch(`/portal/${token}/mileage`),
+  });
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", jobId: "" });
+  const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const addMut = useMutation({
+    mutationFn: () => apiFetch(`/portal/${token}/mileage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...form, miles: parseFloat(form.miles), jobId: form.jobId ? parseInt(form.jobId) : undefined }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
+      qc.invalidateQueries({ queryKey: ["portal", token] });
+      setFormOpen(false);
+      setForm({ date: new Date().toISOString().slice(0, 10), miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", jobId: "" });
+    },
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id: number) => apiFetch(`/portal/${token}/mileage/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
+      qc.invalidateQueries({ queryKey: ["portal", token] });
+    },
+  });
+
+  const businessLogs = (logs as any[]).filter(m => m.classification === "business");
+  const totalMiles = businessLogs.reduce((s: number, m: any) => s + m.miles, 0);
+  const totalDeduction = businessLogs.reduce((s: number, m: any) => s + m.deductionAmount, 0);
+  const previewDeduction = form.miles && form.classification === "business" ? parseFloat(form.miles) * ratePerMile : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-display font-bold">Mileage Tracker</h2>
+          <p className="text-sm text-muted-foreground">{totalMiles.toFixed(1)} mi · {formatCurrency(totalDeduction)} deduction</p>
+        </div>
+        <button
+          onClick={() => setFormOpen(!formOpen)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Log
+        </button>
+      </div>
+
+      {formOpen && (
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date *"><Input type="date" value={form.date} onChange={e => setF("date", e.target.value)} /></Field>
+            <Field label="Miles *"><Input type="number" min="0" step="0.1" value={form.miles} onChange={e => setF("miles", e.target.value)} placeholder="0.0" /></Field>
+            <Field label="From"><Input value={form.startLocation} onChange={e => setF("startLocation", e.target.value)} placeholder="Start location" /></Field>
+            <Field label="To"><Input value={form.endLocation} onChange={e => setF("endLocation", e.target.value)} placeholder="End location" /></Field>
+            <div className="col-span-2">
+              <Field label="Purpose"><Input value={form.purpose} onChange={e => setF("purpose", e.target.value)} placeholder="Job site visit, pickup…" /></Field>
+            </div>
+            <Field label="Type">
+              <select value={form.classification} onChange={e => setF("classification", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
+                <option value="business">Business</option>
+                <option value="personal">Personal</option>
+              </select>
+            </Field>
+            {jobs.length > 0 && (
+              <Field label="Job">
+                <select value={form.jobId} onChange={e => setF("jobId", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
+                  <option value="">None</option>
+                  {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                </select>
+              </Field>
+            )}
+          </div>
+          {previewDeduction > 0 && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-800">
+              IRS deduction for this trip: <strong>{formatCurrency(previewDeduction)}</strong> ({parseFloat(form.miles).toFixed(1)} mi × ${ratePerMile}/mi)
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={!form.date || !form.miles || addMut.isPending}
+              className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {addMut.isPending ? "Saving…" : "Save Trip"}
+            </button>
+            <button onClick={() => setFormOpen(false)} className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+      )}
+
+      {(logs as any[]).length === 0 ? (
+        <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground">
+          <Navigation className="w-8 h-8 mx-auto mb-2 opacity-20" />
+          <p className="text-sm">No trips logged yet. Tap Log to get started.</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm divide-y divide-border/50">
+          {(logs as any[]).map(m => (
+            <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">{m.miles.toFixed(1)} mi{m.purpose ? ` — ${m.purpose}` : ""}</p>
+                <p className="text-xs text-muted-foreground">
+                  {m.date}{m.startLocation && m.endLocation ? ` · ${m.startLocation} → ${m.endLocation}` : ""}
+                  {m.classification === "business" ? ` · ${formatCurrency(m.deductionAmount)} deduction` : " · Personal"}
+                </p>
+              </div>
+              <button onClick={() => delMut.mutate(m.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors flex-shrink-0">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Settings Tab ─────────────────────────────────────────────────────────────
+function PortalSettings({ token, features, onChange }: { token: string; features: string[]; onChange: (f: string[]) => void }) {
+  const [local, setLocal] = useState<string[]>(features);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  function toggle(key: string) {
+    setLocal(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+    setSaved(false);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await apiFetch(`/portal/${token}/features`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ features: local }),
+      });
+      onChange(local);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-display font-bold">Portal Settings</h2>
+        <p className="text-sm text-muted-foreground">Choose which features you want to use in your portal. You can add more anytime.</p>
+      </div>
+
+      <div className="space-y-3">
+        {ALL_FEATURES.map(f => {
+          const Icon = f.icon;
+          const enabled = local.includes(f.key);
+          return (
+            <button
+              key={f.key}
+              onClick={() => toggle(f.key)}
+              className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${
+                enabled ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted/30"
+              }`}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${enabled ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`font-semibold text-sm ${enabled ? "text-foreground" : "text-muted-foreground"}`}>{f.label}</p>
+                <p className="text-xs text-muted-foreground">{f.desc}</p>
+              </div>
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${enabled ? "border-primary bg-primary" : "border-muted-foreground"}`}>
+                {enabled && <div className="w-2 h-2 rounded-full bg-white" />}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        onClick={save}
+        disabled={saving}
+        className={`w-full py-3 rounded-xl font-semibold text-sm transition-colors shadow-md flex items-center justify-center gap-2 ${
+          saved ? "bg-emerald-600 text-white" : "bg-primary text-primary-foreground hover:bg-primary/90"
+        } disabled:opacity-50`}
+      >
+        {saved ? <><CheckCircle2 className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> {saving ? "Saving…" : "Save Preferences"}</>}
+      </button>
+    </div>
+  );
+}
+
+// ─── Main Portal ──────────────────────────────────────────────────────────────
 export default function SubcontractorPortal() {
   const { token } = useParams<{ token: string }>();
   const qc = useQueryClient();
+  const [activeTab, setActiveTab] = useState("dashboard");
 
-  const { data: portalData, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["portal", token],
-    queryFn: () => fetchPortal(token!),
+    queryFn: () => apiFetch(`/portal/${token}`),
     enabled: !!token,
     retry: false,
+    staleTime: 30000,
   });
 
-  const { data: expenses = [] } = useQuery({
-    queryKey: ["portal-expenses", token],
-    queryFn: () => fetchExpenses(token!),
-    enabled: !!token && !!portalData,
-  });
-
-  const { data: mileageLogs = [] } = useQuery({
-    queryKey: ["portal-mileage", token],
-    queryFn: () => fetchMileage(token!),
-    enabled: !!token && !!portalData,
-  });
-
-  // --- Expense form ---
-  const [expenseOpen, setExpenseOpen] = useState(false);
-  const [expForm, setExpForm] = useState({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", notes: "" });
-
-  const addExpense = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`${BASE}/api/portal/${token}/expenses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...expForm, amount: parseFloat(expForm.amount) }),
-      });
-      if (!res.ok) throw new Error("Failed to add expense");
-      return res.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["portal-expenses", token] });
-      setExpForm({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", notes: "" });
-      setExpenseOpen(false);
-    },
-  });
-
-  const deleteExpense = useMutation({
-    mutationFn: async (id: number) => {
-      await fetch(`${BASE}/api/portal/${token}/expenses/${id}`, { method: "DELETE" });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["portal-expenses", token] }),
-  });
-
-  // --- Mileage form ---
-  const [mileageOpen, setMileageOpen] = useState(false);
-  const [milForm, setMilForm] = useState({ date: new Date().toISOString().slice(0, 10), miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", notes: "" });
-
-  const addMileage = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`${BASE}/api/portal/${token}/mileage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...milForm, miles: parseFloat(milForm.miles) }),
-      });
-      if (!res.ok) throw new Error("Failed to add mileage");
-      return res.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
-      setMilForm({ date: new Date().toISOString().slice(0, 10), miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", notes: "" });
-      setMileageOpen(false);
-    },
-  });
-
-  const deleteMileage = useMutation({
-    mutationFn: async (id: number) => {
-      await fetch(`${BASE}/api/portal/${token}/mileage/${id}`, { method: "DELETE" });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["portal-mileage", token] }),
-  });
-
-  // --- Expand/collapse sections ---
-  const [showJobs, setShowJobs] = useState(true);
-  const [showExp, setShowExp] = useState(true);
-  const [showMil, setShowMil] = useState(true);
+  const [features, setFeatures] = useState<string[]>([]);
+  useEffect(() => {
+    if (data?.features) setFeatures(data.features);
+  }, [data]);
 
   if (isLoading) {
     return (
@@ -122,273 +824,44 @@ export default function SubcontractorPortal() {
     );
   }
 
-  if (error || !portalData) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="max-w-sm w-full text-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto">
-            <AlertCircle className="w-8 h-8 text-destructive" />
-          </div>
-          <h1 className="text-xl font-display font-bold text-foreground">Invalid Portal Link</h1>
-          <p className="text-sm text-muted-foreground">This link may be expired or incorrect. Please ask your contractor for a new link.</p>
-        </div>
-      </div>
-    );
-  }
+  if (error || !data) return <InvalidLink />;
 
-  const { subcontractor, jobs, stats } = portalData;
+  const { subcontractor, jobs, stats } = data;
+
+  function handleFeaturesChange(f: string[]) {
+    setFeatures(f);
+    // If current tab was hidden, go to dashboard
+    const visibleTabs = ["dashboard", ...f, "settings"];
+    if (!visibleTabs.includes(activeTab)) setActiveTab("dashboard");
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
-      {/* Header */}
-      <div className="bg-foreground text-background sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
-            <HardHat className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <p className="text-xs text-background/50 font-medium">Subcontractor Portal</p>
-            <h1 className="text-base font-display font-bold leading-tight">{subcontractor.name}</h1>
-          </div>
-          {subcontractor.trade && (
-            <span className="ml-auto text-xs px-2.5 py-1 rounded-full bg-primary/20 text-primary font-medium">{subcontractor.trade}</span>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: "YTD Payments", value: formatCurrency(stats.ytdPayments), icon: DollarSign, color: "text-emerald-600" },
-            { label: "My Expenses", value: formatCurrency(stats.totalExpenses), icon: Receipt, color: "text-red-500" },
-            { label: "Business Miles", value: stats.totalMiles.toFixed(1), icon: Navigation, color: "text-violet-600" },
-            { label: "Mileage Deduction", value: formatCurrency(stats.mileageDeduction), icon: DollarSign, color: "text-blue-600" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
-              <p className="text-xs text-muted-foreground font-medium mb-1">{label}</p>
-              <p className={`text-lg font-display font-bold ${color}`}>{value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Jobs */}
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-          <button
-            onClick={() => setShowJobs(!showJobs)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
-          >
-            <div className="flex items-center gap-2 font-semibold text-foreground">
-              <Briefcase className="w-4 h-4 text-primary" />
-              Assigned Jobs ({jobs.length})
-            </div>
-            {showJobs ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </button>
-          {showJobs && (
-            jobs.length === 0 ? (
-              <div className="px-5 py-6 text-center text-sm text-muted-foreground border-t border-border">No jobs assigned yet.</div>
-            ) : (
-              <div className="divide-y divide-border/50 border-t border-border">
-                {jobs.map((job: any) => (
-                  <div key={job.id} className="px-5 py-3 flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-sm text-foreground">{job.title}</p>
-                      {(job.city || job.description) && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{[job.city, job.state].filter(Boolean).join(", ")}{job.description ? ` — ${job.description}` : ""}</p>
-                      )}
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
-                      job.status === "active" ? "bg-emerald-100 text-emerald-700" :
-                      job.status === "completed" ? "bg-blue-100 text-blue-700" :
-                      "bg-muted text-muted-foreground"
-                    }`}>{job.status}</span>
-                  </div>
-                ))}
-              </div>
-            )
-          )}
-        </div>
-
-        {/* Expenses */}
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <button
-              onClick={() => setShowExp(!showExp)}
-              className="flex items-center gap-2 font-semibold text-foreground hover:text-primary transition-colors"
-            >
-              <Receipt className="w-4 h-4 text-primary" />
-              My Expenses ({expenses.length})
-              {showExp ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-            </button>
-            <button
-              onClick={() => setExpenseOpen(!expenseOpen)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add
-            </button>
-          </div>
-
-          {expenseOpen && (
-            <div className="px-5 py-4 border-b border-border bg-muted/20 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Description *</label>
-                  <Input value={expForm.description} onChange={e => setExpForm(f => ({ ...f, description: e.target.value }))} placeholder="What was it for?" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Amount *</label>
-                  <Input type="number" min="0" step="0.01" value={expForm.amount} onChange={e => setExpForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Date *</label>
-                  <Input type="date" value={expForm.date} onChange={e => setExpForm(f => ({ ...f, date: e.target.value }))} className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Category *</label>
-                  <select value={expForm.category} onChange={e => setExpForm(f => ({ ...f, category: e.target.value }))}
-                    className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                    {EXPENSE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Vendor</label>
-                  <Input value={expForm.vendor} onChange={e => setExpForm(f => ({ ...f, vendor: e.target.value }))} placeholder="Store/supplier" className="h-9 text-sm" />
-                </div>
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => addExpense.mutate()}
-                  disabled={!expForm.description || !expForm.amount || !expForm.date || addExpense.isPending}
-                  className="flex-1 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                >
-                  {addExpense.isPending ? "Saving…" : "Save Expense"}
-                </button>
-                <button onClick={() => setExpenseOpen(false)} className="h-9 w-9 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              {addExpense.isError && <p className="text-xs text-destructive">Failed to save expense. Please try again.</p>}
-            </div>
-          )}
-
-          {showExp && (
-            expenses.length === 0 ? (
-              <div className="px-5 py-6 text-center text-sm text-muted-foreground">No expenses logged yet.</div>
-            ) : (
-              <div className="divide-y divide-border/50">
-                {expenses.map((e: any) => (
-                  <div key={e.id} className="px-5 py-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{e.description}</p>
-                      <p className="text-xs text-muted-foreground">{e.date} · {e.category}{e.vendor ? ` · ${e.vendor}` : ""}</p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-sm font-semibold text-foreground">{formatCurrency(e.amount)}</span>
-                      <button onClick={() => deleteExpense.mutate(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          )}
-        </div>
-
-        {/* Mileage */}
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-            <button
-              onClick={() => setShowMil(!showMil)}
-              className="flex items-center gap-2 font-semibold text-foreground hover:text-primary transition-colors"
-            >
-              <Navigation className="w-4 h-4 text-primary" />
-              Mileage Logs ({mileageLogs.length})
-              {showMil ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-            </button>
-            <button
-              onClick={() => setMileageOpen(!mileageOpen)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add
-            </button>
-          </div>
-
-          {mileageOpen && (
-            <div className="px-5 py-4 border-b border-border bg-muted/20 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Date *</label>
-                  <Input type="date" value={milForm.date} onChange={e => setMilForm(f => ({ ...f, date: e.target.value }))} className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Miles *</label>
-                  <Input type="number" min="0" step="0.1" value={milForm.miles} onChange={e => setMilForm(f => ({ ...f, miles: e.target.value }))} placeholder="0.0" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">From</label>
-                  <Input value={milForm.startLocation} onChange={e => setMilForm(f => ({ ...f, startLocation: e.target.value }))} placeholder="Start location" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">To</label>
-                  <Input value={milForm.endLocation} onChange={e => setMilForm(f => ({ ...f, endLocation: e.target.value }))} placeholder="End location" className="h-9 text-sm" />
-                </div>
-                <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Purpose</label>
-                  <Input value={milForm.purpose} onChange={e => setMilForm(f => ({ ...f, purpose: e.target.value }))} placeholder="Job site visit, materials pickup…" className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Type</label>
-                  <select value={milForm.classification} onChange={e => setMilForm(f => ({ ...f, classification: e.target.value }))}
-                    className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                    <option value="business">Business</option>
-                    <option value="personal">Personal</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => addMileage.mutate()}
-                  disabled={!milForm.date || !milForm.miles || addMileage.isPending}
-                  className="flex-1 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                >
-                  {addMileage.isPending ? "Saving…" : "Save Mileage"}
-                </button>
-                <button onClick={() => setMileageOpen(false)} className="h-9 w-9 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              {addMileage.isError && <p className="text-xs text-destructive">Failed to save mileage. Please try again.</p>}
-            </div>
-          )}
-
-          {showMil && (
-            mileageLogs.length === 0 ? (
-              <div className="px-5 py-6 text-center text-sm text-muted-foreground">No mileage logged yet.</div>
-            ) : (
-              <div className="divide-y divide-border/50">
-                {mileageLogs.map((m: any) => (
-                  <div key={m.id} className="px-5 py-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">{m.miles.toFixed(1)} miles{m.purpose ? ` — ${m.purpose}` : ""}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {m.date}
-                        {m.startLocation && m.endLocation ? ` · ${m.startLocation} → ${m.endLocation}` : ""}
-                        {m.classification === "business" ? ` · ${formatCurrency(m.deductionAmount)} deduction` : " · Personal"}
-                      </p>
-                    </div>
-                    <button onClick={() => deleteMileage.mutate(m.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors flex-shrink-0">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )
-          )}
-        </div>
-
-        <p className="text-xs text-center text-muted-foreground pb-6">
-          This is a secure portal provided by your contractor. Data shown is your personal records only.
+      <Header
+        name={subcontractor.name}
+        trade={subcontractor.trade}
+        activeTab={activeTab}
+        setTab={setActiveTab}
+        features={features}
+      />
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        {activeTab === "dashboard" && <DashboardTab data={data} features={features} setTab={setActiveTab} />}
+        {activeTab === "payments" && features.includes("payments") && <PaymentsTab data={data} />}
+        {activeTab === "jobs" && features.includes("jobs") && <JobsTab jobs={jobs} />}
+        {activeTab === "w9" && features.includes("w9") && (
+          <W9Tab token={token!} sub={subcontractor} onSaved={() => { refetch(); qc.invalidateQueries({ queryKey: ["portal", token] }); }} />
+        )}
+        {activeTab === "expenses" && features.includes("expenses") && (
+          <ExpensesTab token={token!} jobs={jobs} />
+        )}
+        {activeTab === "mileage" && features.includes("mileage") && (
+          <MileageTab token={token!} jobs={jobs} ratePerMile={stats.ratePerMile} />
+        )}
+        {activeTab === "settings" && (
+          <PortalSettings token={token!} features={features} onChange={handleFeaturesChange} />
+        )}
+        <p className="text-xs text-center text-muted-foreground py-6">
+          Secure portal powered by your contractor · Data visible only to you and your contractor
         </p>
       </div>
     </div>
