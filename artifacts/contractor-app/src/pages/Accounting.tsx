@@ -3,10 +3,34 @@ import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
   TrendingUp, TrendingDown, DollarSign, MapPin, Receipt,
-  Navigation, HardHat, FileSpreadsheet, Printer, AlertCircle, CheckCircle2
+  Navigation, HardHat, FileSpreadsheet, Printer, AlertCircle, CheckCircle2,
+  Download, FileText
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function downloadCSV(records: any[], year: number) {
+  const headers = ["Invoice #", "Date", "Client", "City", "State", "Subtotal", "Tax Collected", "Total", "Status"];
+  const rows = records.map((r: any) => [
+    r.invoiceNumber ?? "",
+    r.issueDate ?? "",
+    r.clientName ?? "",
+    r.city ?? "",
+    r.state ?? "",
+    r.subtotal?.toFixed(2) ?? "0.00",
+    r.taxAmount?.toFixed(2) ?? "0.00",
+    r.total?.toFixed(2) ?? "0.00",
+    r.status ?? "",
+  ]);
+  const csvContent = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `tax-records-${year}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 async function fetchAccounting(year: number) {
   const res = await fetch(`${BASE}/api/reports/accounting?year=${year}`);
@@ -318,6 +342,91 @@ export default function Accounting() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+
+          {/* Tax Records Spreadsheet */}
+          <div>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <SectionHeader title="Tax Records — All Invoices" sub={`Full ledger for ${year} — export for city occupational tax filings`} />
+              </div>
+              <button
+                onClick={() => data.invoiceRecords?.length > 0 && downloadCSV(data.invoiceRecords, year)}
+                disabled={!data.invoiceRecords?.length}
+                className="flex items-center gap-2 h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow transition-colors disabled:opacity-40 flex-shrink-0"
+              >
+                <Download className="w-4 h-4" /> Download CSV
+              </button>
+            </div>
+            {(!data.invoiceRecords || data.invoiceRecords.length === 0) ? (
+              <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm">
+                <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                No invoices found for {year}. Create invoices with a city to populate this report.
+              </div>
+            ) : (
+              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Invoice #</th>
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Client</th>
+                        <th className="px-4 py-3 text-left">City</th>
+                        <th className="px-4 py-3 text-left">State</th>
+                        <th className="px-4 py-3 text-right">Subtotal</th>
+                        <th className="px-4 py-3 text-right">Tax</th>
+                        <th className="px-4 py-3 text-right">Total</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {(data.invoiceRecords as any[]).map((r: any, i: number) => (
+                        <tr key={i} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-2.5 font-mono text-xs text-foreground font-semibold">{r.invoiceNumber}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{r.issueDate}</td>
+                          <td className="px-4 py-2.5 font-medium text-foreground">{r.clientName || "—"}</td>
+                          <td className="px-4 py-2.5">
+                            {r.city ? (
+                              <span className="inline-flex items-center gap-1 text-primary font-medium">
+                                <MapPin className="w-3 h-3 flex-shrink-0" />{r.city}
+                              </span>
+                            ) : <span className="text-muted-foreground italic text-xs">No city</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-muted-foreground">{r.state || "—"}</td>
+                          <td className="px-4 py-2.5 text-right">{formatCurrency(r.subtotal)}</td>
+                          <td className="px-4 py-2.5 text-right text-blue-600">{r.taxAmount > 0 ? formatCurrency(r.taxAmount) : "—"}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-foreground">{formatCurrency(r.total)}</td>
+                          <td className="px-4 py-2.5 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              r.status === "paid" ? "bg-emerald-100 text-emerald-700" :
+                              r.status === "sent" ? "bg-blue-100 text-blue-700" :
+                              r.status === "overdue" ? "bg-red-100 text-red-700" :
+                              "bg-gray-100 text-gray-600"
+                            }`}>{r.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-muted/30 border-t-2 border-border font-semibold text-sm">
+                      <tr>
+                        <td colSpan={5} className="px-4 py-3 text-foreground">{data.invoiceRecords.length} invoice{data.invoiceRecords.length !== 1 ? "s" : ""}</td>
+                        <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.subtotal, 0))}</td>
+                        <td className="px-4 py-3 text-right text-blue-600">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.taxAmount, 0))}</td>
+                        <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.total, 0))}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800">
+                    <strong>KY Occupational Tax tip:</strong> Use the City and Tax columns to determine which city jurisdictions you owe local occupational tax to. Download the CSV to attach to your city tax filings.
+                  </p>
+                </div>
               </div>
             )}
           </div>

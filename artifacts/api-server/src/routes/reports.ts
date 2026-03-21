@@ -199,6 +199,20 @@ router.get("/accounting", async (req, res) => {
     }
     const incomeByCity = Array.from(cityMap.values()).sort((a, b) => b.gross - a.gross);
 
+    // Full invoice records for tax spreadsheet
+    const invoiceRecords = invoices.map(inv => ({
+      invoiceNumber: inv.invoiceNumber,
+      issueDate: inv.issueDate,
+      clientName: inv.clientName ?? "",
+      jobTitle: "",
+      city: inv.invoiceCity || inv.jobCity || "",
+      state: inv.invoiceState || inv.jobState || "",
+      subtotal: parseFloat(inv.subtotal ?? "0"),
+      taxAmount: parseFloat(inv.taxAmount ?? "0"),
+      total: parseFloat(inv.total ?? "0"),
+      status: inv.status,
+    })).sort((a, b) => a.issueDate.localeCompare(b.issueDate));
+
     // Expenses by category
     const catMap = new Map<string, { category: string; amount: number; count: number }>();
     for (const e of expenses) {
@@ -241,6 +255,7 @@ router.get("/accounting", async (req, res) => {
       expensesByCategory,
       monthlyIncome,
       subcontractor1099,
+      invoiceRecords,
     });
   } catch (err) {
     console.error(err);
