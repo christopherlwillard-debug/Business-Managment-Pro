@@ -25,6 +25,12 @@ export const settingsTable = pgTable("settings", {
   ein: text("ein"),
   invoiceLogoPosition: text("invoice_logo_position").default("top-left"),
   invoiceLogoSize: text("invoice_logo_size").default("medium"),
+  // Email / SMTP settings
+  smtpHost: text("smtp_host"),
+  smtpPort: text("smtp_port").default("587"),
+  smtpUser: text("smtp_user"),
+  smtpPass: text("smtp_pass"),
+  smtpSecure: integer("smtp_secure").default(0),
   // Mileage tracking settings
   mileageAutoTrack: integer("mileage_auto_track").default(0),
   mileageBatterySaving: integer("mileage_battery_saving").default(0),

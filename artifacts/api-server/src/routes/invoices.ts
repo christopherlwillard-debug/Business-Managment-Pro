@@ -1,4 +1,5 @@
 import { Router } from "express";
+import nodemailer from "nodemailer";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
@@ -22,11 +23,12 @@ async function getNextInvoiceNumber() {
   return `${prefix}${num}`;
 }
 
-function formatInvoice(inv: any, clientName?: string | null, jobTitle?: string | null, jobCity?: string | null, jobState?: string | null) {
+function formatInvoice(inv: any, clientName?: string | null, clientEmail?: string | null, jobTitle?: string | null, jobCity?: string | null, jobState?: string | null) {
   const lineItems = Array.isArray(inv.lineItems) ? inv.lineItems : [];
   return {
     ...inv,
     clientName: clientName ?? null,
+    clientEmail: clientEmail ?? null,
     jobTitle: jobTitle ?? null,
     jobCity: jobCity ?? null,
     jobState: jobState ?? null,
@@ -44,6 +46,26 @@ function formatInvoice(inv: any, clientName?: string | null, jobTitle?: string |
     })),
     createdAt: inv.createdAt instanceof Date ? inv.createdAt.toISOString() : inv.createdAt,
   };
+}
+
+const invoiceSelect = {
+  ...invoicesTable,
+  clientName: clientsTable.name,
+  clientEmail: clientsTable.email,
+  jobTitle: jobsTable.title,
+  jobCity: jobsTable.city,
+  jobState: jobsTable.state,
+};
+
+function buildInvoiceQuery() {
+  return db.select(invoiceSelect)
+    .from(invoicesTable)
+    .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+    .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id));
+}
+
+function fmt(inv: any) {
+  return formatInvoice(inv, inv.clientName, inv.clientEmail, inv.jobTitle, inv.jobCity, inv.jobState);
 }
 
 router.get("/tax-report", async (req, res) => {
@@ -99,15 +121,11 @@ router.get("/", async (req, res) => {
     if (startDate) conditions.push(gte(invoicesTable.issueDate, startDate as string));
     if (endDate) conditions.push(lte(invoicesTable.issueDate, endDate as string));
 
-    const invoices = await db
-      .select({ ...invoicesTable, clientName: clientsTable.name, jobTitle: jobsTable.title, jobCity: jobsTable.city, jobState: jobsTable.state })
-      .from(invoicesTable)
-      .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-      .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+    const invoices = await buildInvoiceQuery()
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(invoicesTable.createdAt));
 
-    res.json(invoices.map(inv => formatInvoice(inv, inv.clientName, inv.jobTitle, inv.jobCity, inv.jobState)));
+    res.json(invoices.map(fmt));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch invoices" });
@@ -138,8 +156,8 @@ router.post("/", async (req, res) => {
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
     }).returning();
 
-    const [withJoins] = await db.select({ ...invoicesTable, clientName: clientsTable.name, jobTitle: jobsTable.title, jobCity: jobsTable.city, jobState: jobsTable.state }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id)).where(eq(invoicesTable.id, invoice.id));
-    res.status(201).json(formatInvoice(withJoins, withJoins.clientName, withJoins.jobTitle, withJoins.jobCity, withJoins.jobState));
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, invoice.id));
+    res.status(201).json(fmt(withJoins));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create invoice" });
@@ -149,9 +167,9 @@ router.post("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const [inv] = await db.select({ ...invoicesTable, clientName: clientsTable.name, jobTitle: jobsTable.title, jobCity: jobsTable.city, jobState: jobsTable.state }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id)).where(eq(invoicesTable.id, id));
+    const [inv] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
-    res.json(formatInvoice(inv, inv.clientName, inv.jobTitle, inv.jobCity, inv.jobState));
+    res.json(fmt(inv));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch invoice" });
@@ -176,9 +194,9 @@ router.put("/:id", async (req, res) => {
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
     }).where(eq(invoicesTable.id, id));
 
-    const [withJoins] = await db.select({ ...invoicesTable, clientName: clientsTable.name, jobTitle: jobsTable.title, jobCity: jobsTable.city, jobState: jobsTable.state }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id)).where(eq(invoicesTable.id, id));
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!withJoins) return res.status(404).json({ error: "Invoice not found" });
-    res.json(formatInvoice(withJoins, withJoins.clientName, withJoins.jobTitle, withJoins.jobCity, withJoins.jobState));
+    res.json(fmt(withJoins));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update invoice" });
@@ -189,10 +207,10 @@ router.patch("/:id/status", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { status } = req.body;
-    const [inv] = await db.update(invoicesTable).set({ status }).where(eq(invoicesTable.id, id)).returning();
-    if (!inv) return res.status(404).json({ error: "Invoice not found" });
-    const [withJoins] = await db.select({ ...invoicesTable, clientName: clientsTable.name, jobTitle: jobsTable.title, jobCity: jobsTable.city, jobState: jobsTable.state }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id)).where(eq(invoicesTable.id, id));
-    res.json(formatInvoice(withJoins, withJoins.clientName, withJoins.jobTitle, withJoins.jobCity, withJoins.jobState));
+    await db.update(invoicesTable).set({ status }).where(eq(invoicesTable.id, id));
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    if (!withJoins) return res.status(404).json({ error: "Invoice not found" });
+    res.json(fmt(withJoins));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update invoice status" });
@@ -206,6 +224,126 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete invoice" });
+  }
+});
+
+// ── Send invoice via email ─────────────────────────────────────────────────────
+router.post("/:id/send", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { to, subject, message } = req.body as { to: string; subject: string; message: string };
+
+    if (!to) return res.status(400).json({ error: "Recipient email is required" });
+
+    const [[inv], [settings]] = await Promise.all([
+      buildInvoiceQuery().where(eq(invoicesTable.id, id)),
+      db.select().from(settingsTable).limit(1),
+    ]);
+    if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (!settings?.smtpHost || !settings?.smtpUser || !settings?.smtpPass) {
+      return res.status(400).json({ error: "Email not configured. Set up SMTP in Settings → Invoice Defaults." });
+    }
+
+    const fmtCurrency = (n: number) => `$${n.toFixed(2)}`;
+    const lineItems: any[] = Array.isArray(inv.lineItems) ? inv.lineItems : [];
+
+    const lineRows = lineItems.map(li => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;">${li.description}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:right;">${parseFloat(li.quantity)}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:right;">${fmtCurrency(parseFloat(li.unitPrice))}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600;">${fmtCurrency(parseFloat(li.quantity) * parseFloat(li.unitPrice))}</td>
+      </tr>`).join("");
+
+    const subtotal = parseFloat(inv.subtotal ?? "0");
+    const taxAmount = parseFloat(inv.taxAmount ?? "0");
+    const total = parseFloat(inv.total ?? "0");
+    const taxRate = inv.taxRate ? parseFloat(inv.taxRate) : 0;
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <tr><td style="background:linear-gradient(90deg,#f59e0b,#fbbf24);height:6px;"></td></tr>
+        <tr><td style="padding:32px 40px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td><p style="margin:0;font-size:22px;font-weight:800;color:#111;">${settings.companyName || "Your Company"}</p>
+                  ${settings.companyAddress ? `<p style="margin:4px 0 0;font-size:12px;color:#888;">${settings.companyAddress}</p>` : ""}
+                  ${settings.companyCity || settings.companyState ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">${[settings.companyCity, settings.companyState, settings.companyZip].filter(Boolean).join(", ")}</p>` : ""}
+                  ${settings.companyPhone ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">${settings.companyPhone}</p>` : ""}
+              </td>
+              <td align="right">
+                <p style="margin:0;font-size:28px;font-weight:900;color:#e5e7eb;letter-spacing:4px;">INVOICE</p>
+                <p style="margin:0;font-size:14px;font-weight:700;color:#f59e0b;">${inv.invoiceNumber}</p>
+                ${inv.issueDate ? `<p style="margin:4px 0 0;font-size:12px;color:#888;">Date: ${inv.issueDate}</p>` : ""}
+                ${inv.dueDate ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">Due: ${inv.dueDate}</p>` : ""}
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+        ${inv.clientName ? `<tr><td style="padding:0 40px 20px;"><p style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;">Bill To</p><p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#111;">${inv.clientName}</p></td></tr>` : ""}
+        ${message ? `<tr><td style="padding:0 40px 20px;"><p style="margin:0;font-size:14px;color:#555;line-height:1.6;">${message.replace(/\n/g, "<br>")}</p></td></tr>` : ""}
+        <tr><td style="padding:0 40px 32px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #f0f0f0;border-radius:8px;overflow:hidden;">
+            <thead>
+              <tr style="background:#fafafa;">
+                <th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;">Description</th>
+                <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;">Qty</th>
+                <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;">Rate</th>
+                <th style="padding:10px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>${lineRows}</tbody>
+          </table>
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">
+            <tr><td align="right">
+              <table cellpadding="0" cellspacing="0">
+                <tr><td style="padding:4px 0;font-size:13px;color:#888;padding-right:24px;">Subtotal</td><td style="padding:4px 0;font-size:13px;text-align:right;">${fmtCurrency(subtotal)}</td></tr>
+                ${taxRate > 0 ? `<tr><td style="padding:4px 0;font-size:13px;color:#888;padding-right:24px;">Tax (${taxRate}%)</td><td style="padding:4px 0;font-size:13px;text-align:right;">${fmtCurrency(taxAmount)}</td></tr>` : ""}
+                <tr><td colspan="2" style="padding-top:8px;border-top:2px solid #111;"></td></tr>
+                <tr><td style="padding:8px 24px 0 0;font-size:16px;font-weight:800;color:#111;">Total Due</td><td style="padding:8px 0 0;font-size:16px;font-weight:800;color:#f59e0b;text-align:right;">${fmtCurrency(total)}</td></tr>
+              </table>
+            </td></tr>
+          </table>
+          ${inv.terms ? `<p style="margin:20px 0 0;font-size:12px;color:#888;">Payment Terms: ${inv.terms}</p>` : ""}
+          ${inv.notes ? `<p style="margin:8px 0 0;font-size:12px;color:#888;">${inv.notes}</p>` : ""}
+        </td></tr>
+        <tr><td style="padding:20px 40px;background:#fafafa;border-top:1px solid #f0f0f0;">
+          <p style="margin:0;font-size:12px;color:#aaa;text-align:center;">Thank you for your business · ${settings.companyName || ""} · ${settings.companyEmail || ""}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const transporter = nodemailer.createTransport({
+      host: settings.smtpHost,
+      port: parseInt(settings.smtpPort ?? "587"),
+      secure: settings.smtpSecure === 1,
+      auth: { user: settings.smtpUser!, pass: settings.smtpPass! },
+    });
+
+    await transporter.sendMail({
+      from: `"${settings.companyName || "BuildPro"}" <${settings.companyEmail || settings.smtpUser}>`,
+      to,
+      subject: subject || `Invoice ${inv.invoiceNumber} from ${settings.companyName || "BuildPro"}`,
+      html,
+      text: message || `Please find invoice ${inv.invoiceNumber} attached. Total Due: ${fmtCurrency(total)}`,
+    });
+
+    await db.update(invoicesTable).set({ status: "sent" }).where(eq(invoicesTable.id, id));
+
+    const [updated] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    res.json({ success: true, invoice: fmt(updated) });
+  } catch (err: any) {
+    console.error("Email send error:", err);
+    res.status(500).json({ error: err.message || "Failed to send email" });
   }
 });
 

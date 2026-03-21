@@ -245,12 +245,16 @@ export default function Settings() {
     defaultPaymentTerms: "Net 30", lateFeePercent: "",
     mileageRate: "0.725", thresholdAmount1099: "600",
     invoiceLogoPosition: "top-left", invoiceLogoSize: "medium",
+    // SMTP email delivery
+    smtpHost: "", smtpPort: "587", smtpUser: "", smtpSecure: "0",
     // mileage tracking
     mileageDefaultClassification: "business",
     mileageUnits: "miles",
     mileageAutoPauseMinutes: "5",
     mileageReminderFrequency: "daily",
   });
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [mileageAutoTrack, setMileageAutoTrack] = useState(false);
   const [mileageBatterySaving, setMileageBatterySaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -280,6 +284,10 @@ export default function Settings() {
         thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "600",
         invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
         invoiceLogoSize: s.invoiceLogoSize ?? "medium",
+        smtpHost: s.smtpHost ?? "",
+        smtpPort: s.smtpPort ?? "587",
+        smtpUser: s.smtpUser ?? "",
+        smtpSecure: s.smtpSecure ? "1" : "0",
         mileageDefaultClassification: s.mileageDefaultClassification ?? "business",
         mileageUnits: s.mileageUnits ?? "miles",
         mileageAutoPauseMinutes: String(s.mileageAutoPauseMinutes ?? 5),
