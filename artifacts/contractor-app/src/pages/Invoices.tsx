@@ -13,7 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { FileText, Download, Plus, Trash2, X, Building2, Printer } from "lucide-react";
+import { FileText, Download, Plus, Trash2, X, Building2, Printer, Eye, ClipboardList } from "lucide-react";
 
 interface LineItem {
   description: string;
@@ -226,6 +226,7 @@ export default function Invoices() {
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [mobilePanel, setMobilePanel] = useState<"form" | "preview">("form");
 
   const subtotal = lineItems.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
   const taxRate = parseFloat(form.taxRate) || 0;
@@ -336,7 +337,7 @@ export default function Invoices() {
             </button>
           )}
           <button
-            onClick={() => { resetForm(); setOpen(true); }}
+            onClick={() => { resetForm(); setMobilePanel("form"); setOpen(true); }}
             className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
           >
             <Plus className="w-5 h-5 mr-2" /> New Invoice
@@ -462,9 +463,29 @@ export default function Invoices() {
           <div className="relative ml-auto flex h-full w-full max-w-[1100px] bg-background shadow-2xl">
             <form
               onSubmit={handleSubmit}
-              className="flex w-full h-full overflow-hidden"
+              className="flex flex-col w-full h-full overflow-hidden"
             >
-              <div className="w-[420px] flex-shrink-0 border-r border-border flex flex-col h-full">
+              <div className="md:hidden flex-shrink-0 flex border-b border-border bg-card">
+                <button
+                  type="button"
+                  onClick={() => setMobilePanel("form")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${mobilePanel === "form" ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground"}`}
+                >
+                  <ClipboardList className="w-4 h-4" /> Form
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobilePanel("preview")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${mobilePanel === "preview" ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground"}`}
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>Live Preview</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                </button>
+              </div>
+
+              <div className="flex flex-1 overflow-hidden min-h-0">
+              <div className={`${mobilePanel === "form" ? "flex" : "hidden"} md:flex w-full md:w-[420px] md:flex-shrink-0 border-r border-border flex-col h-full`}>
                 <div className="px-6 pt-6 pb-4 border-b border-border flex items-center justify-between">
                   <h2 className="text-xl font-display font-bold text-foreground">New Invoice</h2>
                   <button type="button" onClick={() => !submitting && setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -654,8 +675,8 @@ export default function Invoices() {
                 </div>
               </div>
 
-              <div className="flex-1 flex flex-col h-full bg-muted/30 overflow-hidden">
-                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-card">
+              <div className={`${mobilePanel === "preview" ? "flex" : "hidden"} md:flex flex-1 flex-col h-full bg-muted/30 overflow-hidden`}>
+                <div className="hidden md:flex px-6 py-4 border-b border-border items-center justify-between bg-card">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-sm font-medium text-foreground">Live Preview</span>
@@ -682,6 +703,7 @@ export default function Invoices() {
                     previewNumber={previewNumber}
                   />
                 </div>
+              </div>
               </div>
             </form>
           </div>
