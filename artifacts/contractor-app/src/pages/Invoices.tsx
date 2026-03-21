@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   useListInvoices,
   useGetInvoiceTaxReport,
   useCreateInvoice,
+  useCreateClient,
   useListClients,
   useListJobs,
   useUpdateInvoiceStatus,
@@ -210,6 +211,7 @@ export default function Invoices() {
   const { data: jobs = [] } = useListJobs();
   const { data: settings } = useGetSettings();
   const createInvoice = useCreateInvoice();
+  const createClientMutation = useCreateClient();
   const updateStatus = useUpdateInvoiceStatus();
   const deleteInvoice = useDeleteInvoice();
 
@@ -227,6 +229,11 @@ export default function Invoices() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const [clientInput, setClientInput] = useState("");
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+  const [isNewClient, setIsNewClient] = useState(false);
+  const clientInputRef = useRef<HTMLInputElement>(null);
+
   const subtotal = lineItems.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
   const taxRate = parseFloat(form.taxRate) || 0;
   const taxAmount = subtotal * (taxRate / 100);
@@ -237,6 +244,16 @@ export default function Invoices() {
   const filteredJobs = form.clientId
     ? (jobs as any[]).filter((j: any) => String(j.clientId) === form.clientId)
     : (jobs as any[]);
+
+  const clientSuggestions = clientInput.trim()
+    ? (clients as any[]).filter((c: any) =>
+        c.name.toLowerCase().includes(clientInput.toLowerCase())
+      )
+    : (clients as any[]);
+  const hasExactMatch = (clients as any[]).some(
+    (c: any) => c.name.toLowerCase() === clientInput.toLowerCase()
+  );
+  const previewClientName = isNewClient ? clientInput : (selectedClient?.name ?? "");
 
   const prefix = (settings as any)?.invoicePrefix ?? "INV-2026-";
   const nextNum = (settings as any)?.invoiceNextNumber ?? 1001;
@@ -275,6 +292,9 @@ export default function Invoices() {
     });
     setLineItems([emptyLine()]);
     setFormError("");
+    setClientInput("");
+    setIsNewClient(false);
+    setClientDropdownOpen(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -286,9 +306,15 @@ export default function Invoices() {
     setSubmitting(true);
     setFormError("");
     try {
+      let resolvedClientId = form.clientId ? parseInt(form.clientId) : undefined;
+      if (isNewClient && clientInput.trim()) {
+        const newClient = await createClientMutation.mutateAsync({ data: { name: clientInput.trim() } });
+        resolvedClientId = (newClient as any).id;
+        queryClient.invalidateQueries({ queryKey: ["listClients"] });
+      }
       await createInvoice.mutateAsync({
         data: {
-          clientId: form.clientId ? parseInt(form.clientId) : undefined,
+          clientId: resolvedClientId,
           jobId: form.jobId ? parseInt(form.jobId) : undefined,
           issueDate: form.issueDate,
           dueDate: form.dueDate || undefined,
@@ -473,16 +499,64 @@ export default function Invoices() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client</label>
-                      <select
-                        value={form.clientId}
-                        onChange={(e) => { setField("clientId", e.target.value); setField("jobId", ""); }}
-                        className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="">No client</option>
-                        {(clients as any[]).map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <input
+                          ref={clientInputRef}
+                          type="text"
+                          placeholder="Type to search or add..."
+                          value={clientInput}
+                          onChange={(e) => {
+                            setClientInput(e.target.value);
+                            setClientDropdownOpen(true);
+                            setIsNewClient(false);
+                            setField("clientId", "");
+                            setField("jobId", "");
+                          }}
+                          onFocus={() => setClientDropdownOpen(true)}
+                          onBlur={() => setTimeout(() => setClientDropdownOpen(false), 150)}
+                          className={`w-full h-9 px-3 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background ${isNewClient ? "border-amber-400 text-amber-700 bg-amber-50" : "border-border"}`}
+                        />
+                        {isNewClient && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">NEW</span>
+                        )}
+                        {clientDropdownOpen && (
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-border rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                            {clientSuggestions.length === 0 && !clientInput.trim() && (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">No clients yet — type a name to create one</div>
+                            )}
+                            {clientSuggestions.map((c: any) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onMouseDown={() => {
+                                  setClientInput(c.name);
+                                  setField("clientId", String(c.id));
+                                  setField("jobId", "");
+                                  setIsNewClient(false);
+                                  setClientDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 transition-colors"
+                              >
+                                {c.name}
+                              </button>
+                            ))}
+                            {clientInput.trim() && !hasExactMatch && (
+                              <button
+                                type="button"
+                                onMouseDown={() => {
+                                  setIsNewClient(true);
+                                  setField("clientId", "");
+                                  setField("jobId", "");
+                                  setClientDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors font-medium flex items-center gap-2 border-t border-border"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Create "{clientInput}"
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Job</label>
@@ -652,7 +726,7 @@ export default function Invoices() {
                     subtotal={subtotal}
                     taxAmount={taxAmount}
                     total={total}
-                    clientName={selectedClient?.name ?? ""}
+                    clientName={previewClientName}
                     jobTitle={selectedJob?.title ?? ""}
                     settings={settings}
                     previewNumber={previewNumber}
