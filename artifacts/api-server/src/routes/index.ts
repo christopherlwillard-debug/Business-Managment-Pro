@@ -12,6 +12,7 @@ import settingsRouter from "./settings";
 import reportsRouter from "./reports";
 import uploadsRouter from "./uploads";
 import portalRouter from "./portal";
+import vendorsRouter from "./vendors";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use("/settings", settingsRouter);
 router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/portal", portalRouter);
+router.use("/vendors", vendorsRouter);
 
 export default router;
