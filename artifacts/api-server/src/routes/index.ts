@@ -14,6 +14,7 @@ import uploadsRouter from "./uploads";
 import portalRouter from "./portal";
 import vendorsRouter from "./vendors";
 import complianceItemsRouter from "./compliance-items";
+import expenseImportRouter from "./expense-import";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use("/uploads", uploadsRouter);
 router.use("/portal", portalRouter);
 router.use("/vendors", vendorsRouter);
 router.use("/compliance-items", complianceItemsRouter);
+router.use("/expense-import", expenseImportRouter);
 
 export default router;

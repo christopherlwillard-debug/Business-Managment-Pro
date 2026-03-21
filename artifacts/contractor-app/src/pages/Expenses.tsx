@@ -11,6 +11,7 @@ import {
   Calendar, Tag, Briefcase, DollarSign, StickyNote,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
 
 const CATEGORIES = ["Materials", "Tools/Equipment", "Fuel/Travel", "Subcontractor", "Insurance", "Office/Admin", "Other"];
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -412,7 +413,8 @@ export default function Expenses() {
   const saveVendor        = useSaveVendor();
   const deleteExpense     = useDeleteExpense();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDialogOpen, setIsDialogOpen]   = useState(false);
+  const [importOpen,   setImportOpen]     = useState(false);
   const [receiptFile, setReceiptFile]   = useState<File | null>(null);
   const [uploadError, setUploadError]   = useState("");
   const [vendor, setVendor]             = useState("");
@@ -483,12 +485,20 @@ export default function Expenses() {
           <h1 className="text-3xl font-display font-bold text-foreground">Expenses</h1>
           <p className="text-muted-foreground mt-1">Track materials, tools, and subs with receipt documentation.</p>
         </div>
-        <button
-          onClick={openDialog}
-          className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
-        >
-          <Plus className="w-5 h-5 mr-2" /> Log Expense
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border"
+          >
+            <Upload className="w-4 h-4 mr-2" /> Import
+          </button>
+          <button
+            onClick={openDialog}
+            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
+          >
+            <Plus className="w-5 h-5 mr-2" /> Log Expense
+          </button>
+        </div>
       </div>
 
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
@@ -691,6 +701,13 @@ export default function Expenses() {
           onCancel={() => setDeleteTarget(null)}
         />
       )}
+
+      {/* Import Dialog */}
+      <ExpenseImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => { setImportOpen(false); refetch(); }}
+      />
     </div>
   );
 }
