@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobsTable } from "@workspace/db/schema";
+import { expensesTable, jobsTable, subcontractorsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
@@ -20,13 +20,28 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
-function formatExpense(e: any, jobTitle?: string | null) {
+function formatExpense(e: any, jobTitle?: string | null, subcontractorName?: string | null) {
   return {
     ...e,
     jobTitle: jobTitle ?? null,
+    subcontractorName: subcontractorName ?? null,
     amount: parseFloat(e.amount ?? "0"),
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
   };
+}
+
+const expenseSelect = {
+  ...expensesTable,
+  jobTitle: jobsTable.title,
+  subcontractorName: subcontractorsTable.name,
+};
+
+function buildExpenseQuery() {
+  return db
+    .select(expenseSelect)
+    .from(expensesTable)
+    .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
+    .leftJoin(subcontractorsTable, eq(expensesTable.subcontractorId, subcontractorsTable.id));
 }
 
 router.get("/", async (req, res) => {
@@ -38,14 +53,11 @@ router.get("/", async (req, res) => {
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
 
-    const expenses = await db
-      .select({ ...expensesTable, jobTitle: jobsTable.title })
-      .from(expensesTable)
-      .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
+    const expenses = await buildExpenseQuery()
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(expensesTable.date);
 
-    res.json(expenses.map(e => formatExpense(e, e.jobTitle)));
+    res.json(expenses.map(e => formatExpense(e, e.jobTitle, e.subcontractorName)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch expenses" });
@@ -54,20 +66,16 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, date, vendor, jobId, receiptUrl, notes } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
 
     const [expense] = await db.insert(expensesTable).values({
       description, amount: amount.toString(), category, date,
-      vendor, jobId: jobId || null, receiptUrl, notes
+      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes
     }).returning();
 
-    let jobTitle = null;
-    if (expense.jobId) {
-      const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, expense.jobId));
-      jobTitle = job?.title;
-    }
-    res.status(201).json(formatExpense(expense, jobTitle));
+    const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, expense.id));
+    res.status(201).json(formatExpense(joined ?? expense, joined?.jobTitle, joined?.subcontractorName));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create expense" });
@@ -77,9 +85,9 @@ router.post("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const [expense] = await db.select({ ...expensesTable, jobTitle: jobsTable.title }).from(expensesTable).leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id)).where(eq(expensesTable.id, id));
+    const [expense] = await buildExpenseQuery().where(eq(expensesTable.id, id));
     if (!expense) return res.status(404).json({ error: "Expense not found" });
-    res.json(formatExpense(expense, expense.jobTitle));
+    res.json(formatExpense(expense, expense.jobTitle, expense.subcontractorName));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch expense" });
@@ -89,20 +97,16 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { description, amount, category, date, vendor, jobId, receiptUrl, notes } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes } = req.body;
 
-    const [expense] = await db.update(expensesTable).set({
+    const [updated] = await db.update(expensesTable).set({
       description, amount: amount?.toString(), category, date,
-      vendor, jobId: jobId || null, receiptUrl, notes
+      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes
     }).where(eq(expensesTable.id, id)).returning();
-    if (!expense) return res.status(404).json({ error: "Expense not found" });
+    if (!updated) return res.status(404).json({ error: "Expense not found" });
 
-    let jobTitle = null;
-    if (expense.jobId) {
-      const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, expense.jobId));
-      jobTitle = job?.title;
-    }
-    res.json(formatExpense(expense, jobTitle));
+    const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));
+    res.json(formatExpense(joined ?? updated, joined?.jobTitle, joined?.subcontractorName));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update expense" });
@@ -124,15 +128,11 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
     const id = parseInt(req.params.id);
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const receiptUrl = `/api/uploads/receipts/${req.file.filename}`;
-    const [expense] = await db.update(expensesTable).set({ receiptUrl }).where(eq(expensesTable.id, id)).returning();
-    if (!expense) return res.status(404).json({ error: "Expense not found" });
+    const [updated] = await db.update(expensesTable).set({ receiptUrl }).where(eq(expensesTable.id, id)).returning();
+    if (!updated) return res.status(404).json({ error: "Expense not found" });
 
-    let jobTitle = null;
-    if (expense.jobId) {
-      const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, expense.jobId));
-      jobTitle = job?.title;
-    }
-    res.json(formatExpense(expense, jobTitle));
+    const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));
+    res.json(formatExpense(joined ?? updated, joined?.jobTitle, joined?.subcontractorName));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to upload receipt" });

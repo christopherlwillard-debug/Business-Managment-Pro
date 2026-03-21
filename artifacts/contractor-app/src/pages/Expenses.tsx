@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
-  useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs,
+  useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
 } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
-  Calendar, Tag, Briefcase, DollarSign, StickyNote,
+  Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
@@ -364,6 +364,16 @@ function ExpenseViewModal({
             </div>
           )}
 
+          {(expense as any).subcontractorName && (
+            <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-amber-400 mb-1">
+                <HardHat className="w-3 h-3" /> Subcontractor
+              </div>
+              <p className="text-sm font-semibold text-gray-800">{(expense as any).subcontractorName}</p>
+              <p className="text-xs text-amber-600 mt-0.5">Visible in subcontractor portal</p>
+            </div>
+          )}
+
           {expense.notes && (
             <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">
@@ -408,20 +418,22 @@ function ExpenseViewModal({
 export default function Expenses() {
   const { data: expenses, isLoading, refetch } = useListExpenses();
   const { data: jobs }    = useListJobs();
+  const { data: subs }    = useListSubcontractors();
   const createMutation    = useCreateExpense();
   const uploadMutation    = useUploadExpenseReceipt();
   const saveVendor        = useSaveVendor();
   const deleteExpense     = useDeleteExpense();
 
-  const [isDialogOpen, setIsDialogOpen]   = useState(false);
-  const [importOpen,   setImportOpen]     = useState(false);
-  const [receiptFile, setReceiptFile]   = useState<File | null>(null);
-  const [uploadError, setUploadError]   = useState("");
-  const [vendor, setVendor]             = useState("");
-  const [category, setCategory]         = useState(CATEGORIES[0]);
-  const [viewExpense,  setViewExpense]  = useState<any | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
-  const [deleting,     setDeleting]     = useState(false);
+  const [isDialogOpen, setIsDialogOpen]       = useState(false);
+  const [importOpen,   setImportOpen]         = useState(false);
+  const [receiptFile, setReceiptFile]         = useState<File | null>(null);
+  const [uploadError, setUploadError]         = useState("");
+  const [vendor, setVendor]                   = useState("");
+  const [category, setCategory]               = useState(CATEGORIES[0]);
+  const [subcontractorId, setSubcontractorId] = useState("");
+  const [viewExpense,  setViewExpense]        = useState<any | null>(null);
+  const [deleteTarget, setDeleteTarget]       = useState<any | null>(null);
+  const [deleting,     setDeleting]           = useState(false);
 
   function openDialog() {
     setIsDialogOpen(true);
@@ -429,6 +441,7 @@ export default function Expenses() {
     setUploadError("");
     setVendor("");
     setCategory(CATEGORIES[0]);
+    setSubcontractorId("");
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -439,13 +452,14 @@ export default function Expenses() {
     try {
       const expense = await createMutation.mutateAsync({
         data: {
-          description: fd.get("description") as string,
-          amount:      parseFloat(fd.get("amount") as string),
-          category:    fd.get("category") as string,
-          date:        fd.get("date") as string,
-          vendor:      vendor.trim() || undefined,
-          notes:       fd.get("notes") as string || undefined,
-          jobId:       fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
+          description:    fd.get("description") as string,
+          amount:         parseFloat(fd.get("amount") as string),
+          category:       fd.get("category") as string,
+          date:           fd.get("date") as string,
+          vendor:         vendor.trim() || undefined,
+          notes:          fd.get("notes") as string || undefined,
+          jobId:          fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
+          subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
         },
       });
 
@@ -460,6 +474,7 @@ export default function Expenses() {
       setIsDialogOpen(false);
       setReceiptFile(null);
       setVendor("");
+      setSubcontractorId("");
       refetch();
     } catch {
       setUploadError("Failed to save expense. Please try again.");
@@ -536,6 +551,11 @@ export default function Expenses() {
                       {exp.vendor && (
                         <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                           <Store className="w-3 h-3" /> {exp.vendor}
+                        </div>
+                      )}
+                      {(exp as any).subcontractorName && (
+                        <div className="text-xs text-amber-600 flex items-center gap-1 mt-0.5">
+                          <HardHat className="w-3 h-3" /> {(exp as any).subcontractorName}
                         </div>
                       )}
                     </td>
@@ -643,6 +663,27 @@ export default function Expenses() {
                 {jobs?.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
               </select>
             </div>
+
+            {subs && subs.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium mb-1 flex items-center gap-1.5">
+                  <HardHat className="w-3.5 h-3.5 text-muted-foreground" />
+                  Assign to Subcontractor
+                  <span className="font-normal text-muted-foreground">(Optional)</span>
+                </label>
+                <select
+                  value={subcontractorId}
+                  onChange={e => setSubcontractorId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">— Not assigned —</option>
+                  {subs.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}{s.trade ? ` · ${s.trade}` : ""}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">This expense will appear in the subcontractor's portal.</p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Notes</label>
