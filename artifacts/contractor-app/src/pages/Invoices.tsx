@@ -692,14 +692,21 @@ function InvoiceViewModal({
                       </div>
                     : <p className="text-gray-300 italic text-xs">No client specified</p>}
                 </div>
-                {(invoice.city || invoice.state) && (
+                {(invoice.locationName || invoice.city || invoice.state) && (
                   <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
                     <p className="text-[9px] uppercase tracking-widest font-bold text-amber-400 mb-2 flex items-center gap-1">
                       <MapPin className="w-2.5 h-2.5" /> Work Location
                     </p>
-                    <p className="font-semibold text-gray-800 text-sm">
-                      {[invoice.city, invoice.state].filter(Boolean).join(", ")}
-                    </p>
+                    <div className="space-y-1">
+                      {invoice.locationName && (
+                        <p className="font-semibold text-gray-800 text-sm">{invoice.locationName}</p>
+                      )}
+                      {(invoice.city || invoice.state) && (
+                        <p className="text-xs text-gray-700">
+                          {[invoice.city, invoice.state].filter(Boolean).join(", ")}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -843,6 +850,7 @@ export default function Invoices() {
           dueDate:   form.dueDate  || undefined,
           status:    form.status   as any,
           taxRate:   form.taxRate  ? parseFloat(form.taxRate) : undefined,
+          locationName: form.locationName || undefined,
           city:      form.city     || undefined,
           state:     form.state    || undefined,
           notes:     form.notes    || undefined,

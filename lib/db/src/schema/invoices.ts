@@ -17,6 +17,7 @@ export const invoicesTable = pgTable("invoices", {
   taxAmount: numeric("tax_amount", { precision: 12, scale: 2 }),
   total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
   amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }),
+  locationName: text("location_name"),
   city: text("city"),
   state: text("state"),
   notes: text("notes"),
