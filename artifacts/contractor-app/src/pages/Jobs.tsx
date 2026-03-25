@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, useListInvoices,
-  useUpdateInvoiceStatus, useDeleteInvoice,
+  useUpdateInvoiceStatus, useDeleteInvoice, getJobInvoiceDraft,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -573,8 +573,6 @@ export default function Jobs() {
   const [invoiceDraftData, setInvoiceDraftData]   = useState<InvoiceDraft | null>(null);
   const [invoiceFetching, setInvoiceFetching]     = useState(false);
 
-  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
   const filteredJobs  = jobs.filter(j => {
     if (statusFilter === "all") return true;
     return displayStatus(j.status) === statusFilter;
@@ -603,11 +601,11 @@ export default function Jobs() {
   async function handleReviewInvoice(job: Job) {
     setInvoiceFetching(true);
     try {
-      const resp = await fetch(`${BASE}/api/jobs/${job.id}/invoice-draft`, { credentials: "include" });
-      if (resp.ok) {
-        setInvoiceDraftData(await resp.json());
-        setInvoiceEditorOpen(true);
-      }
+      const draft = await getJobInvoiceDraft(job.id);
+      setInvoiceDraftData(draft);
+      setInvoiceEditorOpen(true);
+    } catch {
+      // ignore — if the draft fetch fails the dialog just won't open
     } finally { setInvoiceFetching(false); }
   }
 
