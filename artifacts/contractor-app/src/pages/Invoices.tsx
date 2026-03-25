@@ -657,12 +657,27 @@ function InvoiceViewModal({
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
                   {invoice.clientName
-                    ? <div className="text-xs space-y-0.5">
-                        <p className="font-semibold text-gray-900">{invoice.clientName}</p>
-                        {invoice.clientAddress && <p className="text-gray-600">{invoice.clientAddress}</p>}
-                        {invoice.clientEmail && <p className="text-gray-600">{invoice.clientEmail}</p>}
-                        {invoice.clientPhone && <p className="text-gray-600">{invoice.clientPhone}</p>}
-                        {invoice.jobTitle && <p className="text-gray-500 mt-1">Re: {invoice.jobTitle}</p>}
+                    ? <div className="space-y-2">
+                        <p className="font-semibold text-gray-900 text-sm">{invoice.clientName}</p>
+                        {invoice.clientEmail && (
+                          <div className="flex items-center text-xs text-gray-600 gap-2">
+                            <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                            <span>{invoice.clientEmail}</span>
+                          </div>
+                        )}
+                        {invoice.clientAddress && (
+                          <div className="flex items-start text-xs text-gray-600 gap-2">
+                            <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0 mt-0.5" />
+                            <span>{invoice.clientAddress}</span>
+                          </div>
+                        )}
+                        {invoice.clientPhone && (
+                          <div className="flex items-center text-xs text-gray-600 gap-2">
+                            <Phone className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                            <span>{invoice.clientPhone}</span>
+                          </div>
+                        )}
+                        {invoice.jobTitle && <p className="text-xs text-gray-500 mt-1">Re: {invoice.jobTitle}</p>}
                       </div>
                     : <p className="text-gray-300 italic text-xs">No client specified</p>}
                 </div>
