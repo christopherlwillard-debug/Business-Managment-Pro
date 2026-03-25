@@ -11,6 +11,7 @@ export interface CreateJobRequest {
   title: string;
   description?: string | null;
   clientId?: number | null;
+  subcontractorId?: number | null;
   status: CreateJobRequestStatus;
   jobType?: string | null;
   address?: string | null;

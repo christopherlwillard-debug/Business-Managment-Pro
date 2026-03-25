@@ -92,6 +92,8 @@ export interface Job {
   description?: string | null;
   clientId?: number | null;
   clientName?: string | null;
+  subcontractorId?: number | null;
+  subcontractorName?: string | null;
   status: JobStatus;
   jobType?: string | null;
   address?: string | null;
@@ -121,6 +123,7 @@ export interface CreateJobRequest {
   title: string;
   description?: string | null;
   clientId?: number | null;
+  subcontractorId?: number | null;
   status: CreateJobRequestStatus;
   jobType?: string | null;
   address?: string | null;

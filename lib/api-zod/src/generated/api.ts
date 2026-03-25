@@ -201,6 +201,8 @@ export const ListJobsResponseItem = zod.object({
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   clientName: zod.string().nullish(),
+  subcontractorId: zod.number().nullish(),
+  subcontractorName: zod.string().nullish(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -229,6 +231,7 @@ export const CreateJobBody = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
+  subcontractorId: zod.number().nullish(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -261,6 +264,8 @@ export const GetJobResponse = zod.object({
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   clientName: zod.string().nullish(),
+  subcontractorId: zod.number().nullish(),
+  subcontractorName: zod.string().nullish(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -292,6 +297,7 @@ export const UpdateJobBody = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
+  subcontractorId: zod.number().nullish(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -317,6 +323,8 @@ export const UpdateJobResponse = zod.object({
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   clientName: zod.string().nullish(),
+  subcontractorId: zod.number().nullish(),
+  subcontractorName: zod.string().nullish(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -1292,6 +1300,8 @@ export const GetDashboardStatsResponse = zod.object({
       description: zod.string().nullish(),
       clientId: zod.number().nullish(),
       clientName: zod.string().nullish(),
+      subcontractorId: zod.number().nullish(),
+      subcontractorName: zod.string().nullish(),
       status: zod.enum([
         "scheduled",
         "in_progress",

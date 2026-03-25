@@ -1313,6 +1313,12 @@ components:
         clientName:
           type: string
           nullable: true
+        subcontractorId:
+          type: integer
+          nullable: true
+        subcontractorName:
+          type: string
+          nullable: true
         status:
           type: string
           enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled]
@@ -1356,6 +1362,9 @@ components:
           type: string
           nullable: true
         clientId:
+          type: integer
+          nullable: true
+        subcontractorId:
           type: integer
           nullable: true
         status:
