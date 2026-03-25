@@ -57,9 +57,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const bottomNavItems = [
     { name: "Home", href: "/", icon: LayoutDashboard },
     { name: "Invoices", href: "/invoices", icon: FileText },
+    { name: "Clients", href: "/clients", icon: Users },
     { name: "Mileage", href: "/mileage", icon: Navigation },
     { name: "Expenses", href: "/expenses", icon: Receipt },
-    { name: "Settings", href: "/settings", icon: Settings },
+    { name: "More", href: "#", icon: Menu, action: () => setMobileMenuOpen(true) },
   ];
 
   return (
@@ -158,12 +159,14 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Mobile bottom navigation bar */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border flex items-stretch shadow-lg">
-        {bottomNavItems.map((item) => {
-          const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+        {bottomNavItems.map((item: any) => {
+          const isActive = item.href !== "#" && (location === item.href || (item.href !== "/" && location.startsWith(item.href)));
+          const Element = item.action ? "button" : Link;
+          
           return (
-            <Link
+            <Element
               key={item.name}
-              href={item.href}
+              {...(item.action ? { onClick: item.action, type: "button" } : { href: item.href })}
               className={cn(
                 "flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold tracking-wide transition-colors",
                 isActive ? "text-primary" : "text-muted-foreground"
@@ -171,7 +174,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             >
               <item.icon className={cn("w-5 h-5", isActive ? "text-primary" : "text-muted-foreground")} />
               {item.name}
-            </Link>
+            </Element>
           );
         })}
       </nav>
