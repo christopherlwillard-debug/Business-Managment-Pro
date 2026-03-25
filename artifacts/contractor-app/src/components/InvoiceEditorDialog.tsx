@@ -59,7 +59,7 @@ export function InvoiceEditorDialog({
   const previewNumber = existingInvoice?.invoiceNumber ?? `${prefix}${nextNum}`;
 
   const isEdit = Boolean(existingInvoice);
-  const lockClientAndLocation = Boolean(initialData) || Boolean(existingInvoice?.jobId);
+  const lockClientAndLocation = Boolean(initialData) && !existingInvoice;
 
   function makeInitialForm() {
     if (existingInvoice) {
