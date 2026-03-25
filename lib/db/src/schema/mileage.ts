@@ -16,6 +16,7 @@ export const mileageLogsTable = pgTable("mileage_logs", {
   ratePerMile: numeric("rate_per_mile", { precision: 5, scale: 3 }).notNull().default("0.725"),
   deductionAmount: numeric("deduction_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   notes: text("notes"),
+  source: text("source").notNull().default("gps"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -24,6 +24,11 @@ import {
   Gauge,
   AlertCircle,
   CheckCircle2,
+  PenLine,
+  ChevronDown,
+  ChevronUp,
+  BatteryLow,
+  MonitorSmartphone,
 } from "lucide-react";
 
 interface Waypoint {
@@ -78,6 +83,18 @@ function fmtDuration(ms: number) {
 
 type TripPhase = "idle" | "tracking" | "classify";
 
+interface ManualForm {
+  date: string;
+  startLocation: string;
+  endLocation: string;
+  miles: string;
+  purpose: string;
+  classification: "business" | "personal";
+  jobId: string;
+}
+
+const today = new Date().toISOString().slice(0, 10);
+
 export default function Mileage() {
   const queryClient = useQueryClient();
   const { data: logs, isLoading } = useListMileageLogs();
@@ -102,6 +119,14 @@ export default function Mileage() {
   const [savedMsg, setSavedMsg] = useState("");
   const [reminderDismissed, setReminderDismissed] = useState(false);
 
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState("");
+  const [manual, setManual] = useState<ManualForm>({
+    date: today, startLocation: "", endLocation: "", miles: "",
+    purpose: "", classification: "business", jobId: "",
+  });
+
   const watchId = useRef<number | null>(null);
   const waypoints = useRef<Waypoint[]>([]);
   const distMeters = useRef(0);
@@ -115,10 +140,10 @@ export default function Mileage() {
   const mileageAutoPauseMinutes: number = parseInt((settings as any)?.mileageAutoPauseMinutes ?? "5") || 0;
   const mileageReminderFrequency: string = (settings as any)?.mileageReminderFrequency ?? "daily";
 
-  // Seed default classification from settings when loaded
   useEffect(() => {
     if (settings) {
       setTripClassification(mileageDefaultClassification);
+      setManual(m => ({ ...m, classification: mileageDefaultClassification }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [(settings as any)?.mileageDefaultClassification]);
@@ -181,7 +206,11 @@ export default function Mileage() {
         setGeoError(`GPS error: ${err.message}`);
         stopTracking();
       },
-      { enableHighAccuracy: !mileageBatterySaving, maximumAge: mileageBatterySaving ? 5000 : 2000, timeout: 15000 }
+      {
+        enableHighAccuracy: !mileageBatterySaving,
+        maximumAge: mileageBatterySaving ? 30000 : 2000,
+        timeout: mileageBatterySaving ? 60000 : 15000,
+      }
     );
   }, [mileageUnits, mileageBatterySaving]);
 
@@ -197,7 +226,6 @@ export default function Mileage() {
     setPhase("classify");
   }, []);
 
-  // Auto-pause: stop tracking when stationary for too long
   useEffect(() => {
     if (phase !== "tracking" || mileageAutoPauseMinutes <= 0) return;
     const checkInterval = setInterval(() => {
@@ -223,7 +251,6 @@ export default function Mileage() {
   }, [mileageDefaultClassification]);
 
   const saveTrip = useCallback(async () => {
-    // Always save in miles for IRS compliance regardless of display units
     const miles = parseFloat(metersToMiles(distMeters.current).toFixed(2));
     if (miles < 0.01) {
       setGeoError("No distance recorded — make sure GPS is enabled and you moved.");
@@ -231,7 +258,7 @@ export default function Mileage() {
       return;
     }
     setSaving(true);
-    const today = new Date().toISOString().slice(0, 10);
+    const tripDate = new Date().toISOString().slice(0, 10);
     const startWp = waypoints.current[0];
     const endWp = waypoints.current[waypoints.current.length - 1];
     const startLabel = startWp ? `${startWp.lat.toFixed(4)}, ${startWp.lng.toFixed(4)}` : "GPS Start";
@@ -240,7 +267,7 @@ export default function Mileage() {
     try {
       const mileageLog = await createMileage.mutateAsync({
         data: {
-          date: today,
+          date: tripDate,
           miles,
           classification: tripClassification,
           startLocation: startLabel,
@@ -248,14 +275,15 @@ export default function Mileage() {
           purpose: tripPurpose || (tripClassification === "business" ? "Business trip" : "Personal trip"),
           jobId: tripJobId ? parseInt(tripJobId) : undefined,
           notes: `GPS tracked · ${fmtDuration(elapsed)}`,
-        },
+          source: "gps",
+        } as any,
       });
 
       if (tripClassification === "business") {
         const deduction = miles * rate;
         await createExpense.mutateAsync({
           data: {
-            date: today,
+            date: tripDate,
             description: `Mileage: ${tripPurpose || "Business trip"} (${miles.toFixed(2)} mi)`,
             vendor: "IRS Mileage",
             category: "mileage",
@@ -285,6 +313,58 @@ export default function Mileage() {
       setSaving(false);
     }
   }, [liveMiles, tripClassification, tripPurpose, tripJobId, elapsed, rate, createMileage, createExpense, queryClient]);
+
+  const saveManualTrip = async () => {
+    if (!manual.date || !manual.miles || parseFloat(manual.miles) <= 0) {
+      setManualError("Date and miles are required.");
+      return;
+    }
+    setManualSaving(true);
+    setManualError("");
+    try {
+      const miles = parseFloat(manual.miles);
+      await createMileage.mutateAsync({
+        data: {
+          date: manual.date,
+          miles,
+          classification: manual.classification,
+          startLocation: manual.startLocation || undefined,
+          endLocation: manual.endLocation || undefined,
+          purpose: manual.purpose || undefined,
+          jobId: manual.jobId ? parseInt(manual.jobId) : undefined,
+          source: "manual",
+        } as any,
+      });
+
+      if (manual.classification === "business") {
+        const deduction = miles * rate;
+        await createExpense.mutateAsync({
+          data: {
+            date: manual.date,
+            description: `Mileage: ${manual.purpose || "Business trip"} (${miles.toFixed(2)} mi)`,
+            vendor: "IRS Mileage",
+            category: "mileage",
+            amount: deduction,
+            jobId: manual.jobId ? parseInt(manual.jobId) : undefined,
+            notes: `Manually logged. ${miles.toFixed(2)} mi × $${rate}/mi`,
+          },
+        });
+      }
+
+      queryClient.invalidateQueries();
+      setSavedMsg(
+        manual.classification === "business"
+          ? `Manual trip saved! ${miles.toFixed(2)} mi logged + $${(miles * rate).toFixed(2)} expense created.`
+          : `Manual trip saved. ${miles.toFixed(2)} personal miles logged.`
+      );
+      setManual({ date: today, startLocation: "", endLocation: "", miles: "", purpose: "", classification: mileageDefaultClassification, jobId: "" });
+      setShowManualForm(false);
+    } catch {
+      setManualError("Failed to save trip. Please try again.");
+    } finally {
+      setManualSaving(false);
+    }
+  };
 
   const handleDelete = async (id: number, classification: string) => {
     if (!confirm(`Delete this ${classification} trip?`)) return;
@@ -317,7 +397,6 @@ export default function Mileage() {
         </div>
       )}
 
-      {/* Reminder banner: trips without a purpose */}
       {!reminderDismissed && mileageReminderFrequency !== "never" && phase === "idle" && (() => {
         const cutoffDays = mileageReminderFrequency === "weekly" ? 7 : 1;
         const cutoff = new Date();
@@ -337,6 +416,29 @@ export default function Mileage() {
           </div>
         );
       })()}
+
+      {/* ── Foreground-required notice (while GPS tracking) ── */}
+      {phase === "tracking" && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900">
+          <MonitorSmartphone className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+          <div className="text-sm">
+            <span className="font-bold">Keep this page open while driving.</span>
+            {" "}The GPS tracker pauses if you leave this tab or lock your phone. If you close the app, use{" "}
+            <button
+              type="button"
+              className="underline font-semibold hover:text-amber-700"
+              onClick={() => { stopTracking(); setShowManualForm(true); }}
+            >
+              Log Trip Manually
+            </button>{" "}to record the missed distance.
+            {mileageBatterySaving && (
+              <span className="ml-1 inline-flex items-center gap-1 text-xs font-medium text-amber-700">
+                <BatteryLow className="w-3.5 h-3.5" /> Battery saver on — GPS updates every 30 s, lower precision.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {phase === "idle" && (
         <Card className="border-border/50 shadow-md bg-card overflow-hidden">
@@ -360,6 +462,158 @@ export default function Mileage() {
             <p className="text-xs text-muted-foreground">
               Your browser will ask for location permission — tap Allow.
             </p>
+            <div className="w-full border-t border-border/50 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowManualForm(v => !v)}
+                className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mx-auto"
+              >
+                <PenLine className="w-4 h-4" />
+                Log Trip Manually
+                {showManualForm ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Manual Entry Form ── */}
+      {showManualForm && phase === "idle" && (
+        <Card className="border-border/50 shadow-md bg-card overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-blue-400 to-blue-600" />
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-2 mb-1">
+              <PenLine className="w-5 h-5 text-blue-500" />
+              <h3 className="text-base font-bold text-foreground">Log Trip Manually</h3>
+            </div>
+
+            {manualError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" /> {manualError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Date *</label>
+                <input
+                  type="date"
+                  value={manual.date}
+                  onChange={e => setManual(m => ({ ...m, date: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Miles *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="e.g. 12.5"
+                  value={manual.miles}
+                  onChange={e => setManual(m => ({ ...m, miles: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Start Location</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Home, 123 Main St"
+                  value={manual.startLocation}
+                  onChange={e => setManual(m => ({ ...m, startLocation: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">End Location</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Job site, Supplier"
+                  value={manual.endLocation}
+                  onChange={e => setManual(m => ({ ...m, endLocation: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Purpose / Description</label>
+              <input
+                type="text"
+                placeholder="e.g. Material run to Home Depot"
+                value={manual.purpose}
+                onChange={e => setManual(m => ({ ...m, purpose: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setManual(m => ({ ...m, classification: "business" }))}
+                className={`flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 transition-all text-sm ${
+                  manual.classification === "business"
+                    ? "border-primary bg-primary/10 text-primary font-bold"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                }`}
+              >
+                <Briefcase className="w-5 h-5" />
+                Business
+              </button>
+              <button
+                type="button"
+                onClick={() => setManual(m => ({ ...m, classification: "personal" }))}
+                className={`flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 transition-all text-sm ${
+                  manual.classification === "personal"
+                    ? "border-border bg-muted text-foreground font-bold"
+                    : "border-border text-muted-foreground hover:border-border"
+                }`}
+              >
+                <User className="w-5 h-5" />
+                Personal
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
+              <select
+                value={manual.jobId}
+                onChange={e => setManual(m => ({ ...m, jobId: e.target.value }))}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">No specific job</option>
+                {(jobs as any[]).map((j: any) => (
+                  <option key={j.id} value={j.id}>{j.title}</option>
+                ))}
+              </select>
+            </div>
+
+            {manual.classification === "business" && manual.miles && parseFloat(manual.miles) > 0 && (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                <span className="font-semibold">Auto-expense:</span> A{" "}
+                <span className="font-bold">{formatCurrency(parseFloat(manual.miles) * rate)}</span> mileage
+                expense will be added automatically to your Expenses log.
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => { setShowManualForm(false); setManualError(""); }}
+                className="flex-1 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveManualTrip}
+                disabled={manualSaving}
+                className="flex-1 py-2.5 rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
+              >
+                {manualSaving ? "Saving..." : manual.classification === "business" ? "Save & Log Expense" : "Save Trip"}
+              </button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -560,19 +814,20 @@ export default function Mileage() {
                 <th className="px-6 py-4 text-right">{mileageUnits === "km" ? "Km" : "Miles"}</th>
                 <th className="px-6 py-4 text-right">Deduction</th>
                 <th className="px-6 py-4 text-center">Type</th>
+                <th className="px-6 py-4 text-center">Source</th>
                 <th className="px-6 py-4 text-center">Delete</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground animate-pulse">
+                  <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground animate-pulse">
                     Loading logs...
                   </td>
                 </tr>
               ) : !(logs as any[])?.length ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
                     <Navigation className="w-8 h-8 mx-auto mb-2 opacity-20" />
                     No mileage logged yet — start a trip above!
                   </td>
@@ -608,6 +863,17 @@ export default function Mileage() {
                       >
                         {log.classification}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {log.source === "manual" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-50 text-blue-600 text-xs font-semibold">
+                          <PenLine className="w-3 h-3" /> Manual
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-600 text-xs font-semibold">
+                          <Navigation className="w-3 h-3" /> GPS
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button

@@ -74,7 +74,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { date, startLocation, endLocation, miles, purpose, jobId, classification, notes } = req.body;
+    const { date, startLocation, endLocation, miles, purpose, jobId, classification, notes, source } = req.body;
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
     const rate = await getRate();
     const deductionAmount = classification === "business" ? parseFloat(miles) * rate : 0;
@@ -86,7 +86,8 @@ router.post("/", async (req, res) => {
       classification: classification || "business",
       ratePerMile: rate.toString(),
       deductionAmount: deductionAmount.toString(),
-      notes
+      notes,
+      source: source || "gps",
     }).returning();
 
     let jobTitle = null;
