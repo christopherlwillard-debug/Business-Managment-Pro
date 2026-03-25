@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListJobs, useCreateJob, useListClients, useListSubcontractors } from "@workspace/api-client-react";
+import { useListJobs, useCreateJob, useListClients, useListSubcontractors, CreateJobRequestStatus } from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Plus, MapPin, Calendar, DollarSign, Building, HardHat, Briefcase } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,7 +22,7 @@ export default function Jobs() {
           title: formData.get("title") as string,
           clientId: formData.get("clientId") ? parseInt(formData.get("clientId") as string) : undefined,
           subcontractorId: formData.get("subcontractorId") ? parseInt(formData.get("subcontractorId") as string) : undefined,
-          status: formData.get("status") as any || "scheduled",
+          status: (formData.get("status") as CreateJobRequestStatus) || CreateJobRequestStatus.scheduled,
           jobType: formData.get("jobType") as string,
           address: formData.get("address") as string,
           city: formData.get("city") as string,
@@ -157,7 +157,7 @@ export default function Jobs() {
               <label className="block text-sm font-medium mb-1">Assign Subcontractor</label>
               <select name="subcontractorId" className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none">
                 <option value="">None (Admin job)</option>
-                {subs?.map(s => <option key={s.id} value={s.id}>{s.name}{(s as any).trade ? ` — ${(s as any).trade}` : ""}</option>)}
+                {subs?.map(s => <option key={s.id} value={s.id}>{s.name}{s.trade ? ` — ${s.trade}` : ""}</option>)}
               </select>
             </div>
 
