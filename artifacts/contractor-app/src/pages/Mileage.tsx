@@ -451,7 +451,21 @@ export default function Mileage() {
                 type="button"
                 onClick={() => {
                   setInterruptionPrompt(false);
-                  stopTracking();
+                  // Clear GPS watch and timer without transitioning to "classify"
+                  // so the manual form (which requires phase === "idle") is immediately available
+                  if (watchId.current !== null) {
+                    navigator.geolocation.clearWatch(watchId.current);
+                    watchId.current = null;
+                  }
+                  if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                  }
+                  distMeters.current = 0;
+                  waypoints.current = [];
+                  setLiveMiles(0);
+                  setLiveSpeed(0);
+                  setPhase("idle");
                   setShowManualForm(true);
                 }}
                 className="px-4 py-2 rounded-xl text-sm font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
