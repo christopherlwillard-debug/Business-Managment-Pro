@@ -171,7 +171,10 @@ export function InvoiceEditorDialog({
 
   function handlePrint() {
     const win = window.open("", "_blank", "width=900,height=1100");
-    if (!win) { window.print(); return; }
+    if (!win) {
+      alert("Your browser blocked the print preview popup. Please allow popups for this site and try again.");
+      return;
+    }
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const row = (label: string, val: string) => val

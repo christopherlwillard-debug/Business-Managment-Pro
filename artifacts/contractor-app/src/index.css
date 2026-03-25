@@ -165,7 +165,7 @@
   .invoice-print-area select,
   .invoice-print-area textarea,
   .invoice-print-area button { display: none !important; }
-  @page { margin: 0.75in; }
+  @page { margin: 0.75in; size: auto; }
 }
 
 /* Custom Scrollbar for a premium feel */
