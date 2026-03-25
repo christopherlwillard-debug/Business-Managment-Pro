@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useListSubcontractors, useCreateSubcontractor } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import {
-  HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy, ExternalLink,
+  HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy,
   RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -20,7 +20,6 @@ export default function Subcontractors() {
   const [generating, setGenerating] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [popupBlocked, setPopupBlocked] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -109,20 +108,8 @@ export default function Subcontractors() {
     setTimeout(() => setCopied(false), 2500);
   }
 
-  function previewPortal(token: string) {
-    const url = getPortalUrl(token);
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) {
-      navigator.clipboard.writeText(url);
-      setCopied(true);
-      setPopupBlocked(true);
-      setTimeout(() => { setCopied(false); setPopupBlocked(false); }, 4000);
-    }
-  }
-
   function openInviteModal(sub: any) {
     setCopied(false);
-    setPopupBlocked(false);
     setPortalError(null);
     setInviteModal({
       name: sub.name,
@@ -315,52 +302,29 @@ export default function Subcontractors() {
                     </p>
                   </div>
 
-                  {/* Portal link */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Portal Link</label>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <div className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-xs font-mono text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-                        {getPortalUrl(inviteModal.token)}
-                      </div>
-                      <button
-                        onClick={() => copyLink(inviteModal.token!)}
-                        className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors sm:flex-shrink-0 ${
-                          copied
-                            ? "bg-emerald-600 text-white"
-                            : "bg-primary text-primary-foreground hover:bg-primary/90"
-                        }`}
-                      >
-                        {copied ? <><CheckCheck className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy Link</>}
-                      </button>
-                    </div>
-                  </div>
+                  {/* Copy button */}
+                  <button
+                    onClick={() => copyLink(inviteModal.token!)}
+                    className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-colors ${
+                      copied
+                        ? "bg-emerald-600 text-white"
+                        : "bg-primary text-primary-foreground hover:bg-primary/90"
+                    }`}
+                  >
+                    {copied ? <><CheckCheck className="w-5 h-5" /> Link Copied!</> : <><Copy className="w-5 h-5" /> Copy Portal Link</>}
+                  </button>
 
-                  {popupBlocked && (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      Popup blocked — link copied to clipboard. Paste it in a new browser tab to preview the portal.
-                    </p>
-                  )}
-
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <button
-                      onClick={() => previewPortal(inviteModal.token!)}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition-colors"
-                    >
-                      <ExternalLink className="w-4 h-4" /> Preview Portal
-                    </button>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Paste the link and send it to {inviteModal.name}.</p>
                     <button
                       onClick={() => generateAndApprovePortalLink(inviteModal.id)}
                       disabled={generating}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition-colors text-muted-foreground disabled:opacity-50"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 flex-shrink-0 ml-3"
                     >
-                      <RefreshCw className={`w-4 h-4 ${generating ? "animate-spin" : ""}`} />
+                      <RefreshCw className={`w-3 h-3 ${generating ? "animate-spin" : ""}`} />
                       {generating ? "Regenerating…" : "New Link"}
                     </button>
                   </div>
-
-                  <p className="text-xs text-muted-foreground text-center">
-                    Generating a new link will invalidate the old one. Revoke to block access anytime.
-                  </p>
                 </>
               ) : inviteModal.token && !inviteModal.portalApproved ? (
                 <>
