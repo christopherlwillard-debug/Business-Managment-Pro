@@ -55,7 +55,7 @@ function useDeleteExpense() {
       const res = await fetch(`${API}/expenses/${id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) throw new Error("Failed to delete expense");
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["listExpenses"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/expenses"] }),
   });
 }
 
