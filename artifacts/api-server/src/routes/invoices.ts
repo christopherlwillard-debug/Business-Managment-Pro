@@ -23,12 +23,14 @@ async function getNextInvoiceNumber() {
   return `${prefix}${num}`;
 }
 
-function formatInvoice(inv: any, clientName?: string | null, clientEmail?: string | null, jobTitle?: string | null, jobCity?: string | null, jobState?: string | null) {
+function formatInvoice(inv: any, clientName?: string | null, clientEmail?: string | null, clientAddress?: string | null, clientPhone?: string | null, jobTitle?: string | null, jobCity?: string | null, jobState?: string | null) {
   const lineItems = Array.isArray(inv.lineItems) ? inv.lineItems : [];
   return {
     ...inv,
     clientName: clientName ?? null,
     clientEmail: clientEmail ?? null,
+    clientAddress: clientAddress ?? null,
+    clientPhone: clientPhone ?? null,
     jobTitle: jobTitle ?? null,
     jobCity: jobCity ?? null,
     jobState: jobState ?? null,
@@ -52,6 +54,8 @@ const invoiceSelect = {
   ...invoicesTable,
   clientName: clientsTable.name,
   clientEmail: clientsTable.email,
+  clientAddress: clientsTable.address,
+  clientPhone: clientsTable.phone,
   jobTitle: jobsTable.title,
   jobCity: jobsTable.city,
   jobState: jobsTable.state,
@@ -65,7 +69,7 @@ function buildInvoiceQuery() {
 }
 
 function fmt(inv: any) {
-  return formatInvoice(inv, inv.clientName, inv.clientEmail, inv.jobTitle, inv.jobCity, inv.jobState);
+  return formatInvoice(inv, inv.clientName, inv.clientEmail, inv.clientAddress, inv.clientPhone, inv.jobTitle, inv.jobCity, inv.jobState);
 }
 
 router.get("/tax-report", async (req, res) => {

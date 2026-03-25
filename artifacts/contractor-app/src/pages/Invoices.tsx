@@ -279,6 +279,8 @@ function InvoiceBuilder({
                               setField("clientId", String(c.id));
                               setField("jobId", "");
                               setField("clientEmail", c.email || "");
+                              setField("clientPhone", c.phone || "");
+                              setField("clientAddress", c.address || "");
                               if (c.city) setField("city", c.city);
                               setIsNewClient(false);
                               setShowClientDrop(false);
@@ -314,11 +316,27 @@ function InvoiceBuilder({
                       {filteredJobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
                     </select>
                   </div>
-                  {form.clientId && form.clientEmail && (
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Email</label>
-                      <p className="px-3 py-2 text-sm text-gray-700">{form.clientEmail}</p>
-                    </div>
+                  {form.clientId && (
+                    <>
+                      {form.clientAddress && (
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Address</label>
+                          <p className="px-3 py-2 text-sm text-gray-700">{form.clientAddress}</p>
+                        </div>
+                      )}
+                      {form.clientEmail && (
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Email</label>
+                          <p className="px-3 py-2 text-sm text-gray-700">{form.clientEmail}</p>
+                        </div>
+                      )}
+                      {form.clientPhone && (
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Phone</label>
+                          <p className="px-3 py-2 text-sm text-gray-700">{form.clientPhone}</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -639,12 +657,14 @@ function InvoiceViewModal({
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
                   {invoice.clientName
-                    ? <>
-                        <p className="font-semibold text-gray-900 text-sm">{invoice.clientName}</p>
-                        {invoice.clientEmail && <p className="text-xs text-gray-600 mt-1">{invoice.clientEmail}</p>}
-                      </>
+                    ? <div className="text-xs space-y-0.5">
+                        <p className="font-semibold text-gray-900">{invoice.clientName}</p>
+                        {invoice.clientAddress && <p className="text-gray-600">{invoice.clientAddress}</p>}
+                        {invoice.clientEmail && <p className="text-gray-600">{invoice.clientEmail}</p>}
+                        {invoice.clientPhone && <p className="text-gray-600">{invoice.clientPhone}</p>}
+                        {invoice.jobTitle && <p className="text-gray-500 mt-1">Re: {invoice.jobTitle}</p>}
+                      </div>
                     : <p className="text-gray-300 italic text-xs">No client specified</p>}
-                  {invoice.jobTitle && <p className="text-xs text-gray-500 mt-0.5">Re: {invoice.jobTitle}</p>}
                 </div>
                 {(invoice.city || invoice.state) && (
                   <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
@@ -762,7 +782,7 @@ export default function Invoices() {
       issueDate: new Date().toISOString().slice(0, 10),
       dueDate: "", status: "draft", taxRate: "",
       city: "", state: "KY", notes: "", terms: "Net 30",
-      clientEmail: "", locationName: "",
+      clientEmail: "", clientPhone: "", clientAddress: "", locationName: "",
     });
     setLineItems([emptyLine()]);
     setFormError("");
