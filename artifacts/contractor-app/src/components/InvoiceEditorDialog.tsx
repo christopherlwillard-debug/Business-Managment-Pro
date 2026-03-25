@@ -169,6 +169,142 @@ export function InvoiceEditorDialog({
   const hasExact = clients.some(c => c.name.toLowerCase() === clientInput.toLowerCase());
   const selectedClient = clients.find(c => String(c.id) === form.clientId);
 
+  function handlePrint() {
+    const win = window.open("", "_blank", "width=900,height=1100");
+    if (!win) { window.print(); return; }
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const row = (label: string, val: string) => val
+      ? `<tr><td style="color:#9ca3af;padding:2px 8px 2px 0;white-space:nowrap;font-size:11px;font-weight:600;">${esc(label)}</td><td style="font-size:11px;color:#374151;">${esc(val)}</td></tr>`
+      : "";
+
+    const clientLines = [
+      clientInput,
+      form.clientEmail,
+      form.clientPhone,
+      form.clientAddress,
+      [form.clientCity, form.clientState, form.clientZip].filter(Boolean).join(", "),
+    ].filter(Boolean);
+
+    const locationLines = [
+      form.locationName,
+      [form.city, form.state].filter(Boolean).join(", "),
+    ].filter(Boolean);
+
+    const lineItemRows = lineItems
+      .filter(l => l.description.trim())
+      .map(l => `
+        <tr style="border-bottom:1px solid #f3f4f6;">
+          <td style="padding:6px 8px 6px 0;font-size:11px;color:#374151;">${esc(l.description)}</td>
+          <td style="padding:6px 4px;text-align:right;font-size:11px;color:#374151;">${l.quantity}</td>
+          <td style="padding:6px 4px;text-align:right;font-size:11px;color:#374151;">$${l.unitPrice.toFixed(2)}</td>
+          <td style="padding:6px 0 6px 4px;text-align:right;font-size:11px;font-weight:600;color:#111827;">$${(l.quantity * l.unitPrice).toFixed(2)}</td>
+        </tr>`)
+      .join("");
+
+    const logoHtml = logoUrl
+      ? `<img src="${base}${logoUrl}" style="height:${logoPx}px;width:auto;max-width:${logoPx * 2.5}px;object-fit:contain;display:block;" />`
+      : `<div style="width:44px;height:44px;background:#fef3c7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">🏗️</div>`;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Invoice ${previewNumber}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111827; background: #fff; padding: 48px; }
+    @page { margin: 0.75in; size: letter; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div style="border-top:6px solid #f59e0b; padding-top:24px;">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;">
+      <div style="flex:1;">
+        ${logoHtml}
+        <div style="font-size:18px;font-weight:800;color:#111827;margin-top:8px;">${esc(companyName)}</div>
+        ${companyAddress ? `<div style="font-size:11px;color:#6b7280;">${esc(companyAddress)}</div>` : ""}
+        ${(companyCity||companyState||companyZip) ? `<div style="font-size:11px;color:#6b7280;">${esc([companyCity,companyState,companyZip].filter(Boolean).join(", "))}</div>` : ""}
+        ${companyPhone ? `<div style="font-size:11px;color:#6b7280;">${esc(companyPhone)}</div>` : ""}
+        ${companyEmail ? `<div style="font-size:11px;color:#6b7280;">${esc(companyEmail)}</div>` : ""}
+      </div>
+      <div style="text-align:right;min-width:180px;">
+        <div style="font-size:28px;font-weight:900;color:#e5e7eb;letter-spacing:.1em;text-transform:uppercase;">Invoice</div>
+        <div style="font-size:14px;font-weight:700;color:#f59e0b;margin-top:-4px;">${esc(previewNumber)}</div>
+        <table style="margin-top:12px;margin-left:auto;">
+          <tbody>
+            ${row("Date", form.issueDate)}
+            ${row("Due", form.dueDate)}
+            ${row("Terms", form.terms)}
+            ${row("Status", form.status.charAt(0).toUpperCase() + form.status.slice(1))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Bill To + Work Location -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;">
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Bill To</div>
+        <div style="background:#f9fafb;border-radius:8px;padding:12px;font-size:11px;color:#374151;line-height:1.6;">
+          ${clientLines.map((l, i) => i === 0 ? `<div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:2px;">${esc(l)}</div>` : `<div>${esc(l)}</div>`).join("")}
+          ${clientLines.length === 0 ? '<div style="color:#9ca3af;font-style:italic;">No client assigned</div>' : ""}
+        </div>
+      </div>
+      ${locationLines.length > 0 ? `
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">📍 Work Location</div>
+        <div style="background:#fffbeb;border-radius:8px;padding:12px;font-size:11px;color:#374151;line-height:1.6;">
+          ${locationLines.map((l, i) => i === 0 ? `<div style="font-weight:600;font-size:12px;color:#111827;">${esc(l)}</div>` : `<div>${esc(l)}</div>`).join("")}
+        </div>
+      </div>` : "<div></div>"}
+    </div>
+
+    <!-- Line Items -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+      <thead>
+        <tr style="border-bottom:2px solid #111827;">
+          <th style="text-align:left;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:50%;">Description</th>
+          <th style="text-align:right;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:12%;">Qty</th>
+          <th style="text-align:right;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:20%;">Unit Price</th>
+          <th style="text-align:right;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:18%;">Total</th>
+        </tr>
+      </thead>
+      <tbody>${lineItemRows}</tbody>
+    </table>
+
+    <!-- Totals -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:32px;">
+      <div style="width:200px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;padding:3px 0;">
+          <span>Subtotal</span><span>$${subtotal.toFixed(2)}</span>
+        </div>
+        ${taxRate > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;padding:3px 0;">
+          <span>Tax (${taxRate}%)</span><span>$${taxAmount.toFixed(2)}</span>
+        </div>` : ""}
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;color:#f59e0b;border-top:2px solid #111827;padding-top:8px;margin-top:4px;">
+          <span style="color:#111827;">Total Due</span><span>$${total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+
+    ${form.notes ? `<div style="border-top:1px solid #e5e7eb;padding-top:16px;margin-bottom:16px;">
+      <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Notes</div>
+      <div style="font-size:11px;color:#374151;white-space:pre-wrap;">${esc(form.notes)}</div>
+    </div>` : ""}
+
+    <div style="border-top:4px solid #f59e0b;margin-top:8px;"></div>
+  </div>
+  <script>window.onload = function() { window.print(); };</script>
+</body>
+</html>`;
+
+    win.document.write(html);
+    win.document.close();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!lineItems.some(l => l.description.trim())) {
@@ -251,7 +387,7 @@ export function InvoiceEditorDialog({
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={handlePrint}
                 className="flex items-center gap-2 px-4 py-1.5 rounded-xl font-semibold text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 <Printer className="w-4 h-4" /> Print / Export PDF
@@ -271,7 +407,7 @@ export function InvoiceEditorDialog({
 
           {/* Invoice document */}
           <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
-            <div className="invoice-print-area max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+            <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
               <div className="h-2 bg-gradient-to-r from-amber-500 to-amber-400" />
               <div className="p-6 space-y-6">
 

@@ -144,55 +144,6 @@
   }
 }
 
-/* ── Invoice Print / PDF Export ─────────────────────────────────────── */
-@media print {
-  /* Hide all page content by default */
-  body * {
-    visibility: hidden;
-  }
-
-  /* Reveal only the invoice document and all its descendants */
-  .invoice-print-area,
-  .invoice-print-area * {
-    visibility: visible;
-  }
-
-  /* Position the invoice at the top-left of the printed page */
-  .invoice-print-area {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    max-width: 100% !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-    overflow: visible !important;
-  }
-
-  /* Make form inputs look like plain text (show current values cleanly) */
-  .invoice-print-area input,
-  .invoice-print-area select,
-  .invoice-print-area textarea {
-    border: none !important;
-    border-bottom: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    -webkit-appearance: none;
-    appearance: none;
-  }
-
-  /* Remove the "Add Line Item" button and action row buttons */
-  .invoice-print-area button {
-    display: none !important;
-  }
-
-  /* Ensure page margins look clean */
-  @page {
-    margin: 0.75in;
-  }
-}
 
 /* Custom Scrollbar for a premium feel */
 ::-webkit-scrollbar {
