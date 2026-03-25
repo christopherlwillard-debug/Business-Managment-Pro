@@ -23,7 +23,7 @@ class PortalApiError extends Error {
 }
 
 async function apiFetch(path: string, opts?: RequestInit) {
-  const res = await fetch(`${BASE}/api${path}`, opts);
+  const res = await fetch(`${BASE}/api${path}`, { credentials: "include", ...opts });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new PortalApiError(err.error || "Request failed", res.status, !!err.pendingApproval);
@@ -192,8 +192,8 @@ function SetPinScreen({ token, onPinSet }: { token: string; onPinSet: () => void
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleConfirm() {
-    if (pin !== confirm) { setError("PINs don't match. Try again."); setConfirm(""); return; }
+  async function handleConfirm(c = confirm) {
+    if (pin !== c) { setError("PINs don't match. Try again."); setConfirm(""); return; }
     setError("");
     setLoading(true);
     try {
@@ -201,6 +201,7 @@ function SetPinScreen({ token, onPinSet }: { token: string; onPinSet: () => void
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, pin }),
+        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to set PIN");
@@ -212,13 +213,23 @@ function SetPinScreen({ token, onPinSet }: { token: string; onPinSet: () => void
     }
   }
 
+  function advanceToConfirm(p = pin) {
+    if (p.length >= 4) setStep("confirm");
+  }
+
+  // Auto-advance enter → confirm at 6 digits
   useEffect(() => {
-    if (step === "enter" && pin.length === 6) { setStep("confirm"); }
+    if (step === "enter" && pin.length === 6) advanceToConfirm(pin);
   }, [pin, step]);
 
+  // Auto-submit confirm when confirm matches pin length (4–6 digit PINs)
   useEffect(() => {
-    if (step === "confirm" && confirm.length === 6) { handleConfirm(); }
-  }, [confirm, step]);
+    if (step === "confirm" && confirm.length === pin.length) handleConfirm(confirm);
+  }, [confirm, step, pin.length]);
+
+  const currentVal = step === "enter" ? pin : confirm;
+  const canAdvance = step === "enter" && pin.length >= 4 && pin.length < 6;
+  const canConfirm = step === "confirm" && confirm.length >= 4 && confirm.length < pin.length;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -235,12 +246,20 @@ function SetPinScreen({ token, onPinSet }: { token: string; onPinSet: () => void
           </p>
         </div>
         <PinInput
-          value={step === "enter" ? pin : confirm}
+          value={currentVal}
           onChange={step === "enter" ? setPin : setConfirm}
           disabled={loading}
         />
+        {(canAdvance || canConfirm) && !loading && (
+          <button
+            onClick={() => step === "enter" ? advanceToConfirm() : handleConfirm()}
+            className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            {step === "enter" ? "Use this PIN →" : "Confirm PIN →"}
+          </button>
+        )}
         {error && <p className="text-sm text-destructive bg-destructive/10 px-4 py-2.5 rounded-xl">{error}</p>}
-        {step === "confirm" && (
+        {step === "confirm" && !loading && (
           <button onClick={() => { setStep("enter"); setPin(""); setConfirm(""); setError(""); }} className="text-xs text-muted-foreground underline">
             Start over
           </button>
@@ -258,6 +277,7 @@ function EnterPinScreen({ token, onVerified }: { token: string; onVerified: () =
   const [locked, setLocked] = useState(false);
 
   async function verify(p: string) {
+    if (p.length < 4) return;
     setError("");
     setLoading(true);
     try {
@@ -265,6 +285,7 @@ function EnterPinScreen({ token, onVerified }: { token: string; onVerified: () =
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, pin: p }),
+        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) {
@@ -280,9 +301,12 @@ function EnterPinScreen({ token, onVerified }: { token: string; onVerified: () =
     }
   }
 
+  // Auto-submit at 6 digits; for 4-5 digits the submit button is shown below
   useEffect(() => {
-    if (pin.length === 6 && !loading && !locked) { verify(pin); }
+    if (pin.length === 6 && !loading && !locked) verify(pin);
   }, [pin]);
+
+  const canSubmit = pin.length >= 4 && pin.length < 6 && !loading && !locked;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -292,7 +316,7 @@ function EnterPinScreen({ token, onVerified }: { token: string; onVerified: () =
         </div>
         <div className="space-y-1">
           <h1 className="text-2xl font-display font-bold">Enter your PIN</h1>
-          <p className="text-sm text-muted-foreground">Enter your portal PIN to continue.</p>
+          <p className="text-sm text-muted-foreground">Enter your 4–6 digit portal PIN to continue.</p>
         </div>
         {locked ? (
           <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-800">
@@ -301,6 +325,14 @@ function EnterPinScreen({ token, onVerified }: { token: string; onVerified: () =
         ) : (
           <>
             <PinInput value={pin} onChange={setPin} disabled={loading} />
+            {canSubmit && (
+              <button
+                onClick={() => verify(pin)}
+                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                Submit PIN →
+              </button>
+            )}
             {error && <p className="text-sm text-destructive bg-destructive/10 px-4 py-2.5 rounded-xl">{error}</p>}
             {loading && <p className="text-sm text-muted-foreground animate-pulse">Verifying…</p>}
           </>
@@ -1307,6 +1339,7 @@ export default function SubcontractorPortal() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
+      credentials: "include",
     })
       .then(r => r.json())
       .then(d => setPinStatus({ checked: true, valid: !!d.valid, pinSet: !!d.pinSet }))

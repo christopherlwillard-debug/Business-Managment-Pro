@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { subcontractorsTable, jobsTable, expensesTable, mileageLogsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
@@ -17,28 +17,72 @@ async function getRate() {
   return parseFloat(s?.mileageRate ?? "0.725");
 }
 
-// ─── PIN Security ────────────────────────────────────────────────────────────
+// ─── PIN Security ─────────────────────────────────────────────────────────────
 
 const PORTAL_SESSION_COOKIE = "portal_sessions";
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+const PIN_COOKIE_SECRET = process.env.SESSION_SECRET ?? "buildpro-portal-pin-secret-2024";
 
-function getPortalSessions(req: any): Record<string, number> {
+/** HMAC-sign the sessions map so the cookie cannot be forged by the client */
+function signSessions(sessions: Record<string, number>): string {
+  const data = JSON.stringify(sessions);
+  return crypto.createHmac("sha256", PIN_COOKIE_SECRET).update(data).digest("hex");
+}
+
+/** Read and cryptographically verify the portal session cookie. Returns {} on any tampering. */
+function getVerifiedPortalSessions(req: Request): Record<string, number> {
   try {
-    const raw = req.cookies?.[PORTAL_SESSION_COOKIE];
+    const raw = (req as any).cookies?.[PORTAL_SESSION_COOKIE];
     if (!raw) return {};
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as { s: Record<string, number>; t: string };
+    if (!parsed?.s || !parsed?.t) return {};
+    // Constant-time comparison to prevent timing attacks
+    const expected = signSessions(parsed.s);
+    const expectedBuf = Buffer.from(expected, "utf8");
+    const actualBuf = Buffer.from(parsed.t, "utf8");
+    if (expectedBuf.length !== actualBuf.length || !crypto.timingSafeEqual(expectedBuf, actualBuf)) {
+      return {}; // cookie tampered
+    }
+    const now = Date.now();
+    return Object.fromEntries(Object.entries(parsed.s).filter(([, exp]) => (exp as number) > now));
   } catch {
     return {};
   }
 }
 
-function setPortalSession(res: any, token: string, sessions: Record<string, number>) {
-  sessions[token] = Date.now() + SESSION_TTL_MS;
-  res.cookie(PORTAL_SESSION_COOKIE, JSON.stringify(sessions), {
+/** Write an HMAC-signed portal session cookie */
+function setPortalSession(res: Response, token: string, current: Record<string, number>) {
+  current[token] = Date.now() + SESSION_TTL_MS;
+  const t = signSessions(current);
+  res.cookie(PORTAL_SESSION_COOKIE, JSON.stringify({ s: current, t }), {
     httpOnly: true,
     sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours cookie lifetime
+    maxAge: 24 * 60 * 60 * 1000, // 24-hour cookie lifetime
   });
+}
+
+/**
+ * Server-side gate: if the subcontractor has a PIN set, require a valid
+ * signed session cookie before serving any portal data.
+ * Routes that do NOT need this gate: /check-session, /set-pin, /verify-pin
+ */
+async function requirePinSession(req: Request, res: Response, next: NextFunction) {
+  const token = req.params.token;
+  if (!token) return res.status(401).json({ error: "Invalid portal link" });
+
+  const sub = await getSubByToken(token);
+  if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+
+  // No PIN configured → open access (backwards-compatible)
+  if (!sub.portalPinHash) return next();
+
+  // PIN is configured → verify session
+  const sessions = getVerifiedPortalSessions(req);
+  const exp = sessions[token];
+  if (!exp || exp < Date.now()) {
+    return res.status(401).json({ error: "PIN verification required", requirePin: true });
+  }
+  return next();
 }
 
 // Check if a portal PIN session is valid
@@ -51,7 +95,7 @@ router.post("/check-session", async (req, res) => {
     if (!sub) return res.json({ valid: false, pinSet: false });
 
     const pinSet = !!sub.portalPinHash;
-    const sessions = getPortalSessions(req);
+    const sessions = getVerifiedPortalSessions(req);
     const exp = sessions[token];
     const valid = !!exp && exp > Date.now();
 
@@ -77,7 +121,7 @@ router.post("/set-pin", async (req, res) => {
       .set({ portalPinHash: hash, portalPinAttempts: 0, portalPinLockedUntil: null })
       .where(eq(subcontractorsTable.id, sub.id));
 
-    const sessions = getPortalSessions(req);
+    const sessions = getVerifiedPortalSessions(req);
     setPortalSession(res, token, sessions);
     return res.json({ success: true });
   } catch (err) {
@@ -125,7 +169,7 @@ router.post("/verify-pin", async (req, res) => {
       .set({ portalPinAttempts: 0, portalPinLockedUntil: null })
       .where(eq(subcontractorsTable.id, sub.id));
 
-    const sessions = getPortalSessions(req);
+    const sessions = getVerifiedPortalSessions(req);
     setPortalSession(res, token, sessions);
     return res.json({ success: true });
   } catch (err) {
@@ -170,87 +214,21 @@ router.post("/generate/:subId", async (req, res) => {
   }
 });
 
-// Tax report for a year
-router.get("/:token/tax-report", async (req, res) => {
-  try {
-    const sub = await getSubByToken(req.params.token);
-    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
-    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+function maskTaxId(id: string): string {
+  if (id.length <= 4) return "***-" + id;
+  return "***-**-" + id.slice(-4);
+}
 
-    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
-    const startDate = `${year}-01-01`;
-    const endDate = `${year}-12-31`;
+// ─── Token-scoped data routes (all gated by requirePinSession) ─────────────────
+// Every route below requires either no PIN to be set on the subcontractor, or a
+// valid HMAC-verified PIN session cookie.  This is enforced server-side by the
+// requirePinSession middleware — bypassing the frontend does NOT grant access.
 
-    const [expenses, mileage] = await Promise.all([
-      db.select().from(expensesTable).where(
-        and(
-          eq(expensesTable.subcontractorId, sub.id),
-          gte(expensesTable.date, startDate),
-          lte(expensesTable.date, endDate)
-        )
-      ),
-      db.select().from(mileageLogsTable).where(
-        and(
-          eq(mileageLogsTable.subcontractorId, sub.id),
-          gte(mileageLogsTable.date, startDate),
-          lte(mileageLogsTable.date, endDate)
-        )
-      ),
-    ]);
-
-    const rate = await getRate();
-    const grossIncome = parseFloat(sub.ytdPayments ?? "0");
-
-    // Expenses by category
-    const expensesByCategory: Record<string, number> = {};
-    let totalExpenses = 0;
-    for (const e of expenses) {
-      const amt = parseFloat(e.amount);
-      expensesByCategory[e.category] = (expensesByCategory[e.category] ?? 0) + amt;
-      totalExpenses += amt;
-    }
-
-    // Mileage
-    const businessMiles = mileage.filter(m => m.classification === "business");
-    const totalBusinessMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles), 0);
-    const mileageDeduction = totalBusinessMiles * rate;
-
-    const totalDeductions = totalExpenses + mileageDeduction;
-    const netIncome = Math.max(0, grossIncome - totalDeductions);
-    const seTaxEstimate = netIncome * 0.9235 * 0.153; // SE tax on 92.35% of net income at 15.3%
-    const seDeduction = seTaxEstimate / 2; // Deductible half of SE tax
-    const federalTaxableIncome = Math.max(0, netIncome - seDeduction);
-
-    res.json({
-      year,
-      grossIncome,
-      expenses: {
-        total: totalExpenses,
-        byCategory: expensesByCategory,
-        count: expenses.length,
-      },
-      mileage: {
-        totalMiles: totalBusinessMiles,
-        ratePerMile: rate,
-        deduction: mileageDeduction,
-        count: businessMiles.length,
-      },
-      totalDeductions,
-      netIncome,
-      seTaxEstimate,
-      seDeduction,
-      federalTaxableIncome,
-      subName: sub.name,
-      w9LegalName: sub.w9LegalName,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to generate tax report" });
-  }
-});
+const tokenRouter = Router({ mergeParams: true });
+tokenRouter.use(requirePinSession);
 
 // Get full portal data
-router.get("/:token", async (req, res) => {
+tokenRouter.get("/", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
@@ -269,7 +247,7 @@ router.get("/:token", async (req, res) => {
 
     const features: string[] = Array.isArray(sub.portalFeatures)
       ? (sub.portalFeatures as string[])
-      : ["payments", "jobs", "expenses", "mileage", "w9", "home_office"];
+      : ["payments", "jobs", "expenses", "mileage", "w9", "tax_reports", "home_office"];
 
     res.json({
       subcontractor: {
@@ -280,7 +258,6 @@ router.get("/:token", async (req, res) => {
         trade: sub.trade,
         ytdPayments: parseFloat(sub.ytdPayments ?? "0"),
         w9OnFile: sub.w9OnFile,
-        // W-9 data (masked TIN)
         w9LegalName: sub.w9LegalName,
         w9BusinessName: sub.w9BusinessName,
         w9TaxClassification: sub.w9TaxClassification,
@@ -322,39 +299,77 @@ router.get("/:token", async (req, res) => {
   }
 });
 
-function maskTaxId(id: string): string {
-  if (id.length <= 4) return "***-" + id;
-  return "***-**-" + id.slice(-4);
-}
+// Tax report for a year
+tokenRouter.get("/tax-report", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const [expenses, mileage] = await Promise.all([
+      db.select().from(expensesTable).where(
+        and(eq(expensesTable.subcontractorId, sub.id), gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))
+      ),
+      db.select().from(mileageLogsTable).where(
+        and(eq(mileageLogsTable.subcontractorId, sub.id), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
+      ),
+    ]);
+
+    const rate = await getRate();
+    const grossIncome = parseFloat(sub.ytdPayments ?? "0");
+
+    const expensesByCategory: Record<string, number> = {};
+    let totalExpenses = 0;
+    for (const e of expenses) {
+      const amt = parseFloat(e.amount);
+      expensesByCategory[e.category] = (expensesByCategory[e.category] ?? 0) + amt;
+      totalExpenses += amt;
+    }
+
+    const businessMiles = mileage.filter(m => m.classification === "business");
+    const totalBusinessMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles), 0);
+    const mileageDeduction = totalBusinessMiles * rate;
+    const totalDeductions = totalExpenses + mileageDeduction;
+    const netIncome = Math.max(0, grossIncome - totalDeductions);
+    const seTaxEstimate = netIncome * 0.9235 * 0.153;
+    const seDeduction = seTaxEstimate / 2;
+    const federalTaxableIncome = Math.max(0, netIncome - seDeduction);
+
+    res.json({
+      year, grossIncome,
+      expenses: { total: totalExpenses, byCategory: expensesByCategory, count: expenses.length },
+      mileage: { totalMiles: totalBusinessMiles, ratePerMile: rate, deduction: mileageDeduction, count: businessMiles.length },
+      totalDeductions, netIncome, seTaxEstimate, seDeduction, federalTaxableIncome,
+      subName: sub.name, w9LegalName: sub.w9LegalName,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate tax report" });
+  }
+});
 
 // Save W-9 data
-router.put("/:token/w9", async (req, res) => {
+tokenRouter.put("/w9", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
 
-    const {
-      w9LegalName, w9BusinessName, w9TaxClassification, w9LlcType,
-      w9Address, w9City, w9State, w9Zip,
-      w9TaxIdType, w9TaxId, w9Signature,
-    } = req.body;
+    const { w9LegalName, w9BusinessName, w9TaxClassification, w9LlcType,
+      w9Address, w9City, w9State, w9Zip, w9TaxIdType, w9TaxId, w9Signature } = req.body;
 
     if (!w9LegalName || !w9TaxClassification || !w9Address || !w9City || !w9State || !w9Zip || !w9TaxIdType || !w9TaxId || !w9Signature) {
       return res.status(400).json({ error: "All W-9 fields are required" });
     }
 
     const signedAt = new Date().toISOString().split("T")[0];
-
-    const [updated] = await db
-      .update(subcontractorsTable)
-      .set({
-        w9LegalName, w9BusinessName, w9TaxClassification, w9LlcType,
-        w9Address, w9City, w9State, w9Zip,
-        w9TaxIdType, w9TaxId, w9Signature, w9SignedAt: signedAt,
-        w9OnFile: true,
-      })
-      .where(eq(subcontractorsTable.id, sub.id))
-      .returning();
+    await db.update(subcontractorsTable)
+      .set({ w9LegalName, w9BusinessName, w9TaxClassification, w9LlcType,
+        w9Address, w9City, w9State, w9Zip, w9TaxIdType, w9TaxId, w9Signature, w9SignedAt: signedAt, w9OnFile: true })
+      .where(eq(subcontractorsTable.id, sub.id));
 
     res.json({ success: true, w9SignedAt: signedAt, w9OnFile: true, w9TaxIdMasked: maskTaxId(w9TaxId) });
   } catch (err) {
@@ -364,19 +379,13 @@ router.put("/:token/w9", async (req, res) => {
 });
 
 // Save portal feature preferences
-router.put("/:token/features", async (req, res) => {
+tokenRouter.put("/features", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
-
     const { features } = req.body;
     if (!Array.isArray(features)) return res.status(400).json({ error: "features must be an array" });
-
-    await db
-      .update(subcontractorsTable)
-      .set({ portalFeatures: features })
-      .where(eq(subcontractorsTable.id, sub.id));
-
+    await db.update(subcontractorsTable).set({ portalFeatures: features }).where(eq(subcontractorsTable.id, sub.id));
     res.json({ success: true, features });
   } catch (err) {
     console.error(err);
@@ -385,30 +394,26 @@ router.put("/:token/features", async (req, res) => {
 });
 
 // Expenses
-router.get("/:token/expenses", async (req, res) => {
+tokenRouter.get("/expenses", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
-    const expenses = await db
-      .select()
-      .from(expensesTable)
-      .where(eq(expensesTable.subcontractorId, sub.id))
-      .orderBy(expensesTable.date);
+    const expenses = await db.select().from(expensesTable)
+      .where(eq(expensesTable.subcontractorId, sub.id)).orderBy(expensesTable.date);
     res.json(expenses.map(e => ({ ...e, amount: parseFloat(e.amount) })));
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch expenses" });
   }
 });
 
-router.post("/:token/expenses", async (req, res) => {
+tokenRouter.post("/expenses", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const { description, amount, category, date, vendor, jobId, notes } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
     const [expense] = await db.insert(expensesTable).values({
-      description, amount: amount.toString(), category, date,
-      vendor, jobId: jobId || null, notes,
+      description, amount: amount.toString(), category, date, vendor, jobId: jobId || null, notes,
       subcontractorId: sub.id,
     }).returning();
     res.status(201).json({ ...expense, amount: parseFloat(expense.amount) });
@@ -418,7 +423,7 @@ router.post("/:token/expenses", async (req, res) => {
   }
 });
 
-router.delete("/:token/expenses/:id", async (req, res) => {
+tokenRouter.delete("/expenses/:id", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
@@ -432,15 +437,12 @@ router.delete("/:token/expenses/:id", async (req, res) => {
 });
 
 // Mileage
-router.get("/:token/mileage", async (req, res) => {
+tokenRouter.get("/mileage", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
-    const logs = await db
-      .select()
-      .from(mileageLogsTable)
-      .where(eq(mileageLogsTable.subcontractorId, sub.id))
-      .orderBy(mileageLogsTable.date);
+    const logs = await db.select().from(mileageLogsTable)
+      .where(eq(mileageLogsTable.subcontractorId, sub.id)).orderBy(mileageLogsTable.date);
     res.json(logs.map(m => ({
       ...m,
       miles: parseFloat(m.miles),
@@ -452,7 +454,7 @@ router.get("/:token/mileage", async (req, res) => {
   }
 });
 
-router.post("/:token/mileage", async (req, res) => {
+tokenRouter.post("/mileage", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
@@ -479,7 +481,7 @@ router.post("/:token/mileage", async (req, res) => {
   }
 });
 
-router.delete("/:token/mileage/:id", async (req, res) => {
+tokenRouter.delete("/mileage/:id", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
@@ -491,5 +493,8 @@ router.delete("/:token/mileage/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete mileage log" });
   }
 });
+
+// Mount token sub-router — MUST come after all static routes
+router.use("/:token", tokenRouter);
 
 export default router;
