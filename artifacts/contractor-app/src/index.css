@@ -145,7 +145,7 @@
 }
 
 
-/* ── Fallback print styles (when popup is blocked, window.print() is used) ── */
+/* ── Print stylesheet for direct browser print (Ctrl+P / Cmd+P) ── */
 @media print {
   body * { visibility: hidden; }
   .invoice-print-area,

@@ -172,7 +172,7 @@ export function InvoiceEditorDialog({
   function handlePrint() {
     const win = window.open("", "_blank", "width=900,height=1100");
     if (!win) {
-      alert("Your browser blocked the print preview popup. Please allow popups for this site and try again.");
+      window.print();
       return;
     }
 
