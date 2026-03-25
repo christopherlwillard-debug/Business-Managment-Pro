@@ -267,7 +267,7 @@ export default function Subcontractors() {
       {/* Portal Invite Modal */}
       {inviteModal && (
         <Dialog open={!!inviteModal} onOpenChange={() => { setInviteModal(null); setPortalError(null); }}>
-          <DialogContent className="max-w-lg bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl">
+          <DialogContent className="bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-lg sm:text-xl font-display flex items-center gap-2 pr-6">
                 <Link2 className="w-5 h-5 text-primary flex-shrink-0" />
