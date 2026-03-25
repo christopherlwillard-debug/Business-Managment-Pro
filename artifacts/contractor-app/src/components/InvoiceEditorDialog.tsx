@@ -297,7 +297,7 @@ export function InvoiceEditorDialog({
 
     <div style="border-top:4px solid #f59e0b;margin-top:8px;"></div>
   </div>
-  <script>window.onload = function() { window.print(); };</script>
+  <script>window.onload = function() { window.print(); }; window.onafterprint = function() { window.close(); };</script>
 </body>
 </html>`;
 
@@ -407,7 +407,7 @@ export function InvoiceEditorDialog({
 
           {/* Invoice document */}
           <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
-            <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+            <div className="invoice-print-area max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
               <div className="h-2 bg-gradient-to-r from-amber-500 to-amber-400" />
               <div className="p-6 space-y-6">
 
