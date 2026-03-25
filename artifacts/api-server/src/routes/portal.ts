@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { subcontractorsTable, jobsTable, expensesTable, mileageLogsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 
 const router = Router();
 
@@ -15,6 +16,123 @@ async function getRate() {
   const [s] = await db.select().from(settingsTable).limit(1);
   return parseFloat(s?.mileageRate ?? "0.725");
 }
+
+// ─── PIN Security ────────────────────────────────────────────────────────────
+
+const PORTAL_SESSION_COOKIE = "portal_sessions";
+const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function getPortalSessions(req: any): Record<string, number> {
+  try {
+    const raw = req.cookies?.[PORTAL_SESSION_COOKIE];
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function setPortalSession(res: any, token: string, sessions: Record<string, number>) {
+  sessions[token] = Date.now() + SESSION_TTL_MS;
+  res.cookie(PORTAL_SESSION_COOKIE, JSON.stringify(sessions), {
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours cookie lifetime
+  });
+}
+
+// Check if a portal PIN session is valid
+router.post("/check-session", async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.json({ valid: false, pinSet: false });
+
+  try {
+    const sub = await getSubByToken(token);
+    if (!sub) return res.json({ valid: false, pinSet: false });
+
+    const pinSet = !!sub.portalPinHash;
+    const sessions = getPortalSessions(req);
+    const exp = sessions[token];
+    const valid = !!exp && exp > Date.now();
+
+    return res.json({ valid, pinSet });
+  } catch {
+    return res.json({ valid: false, pinSet: false });
+  }
+});
+
+// Set a PIN for the first time
+router.post("/set-pin", async (req, res) => {
+  const { token, pin } = req.body;
+  if (!token || !pin) return res.status(400).json({ error: "Token and PIN are required" });
+  if (!/^\d{4,6}$/.test(pin)) return res.status(400).json({ error: "PIN must be 4–6 digits" });
+
+  try {
+    const sub = await getSubByToken(token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (sub.portalPinHash) return res.status(400).json({ error: "PIN already set. Use Reset PIN from admin." });
+
+    const hash = await bcrypt.hash(pin, 10);
+    await db.update(subcontractorsTable)
+      .set({ portalPinHash: hash, portalPinAttempts: 0, portalPinLockedUntil: null })
+      .where(eq(subcontractorsTable.id, sub.id));
+
+    const sessions = getPortalSessions(req);
+    setPortalSession(res, token, sessions);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to set PIN" });
+  }
+});
+
+// Verify PIN and issue session
+router.post("/verify-pin", async (req, res) => {
+  const { token, pin } = req.body;
+  if (!token || !pin) return res.status(400).json({ error: "Token and PIN are required" });
+
+  try {
+    const sub = await getSubByToken(token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalPinHash) return res.status(400).json({ error: "No PIN set" });
+
+    // Check lockout
+    if (sub.portalPinLockedUntil && sub.portalPinLockedUntil > new Date()) {
+      const mins = Math.ceil((sub.portalPinLockedUntil.getTime() - Date.now()) / 60000);
+      return res.status(429).json({ error: `Too many attempts. Try again in ${mins} minute${mins !== 1 ? "s" : ""}.`, locked: true });
+    }
+
+    const match = await bcrypt.compare(pin, sub.portalPinHash);
+    if (!match) {
+      const attempts = sub.portalPinAttempts + 1;
+      const lockedUntil = attempts >= 3 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+      await db.update(subcontractorsTable)
+        .set({ portalPinAttempts: attempts, portalPinLockedUntil: lockedUntil })
+        .where(eq(subcontractorsTable.id, sub.id));
+
+      const remaining = Math.max(0, 3 - attempts);
+      return res.status(401).json({
+        error: remaining > 0
+          ? `Incorrect PIN. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.`
+          : "Too many incorrect attempts. Locked for 15 minutes.",
+        attemptsLeft: remaining,
+        locked: attempts >= 3,
+      });
+    }
+
+    // Reset attempts on success
+    await db.update(subcontractorsTable)
+      .set({ portalPinAttempts: 0, portalPinLockedUntil: null })
+      .where(eq(subcontractorsTable.id, sub.id));
+
+    const sessions = getPortalSessions(req);
+    setPortalSession(res, token, sessions);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to verify PIN" });
+  }
+});
 
 // Approve or revoke portal access
 router.post("/approve/:subId", async (req, res) => {
@@ -151,7 +269,7 @@ router.get("/:token", async (req, res) => {
 
     const features: string[] = Array.isArray(sub.portalFeatures)
       ? (sub.portalFeatures as string[])
-      : ["payments", "jobs", "expenses", "mileage", "w9"];
+      : ["payments", "jobs", "expenses", "mileage", "w9", "home_office"];
 
     res.json({
       subcontractor: {

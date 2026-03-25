@@ -3,7 +3,7 @@ import { useListSubcontractors, useCreateSubcontractor } from "@workspace/api-cl
 import { formatCurrency } from "@/lib/utils";
 import {
   HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy,
-  RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX,
+  RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX, Lock, LockOpen,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,12 +15,14 @@ export default function Subcontractors() {
   const createMutation = useCreateSubcontractor();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [inviteModal, setInviteModal] = useState<{
-    name: string; token: string | null; id: number; portalApproved: boolean;
+    name: string; token: string | null; id: number; portalApproved: boolean; portalPinSet: boolean;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
+  const [resettingPin, setResettingPin] = useState(false);
+  const [pinResetDone, setPinResetDone] = useState<Record<number, boolean>>({});
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -108,6 +110,25 @@ export default function Subcontractors() {
     setTimeout(() => setCopied(false), 2500);
   }
 
+  async function resetPortalPin(subId: number) {
+    setResettingPin(true);
+    setPortalError(null);
+    try {
+      const res = await fetch(`${BASE}/api/subcontractors/${subId}/reset-portal-pin`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Reset failed (${res.status})`);
+      }
+      setPinResetDone(prev => ({ ...prev, [subId]: true }));
+      refetch();
+      setTimeout(() => setPinResetDone(prev => ({ ...prev, [subId]: false })), 3000);
+    } catch (err: any) {
+      setPortalError(err.message || "Failed to reset PIN.");
+    } finally {
+      setResettingPin(false);
+    }
+  }
+
   function openInviteModal(sub: any) {
     setCopied(false);
     setPortalError(null);
@@ -116,6 +137,7 @@ export default function Subcontractors() {
       token: sub.portalToken ?? null,
       id: sub.id,
       portalApproved: sub.portalApproved ?? false,
+      portalPinSet: !!(sub as any).portalPinSet,
     });
   }
 
@@ -182,24 +204,33 @@ export default function Subcontractors() {
                         {formatCurrency(sub.ytdPayments)}
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <button
-                          onClick={() => openInviteModal(sub)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                            hasToken && approved
-                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
-                              : hasToken
-                              ? "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
-                              : "bg-muted text-muted-foreground hover:bg-muted/80 border border-border"
-                          }`}
-                        >
-                          {hasToken && approved ? (
-                            <><ShieldCheck className="w-3.5 h-3.5" /> Active</>
-                          ) : hasToken ? (
-                            <><ShieldX className="w-3.5 h-3.5" /> Revoked</>
-                          ) : (
-                            <><Link2 className="w-3.5 h-3.5" /> Set Up Portal</>
+                        <div className="flex flex-col items-center gap-1.5">
+                          <button
+                            onClick={() => openInviteModal(sub)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                              hasToken && approved
+                                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                                : hasToken
+                                ? "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80 border border-border"
+                            }`}
+                          >
+                            {hasToken && approved ? (
+                              <><ShieldCheck className="w-3.5 h-3.5" /> Active</>
+                            ) : hasToken ? (
+                              <><ShieldX className="w-3.5 h-3.5" /> Revoked</>
+                            ) : (
+                              <><Link2 className="w-3.5 h-3.5" /> Set Up Portal</>
+                            )}
+                          </button>
+                          {hasToken && (
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${(sub as any).portalPinSet ? "text-emerald-600" : "text-muted-foreground"}`}>
+                              {(sub as any).portalPinSet
+                                ? <><Lock className="w-2.5 h-2.5" /> PIN set</>
+                                : <><LockOpen className="w-2.5 h-2.5" /> No PIN</>}
+                            </span>
                           )}
-                        </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -300,6 +331,39 @@ export default function Subcontractors() {
                     <p className="text-sm text-foreground/80">
                       Share this private link with <strong>{inviteModal.name}</strong>. They can view their payments, track expenses, log mileage, complete their W-9, and generate their own tax documents.
                     </p>
+                  </div>
+
+                  {/* PIN status */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-muted/40 rounded-xl border border-border">
+                    <div className="flex items-center gap-2">
+                      {inviteModal.portalPinSet && !pinResetDone[inviteModal.id]
+                        ? <Lock className="w-4 h-4 text-emerald-600" />
+                        : <LockOpen className="w-4 h-4 text-muted-foreground" />}
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">
+                          {inviteModal.portalPinSet && !pinResetDone[inviteModal.id] ? "PIN protection active" : "No PIN set"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {inviteModal.portalPinSet && !pinResetDone[inviteModal.id]
+                            ? `${inviteModal.name} set a PIN — their portal is secure.`
+                            : `${inviteModal.name} will be prompted to create a PIN on first visit.`}
+                        </p>
+                      </div>
+                    </div>
+                    {inviteModal.portalPinSet && !pinResetDone[inviteModal.id] && (
+                      <button
+                        onClick={() => resetPortalPin(inviteModal.id)}
+                        disabled={resettingPin}
+                        className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-colors disabled:opacity-50 ml-3"
+                      >
+                        {resettingPin ? "…" : "Reset PIN"}
+                      </button>
+                    )}
+                    {pinResetDone[inviteModal.id] && (
+                      <span className="text-xs text-emerald-600 font-semibold ml-3 flex items-center gap-1">
+                        <CheckCheck className="w-3 h-3" /> Reset!
+                      </span>
+                    )}
                   </div>
 
                   {/* Copy button */}

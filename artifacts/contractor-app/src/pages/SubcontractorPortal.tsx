@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -6,6 +6,7 @@ import {
   HardHat, Briefcase, Receipt, Navigation, DollarSign, Settings,
   Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
   Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
+  Lock, KeyRound, Home,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -40,6 +41,7 @@ const ALL_FEATURES = [
   { key: "expenses", label: "My Expenses", desc: "Track job-related expenses", icon: Receipt },
   { key: "mileage", label: "Mileage Tracker", desc: "Log business miles and see deductions", icon: Navigation },
   { key: "tax_reports", label: "Tax Reports", desc: "Profit & loss, mileage deduction, SE tax estimate", icon: BarChart3 },
+  { key: "home_office", label: "Home Office", desc: "Calculate your Form 8829 home office deduction", icon: Home },
 ];
 
 const TAX_CLASSIFICATIONS = [
@@ -65,6 +67,7 @@ function Header({ name, trade, activeTab, setTab, features }: {
     ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt }] : []),
     ...(features.includes("mileage") ? [{ key: "mileage", label: "Mileage", icon: Navigation }] : []),
     ...(features.includes("tax_reports") ? [{ key: "tax_reports", label: "Tax Reports", icon: BarChart3 }] : []),
+    ...(features.includes("home_office") ? [{ key: "home_office", label: "Home Office", icon: Home }] : []),
     { key: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -146,6 +149,266 @@ function PendingApproval() {
         >
           Check Again
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── PIN Gate ─────────────────────────────────────────────────────────────────
+function PinInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div className="flex gap-3 justify-center my-4" onClick={() => ref.current?.focus()}>
+      <input
+        ref={ref}
+        type="tel"
+        inputMode="numeric"
+        maxLength={6}
+        value={value}
+        onChange={e => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
+        disabled={disabled}
+        className="sr-only"
+        autoComplete="one-time-code"
+      />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className={`w-10 h-12 rounded-xl border-2 flex items-center justify-center text-xl font-bold transition-colors ${
+            i < value.length ? "border-primary bg-primary/10 text-foreground" :
+            i === value.length ? "border-primary" : "border-border bg-muted/30"
+          }`}
+        >
+          {i < value.length ? "•" : ""}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SetPinScreen({ token, onPinSet }: { token: string; onPinSet: () => void }) {
+  const [pin, setPin] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [step, setStep] = useState<"enter" | "confirm">("enter");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleConfirm() {
+    if (pin !== confirm) { setError("PINs don't match. Try again."); setConfirm(""); return; }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/portal/set-pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, pin }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to set PIN");
+      onPinSet();
+    } catch (err: any) {
+      setError(err.message || "Failed to set PIN.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (step === "enter" && pin.length === 6) { setStep("confirm"); }
+  }, [pin, step]);
+
+  useEffect(() => {
+    if (step === "confirm" && confirm.length === 6) { handleConfirm(); }
+  }, [confirm, step]);
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="max-w-sm w-full text-center space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+          <Lock className="w-8 h-8 text-primary" />
+        </div>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-display font-bold">Secure your portal</h1>
+          <p className="text-sm text-muted-foreground">
+            {step === "enter"
+              ? "Create a 4–6 digit PIN to protect your portal."
+              : "Enter your PIN again to confirm."}
+          </p>
+        </div>
+        <PinInput
+          value={step === "enter" ? pin : confirm}
+          onChange={step === "enter" ? setPin : setConfirm}
+          disabled={loading}
+        />
+        {error && <p className="text-sm text-destructive bg-destructive/10 px-4 py-2.5 rounded-xl">{error}</p>}
+        {step === "confirm" && (
+          <button onClick={() => { setStep("enter"); setPin(""); setConfirm(""); setError(""); }} className="text-xs text-muted-foreground underline">
+            Start over
+          </button>
+        )}
+        {loading && <p className="text-sm text-muted-foreground animate-pulse">Setting up your PIN…</p>}
+      </div>
+    </div>
+  );
+}
+
+function EnterPinScreen({ token, onVerified }: { token: string; onVerified: () => void }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [locked, setLocked] = useState(false);
+
+  async function verify(p: string) {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/portal/verify-pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, pin: p }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPin("");
+        if (data.locked) setLocked(true);
+        throw new Error(data.error || "Incorrect PIN");
+      }
+      onVerified();
+    } catch (err: any) {
+      setError(err.message || "Incorrect PIN.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (pin.length === 6 && !loading && !locked) { verify(pin); }
+  }, [pin]);
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="max-w-sm w-full text-center space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+          <KeyRound className="w-8 h-8 text-primary" />
+        </div>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-display font-bold">Enter your PIN</h1>
+          <p className="text-sm text-muted-foreground">Enter your portal PIN to continue.</p>
+        </div>
+        {locked ? (
+          <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-800">
+            {error || "Too many attempts. Please try again later."}
+          </div>
+        ) : (
+          <>
+            <PinInput value={pin} onChange={setPin} disabled={loading} />
+            {error && <p className="text-sm text-destructive bg-destructive/10 px-4 py-2.5 rounded-xl">{error}</p>}
+            {loading && <p className="text-sm text-muted-foreground animate-pulse">Verifying…</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Home Office Calculator Tab ───────────────────────────────────────────────
+const HOME_OFFICE_EXPENSES = [
+  { key: "rent", label: "Rent or Mortgage Interest" },
+  { key: "utilities", label: "Utilities (electric, gas, water)" },
+  { key: "internet", label: "Internet & Phone" },
+  { key: "insurance", label: "Homeowner's / Renter's Insurance" },
+  { key: "taxes", label: "Property Taxes" },
+  { key: "repairs", label: "Repairs & Maintenance" },
+];
+
+function HomeOfficeTab() {
+  const [homeSqft, setHomeSqft] = useState("");
+  const [officeSqft, setOfficeSqft] = useState("");
+  const [expenses, setExpenses] = useState<Record<string, string>>({});
+
+  const setExp = (k: string, v: string) => setExpenses(prev => ({ ...prev, [k]: v }));
+
+  const homeNum = parseFloat(homeSqft) || 0;
+  const officeNum = parseFloat(officeSqft) || 0;
+  const pct = homeNum > 0 && officeNum > 0 ? Math.min(officeNum / homeNum, 1) : 0;
+  const totalExpenses = HOME_OFFICE_EXPENSES.reduce((s, e) => s + (parseFloat(expenses[e.key] || "0") || 0), 0);
+  const totalDeduction = totalExpenses * pct;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-display font-bold">Home Office Calculator</h2>
+        <p className="text-sm text-muted-foreground">Estimate your Form 8829 deduction. Results are for reference only — consult a tax professional.</p>
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Square Footage</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Total Home Sq Ft</label>
+            <Input type="number" min="1" placeholder="e.g. 1800" value={homeSqft} onChange={e => setHomeSqft(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Office / Work Area Sq Ft</label>
+            <Input type="number" min="1" placeholder="e.g. 200" value={officeSqft} onChange={e => setOfficeSqft(e.target.value)} />
+          </div>
+        </div>
+        {pct > 0 && (
+          <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 text-center">
+            <p className="text-xs text-muted-foreground">Business-use percentage</p>
+            <p className="text-3xl font-display font-bold text-primary">{(pct * 100).toFixed(1)}%</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{officeNum} ÷ {homeNum} sq ft</p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Annual Home Expenses</h3>
+        {HOME_OFFICE_EXPENSES.map(exp => (
+          <div key={exp.key} className="flex items-center gap-3">
+            <label className="flex-1 text-sm text-foreground">{exp.label}</label>
+            <div className="w-32">
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={expenses[exp.key] || ""}
+                onChange={e => setExp(exp.key, e.target.value)}
+              />
+            </div>
+            {pct > 0 && (
+              <span className="text-xs text-emerald-600 font-semibold w-20 text-right">
+                {formatCurrency((parseFloat(expenses[exp.key] || "0") || 0) * pct)}
+              </span>
+            )}
+          </div>
+        ))}
+        {pct > 0 && (
+          <div className="border-t border-border pt-3 flex justify-between items-center">
+            <span className="text-sm font-medium text-muted-foreground">Total Annual Expenses</span>
+            <span className="font-semibold">{formatCurrency(totalExpenses)}</span>
+          </div>
+        )}
+      </div>
+
+      {pct > 0 && totalExpenses > 0 && (
+        <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 text-center space-y-1">
+          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Estimated Form 8829 Deduction</p>
+          <p className="text-4xl font-display font-bold text-emerald-700">{formatCurrency(totalDeduction)}</p>
+          <p className="text-xs text-emerald-600">This amount goes to Schedule C, Line 30</p>
+        </div>
+      )}
+
+      {(!homeSqft || !officeSqft) && (
+        <div className="bg-muted/50 border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground text-center">
+          Enter your square footage above to see your deduction estimate.
+        </div>
+      )}
+
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <p className="text-xs text-amber-800">
+          <strong>Note:</strong> This calculator uses the regular method (actual expenses × business-use %). The IRS simplified method ($5/sq ft up to 300 sq ft) is also available. Consult a tax professional to determine which method is better for your situation.
+        </p>
       </div>
     </div>
   );
@@ -1033,10 +1296,27 @@ export default function SubcontractorPortal() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState("dashboard");
 
+  // PIN gate state
+  const [pinStatus, setPinStatus] = useState<{ checked: boolean; valid: boolean; pinSet: boolean }>({
+    checked: false, valid: false, pinSet: false,
+  });
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${BASE}/api/portal/check-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    })
+      .then(r => r.json())
+      .then(d => setPinStatus({ checked: true, valid: !!d.valid, pinSet: !!d.pinSet }))
+      .catch(() => setPinStatus({ checked: true, valid: false, pinSet: false }));
+  }, [token]);
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["portal", token],
     queryFn: () => apiFetch(`/portal/${token}`),
-    enabled: !!token,
+    enabled: !!token && pinStatus.valid,
     retry: false,
     staleTime: 30000,
   });
@@ -1045,6 +1325,33 @@ export default function SubcontractorPortal() {
   useEffect(() => {
     if (data?.features) setFeatures(data.features);
   }, [data]);
+
+  // Show loading while checking PIN session
+  if (!pinStatus.checked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground animate-pulse">Loading your portal…</div>
+      </div>
+    );
+  }
+
+  // Show PIN gate if session is not valid
+  if (!pinStatus.valid) {
+    if (!pinStatus.pinSet) {
+      return (
+        <SetPinScreen
+          token={token!}
+          onPinSet={() => setPinStatus({ checked: true, valid: true, pinSet: true })}
+        />
+      );
+    }
+    return (
+      <EnterPinScreen
+        token={token!}
+        onVerified={() => setPinStatus({ checked: true, valid: true, pinSet: true })}
+      />
+    );
+  }
 
   if (isLoading) {
     return (
@@ -1067,7 +1374,6 @@ export default function SubcontractorPortal() {
 
   function handleFeaturesChange(f: string[]) {
     setFeatures(f);
-    // If current tab was hidden, go to dashboard
     const visibleTabs = ["dashboard", ...f, "settings"];
     if (!visibleTabs.includes(activeTab)) setActiveTab("dashboard");
   }
@@ -1096,6 +1402,9 @@ export default function SubcontractorPortal() {
         )}
         {activeTab === "tax_reports" && features.includes("tax_reports") && (
           <TaxReportsTab token={token!} />
+        )}
+        {activeTab === "home_office" && features.includes("home_office") && (
+          <HomeOfficeTab />
         )}
         {activeTab === "settings" && (
           <PortalSettings token={token!} features={features} onChange={handleFeaturesChange} />

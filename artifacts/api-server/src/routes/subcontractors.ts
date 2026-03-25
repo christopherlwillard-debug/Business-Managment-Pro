@@ -10,6 +10,8 @@ function format(s: any) {
     ...s,
     ytdPayments: parseFloat(s.ytdPayments ?? "0"),
     createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
+    portalPinSet: !!s.portalPinHash,
+    portalPinHash: undefined,
   };
 }
 
@@ -96,6 +98,22 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete subcontractor" });
+  }
+});
+
+router.post("/:id/reset-portal-pin", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [sub] = await db
+      .update(subcontractorsTable)
+      .set({ portalPinHash: null, portalPinAttempts: 0, portalPinLockedUntil: null })
+      .where(eq(subcontractorsTable.id, id))
+      .returning();
+    if (!sub) return res.status(404).json({ error: "Subcontractor not found" });
+    res.json({ success: true, portalPinSet: false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reset portal PIN" });
   }
 });
 

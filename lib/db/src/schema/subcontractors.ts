@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, numeric, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, numeric, boolean, jsonb, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -31,7 +31,11 @@ export const subcontractorsTable = pgTable("subcontractors", {
   w9Signature: text("w9_signature"),
   w9SignedAt: text("w9_signed_at"),
   // Portal feature flags chosen by the sub
-  portalFeatures: jsonb("portal_features").default('["payments","jobs","expenses","mileage","w9","tax_reports"]'),
+  portalFeatures: jsonb("portal_features").default('["payments","jobs","expenses","mileage","w9","tax_reports","home_office"]'),
+  // PIN security
+  portalPinHash: text("portal_pin_hash"),
+  portalPinAttempts: integer("portal_pin_attempts").notNull().default(0),
+  portalPinLockedUntil: timestamp("portal_pin_locked_until"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
