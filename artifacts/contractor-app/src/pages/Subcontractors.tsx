@@ -20,6 +20,7 @@ export default function Subcontractors() {
   const [generating, setGenerating] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -114,12 +115,14 @@ export default function Subcontractors() {
     if (!opened) {
       navigator.clipboard.writeText(url);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      setPopupBlocked(true);
+      setTimeout(() => { setCopied(false); setPopupBlocked(false); }, 4000);
     }
   }
 
   function openInviteModal(sub: any) {
     setCopied(false);
+    setPopupBlocked(false);
     setPortalError(null);
     setInviteModal({
       name: sub.name,
@@ -329,6 +332,12 @@ export default function Subcontractors() {
                       </button>
                     </div>
                   </div>
+
+                  {popupBlocked && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Popup blocked — link copied to clipboard. Paste it in a new browser tab to preview the portal.
+                    </p>
+                  )}
 
                   <div className="flex gap-3">
                     <button
