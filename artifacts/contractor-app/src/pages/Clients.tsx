@@ -1,33 +1,55 @@
 import { useState } from "react";
-import { useListClients, useCreateClient } from "@workspace/api-client-react";
-import { Users, Plus, Phone, Mail, MapPin } from "lucide-react";
+import { useListClients, useCreateClient, useUpdateClient } from "@workspace/api-client-react";
+import { Users, Plus, Phone, Mail, MapPin, Edit2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function Clients() {
   const { data: clients, isLoading, refetch } = useListClients();
   const createMutation = useCreateClient();
+  const updateMutation = useUpdateClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<any>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const payload = {
+      name: formData.get("name") as string,
+      email: formData.get("email") as string,
+      phone: formData.get("phone") as string,
+      address: formData.get("address") as string,
+      city: formData.get("city") as string,
+      notes: formData.get("notes") as string,
+    };
+
     try {
-      await createMutation.mutateAsync({
-        data: {
-          name: formData.get("name") as string,
-          email: formData.get("email") as string,
-          phone: formData.get("phone") as string,
-          address: formData.get("address") as string,
-          city: formData.get("city") as string,
-          notes: formData.get("notes") as string,
-        }
-      });
+      if (editingClient) {
+        await updateMutation.mutateAsync({
+          id: editingClient.id,
+          data: payload
+        });
+      } else {
+        await createMutation.mutateAsync({
+          data: payload
+        });
+      }
       setIsDialogOpen(false);
+      setEditingClient(null);
       refetch();
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const openEditDialog = (client: any) => {
+    setEditingClient(client);
+    setIsDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setIsDialogOpen(false);
+    setEditingClient(null);
   };
 
   return (
@@ -58,7 +80,16 @@ export default function Clients() {
             <Card key={client.id} className="border-border/50 shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden group">
               <div className="h-2 bg-primary/20 group-hover:bg-primary transition-colors"></div>
               <CardContent className="p-6">
-                <h3 className="text-xl font-bold font-display text-foreground mb-4 truncate">{client.name}</h3>
+                <div className="flex items-start justify-between mb-4 gap-2">
+                  <h3 className="text-xl font-bold font-display text-foreground truncate flex-1">{client.name}</h3>
+                  <button
+                    onClick={() => openEditDialog(client)}
+                    className="flex-shrink-0 p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    title="Edit client"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </div>
                 <div className="space-y-3">
                   {client.phone && (
                     <div className="flex items-center text-sm text-muted-foreground">
@@ -83,35 +114,71 @@ export default function Clients() {
         )}
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={closeDialog}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-display">Add Client</DialogTitle>
+            <DialogTitle className="text-2xl font-display">
+              {editingClient ? "Edit Client" : "Add Client"}
+            </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-4">
             <div>
               <label className="block text-sm font-medium mb-1">Name / Company *</label>
-              <input name="name" required className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+              <input 
+                name="name" 
+                required 
+                defaultValue={editingClient?.name || ""}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Email</label>
-                <input name="email" type="email" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+                <input 
+                  name="email" 
+                  type="email" 
+                  defaultValue={editingClient?.email || ""}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Phone</label>
-                <input name="phone" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+                <input 
+                  name="phone" 
+                  defaultValue={editingClient?.phone || ""}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                />
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Address</label>
-              <input name="address" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 mb-3" placeholder="Street" />
-              <input name="city" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="City" />
+              <input 
+                name="address" 
+                defaultValue={editingClient?.address || ""}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 mb-3" 
+                placeholder="Street" 
+              />
+              <input 
+                name="city" 
+                defaultValue={editingClient?.city || ""}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                placeholder="City" 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes</label>
+              <textarea 
+                name="notes" 
+                defaultValue={editingClient?.notes || ""}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 resize-none" 
+                rows={3}
+                placeholder="Additional notes..."
+              />
             </div>
             <div className="pt-4 flex justify-end gap-3">
-              <button type="button" onClick={() => setIsDialogOpen(false)} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
-              <button type="submit" disabled={createMutation.isPending} className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md">
-                {createMutation.isPending ? "Saving..." : "Save Client"}
+              <button type="button" onClick={closeDialog} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
+              <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md">
+                {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save Client"}
               </button>
             </div>
           </form>
