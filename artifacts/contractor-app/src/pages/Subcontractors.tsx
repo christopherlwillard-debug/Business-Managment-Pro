@@ -129,7 +129,7 @@ export default function Subcontractors() {
     }
   }
 
-  function openInviteModal(sub: any) {
+  function openInviteModal(sub: NonNullable<typeof subs>[number]) {
     setCopied(false);
     setPortalError(null);
     setInviteModal({
@@ -137,7 +137,7 @@ export default function Subcontractors() {
       token: sub.portalToken ?? null,
       id: sub.id,
       portalApproved: sub.portalApproved ?? false,
-      portalPinSet: !!(sub as any).portalPinSet,
+      portalPinSet: !!sub.portalPinSet,
     });
   }
 
@@ -180,15 +180,15 @@ export default function Subcontractors() {
                 </tr>
               ) : (
                 subs?.map(sub => {
-                  const hasToken = !!(sub as any).portalToken;
-                  const approved = !!(sub as any).portalApproved;
+                  const hasToken = !!sub.portalToken;
+                  const approved = !!sub.portalApproved;
                   return (
                     <tr key={sub.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-6 py-4">
                         <div className="font-medium text-foreground text-base">{sub.name}</div>
-                        <div className="text-xs text-muted-foreground">{(sub as any).trade || "Unspecified Trade"}</div>
+                        <div className="text-xs text-muted-foreground">{sub.trade || "Unspecified Trade"}</div>
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground">{(sub as any).phone || (sub as any).email || "—"}</td>
+                      <td className="px-6 py-4 text-muted-foreground">{sub.phone || sub.email || "—"}</td>
                       <td className="px-6 py-4 text-center">
                         {sub.w9OnFile ? (
                           <span className="inline-flex items-center text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md text-xs font-semibold">
@@ -224,8 +224,8 @@ export default function Subcontractors() {
                             )}
                           </button>
                           {hasToken && (
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${(sub as any).portalPinSet ? "text-emerald-600" : "text-muted-foreground"}`}>
-                              {(sub as any).portalPinSet
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${sub.portalPinSet ? "text-emerald-600" : "text-muted-foreground"}`}>
+                              {sub.portalPinSet
                                 ? <><Lock className="w-2.5 h-2.5" /> PIN set</>
                                 : <><LockOpen className="w-2.5 h-2.5" /> No PIN</>}
                             </span>

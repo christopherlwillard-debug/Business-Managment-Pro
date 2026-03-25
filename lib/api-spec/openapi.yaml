@@ -1841,7 +1841,14 @@ components:
           nullable: true
         createdAt:
           type: string
-      required: [id, name, w9OnFile, ytdPayments, createdAt]
+        portalToken:
+          type: string
+          nullable: true
+        portalApproved:
+          type: boolean
+        portalPinSet:
+          type: boolean
+      required: [id, name, w9OnFile, ytdPayments, createdAt, portalApproved, portalPinSet]
 
     CreateSubcontractorRequest:
       type: object

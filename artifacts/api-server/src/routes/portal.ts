@@ -21,7 +21,15 @@ async function getRate() {
 
 const PORTAL_SESSION_COOKIE = "portal_sessions";
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
-const PIN_COOKIE_SECRET = process.env.SESSION_SECRET ?? "buildpro-portal-pin-secret-2024";
+
+/**
+ * Signing secret for HMAC-protected portal session cookies.
+ * Prefer SESSION_SECRET from env. If not set, generate a cryptographically
+ * random secret at startup so it is never guessable, at the cost of sessions
+ * being invalidated on server restart (acceptable for a PIN session).
+ */
+const PIN_COOKIE_SECRET: string = process.env.SESSION_SECRET ??
+  crypto.randomBytes(32).toString("hex");
 
 /** HMAC-sign the sessions map so the cookie cannot be forged by the client */
 function signSessions(sessions: Record<string, number>): string {
@@ -32,7 +40,7 @@ function signSessions(sessions: Record<string, number>): string {
 /** Read and cryptographically verify the portal session cookie. Returns {} on any tampering. */
 function getVerifiedPortalSessions(req: Request): Record<string, number> {
   try {
-    const raw = (req as any).cookies?.[PORTAL_SESSION_COOKIE];
+    const raw = req.cookies?.[PORTAL_SESSION_COOKIE] as string | undefined;
     if (!raw) return {};
     const parsed = JSON.parse(raw) as { s: Record<string, number>; t: string };
     if (!parsed?.s || !parsed?.t) return {};
@@ -140,15 +148,18 @@ router.post("/verify-pin", async (req, res) => {
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalPinHash) return res.status(400).json({ error: "No PIN set" });
 
-    // Check lockout
+    // Check lockout — still locked
     if (sub.portalPinLockedUntil && sub.portalPinLockedUntil > new Date()) {
       const mins = Math.ceil((sub.portalPinLockedUntil.getTime() - Date.now()) / 60000);
       return res.status(429).json({ error: `Too many attempts. Try again in ${mins} minute${mins !== 1 ? "s" : ""}.`, locked: true });
     }
 
+    // If lockout has ELAPSED, reset the attempt counter so the sub gets a fresh 3-attempt window
+    const baseAttempts = sub.portalPinLockedUntil && sub.portalPinLockedUntil <= new Date() ? 0 : sub.portalPinAttempts;
+
     const match = await bcrypt.compare(pin, sub.portalPinHash);
     if (!match) {
-      const attempts = sub.portalPinAttempts + 1;
+      const attempts = baseAttempts + 1;
       const lockedUntil = attempts >= 3 ? new Date(Date.now() + 15 * 60 * 1000) : null;
       await db.update(subcontractorsTable)
         .set({ portalPinAttempts: attempts, portalPinLockedUntil: lockedUntil })
