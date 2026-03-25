@@ -15,7 +15,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import {
   FileText, Download, Plus, Trash2, X,
-  Building2, MapPin, Check, Eye, AlertTriangle, Printer,
+  Building2, MapPin, Check, Eye, AlertTriangle, Printer, Mail, Phone,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -281,6 +281,10 @@ function InvoiceBuilder({
                               setField("clientEmail", c.email || "");
                               setField("clientPhone", c.phone || "");
                               setField("clientAddress", c.address || "");
+                              setField("clientCity", c.city || "");
+                              setField("clientState", c.state || "");
+                              setField("clientZip", c.zip || "");
+                              setField("clientNotes", c.notes || "");
                               if (c.city) setField("city", c.city);
                               setIsNewClient(false);
                               setShowClientDrop(false);
@@ -655,7 +659,7 @@ function InvoiceViewModal({
               {/* Bill To + Location */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                  <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
+                  <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-3">Bill To</p>
                   {invoice.clientName
                     ? <div className="space-y-2">
                         <p className="font-semibold text-gray-900 text-sm">{invoice.clientName}</p>
@@ -665,19 +669,27 @@ function InvoiceViewModal({
                             <span>{invoice.clientEmail}</span>
                           </div>
                         )}
-                        {invoice.clientAddress && (
-                          <div className="flex items-start text-xs text-gray-600 gap-2">
-                            <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0 mt-0.5" />
-                            <span>{invoice.clientAddress}</span>
-                          </div>
-                        )}
                         {invoice.clientPhone && (
                           <div className="flex items-center text-xs text-gray-600 gap-2">
                             <Phone className="w-3 h-3 text-gray-400 flex-shrink-0" />
                             <span>{invoice.clientPhone}</span>
                           </div>
                         )}
-                        {invoice.jobTitle && <p className="text-xs text-gray-500 mt-1">Re: {invoice.jobTitle}</p>}
+                        {(invoice.clientAddress || invoice.clientCity || invoice.clientState || invoice.clientZip) && (
+                          <div className="flex items-start text-xs text-gray-600 gap-2">
+                            <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0 mt-0.5" />
+                            <span>
+                              {[invoice.clientAddress, invoice.clientCity, invoice.clientState, invoice.clientZip].filter(Boolean).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                        {invoice.clientNotes && (
+                          <div className="text-xs text-gray-600 border-t border-gray-200 pt-2 mt-2">
+                            <p className="font-semibold text-gray-700 mb-1 text-[9px] uppercase tracking-widest">Notes</p>
+                            <p className="text-gray-600">{invoice.clientNotes}</p>
+                          </div>
+                        )}
+                        {invoice.jobTitle && <p className="text-xs text-gray-500 mt-2">Re: {invoice.jobTitle}</p>}
                       </div>
                     : <p className="text-gray-300 italic text-xs">No client specified</p>}
                 </div>
@@ -797,7 +809,9 @@ export default function Invoices() {
       issueDate: new Date().toISOString().slice(0, 10),
       dueDate: "", status: "draft", taxRate: "",
       city: "", state: "KY", notes: "", terms: "Net 30",
-      clientEmail: "", clientPhone: "", clientAddress: "", locationName: "",
+      clientEmail: "", clientPhone: "", clientAddress: "", 
+      clientCity: "", clientState: "", clientZip: "", clientNotes: "", 
+      locationName: "",
     });
     setLineItems([emptyLine()]);
     setFormError("");

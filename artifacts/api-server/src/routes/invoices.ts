@@ -23,7 +23,7 @@ async function getNextInvoiceNumber() {
   return `${prefix}${num}`;
 }
 
-function formatInvoice(inv: any, clientName?: string | null, clientEmail?: string | null, clientAddress?: string | null, clientPhone?: string | null, jobTitle?: string | null, jobCity?: string | null, jobState?: string | null) {
+function formatInvoice(inv: any, clientName?: string | null, clientEmail?: string | null, clientAddress?: string | null, clientPhone?: string | null, clientCity?: string | null, clientState?: string | null, clientZip?: string | null, clientNotes?: string | null, jobTitle?: string | null, jobCity?: string | null, jobState?: string | null) {
   const lineItems = Array.isArray(inv.lineItems) ? inv.lineItems : [];
   return {
     ...inv,
@@ -31,6 +31,10 @@ function formatInvoice(inv: any, clientName?: string | null, clientEmail?: strin
     clientEmail: clientEmail ?? null,
     clientAddress: clientAddress ?? null,
     clientPhone: clientPhone ?? null,
+    clientCity: clientCity ?? null,
+    clientState: clientState ?? null,
+    clientZip: clientZip ?? null,
+    clientNotes: clientNotes ?? null,
     jobTitle: jobTitle ?? null,
     jobCity: jobCity ?? null,
     jobState: jobState ?? null,
@@ -56,6 +60,10 @@ const invoiceSelect = {
   clientEmail: clientsTable.email,
   clientAddress: clientsTable.address,
   clientPhone: clientsTable.phone,
+  clientCity: clientsTable.city,
+  clientState: clientsTable.state,
+  clientZip: clientsTable.zip,
+  clientNotes: clientsTable.notes,
   jobTitle: jobsTable.title,
   jobCity: jobsTable.city,
   jobState: jobsTable.state,
@@ -69,7 +77,7 @@ function buildInvoiceQuery() {
 }
 
 function fmt(inv: any) {
-  return formatInvoice(inv, inv.clientName, inv.clientEmail, inv.clientAddress, inv.clientPhone, inv.jobTitle, inv.jobCity, inv.jobState);
+  return formatInvoice(inv, inv.clientName, inv.clientEmail, inv.clientAddress, inv.clientPhone, inv.clientCity, inv.clientState, inv.clientZip, inv.clientNotes, inv.jobTitle, inv.jobCity, inv.jobState);
 }
 
 router.get("/tax-report", async (req, res) => {
