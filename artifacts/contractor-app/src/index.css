@@ -163,14 +163,7 @@
   }
   .invoice-print-area input,
   .invoice-print-area select,
-  .invoice-print-area textarea {
-    border: none !important;
-    border-bottom: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    appearance: none;
-  }
+  .invoice-print-area textarea,
   .invoice-print-area button { display: none !important; }
   @page { margin: 0.75in; }
 }
