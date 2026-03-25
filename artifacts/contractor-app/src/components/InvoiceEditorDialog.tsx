@@ -202,9 +202,24 @@ export function InvoiceEditorDialog({
         </tr>`)
       .join("");
 
-    const logoHtml = logoUrl
+    const logoImgHtml = logoUrl
       ? `<img src="${base}${logoUrl}" style="height:${logoPx}px;width:auto;max-width:${logoPx * 2.5}px;object-fit:contain;display:block;" />`
-      : `<div style="width:44px;height:44px;background:#fef3c7;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">🏗️</div>`;
+      : `<div style="width:44px;height:44px;background:#fef3c7;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;">🏗️</div>`;
+    const companyContactHtml = `
+      <div style="font-size:18px;font-weight:800;color:#111827;margin-top:6px;">${esc(companyName)}</div>
+      ${companyAddress ? `<div style="font-size:11px;color:#6b7280;">${esc(companyAddress)}</div>` : ""}
+      ${(companyCity||companyState||companyZip) ? `<div style="font-size:11px;color:#6b7280;">${esc([companyCity,companyState,companyZip].filter(Boolean).join(", "))}</div>` : ""}
+      ${companyPhone ? `<div style="font-size:11px;color:#6b7280;">${esc(companyPhone)}</div>` : ""}
+      ${companyEmail ? `<div style="font-size:11px;color:#6b7280;">${esc(companyEmail)}</div>` : ""}`;
+    const companyBlockHtml = logoPos === "top-center"
+      ? `<div style="flex:1;text-align:center;">${logoImgHtml}${companyContactHtml}</div>`
+      : logoPos === "top-right"
+      ? `<div style="flex:1;">${companyContactHtml}</div>`
+      : `<div style="flex:1;">${logoImgHtml}${companyContactHtml}</div>`;
+    const logoRightHtml = logoPos === "top-right"
+      ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">${logoImgHtml}`
+      : "";
+    const logoRightClose = logoPos === "top-right" ? "</div>" : "";
 
     const html = `<!DOCTYPE html>
 <html>
@@ -222,14 +237,8 @@ export function InvoiceEditorDialog({
   <div style="border-top:6px solid #f59e0b; padding-top:24px;">
     <!-- Header -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;">
-      <div style="flex:1;">
-        ${logoHtml}
-        <div style="font-size:18px;font-weight:800;color:#111827;margin-top:8px;">${esc(companyName)}</div>
-        ${companyAddress ? `<div style="font-size:11px;color:#6b7280;">${esc(companyAddress)}</div>` : ""}
-        ${(companyCity||companyState||companyZip) ? `<div style="font-size:11px;color:#6b7280;">${esc([companyCity,companyState,companyZip].filter(Boolean).join(", "))}</div>` : ""}
-        ${companyPhone ? `<div style="font-size:11px;color:#6b7280;">${esc(companyPhone)}</div>` : ""}
-        ${companyEmail ? `<div style="font-size:11px;color:#6b7280;">${esc(companyEmail)}</div>` : ""}
-      </div>
+      ${companyBlockHtml}
+      ${logoRightHtml}
       <div style="text-align:right;min-width:180px;">
         <div style="font-size:28px;font-weight:900;color:#e5e7eb;letter-spacing:.1em;text-transform:uppercase;">Invoice</div>
         <div style="font-size:14px;font-weight:700;color:#f59e0b;margin-top:-4px;">${esc(previewNumber)}</div>
@@ -242,6 +251,7 @@ export function InvoiceEditorDialog({
           </tbody>
         </table>
       </div>
+      ${logoRightClose}
     </div>
 
     <!-- Bill To + Work Location -->
