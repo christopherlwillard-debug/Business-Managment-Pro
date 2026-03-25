@@ -1,4 +1,5 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import express, { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import path from "path";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import clientsRouter from "./clients";
@@ -37,6 +38,10 @@ router.use("/portal", portalRouter);
 
 // All other routes require a valid session
 router.use(requireAuth);
+
+// Serve uploaded files (receipts, logos, etc.) — behind auth
+router.use("/uploads", express.static(path.resolve("uploads")));
+
 router.use("/clients", clientsRouter);
 router.use("/jobs", jobsRouter);
 router.use("/invoices", invoicesRouter);
