@@ -601,11 +601,11 @@ export default function Expenses() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={open => { setIsDialogOpen(open); if (!open) setReceiptFile(null); }}>
-        <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl">
+        <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="text-2xl font-display">Log Expense</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          <form id="expense-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Amount *</label>
@@ -703,21 +703,22 @@ export default function Expenses() {
             </div>
 
             {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
-
-            <div className="pt-4 flex justify-end gap-3">
-              <button type="button" onClick={() => { setIsDialogOpen(false); setReceiptFile(null); }}
-                className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending || uploadMutation.isPending}
-                className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md"
-              >
-                {createMutation.isPending || uploadMutation.isPending ? "Saving…" : "Save Expense"}
-              </button>
-            </div>
           </form>
+
+          <div className="pt-4 border-t border-dashed border-border flex justify-end gap-3 flex-shrink-0">
+            <button type="button" onClick={() => { setIsDialogOpen(false); setReceiptFile(null); }}
+              className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="expense-form"
+              disabled={createMutation.isPending || uploadMutation.isPending}
+              className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md"
+            >
+              {createMutation.isPending || uploadMutation.isPending ? "Saving…" : "Save Expense"}
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
 
