@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAuth } from "@workspace/replit-auth-web";
 
 // Import Layout & Pages
 import { AppLayout } from "./components/AppLayout";
@@ -30,31 +31,64 @@ const queryClient = new QueryClient({
   },
 });
 
+function AdminApp() {
+  const { isLoading, isAuthenticated, login } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-6 bg-background px-4">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-bold">BuildPro</h1>
+          <p className="text-muted-foreground">Sign in to access your business dashboard</p>
+        </div>
+        <button
+          onClick={login}
+          className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+        >
+          Log in
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <AppLayout>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/jobs" component={Jobs} />
+        <Route path="/invoices" component={Invoices} />
+        <Route path="/expenses" component={Expenses} />
+        <Route path="/mileage" component={Mileage} />
+        <Route path="/estimates" component={Estimates} />
+        <Route path="/subcontractors" component={Subcontractors} />
+        <Route path="/daily-logs" component={DailyLogs} />
+        <Route path="/compliance" component={Compliance} />
+        <Route path="/clients" component={Clients} />
+        <Route path="/settings" component={Settings} />
+        <Route path="/accounting" component={Accounting} />
+        <Route component={NotFound} />
+      </Switch>
+    </AppLayout>
+  );
+}
+
 function Router() {
   return (
     <Switch>
-      {/* Public portal route — no AppLayout */}
+      {/* Public portal route — no auth required */}
       <Route path="/portal/:token" component={SubcontractorPortal} />
 
-      {/* All main app routes inside AppLayout */}
+      {/* All main app routes require login */}
       <Route>
-        <AppLayout>
-          <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/jobs" component={Jobs} />
-            <Route path="/invoices" component={Invoices} />
-            <Route path="/expenses" component={Expenses} />
-            <Route path="/mileage" component={Mileage} />
-            <Route path="/estimates" component={Estimates} />
-            <Route path="/subcontractors" component={Subcontractors} />
-            <Route path="/daily-logs" component={DailyLogs} />
-            <Route path="/compliance" component={Compliance} />
-            <Route path="/clients" component={Clients} />
-            <Route path="/settings" component={Settings} />
-            <Route path="/accounting" component={Accounting} />
-            <Route component={NotFound} />
-          </Switch>
-        </AppLayout>
+        <AdminApp />
       </Route>
     </Switch>
   );

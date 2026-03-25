@@ -5,6 +5,48 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+export interface AuthUser {
+  id: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  firstName: string | null;
+  /** @nullable */
+  lastName: string | null;
+  /** @nullable */
+  profileImageUrl: string | null;
+}
+
+export interface AuthUserEnvelope {
+  user: AuthUser | null;
+}
+
+export interface MobileTokenExchangeRequest {
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  code_verifier: string;
+  /** @minLength 1 */
+  redirect_uri: string;
+  /** @minLength 1 */
+  state: string;
+  /** @minLength 1 */
+  nonce?: string;
+}
+
+export interface MobileTokenExchangeSuccess {
+  token: string;
+}
+
+export const LogoutSuccessValue = {
+  success: true,
+} as const;
+export type LogoutSuccess = typeof LogoutSuccessValue;
+
+export interface ErrorEnvelope {
+  error: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -50,8 +92,6 @@ export interface Job {
   description?: string | null;
   clientId?: number | null;
   clientName?: string | null;
-  subcontractorId?: number | null;
-  subcontractorName?: string | null;
   status: JobStatus;
   jobType?: string | null;
   address?: string | null;
@@ -81,7 +121,6 @@ export interface CreateJobRequest {
   title: string;
   description?: string | null;
   clientId?: number | null;
-  subcontractorId?: number | null;
   status: CreateJobRequestStatus;
   jobType?: string | null;
   address?: string | null;
@@ -455,6 +494,24 @@ export interface UploadedFile {
   filename: string;
   size: number;
 }
+
+/**
+ * Opaque session token — `Bearer <sid>`.
+ */
+export type AuthorizationSessionHeaderParameter = string;
+
+export type BeginBrowserLoginParams = {
+  /**
+   * Relative path to redirect to after login (must start with `/`). Defaults to `/`.
+   */
+  returnTo?: string;
+};
+
+export type HandleBrowserLoginCallbackParams = {
+  code?: string;
+  state?: string;
+  iss?: string;
+};
 
 export type ListJobsParams = {
   status?: string;

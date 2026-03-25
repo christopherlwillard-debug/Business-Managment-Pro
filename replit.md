@@ -28,13 +28,28 @@ artifacts-monorepo/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
+│   ├── db/                 # Drizzle ORM schema + DB connection
+│   └── replit-auth-web/    # Browser auth hook (useAuth) for frontend
 ├── scripts/                # Utility scripts
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
 ├── tsconfig.json
 └── package.json
 ```
+
+## Authentication
+
+- **Auth provider**: Replit OIDC (OpenID Connect with PKCE)
+- **Session storage**: PostgreSQL `sessions` table (server-side, cookie `sid`)
+- **User storage**: PostgreSQL `users` table (upserted on login)
+- **Admin protection**: All API routes except `/api/portal/*` and `/api/auth/*` require a valid session
+- **Frontend gate**: `useAuth()` hook from `@workspace/replit-auth-web`; shows login screen if not authenticated
+- **Portal routes stay public**: `/portal/:token` (frontend) and `/api/portal/*` (backend) — token-based auth handled inside portal router
+- **Auth files**:
+  - `artifacts/api-server/src/lib/auth.ts` — session CRUD, OIDC config
+  - `artifacts/api-server/src/middlewares/authMiddleware.ts` — loads user on every request
+  - `artifacts/api-server/src/routes/auth.ts` — login, callback, logout, /auth/user
+  - `lib/replit-auth-web/src/use-auth.ts` — `useAuth()` React hook
 
 ## App Features
 
