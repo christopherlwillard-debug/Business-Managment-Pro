@@ -17,6 +17,7 @@ import Compliance from "./pages/Compliance";
 import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
+import TaxReports from "./pages/TaxReports";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
@@ -52,6 +53,7 @@ function Router() {
             <Route path="/clients" component={Clients} />
             <Route path="/settings" component={Settings} />
             <Route path="/accounting" component={Accounting} />
+            <Route path="/tax-reports" component={TaxReports} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>

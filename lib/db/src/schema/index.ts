@@ -4,6 +4,7 @@ export * from "./invoices";
 export * from "./expenses";
 export * from "./mileage";
 export * from "./subcontractors";
+export * from "./payments";
 export * from "./estimates";
 export * from "./daily-logs";
 export * from "./settings";
