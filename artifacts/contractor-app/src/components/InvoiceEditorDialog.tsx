@@ -173,6 +173,12 @@ export function InvoiceEditorDialog({
     window.print();
   }
 
+  function fmtDate(iso: string): string {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!lineItems.some(l => l.description.trim())) {
@@ -328,7 +334,7 @@ export function InvoiceEditorDialog({
                             <td>
                               <input type="date" className={docInput + " text-gray-700 text-xs"} required
                                 value={form.issueDate} onChange={e => setField("issueDate", e.target.value)} />
-                              <span className="print-value text-gray-700 text-xs">{form.issueDate}</span>
+                              <span className="print-value text-gray-700 text-xs">{fmtDate(form.issueDate)}</span>
                             </td>
                           </tr>
                           <tr>
@@ -336,7 +342,7 @@ export function InvoiceEditorDialog({
                             <td>
                               <input type="date" className={docInput + " text-gray-700 text-xs"}
                                 value={form.dueDate} onChange={e => setField("dueDate", e.target.value)} />
-                              {form.dueDate && <span className="print-value text-gray-700 text-xs">{form.dueDate}</span>}
+                              {form.dueDate && <span className="print-value text-gray-700 text-xs">{fmtDate(form.dueDate)}</span>}
                             </td>
                           </tr>
                           <tr>

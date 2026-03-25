@@ -168,7 +168,8 @@
   .invoice-print-area select,
   .invoice-print-area textarea,
   .invoice-print-area button { display: none !important; }
-  .invoice-print-area .print-value { display: inline !important; }
+  .invoice-print-area span.print-value { display: inline !important; }
+  .invoice-print-area p.print-value { display: block !important; }
   @page { margin: 0.75in; size: auto; }
 }
 
