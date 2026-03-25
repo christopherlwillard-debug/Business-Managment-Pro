@@ -2037,6 +2037,10 @@ components:
         notes:
           type: string
           nullable: true
+        source:
+          type: string
+          enum: [gps, manual]
+          default: gps
         createdAt:
           type: string
       required: [id, date, miles, classification, ratePerMile, deductionAmount, createdAt]
@@ -2065,6 +2069,10 @@ components:
           enum: [business, personal]
         notes:
           type: string
+          nullable: true
+        source:
+          type: string
+          enum: [gps, manual]
           nullable: true
       required: [date, miles, classification]
 

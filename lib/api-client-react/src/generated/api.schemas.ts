@@ -357,6 +357,14 @@ export const MileageLogClassification = {
   personal: "personal",
 } as const;
 
+export type MileageLogSource =
+  (typeof MileageLogSource)[keyof typeof MileageLogSource];
+
+export const MileageLogSource = {
+  gps: "gps",
+  manual: "manual",
+} as const;
+
 export interface MileageLog {
   id: number;
   date: string;
@@ -370,6 +378,7 @@ export interface MileageLog {
   ratePerMile: number;
   deductionAmount: number;
   notes?: string | null;
+  source?: MileageLogSource;
   createdAt: string;
 }
 
@@ -381,6 +390,14 @@ export const CreateMileageLogRequestClassification = {
   personal: "personal",
 } as const;
 
+export type CreateMileageLogRequestSource =
+  (typeof CreateMileageLogRequestSource)[keyof typeof CreateMileageLogRequestSource];
+
+export const CreateMileageLogRequestSource = {
+  gps: "gps",
+  manual: "manual",
+} as const;
+
 export interface CreateMileageLogRequest {
   date: string;
   startLocation?: string | null;
@@ -390,6 +407,7 @@ export interface CreateMileageLogRequest {
   jobId?: number | null;
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
+  source?: CreateMileageLogRequestSource | null;
 }
 
 export interface MileageSummary {

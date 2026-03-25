@@ -265,7 +265,7 @@ export default function Mileage() {
     const endLabel = endWp ? `${endWp.lat.toFixed(4)}, ${endWp.lng.toFixed(4)}` : "GPS End";
 
     try {
-      const mileageLog = await createMileage.mutateAsync({
+      await createMileage.mutateAsync({
         data: {
           date: tripDate,
           miles,
@@ -276,7 +276,7 @@ export default function Mileage() {
           jobId: tripJobId ? parseInt(tripJobId) : undefined,
           notes: `GPS tracked · ${fmtDuration(elapsed)}`,
           source: "gps",
-        } as any,
+        },
       });
 
       if (tripClassification === "business") {
@@ -333,7 +333,7 @@ export default function Mileage() {
           purpose: manual.purpose || undefined,
           jobId: manual.jobId ? parseInt(manual.jobId) : undefined,
           source: "manual",
-        } as any,
+        },
       });
 
       if (manual.classification === "business") {
