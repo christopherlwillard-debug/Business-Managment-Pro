@@ -34,6 +34,7 @@ export * from "./createSubcontractorRequest";
 export * from "./dailyLog";
 export * from "./dashboardStats";
 export * from "./dashboardStatsMonthlyRevenueItem";
+export * from "./draftLineItem";
 export * from "./errorEnvelope";
 export * from "./estimate";
 export * from "./estimateLineItem";

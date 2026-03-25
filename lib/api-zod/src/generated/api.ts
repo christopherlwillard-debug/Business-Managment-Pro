@@ -278,11 +278,9 @@ export const GetJobInvoiceDraftResponse = zod.object({
   state: zod.string().nullish(),
   lineItems: zod.array(
     zod.object({
-      id: zod.number(),
       description: zod.string(),
       quantity: zod.number(),
       unitPrice: zod.number(),
-      total: zod.number(),
     }),
   ),
 });

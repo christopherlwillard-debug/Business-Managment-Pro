@@ -138,12 +138,10 @@ export interface CreateJobRequest {
   notes?: string | null;
 }
 
-export interface InvoiceLineItem {
-  id: number;
+export interface DraftLineItem {
   description: string;
   quantity: number;
   unitPrice: number;
-  total: number;
 }
 
 export interface InvoiceDraft {
@@ -160,7 +158,7 @@ export interface InvoiceDraft {
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
-  lineItems: InvoiceLineItem[];
+  lineItems: DraftLineItem[];
 }
 
 export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus];
@@ -172,6 +170,14 @@ export const InvoiceStatus = {
   overdue: "overdue",
   cancelled: "cancelled",
 } as const;
+
+export interface InvoiceLineItem {
+  id: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
 
 export interface Invoice {
   id: number;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, useListInvoices,
-  useUpdateInvoiceStatus, useDeleteInvoice, useGetSettings,
+  useUpdateInvoiceStatus, useDeleteInvoice,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -85,12 +85,13 @@ function SubcontractorPicker({
 
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice,
+  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted,
 }: {
   job: any;
   onEdit: (job: any) => void;
   onDelete: (job: any) => void;
   onReviewInvoice: (job: any) => void;
+  onMarkCompleted: (job: any) => void;
 }) {
   const isCompleted = displayStatus(job.status) === "completed";
 
@@ -150,11 +151,17 @@ function JobCard({
         )}
       </div>
 
-      {isCompleted && (
+      {isCompleted ? (
         <button
           onClick={() => onReviewInvoice(job)}
           className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
           <FileText className="w-3.5 h-3.5" /> Review Invoice
+        </button>
+      ) : (
+        <button
+          onClick={() => onMarkCompleted(job)}
+          className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
+          <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
         </button>
       )}
     </Card>
@@ -545,6 +552,7 @@ export default function Jobs() {
   const { data: clients = [] }            = useListClients();
   const { data: subcontractors = [] }     = useListSubcontractors();
   const deleteJobMutation                 = useDeleteJob();
+  const updateJob                         = useUpdateJob();
 
   const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "completed">("all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
@@ -577,6 +585,11 @@ export default function Jobs() {
       await deleteJobMutation.mutateAsync({ id: deleteTarget.id });
       queryClient.invalidateQueries();
     } finally { setDeleting(false); setDeleteTarget(null); }
+  }
+
+  async function handleMarkCompleted(job: any) {
+    await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
+    queryClient.invalidateQueries();
   }
 
   async function handleReviewInvoice(job: any) {
@@ -659,7 +672,8 @@ export default function Jobs() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {scheduledJobs.map(job => (
                   <JobCard key={job.id} job={job} onEdit={openEditJob}
-                    onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice} />
+                    onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
+                    onMarkCompleted={handleMarkCompleted} />
                 ))}
               </div>
             </div>
@@ -677,7 +691,8 @@ export default function Jobs() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {completedJobs.map(job => (
                   <JobCard key={job.id} job={job} onEdit={openEditJob}
-                    onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice} />
+                    onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
+                    onMarkCompleted={handleMarkCompleted} />
                 ))}
               </div>
             </div>

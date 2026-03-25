@@ -1633,6 +1633,17 @@ components:
           nullable: true
       required: [title]
 
+    DraftLineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+      required: [description, quantity, unitPrice]
+
     InvoiceDraft:
       type: object
       properties:
@@ -1676,7 +1687,7 @@ components:
         lineItems:
           type: array
           items:
-            $ref: '#/components/schemas/InvoiceLineItem'
+            $ref: '#/components/schemas/DraftLineItem'
       required: [jobId, jobTitle, lineItems]
 
     Invoice:

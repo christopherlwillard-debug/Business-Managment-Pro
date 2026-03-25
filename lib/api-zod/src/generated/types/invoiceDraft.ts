@@ -5,7 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
-import type { InvoiceLineItem } from "./invoiceLineItem";
+import type { DraftLineItem } from "./draftLineItem";
 
 export interface InvoiceDraft {
   clientId?: number | null;
@@ -21,5 +21,5 @@ export interface InvoiceDraft {
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
-  lineItems: InvoiceLineItem[];
+  lineItems: DraftLineItem[];
 }
