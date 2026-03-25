@@ -643,6 +643,94 @@ paths:
               schema:
                 $ref: "#/components/schemas/Expense"
 
+  # RECURRING EXPENSES
+  /recurring-expenses:
+    get:
+      operationId: listRecurringExpenses
+      tags: [expenses]
+      summary: List all recurring expense templates
+      responses:
+        "200":
+          description: List of recurring expense templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringExpense"
+    post:
+      operationId: createRecurringExpense
+      tags: [expenses]
+      summary: Create a recurring expense template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecurringExpenseRequest"
+      responses:
+        "201":
+          description: Created recurring expense template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringExpense"
+
+  /recurring-expenses/{id}:
+    get:
+      operationId: getRecurringExpense
+      tags: [expenses]
+      summary: Get a recurring expense template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recurring expense template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringExpense"
+    put:
+      operationId: updateRecurringExpense
+      tags: [expenses]
+      summary: Update a recurring expense template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecurringExpenseRequest"
+      responses:
+        "200":
+          description: Updated recurring expense template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringExpense"
+    delete:
+      operationId: deleteRecurringExpense
+      tags: [expenses]
+      summary: Delete a recurring expense template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
   # MILEAGE
   /mileage:
     get:
@@ -1693,6 +1781,9 @@ components:
         notes:
           type: string
           nullable: true
+        recurringExpenseId:
+          type: integer
+          nullable: true
         createdAt:
           type: string
       required: [id, description, amount, category, date, createdAt]
@@ -1721,6 +1812,102 @@ components:
           type: string
           nullable: true
       required: [description, amount, category, date]
+
+    RecurringExpense:
+      type: object
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        amount:
+          type: number
+        category:
+          type: string
+        vendor:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        jobTitle:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        frequency:
+          type: string
+          enum: [weekly, biweekly, monthly, quarterly, yearly]
+        startDate:
+          type: string
+        endDate:
+          type: string
+          nullable: true
+        nextDueDate:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+      required: [id, description, amount, category, frequency, startDate, nextDueDate, active, createdAt]
+
+    CreateRecurringExpenseRequest:
+      type: object
+      properties:
+        description:
+          type: string
+        amount:
+          type: number
+        category:
+          type: string
+        vendor:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        frequency:
+          type: string
+          enum: [weekly, biweekly, monthly, quarterly, yearly]
+        startDate:
+          type: string
+        endDate:
+          type: string
+          nullable: true
+      required: [description, amount, category, frequency, startDate]
+
+    UpdateRecurringExpenseRequest:
+      type: object
+      properties:
+        description:
+          type: string
+        amount:
+          type: number
+        category:
+          type: string
+        vendor:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        frequency:
+          type: string
+          enum: [weekly, biweekly, monthly, quarterly, yearly]
+        startDate:
+          type: string
+        endDate:
+          type: string
+          nullable: true
+        active:
+          type: boolean
 
     MileageLog:
       type: object

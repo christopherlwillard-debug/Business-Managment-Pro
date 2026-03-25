@@ -1,0 +1,140 @@
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { recurringExpensesTable, expensesTable, jobsTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
+
+const router = Router();
+
+const FREQUENCIES = ["weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
+
+export function advanceDate(dateStr: string, frequency: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  switch (frequency) {
+    case "weekly":    d.setDate(d.getDate() + 7); break;
+    case "biweekly":  d.setDate(d.getDate() + 14); break;
+    case "monthly":   d.setMonth(d.getMonth() + 1); break;
+    case "quarterly": d.setMonth(d.getMonth() + 3); break;
+    case "yearly":    d.setFullYear(d.getFullYear() + 1); break;
+  }
+  return d.toISOString().split("T")[0];
+}
+
+function formatTemplate(t: typeof recurringExpensesTable.$inferSelect, jobTitle?: string | null) {
+  return {
+    ...t,
+    amount: parseFloat(t.amount ?? "0"),
+    jobTitle: jobTitle ?? null,
+    createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
+  };
+}
+
+router.get("/", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .from(recurringExpensesTable)
+      .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
+      .orderBy(recurringExpensesTable.nextDueDate);
+    res.json(rows.map(r => formatTemplate(r, r.jobTitle)));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch recurring expenses" });
+  }
+});
+
+router.post("/", async (req, res) => {
+  try {
+    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate } = req.body;
+    if (!description || !amount || !category || !frequency || !startDate) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!FREQUENCIES.includes(frequency)) {
+      return res.status(400).json({ error: "Invalid frequency" });
+    }
+
+    const nextDueDate = startDate;
+
+    const [template] = await db.insert(recurringExpensesTable).values({
+      description, amount: amount.toString(), category,
+      vendor: vendor || null, jobId: jobId || null, notes: notes || null,
+      frequency, startDate, endDate: endDate || null, nextDueDate, active: true,
+    }).returning();
+
+    const [row] = await db
+      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .from(recurringExpensesTable)
+      .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
+      .where(eq(recurringExpensesTable.id, template.id));
+
+    res.status(201).json(formatTemplate(row ?? template, row?.jobTitle));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create recurring expense" });
+  }
+});
+
+router.get("/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [row] = await db
+      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .from(recurringExpensesTable)
+      .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
+      .where(eq(recurringExpensesTable.id, id));
+    if (!row) return res.status(404).json({ error: "Recurring expense not found" });
+    res.json(formatTemplate(row, row.jobTitle));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch recurring expense" });
+  }
+});
+
+router.put("/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate, active } = req.body;
+    if (frequency && !FREQUENCIES.includes(frequency)) {
+      return res.status(400).json({ error: "Invalid frequency" });
+    }
+
+    const [updated] = await db.update(recurringExpensesTable).set({
+      ...(description !== undefined && { description }),
+      ...(amount !== undefined && { amount: amount.toString() }),
+      ...(category !== undefined && { category }),
+      ...(vendor !== undefined && { vendor: vendor || null }),
+      ...(jobId !== undefined && { jobId: jobId || null }),
+      ...(notes !== undefined && { notes: notes || null }),
+      ...(frequency !== undefined && { frequency }),
+      ...(startDate !== undefined && { startDate }),
+      ...(endDate !== undefined && { endDate: endDate || null }),
+      ...(active !== undefined && { active }),
+    }).where(eq(recurringExpensesTable.id, id)).returning();
+
+    if (!updated) return res.status(404).json({ error: "Recurring expense not found" });
+
+    const [row] = await db
+      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .from(recurringExpensesTable)
+      .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
+      .where(eq(recurringExpensesTable.id, id));
+
+    res.json(formatTemplate(row ?? updated, row?.jobTitle));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update recurring expense" });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(recurringExpensesTable).where(eq(recurringExpensesTable.id, id));
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete recurring expense" });
+  }
+});
+
+export default router;

@@ -231,6 +231,7 @@ export interface Expense {
   jobTitle?: string | null;
   receiptUrl?: string | null;
   notes?: string | null;
+  recurringExpenseId?: number | null;
   createdAt: string;
 }
 
@@ -243,6 +244,50 @@ export interface CreateExpenseRequest {
   jobId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
+}
+
+export type RecurringExpenseFrequency = "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+
+export interface RecurringExpense {
+  id: number;
+  description: string;
+  amount: number;
+  category: string;
+  vendor?: string | null;
+  jobId?: number | null;
+  jobTitle?: string | null;
+  notes?: string | null;
+  frequency: RecurringExpenseFrequency;
+  startDate: string;
+  endDate?: string | null;
+  nextDueDate: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface CreateRecurringExpenseRequest {
+  description: string;
+  amount: number;
+  category: string;
+  vendor?: string | null;
+  jobId?: number | null;
+  notes?: string | null;
+  frequency: RecurringExpenseFrequency;
+  startDate: string;
+  endDate?: string | null;
+}
+
+export interface UpdateRecurringExpenseRequest {
+  description?: string;
+  amount?: number;
+  category?: string;
+  vendor?: string | null;
+  jobId?: number | null;
+  notes?: string | null;
+  frequency?: RecurringExpenseFrequency;
+  startDate?: string;
+  endDate?: string | null;
+  active?: boolean;
 }
 
 export type MileageLogClassification =

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import {
   useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
 } from "@workspace/api-client-react";
+import type { RecurringExpense, RecurringExpenseFrequency } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
+  RotateCcw, Pause, Play, ChevronUp,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
@@ -16,6 +18,81 @@ import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
 const CATEGORIES = ["Materials", "Tools/Equipment", "Fuel/Travel", "Subcontractor", "Insurance", "Office/Admin", "Other"];
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const API = `${BASE}/api`;
+
+const FREQUENCY_LABELS: Record<RecurringExpenseFrequency, string> = {
+  weekly:    "Weekly",
+  biweekly:  "Bi-weekly",
+  monthly:   "Monthly",
+  quarterly: "Quarterly",
+  yearly:    "Yearly",
+};
+
+const FREQUENCY_COLORS: Record<RecurringExpenseFrequency, string> = {
+  weekly:    "bg-purple-100 text-purple-700",
+  biweekly:  "bg-indigo-100 text-indigo-700",
+  monthly:   "bg-blue-100 text-blue-700",
+  quarterly: "bg-teal-100 text-teal-700",
+  yearly:    "bg-green-100 text-green-700",
+};
+
+// ─── Recurring expense hooks ───────────────────────────────────────────────────
+function useRecurringExpenses() {
+  return useQuery<RecurringExpense[]>({
+    queryKey: ["recurring-expenses"],
+    queryFn: async () => {
+      const res = await fetch(`${API}/recurring-expenses`);
+      if (!res.ok) throw new Error("Failed to load recurring expenses");
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+}
+
+function useCreateRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      const res = await fetch(`${API}/recurring-expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to create recurring expense");
+      return res.json() as Promise<RecurringExpense>;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring-expenses"] }),
+  });
+}
+
+function useUpdateRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+      const res = await fetch(`${API}/recurring-expenses/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update recurring expense");
+      return res.json() as Promise<RecurringExpense>;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring-expenses"] }),
+  });
+}
+
+function useDeleteRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${API}/recurring-expenses/${id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to delete recurring expense");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["recurring-expenses"] });
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+    },
+  });
+}
 
 // ─── Vendor hooks (direct, not generated) ─────────────────────────────────────
 interface Vendor { id: number; name: string; category: string | null; }
@@ -299,6 +376,11 @@ function ExpenseViewModal({
           <div className="flex items-center gap-2">
             <Receipt className="w-4 h-4 text-amber-500" />
             <span className="font-bold text-gray-900">Expense Detail</span>
+            {expense.recurringExpenseId && (
+              <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-100">
+                <RotateCcw className="w-2.5 h-2.5" /> Recurring
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <button onClick={onDelete}
@@ -411,6 +493,370 @@ function ExpenseViewModal({
         <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-500" />
       </div>
     </div>
+  );
+}
+
+// ─── Recurring Expense Modal ──────────────────────────────────────────────────
+function RecurringModal({
+  open,
+  onClose,
+  jobs,
+}: {
+  open: boolean;
+  onClose: () => void;
+  jobs: any[];
+}) {
+  const createRecurring = useCreateRecurring();
+  const saveVendor      = useSaveVendor();
+  const [vendor, setVendor]     = useState("");
+  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [error, setError]       = useState("");
+
+  function resetForm() {
+    setVendor("");
+    setCategory(CATEGORIES[0]);
+    setError("");
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    const fd = new FormData(e.currentTarget);
+
+    try {
+      await createRecurring.mutateAsync({
+        description: fd.get("description") as string,
+        amount:      parseFloat(fd.get("amount") as string),
+        category,
+        vendor:      vendor.trim() || undefined,
+        jobId:       fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
+        notes:       fd.get("notes") as string || undefined,
+        frequency:   fd.get("frequency") as string,
+        startDate:   fd.get("startDate") as string,
+        endDate:     (fd.get("endDate") as string) || undefined,
+      });
+
+      if (vendor.trim()) {
+        await saveVendor.mutateAsync(vendor.trim()).catch(() => {});
+      }
+
+      resetForm();
+      onClose();
+    } catch {
+      setError("Failed to save. Please try again.");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={open => { if (!open) { resetForm(); onClose(); } }}>
+      <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-display flex items-center gap-2">
+            <RotateCcw className="w-5 h-5 text-blue-500" />
+            Add Recurring Expense
+          </DialogTitle>
+        </DialogHeader>
+        <form id="recurring-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Amount *</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
+                <input
+                  name="amount" type="number" step="0.01" required min="0"
+                  className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Frequency *</label>
+              <select
+                name="frequency" required
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none"
+                defaultValue="monthly"
+              >
+                {(Object.entries(FREQUENCY_LABELS) as [RecurringExpenseFrequency, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Description *</label>
+            <input
+              name="description" required
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="e.g. General liability insurance"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Vendor</label>
+              <VendorCombobox value={vendor} onChange={setVendor} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Category *</label>
+              <select
+                name="category" required value={category}
+                onChange={e => setCategory(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none"
+              >
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Start Date *</label>
+              <input
+                name="startDate" type="date" required defaultValue={new Date().toISOString().split("T")[0]}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                End Date
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground">(optional)</span>
+              </label>
+              <input
+                name="endDate" type="date"
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Allocate to Job <span className="font-normal text-muted-foreground">(Optional)</span></label>
+            <select name="jobId" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
+              <option value="">— None (Overhead) —</option>
+              {jobs?.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Notes</label>
+            <input
+              name="notes"
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="Optional notes"
+            />
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </form>
+
+        <div className="pt-4 border-t border-dashed border-border flex justify-end gap-3 flex-shrink-0">
+          <button type="button" onClick={() => { resetForm(); onClose(); }}
+            className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="recurring-form"
+            disabled={createRecurring.isPending}
+            className="px-6 py-2 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-md flex items-center gap-2"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            {createRecurring.isPending ? "Saving…" : "Save Recurring"}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Recurring Section ────────────────────────────────────────────────────────
+function RecurringSection({ jobs }: { jobs: any[] }) {
+  const { data: templates = [], isLoading } = useRecurringExpenses();
+  const updateRecurring = useUpdateRecurring();
+  const deleteRecurring = useDeleteRecurring();
+  const [modalOpen,   setModalOpen]   = useState(false);
+  const [collapsed,   setCollapsed]   = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<RecurringExpense | null>(null);
+  const [deletingId,  setDeletingId]  = useState<number | null>(null);
+
+  async function toggleActive(t: RecurringExpense) {
+    await updateRecurring.mutateAsync({ id: t.id, data: { active: !t.active } });
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    try {
+      await deleteRecurring.mutateAsync(deleteTarget.id);
+    } finally {
+      setDeletingId(null);
+      setDeleteTarget(null);
+    }
+  }
+
+  const activeCount = templates.filter(t => t.active).length;
+
+  return (
+    <>
+      <Card className="border-border/50 shadow-md overflow-hidden bg-card">
+        <div
+          className="flex items-center justify-between px-6 py-4 border-b border-border/50 cursor-pointer select-none hover:bg-muted/20 transition-colors"
+          onClick={() => setCollapsed(c => !c)}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <RotateCcw className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-foreground">Recurring Expenses</h2>
+                {activeCount > 0 && (
+                  <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                    {activeCount} active
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Auto-generate expenses on a schedule</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setModalOpen(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Recurring
+            </button>
+            {collapsed ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronUp className="w-4 h-4 text-muted-foreground" />}
+          </div>
+        </div>
+
+        {!collapsed && (
+          <div className="overflow-x-auto custom-scrollbar">
+            {isLoading ? (
+              <div className="px-6 py-8 text-center text-muted-foreground animate-pulse text-sm">Loading…</div>
+            ) : templates.length === 0 ? (
+              <div className="px-6 py-10 text-center text-muted-foreground">
+                <RotateCcw className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                <p className="text-sm">No recurring expenses set up yet.</p>
+                <p className="text-xs mt-1">Add one to auto-generate expenses on a schedule.</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm text-left whitespace-nowrap">
+                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                  <tr>
+                    <th className="px-6 py-3">Description / Vendor</th>
+                    <th className="px-6 py-3">Frequency</th>
+                    <th className="px-6 py-3">Next Due</th>
+                    <th className="px-6 py-3">End Date</th>
+                    <th className="px-6 py-3 text-right">Amount</th>
+                    <th className="px-6 py-3 text-center">Status</th>
+                    <th className="px-6 py-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {templates.map(t => (
+                    <tr key={t.id} className={`transition-colors ${t.active ? "hover:bg-muted/20" : "opacity-60 hover:bg-muted/10"}`}>
+                      <td className="px-6 py-3">
+                        <div className="font-medium text-foreground">{t.description}</div>
+                        {t.vendor && (
+                          <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <Store className="w-3 h-3" /> {t.vendor}
+                          </div>
+                        )}
+                        {t.jobTitle && (
+                          <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <Briefcase className="w-3 h-3" /> {t.jobTitle}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-3">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${FREQUENCY_COLORS[t.frequency] ?? "bg-gray-100 text-gray-600"}`}>
+                          <RotateCcw className="w-3 h-3" />
+                          {FREQUENCY_LABELS[t.frequency] ?? t.frequency}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {t.active ? formatDate(t.nextDueDate) : <span className="italic">Paused</span>}
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {t.endDate ? formatDate(t.endDate) : <span className="italic text-xs">No end</span>}
+                      </td>
+                      <td className="px-6 py-3 text-right font-display font-semibold text-foreground">
+                        {formatCurrency(t.amount)}
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        {t.active ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
+                            <Pause className="w-2.5 h-2.5" /> Paused
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => toggleActive(t)}
+                            className="text-muted-foreground hover:text-primary transition-colors"
+                            title={t.active ? "Pause" : "Resume"}
+                          >
+                            {t.active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(t)}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            title="Delete template"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </Card>
+
+      <RecurringModal open={modalOpen} onClose={() => setModalOpen(false)} jobs={jobs} />
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Delete recurring expense?</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  The template for <span className="font-semibold text-gray-700">{deleteTarget.description}</span> will be deleted.
+                  Previously generated expense entries will remain.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setDeleteTarget(null)} disabled={deletingId !== null}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} disabled={deletingId !== null}
+                className="px-5 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
+                <Trash2 className="w-3.5 h-3.5" />
+                {deletingId !== null ? "Deleting…" : "Delete Template"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -547,7 +993,14 @@ export default function Expenses() {
                     className="hover:bg-muted/30 transition-colors cursor-pointer group">
                     <td className="px-6 py-4 text-muted-foreground">{formatDate(exp.date)}</td>
                     <td className="px-6 py-4">
-                      <div className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</span>
+                        {exp.recurringExpenseId && (
+                          <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-blue-100 flex-shrink-0">
+                            <RotateCcw className="w-2.5 h-2.5" /> Recurring
+                          </span>
+                        )}
+                      </div>
                       {exp.vendor && (
                         <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                           <Store className="w-3 h-3" /> {exp.vendor}
@@ -599,6 +1052,9 @@ export default function Expenses() {
           </table>
         </div>
       </Card>
+
+      {/* Recurring Expenses Section */}
+      <RecurringSection jobs={jobs ?? []} />
 
       <Dialog open={isDialogOpen} onOpenChange={open => { setIsDialogOpen(open); if (!open) setReceiptFile(null); }}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
