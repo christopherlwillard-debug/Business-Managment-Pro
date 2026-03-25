@@ -4,7 +4,7 @@ import {
   invoicesTable, expensesTable, mileageLogsTable,
   paymentsTable, subcontractorsTable, clientsTable
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, desc } from "drizzle-orm";
+import { eq, and, gte, lte, sum, desc, count } from "drizzle-orm";
 
 const router = Router();
 
@@ -105,7 +105,7 @@ router.get("/schedule-c", async (req, res) => {
       .select({
         category: expensesTable.category,
         amount: sum(expensesTable.amount),
-        count: expensesTable.id,
+        count: count(expensesTable.id),
       })
       .from(expensesTable)
       .where(
@@ -340,7 +340,7 @@ router.get("/admin/all-subcontractors", async (req, res) => {
         id: subcontractorsTable.id,
         name: subcontractorsTable.name,
         totalPayments: sum(paymentsTable.amount),
-        paymentCount: paymentsTable.id,
+        paymentCount: count(paymentsTable.id),
       })
       .from(subcontractorsTable)
       .leftJoin(

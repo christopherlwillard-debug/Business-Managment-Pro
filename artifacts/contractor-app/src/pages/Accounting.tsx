@@ -4,8 +4,10 @@ import { formatCurrency } from "@/lib/utils";
 import {
   TrendingUp, TrendingDown, DollarSign, MapPin, Receipt,
   Navigation, HardHat, FileSpreadsheet, Printer, AlertCircle, CheckCircle2,
-  Download, FileText
+  Download, FileText, BarChart3, AlertTriangle
 } from "lucide-react";
+import { useScheduleCReport, useAllSubcontractorsPayments, useCreatePayment, useUpdatePayment, useDeletePayment, type Payment } from "@workspace/api-client-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -78,6 +80,9 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function Accounting() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
+  const [activeTab, setActiveTab] = useState<"accounting" | "schedule-c">("accounting");
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
   const { data, isLoading, error } = useQuery({
@@ -85,6 +90,12 @@ export default function Accounting() {
     queryFn: () => fetchAccounting(year),
     staleTime: 1000 * 60 * 2,
   });
+
+  const { data: report, isLoading: reportLoading } = useScheduleCReport(year);
+  const { data: subPayments } = useAllSubcontractorsPayments(year);
+  const createPayment = useCreatePayment();
+  const updatePayment = useUpdatePayment();
+  const deletePayment = useDeletePayment();
 
   const s = data?.summary ?? {};
   const netColor = (s.netProfit ?? 0) >= 0 ? "text-emerald-600" : "text-red-500";
@@ -94,8 +105,8 @@ export default function Accounting() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Accounting & Reports</h1>
-          <p className="text-muted-foreground mt-1">Auto-generated financials — income, expenses, mileage, and 1099s in one place.</p>
+          <h1 className="text-3xl font-display font-bold text-foreground">Accounting & Tax Reports</h1>
+          <p className="text-muted-foreground mt-1">Auto-generated financials — income, expenses, mileage, Schedule C, and 1099s in one place.</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -114,15 +125,41 @@ export default function Accounting() {
         </div>
       </div>
 
-      {isLoading && (
-        <div className="text-center py-20 text-muted-foreground animate-pulse">Loading {year} report…</div>
-      )}
-      {error && (
-        <div className="text-center py-20 text-destructive">Failed to load report. Check that the API is running.</div>
-      )}
+      {/* Tab Navigation */}
+      <div className="flex gap-2 border-b border-border">
+        <button
+          onClick={() => setActiveTab("accounting")}
+          className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === "accounting"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4 inline mr-2" /> Accounting Report
+        </button>
+        <button
+          onClick={() => setActiveTab("schedule-c")}
+          className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === "schedule-c"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 inline mr-2" /> Schedule C
+        </button>
+      </div>
 
-      {data && (
+      {activeTab === "accounting" && (
         <>
+          {isLoading && (
+            <div className="text-center py-20 text-muted-foreground animate-pulse">Loading {year} report…</div>
+          )}
+          {error && (
+            <div className="text-center py-20 text-destructive">Failed to load report. Check that the API is running.</div>
+          )}
+
+          {data && (
+            <>
           {/* P&L Summary Cards */}
           <div>
             <SectionHeader title="Profit & Loss Summary" sub={`Jan 1 – Dec 31, ${year}`} />
@@ -434,6 +471,195 @@ export default function Accounting() {
           <p className="text-xs text-muted-foreground text-center pb-4">
             This report is auto-generated from your invoices, expenses, mileage logs, and subcontractor records. Always verify with your accountant before filing.
           </p>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Schedule C Tab */}
+      {activeTab === "schedule-c" && (
+        <>
+          {reportLoading && (
+            <div className="text-center py-20 text-muted-foreground animate-pulse">Loading Schedule C…</div>
+          )}
+
+          {report && (
+            <>
+              {/* Export Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (!report) return;
+                    const csvContent = `Schedule C - Tax Year ${report.year}\nGenerated: ${new Date().toLocaleDateString()}\n\nLine,Description,Amount\n1,Gross receipts or sales,"$${report.grossReceipts.toFixed(2)}"\n${report.scheduleLines
+                      .filter(l => l.line > 1)
+                      .map(line => `${line.line},"${line.description}","$${line.amount.toFixed(2)}"`)
+                      .join("\n")}\n\nData Quality Check\nUncategorized Expenses,${report.dataQuality.uncategorizedExpenses}\nDraft Invoices,${report.dataQuality.invoicesDraft}`;
+                    const blob = new Blob([csvContent], { type: "text/csv" });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `Schedule_C_${year}.csv`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border"
+                >
+                  <Download className="w-4 h-4 mr-2" /> CSV Export
+                </button>
+                <button
+                  onClick={() => {
+                    if (!report) return;
+                    let htmlContent = `
+                      <html>
+                        <head>
+                          <title>Schedule C - Tax Year ${report.year}</title>
+                          <style>
+                            body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
+                            h1 { text-align: center; font-size: 18px; margin-bottom: 30px; }
+                            .form-line { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+                            .line-number { font-weight: bold; width: 40px; }
+                            .line-description { flex: 1; margin: 0 20px; }
+                            .line-amount { width: 120px; text-align: right; }
+                          </style>
+                        </head>
+                        <body>
+                          <h1>SCHEDULE C (FORM 1040) - PROFIT OR LOSS FROM BUSINESS</h1>
+                          <p style="text-align: center;">Tax Year ${report.year}</p>
+                          ${report.scheduleLines
+                            .map(
+                              line => `
+                            <div class="form-line">
+                              <span class="line-number">Line ${line.line}</span>
+                              <span class="line-description">${line.description}</span>
+                              <span class="line-amount">$${line.amount.toFixed(2)}</span>
+                            </div>
+                          `
+                            )
+                            .join("")}
+                        </body>
+                      </html>
+                    `;
+                    const printWindow = window.open("", "", "width=800,height=600");
+                    if (printWindow) {
+                      printWindow.document.write(htmlContent);
+                      printWindow.document.close();
+                      setTimeout(() => printWindow.print(), 250);
+                    }
+                  }}
+                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all"
+                >
+                  <FileText className="w-4 h-4 mr-2" /> PDF Print
+                </button>
+              </div>
+
+              {/* Data Quality Warnings */}
+              {report.dataQuality.warnings.length > 0 && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-medium text-amber-900">Data Quality Warnings</p>
+                      {report.dataQuality.warnings.map((warning, i) => (
+                        <p key={i} className="text-sm text-amber-800">• {warning}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Schedule C Summary */}
+              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-muted/50 px-6 py-4 border-b border-border">
+                  <h2 className="text-lg font-display font-bold text-foreground">Schedule C Summary</h2>
+                </div>
+                <div className="p-6 space-y-3">
+                  {report.scheduleLines.map((line, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex justify-between items-center py-2 ${
+                        [1, 28, 29].includes(line.line) ? "border-t border-border pt-3 font-semibold" : ""
+                      } ${[28, 29].includes(line.line) ? "bg-muted/30 px-3 rounded" : ""}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="text-sm text-muted-foreground w-8">Line {line.line}</span>
+                        <span className="text-foreground">{line.description}</span>
+                      </div>
+                      <span className="text-lg font-semibold text-primary">{formatCurrency(line.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Mileage Data */}
+              {report.mileageData.logCount > 0 && (
+                <div className="bg-card border border-border rounded-2xl shadow-sm p-6">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Business Mileage Deduction</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">Total Business Miles</p>
+                      <p className="text-2xl font-bold text-foreground">{report.mileageData.totalBusinessMiles.toFixed(0)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">Rate per Mile</p>
+                      <p className="text-2xl font-bold text-foreground">${report.mileageData.ratePerMile.toFixed(3)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">Deduction Amount</p>
+                      <p className="text-2xl font-bold text-primary">{formatCurrency(report.mileageData.deduction)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">Logs Recorded</p>
+                      <p className="text-2xl font-bold text-foreground">{report.mileageData.logCount}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Subcontractor Payments */}
+              {subPayments && subPayments.subcontractors.length > 0 && (
+                <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                  <div className="bg-muted/50 px-6 py-4 border-b border-border flex justify-between items-center">
+                    <h2 className="text-lg font-display font-bold text-foreground">Subcontractor Payments</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                        <tr>
+                          <th className="px-6 py-3">Subcontractor</th>
+                          <th className="px-6 py-3 text-right">Total Payments</th>
+                          <th className="px-6 py-3 text-center">Payment Count</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {subPayments.subcontractors.map(sub => (
+                          <tr key={sub.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-6 py-4 font-medium text-foreground">{sub.name}</td>
+                            <td className="px-6 py-4 text-right font-semibold text-primary">{formatCurrency(sub.totalPayments)}</td>
+                            <td className="px-6 py-4 text-center text-muted-foreground">{sub.paymentCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Disclaimer */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-blue-900 mb-1">⚠️ Tax Disclaimer</p>
+                    <p className="text-sm text-blue-800">
+                      This Schedule C summary is for informational purposes only and does not constitute tax advice. 
+                      Please consult with a qualified tax professional or CPA before filing. BuildPro is not responsible 
+                      for tax filing accuracy or penalties resulting from incomplete or incorrect information.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
