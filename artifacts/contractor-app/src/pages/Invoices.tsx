@@ -790,7 +790,9 @@ export default function Invoices() {
     clientId: "", jobId: "",
     issueDate: new Date().toISOString().slice(0, 10),
     dueDate: "", status: "draft", taxRate: "",
-    city: "", state: "KY", notes: "", terms: "Net 30",
+    city: "", state: "KY", locationName: "", notes: "", terms: "Net 30",
+    clientEmail: "", clientPhone: "", clientAddress: "", 
+    clientCity: "", clientState: "", clientZip: "", clientNotes: "",
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
   const [submitting, setSubmitting] = useState(false);
