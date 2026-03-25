@@ -7,7 +7,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
-  Building2, MapPin, Check, X, Plus, Trash2,
+  Building2, MapPin, Check, X, Plus, Trash2, Lock,
 } from "lucide-react";
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
@@ -59,6 +59,7 @@ export function InvoiceEditorDialog({
   const previewNumber = existingInvoice?.invoiceNumber ?? `${prefix}${nextNum}`;
 
   const isEdit = Boolean(existingInvoice);
+  const lockClientAndLocation = Boolean(initialData) || Boolean(existingInvoice?.jobId);
 
   function makeInitialForm() {
     if (existingInvoice) {
@@ -368,100 +369,126 @@ export function InvoiceEditorDialog({
                 <div className="grid grid-cols-2 gap-5">
                   <div>
                     <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
-                    <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 space-y-3">
-                      {/* Client search */}
-                      <div className="relative">
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Client</label>
-                        <input
-                          ref={clientRef}
-                          type="text"
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
-                          placeholder="Search or add new…"
-                          value={clientInput}
-                          onChange={e => {
-                            setClientInput(e.target.value);
-                            setShowClientDrop(true);
-                            setIsNewClient(false);
-                            setField("clientId", "");
-                          }}
-                          onFocus={() => setShowClientDrop(true)}
-                          onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
-                        />
-                        {isNewClient && (
-                          <span className="absolute right-3 top-[calc(100%-1.5rem)] text-[9px] font-bold bg-amber-400 text-white px-1.5 py-0.5 rounded-full">NEW</span>
+
+                    {lockClientAndLocation ? (
+                      /* ── Locked: from a job ── */
+                      <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Lock className="w-2.5 h-2.5 text-gray-400" />
+                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">From job</span>
+                        </div>
+                        {clientInput && (
+                          <p className="text-sm font-bold text-gray-900 mb-1">{clientInput}</p>
                         )}
-                        {showClientDrop && (
-                          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl max-h-36 overflow-y-auto">
-                            {suggestions.length === 0 && !clientInput.trim() && (
-                              <p className="px-3 py-2 text-xs text-gray-400">No clients yet</p>
-                            )}
-                            {suggestions.map((c: Client) => (
-                              <button key={c.id} type="button"
-                                onMouseDown={() => {
-                                  setClientInput(c.name);
-                                  setField("clientId", String(c.id));
-                                  setField("clientEmail", c.email ?? "");
-                                  setField("clientAddress", c.address ?? "");
-                                  setField("clientPhone", c.phone ?? "");
-                                  setField("clientCity", c.city ?? "");
-                                  setField("clientState", c.state ?? "");
-                                  setField("clientZip", c.zip ?? "");
-                                  setField("clientNotes", c.notes ?? "");
-                                  setShowClientDrop(false);
-                                  setIsNewClient(false);
-                                }}
-                                className="w-full text-left px-3 py-2 hover:bg-amber-50 text-sm text-gray-700 transition-colors">
-                                {c.name}
-                              </button>
-                            ))}
-                            {clientInput.trim() && !hasExact && (
-                              <button type="button"
-                                onMouseDown={() => {
-                                  setField("clientId", "");
-                                  setIsNewClient(true);
-                                  setShowClientDrop(false);
-                                }}
-                                className="w-full text-left px-3 py-2 border-t border-gray-100 text-xs font-semibold text-amber-600 hover:bg-amber-50 transition-colors">
-                                + Add "{clientInput}" as new client
-                              </button>
-                            )}
-                          </div>
+                        {form.clientEmail && <p className="text-xs text-gray-500">{form.clientEmail}</p>}
+                        {form.clientPhone && <p className="text-xs text-gray-500">{form.clientPhone}</p>}
+                        {form.clientAddress && <p className="text-xs text-gray-500">{form.clientAddress}</p>}
+                        {(form.clientCity || form.clientState || form.clientZip) && (
+                          <p className="text-xs text-gray-500">
+                            {[form.clientCity, form.clientState, form.clientZip].filter(Boolean).join(", ")}
+                          </p>
+                        )}
+                        {!clientInput && !form.clientEmail && !form.clientAddress && (
+                          <p className="text-xs text-gray-400 italic">No client assigned</p>
                         )}
                       </div>
-                      {/* Client fields */}
-                      {(selectedClient || isNewClient) && (
-                        <>
-                          {[
-                            { key: "clientEmail",   label: "Email",   type: "email" },
-                            { key: "clientPhone",   label: "Phone",   type: "text" },
-                            { key: "clientAddress", label: "Address", type: "text" },
-                          ].map(({ key, label, type }) => (
-                            <div key={key}>
-                              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">{label}</label>
-                              <input type={type} className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                value={form[key as keyof InvoiceFormState]} onChange={e => setField(key, e.target.value)} />
+                    ) : (
+                      /* ── Editable ── */
+                      <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 space-y-3">
+                        {/* Client search */}
+                        <div className="relative">
+                          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Client</label>
+                          <input
+                            ref={clientRef}
+                            type="text"
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
+                            placeholder="Search or add new…"
+                            value={clientInput}
+                            onChange={e => {
+                              setClientInput(e.target.value);
+                              setShowClientDrop(true);
+                              setIsNewClient(false);
+                              setField("clientId", "");
+                            }}
+                            onFocus={() => setShowClientDrop(true)}
+                            onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
+                          />
+                          {isNewClient && (
+                            <span className="absolute right-3 top-[calc(100%-1.5rem)] text-[9px] font-bold bg-amber-400 text-white px-1.5 py-0.5 rounded-full">NEW</span>
+                          )}
+                          {showClientDrop && (
+                            <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl max-h-36 overflow-y-auto">
+                              {suggestions.length === 0 && !clientInput.trim() && (
+                                <p className="px-3 py-2 text-xs text-gray-400">No clients yet</p>
+                              )}
+                              {suggestions.map((c: Client) => (
+                                <button key={c.id} type="button"
+                                  onMouseDown={() => {
+                                    setClientInput(c.name);
+                                    setField("clientId", String(c.id));
+                                    setField("clientEmail", c.email ?? "");
+                                    setField("clientAddress", c.address ?? "");
+                                    setField("clientPhone", c.phone ?? "");
+                                    setField("clientCity", c.city ?? "");
+                                    setField("clientState", c.state ?? "");
+                                    setField("clientZip", c.zip ?? "");
+                                    setField("clientNotes", c.notes ?? "");
+                                    setShowClientDrop(false);
+                                    setIsNewClient(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2 hover:bg-amber-50 text-sm text-gray-700 transition-colors">
+                                  {c.name}
+                                </button>
+                              ))}
+                              {clientInput.trim() && !hasExact && (
+                                <button type="button"
+                                  onMouseDown={() => {
+                                    setField("clientId", "");
+                                    setIsNewClient(true);
+                                    setShowClientDrop(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2 border-t border-gray-100 text-xs font-semibold text-amber-600 hover:bg-amber-50 transition-colors">
+                                  + Add "{clientInput}" as new client
+                                </button>
+                              )}
                             </div>
-                          ))}
-                          <div className="grid grid-cols-3 gap-1.5">
-                            <div className="col-span-1">
-                              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">City</label>
-                              <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                value={form.clientCity} onChange={e => setField("clientCity", e.target.value)} />
+                          )}
+                        </div>
+                        {/* Client fields */}
+                        {(selectedClient || isNewClient) && (
+                          <>
+                            {[
+                              { key: "clientEmail",   label: "Email",   type: "email" },
+                              { key: "clientPhone",   label: "Phone",   type: "text" },
+                              { key: "clientAddress", label: "Address", type: "text" },
+                            ].map(({ key, label, type }) => (
+                              <div key={key}>
+                                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">{label}</label>
+                                <input type={type} className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  value={form[key as keyof InvoiceFormState]} onChange={e => setField(key, e.target.value)} />
+                              </div>
+                            ))}
+                            <div className="grid grid-cols-3 gap-1.5">
+                              <div className="col-span-1">
+                                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">City</label>
+                                <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  value={form.clientCity} onChange={e => setField("clientCity", e.target.value)} />
+                              </div>
+                              <div className="col-span-1">
+                                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">State</label>
+                                <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  value={form.clientState} onChange={e => setField("clientState", e.target.value)} />
+                              </div>
+                              <div className="col-span-1">
+                                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Zip</label>
+                                <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  value={form.clientZip} onChange={e => setField("clientZip", e.target.value)} />
+                              </div>
                             </div>
-                            <div className="col-span-1">
-                              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">State</label>
-                              <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                value={form.clientState} onChange={e => setField("clientState", e.target.value)} />
-                            </div>
-                            <div className="col-span-1">
-                              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Zip</label>
-                              <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                value={form.clientZip} onChange={e => setField("clientZip", e.target.value)} />
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Work Location */}
@@ -469,25 +496,46 @@ export function InvoiceEditorDialog({
                     <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2">
                       <span className="inline-flex items-center gap-1"><MapPin className="w-2.5 h-2.5" /> Work Location</span>
                     </p>
-                    <div className="bg-amber-50 rounded-xl p-3.5 border border-amber-100 space-y-2">
-                      <div>
-                        <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">Location Name</label>
-                        <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                          placeholder="e.g. 123 Main St" value={form.locationName} onChange={e => setField("locationName", e.target.value)} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">City</label>
-                          <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                            value={form.city} onChange={e => setField("city", e.target.value)} />
+
+                    {lockClientAndLocation ? (
+                      /* ── Locked: from a job ── */
+                      <div className="bg-amber-50 rounded-xl p-3.5 border border-amber-100">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          <span className="text-[9px] font-bold text-amber-500 uppercase tracking-wide">From job</span>
                         </div>
+                        {form.locationName && (
+                          <p className="text-sm font-semibold text-gray-800 mb-1">{form.locationName}</p>
+                        )}
+                        {(form.city || form.state) && (
+                          <p className="text-xs text-gray-600">{[form.city, form.state].filter(Boolean).join(", ")}</p>
+                        )}
+                        {!form.locationName && !form.city && !form.state && (
+                          <p className="text-xs text-gray-400 italic">No work location set</p>
+                        )}
+                      </div>
+                    ) : (
+                      /* ── Editable ── */
+                      <div className="bg-amber-50 rounded-xl p-3.5 border border-amber-100 space-y-2">
                         <div>
-                          <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">State</label>
+                          <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">Location Name</label>
                           <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                            value={form.state} onChange={e => setField("state", e.target.value)} />
+                            placeholder="e.g. 123 Main St" value={form.locationName} onChange={e => setField("locationName", e.target.value)} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">City</label>
+                            <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              value={form.city} onChange={e => setField("city", e.target.value)} />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">State</label>
+                            <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              value={form.state} onChange={e => setField("state", e.target.value)} />
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 

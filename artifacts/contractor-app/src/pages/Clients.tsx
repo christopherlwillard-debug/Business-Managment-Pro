@@ -23,6 +23,8 @@ export default function Clients() {
       phone: formData.get("phone") as string,
       address: formData.get("address") as string,
       city: formData.get("city") as string,
+      state: formData.get("state") as string,
+      zip: formData.get("zip") as string,
       notes: formData.get("notes") as string,
     };
 
@@ -127,10 +129,13 @@ export default function Clients() {
                       <Mail className="w-4 h-4 mr-3 text-primary/60 flex-shrink-0" /> <span className="truncate">{client.email}</span>
                     </div>
                   )}
-                  {client.address && (
+                  {(client.address || client.city || client.state || client.zip) && (
                     <div className="flex items-start text-sm text-muted-foreground">
                       <MapPin className="w-4 h-4 mr-3 mt-0.5 text-primary/60 flex-shrink-0" /> 
-                      <span className="line-clamp-2">{client.address}{client.city && `, ${client.city}`}</span>
+                      <span className="line-clamp-2">
+                        {client.address && <>{client.address}<br /></>}
+                        {[client.city, client.state, client.zip].filter(Boolean).join(", ")}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -184,12 +189,27 @@ export default function Clients() {
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 mb-3" 
                 placeholder="Street" 
               />
-              <input 
-                name="city" 
-                defaultValue={editingClient?.city || ""}
-                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
-                placeholder="City" 
-              />
+              <div className="grid grid-cols-5 gap-2">
+                <input 
+                  name="city" 
+                  defaultValue={editingClient?.city || ""}
+                  className="col-span-2 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                  placeholder="City" 
+                />
+                <input 
+                  name="state" 
+                  defaultValue={editingClient?.state || ""}
+                  maxLength={2}
+                  className="col-span-1 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 uppercase" 
+                  placeholder="ST" 
+                />
+                <input 
+                  name="zip" 
+                  defaultValue={editingClient?.zip || ""}
+                  className="col-span-2 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                  placeholder="Zip" 
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Notes</label>
