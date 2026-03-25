@@ -279,8 +279,6 @@ function InvoiceBuilder({
                               setField("clientId", String(c.id));
                               setField("jobId", "");
                               setField("clientEmail", c.email || "");
-                              setField("clientPhone", c.phone || "");
-                              setField("clientAddress", c.address || "");
                               if (c.city) setField("city", c.city);
                               setIsNewClient(false);
                               setShowClientDrop(false);
@@ -316,27 +314,11 @@ function InvoiceBuilder({
                       {filteredJobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
                     </select>
                   </div>
-                  {form.clientId && (
-                    <>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Email</label>
-                        <input type="email" placeholder="client@example.com"
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
-                          value={form.clientEmail || ""} onChange={e => setField("clientEmail", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Phone</label>
-                        <input type="tel" placeholder="(555) 123-4567"
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
-                          value={form.clientPhone || ""} onChange={e => setField("clientPhone", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Address</label>
-                        <input type="text" placeholder="Street address"
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
-                          value={form.clientAddress || ""} onChange={e => setField("clientAddress", e.target.value)} />
-                      </div>
-                    </>
+                  {form.clientId && form.clientEmail && (
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Email</label>
+                      <p className="px-3 py-2 text-sm text-gray-700">{form.clientEmail}</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -657,7 +639,10 @@ function InvoiceViewModal({
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
                   {invoice.clientName
-                    ? <p className="font-semibold text-gray-900 text-sm">{invoice.clientName}</p>
+                    ? <>
+                        <p className="font-semibold text-gray-900 text-sm">{invoice.clientName}</p>
+                        {invoice.clientEmail && <p className="text-xs text-gray-600 mt-1">{invoice.clientEmail}</p>}
+                      </>
                     : <p className="text-gray-300 italic text-xs">No client specified</p>}
                   {invoice.jobTitle && <p className="text-xs text-gray-500 mt-0.5">Re: {invoice.jobTitle}</p>}
                 </div>
@@ -777,7 +762,7 @@ export default function Invoices() {
       issueDate: new Date().toISOString().slice(0, 10),
       dueDate: "", status: "draft", taxRate: "",
       city: "", state: "KY", notes: "", terms: "Net 30",
-      clientEmail: "", clientPhone: "", clientAddress: "", locationName: "",
+      clientEmail: "", locationName: "",
     });
     setLineItems([emptyLine()]);
     setFormError("");
