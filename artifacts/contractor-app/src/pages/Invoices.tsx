@@ -173,76 +173,70 @@ function InvoiceBuilder({
               );
 
               const invoiceDetailsEl = (
-                <div className="text-right space-y-2 min-w-[220px]">
-                  <div>
-                    <p className="text-3xl font-black tracking-widest text-gray-200 uppercase">Invoice</p>
-                    <p className="text-sm font-bold text-amber-600 -mt-1">{previewNumber}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                    <table className="text-xs w-full text-right">
-                      <tbody>
-                        <tr>
-                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Date</td>
-                          <td>
-                            <input type="date" className={docInput + " text-gray-700 text-xs"} required
-                              value={form.issueDate} onChange={e => setField("issueDate", e.target.value)} />
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Due</td>
-                          <td>
-                            <input type="date" className={docInput + " text-gray-700 text-xs"}
-                              value={form.dueDate} onChange={e => setField("dueDate", e.target.value)} />
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Terms</td>
-                          <td>
-                            <select className={docSelect + " text-gray-700 text-xs"}
-                              value={form.terms} onChange={e => setField("terms", e.target.value)}>
-                              <option>Due on receipt</option>
-                              <option>Net 15</option>
-                              <option>Net 30</option>
-                              <option>Net 60</option>
-                            </select>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Status</td>
-                          <td>
-                            <select className={docSelect + " text-xs font-semibold text-gray-700"}
-                              value={form.status} onChange={e => setField("status", e.target.value)}>
-                              <option value="draft">Draft</option>
-                              <option value="sent">Sent</option>
-                              <option value="paid">Paid</option>
-                              <option value="overdue">Overdue</option>
-                            </select>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                <div className="text-right space-y-1.5 min-w-[180px]">
+                <div>
+                  <p className="text-3xl font-black tracking-widest text-gray-200 uppercase">Invoice</p>
+                  <p className="text-sm font-bold text-amber-600 -mt-1">{previewNumber}</p>
                 </div>
+                <table className="text-xs ml-auto text-right">
+                  <tbody>
+                    <tr>
+                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Date</td>
+                      <td>
+                        <input type="date" className={docInput + " text-gray-700 text-xs"} required
+                          value={form.issueDate} onChange={e => setField("issueDate", e.target.value)} />
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Due</td>
+                      <td>
+                        <input type="date" className={docInput + " text-gray-700 text-xs"}
+                          value={form.dueDate} onChange={e => setField("dueDate", e.target.value)} />
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Terms</td>
+                      <td>
+                        <select className={docSelect + " text-gray-700 text-xs"}
+                          value={form.terms} onChange={e => setField("terms", e.target.value)}>
+                          <option>Due on receipt</option>
+                          <option>Net 15</option>
+                          <option>Net 30</option>
+                          <option>Net 60</option>
+                        </select>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Status</td>
+                      <td>
+                        <select className={docSelect + " text-xs font-semibold text-gray-700"}
+                          value={form.status} onChange={e => setField("status", e.target.value)}>
+                          <option value="draft">Draft</option>
+                          <option value="sent">Sent</option>
+                          <option value="paid">Paid</option>
+                          <option value="overdue">Overdue</option>
+                        </select>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               );
 
               if (logoPos === "top-right") {
                 return (
-                  <div className="space-y-5">
-                    <div className="flex justify-between items-start gap-6">
-                      {companyBlock}
-                      <div className="flex flex-col items-end gap-2">
-                        {logoEl}
-                      </div>
+                  <div className="flex justify-between items-start gap-6">
+                    {companyBlock}
+                    <div className="flex flex-col items-end gap-2">
+                      {logoEl}
+                      {invoiceDetailsEl}
                     </div>
-                    {invoiceDetailsEl}
                   </div>
                 );
               }
               return (
-                <div className="space-y-5">
-                  <div className="flex justify-between items-start gap-6">
-                    {companyBlock}
-                  </div>
+                <div className="flex justify-between items-start gap-6">
+                  {companyBlock}
                   {invoiceDetailsEl}
                 </div>
               );
