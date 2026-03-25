@@ -92,13 +92,14 @@ export interface Job {
   description?: string | null;
   clientId?: number | null;
   clientName?: string | null;
-  subcontractorId?: number | null;
-  subcontractorName?: string | null;
+  subcontractorIds?: number[];
+  subcontractorNames?: string[];
   status: JobStatus;
   jobType?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  locationName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   estimatedAmount?: number | null;
@@ -123,17 +124,43 @@ export interface CreateJobRequest {
   title: string;
   description?: string | null;
   clientId?: number | null;
-  subcontractorId?: number | null;
-  status: CreateJobRequestStatus;
+  subcontractorIds?: number[];
+  status?: CreateJobRequestStatus;
   jobType?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  locationName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   estimatedAmount?: number | null;
   actualAmount?: number | null;
   notes?: string | null;
+}
+
+export interface InvoiceLineItem {
+  id: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface InvoiceDraft {
+  clientId?: number | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  clientAddress?: string | null;
+  clientPhone?: string | null;
+  clientCity?: string | null;
+  clientState?: string | null;
+  clientZip?: string | null;
+  jobId: number;
+  jobTitle: string;
+  locationName?: string | null;
+  city?: string | null;
+  state?: string | null;
+  lineItems: InvoiceLineItem[];
 }
 
 export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus];
@@ -145,14 +172,6 @@ export const InvoiceStatus = {
   overdue: "overdue",
   cancelled: "cancelled",
 } as const;
-
-export interface InvoiceLineItem {
-  id: number;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
 
 export interface Invoice {
   id: number;
@@ -246,7 +265,16 @@ export interface CreateExpenseRequest {
   notes?: string | null;
 }
 
-export type RecurringExpenseFrequency = "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+export type RecurringExpenseFrequency =
+  (typeof RecurringExpenseFrequency)[keyof typeof RecurringExpenseFrequency];
+
+export const RecurringExpenseFrequency = {
+  weekly: "weekly",
+  biweekly: "biweekly",
+  monthly: "monthly",
+  quarterly: "quarterly",
+  yearly: "yearly",
+} as const;
 
 export interface RecurringExpense {
   id: number;
@@ -265,6 +293,17 @@ export interface RecurringExpense {
   createdAt: string;
 }
 
+export type CreateRecurringExpenseRequestFrequency =
+  (typeof CreateRecurringExpenseRequestFrequency)[keyof typeof CreateRecurringExpenseRequestFrequency];
+
+export const CreateRecurringExpenseRequestFrequency = {
+  weekly: "weekly",
+  biweekly: "biweekly",
+  monthly: "monthly",
+  quarterly: "quarterly",
+  yearly: "yearly",
+} as const;
+
 export interface CreateRecurringExpenseRequest {
   description: string;
   amount: number;
@@ -272,10 +311,21 @@ export interface CreateRecurringExpenseRequest {
   vendor?: string | null;
   jobId?: number | null;
   notes?: string | null;
-  frequency: RecurringExpenseFrequency;
+  frequency: CreateRecurringExpenseRequestFrequency;
   startDate: string;
   endDate?: string | null;
 }
+
+export type UpdateRecurringExpenseRequestFrequency =
+  (typeof UpdateRecurringExpenseRequestFrequency)[keyof typeof UpdateRecurringExpenseRequestFrequency];
+
+export const UpdateRecurringExpenseRequestFrequency = {
+  weekly: "weekly",
+  biweekly: "biweekly",
+  monthly: "monthly",
+  quarterly: "quarterly",
+  yearly: "yearly",
+} as const;
 
 export interface UpdateRecurringExpenseRequest {
   description?: string;
@@ -284,7 +334,7 @@ export interface UpdateRecurringExpenseRequest {
   vendor?: string | null;
   jobId?: number | null;
   notes?: string | null;
-  frequency?: RecurringExpenseFrequency;
+  frequency?: UpdateRecurringExpenseRequestFrequency;
   startDate?: string;
   endDate?: string | null;
   active?: boolean;
@@ -620,6 +670,53 @@ export type GetMileageSummaryParams = {
 
 export type Get1099ReportParams = {
   year?: number;
+};
+
+export type PortalCheckSessionBody = {
+  token: string;
+};
+
+export type PortalCheckSession200 = {
+  valid: boolean;
+  pinSet: boolean;
+};
+
+export type PortalSetPinBody = {
+  token: string;
+  /**
+   * @minLength 4
+   * @maxLength 6
+   * @pattern ^\d{4,6}$
+   */
+  pin: string;
+};
+
+export type PortalSetPin200 = {
+  success: boolean;
+};
+
+export type PortalVerifyPinBody = {
+  token: string;
+  /**
+   * @minLength 4
+   * @maxLength 6
+   * @pattern ^\d{4,6}$
+   */
+  pin: string;
+};
+
+export type PortalVerifyPin200 = {
+  success: boolean;
+};
+
+export type PortalVerifyPin401 = {
+  error?: string;
+  attemptsLeft?: number;
+  locked?: boolean;
+};
+
+export type ResetPortalPin200 = {
+  success: boolean;
 };
 
 export type ListDailyLogsParams = {

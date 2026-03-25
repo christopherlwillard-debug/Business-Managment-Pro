@@ -1,6 +1,7 @@
 export * from "./auth";
 export * from "./clients";
 export * from "./jobs";
+export * from "./job-subcontractors";
 export * from "./invoices";
 export * from "./expenses";
 export * from "./recurring-expenses";

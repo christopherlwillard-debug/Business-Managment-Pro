@@ -201,8 +201,8 @@ export const ListJobsResponseItem = zod.object({
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   clientName: zod.string().nullish(),
-  subcontractorId: zod.number().nullish(),
-  subcontractorName: zod.string().nullish(),
+  subcontractorIds: zod.array(zod.number()).optional(),
+  subcontractorNames: zod.array(zod.string()).optional(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -215,6 +215,7 @@ export const ListJobsResponseItem = zod.object({
   address: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   estimatedAmount: zod.number().nullish(),
@@ -231,24 +232,59 @@ export const CreateJobBody = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
-  subcontractorId: zod.number().nullish(),
-  status: zod.enum([
-    "scheduled",
-    "in_progress",
-    "awaiting_approval",
-    "completed",
-    "invoiced",
-    "cancelled",
-  ]),
+  subcontractorIds: zod.array(zod.number()).optional(),
+  status: zod
+    .enum([
+      "scheduled",
+      "in_progress",
+      "awaiting_approval",
+      "completed",
+      "invoiced",
+      "cancelled",
+    ])
+    .optional(),
   jobType: zod.string().nullish(),
   address: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   estimatedAmount: zod.number().nullish(),
   actualAmount: zod.number().nullish(),
   notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Get a pre-filled invoice draft for a completed job
+ */
+export const GetJobInvoiceDraftParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetJobInvoiceDraftResponse = zod.object({
+  clientId: zod.number().nullish(),
+  clientName: zod.string().nullish(),
+  clientEmail: zod.string().nullish(),
+  clientAddress: zod.string().nullish(),
+  clientPhone: zod.string().nullish(),
+  clientCity: zod.string().nullish(),
+  clientState: zod.string().nullish(),
+  clientZip: zod.string().nullish(),
+  jobId: zod.number(),
+  jobTitle: zod.string(),
+  locationName: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  lineItems: zod.array(
+    zod.object({
+      id: zod.number(),
+      description: zod.string(),
+      quantity: zod.number(),
+      unitPrice: zod.number(),
+      total: zod.number(),
+    }),
+  ),
 });
 
 /**
@@ -264,8 +300,8 @@ export const GetJobResponse = zod.object({
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   clientName: zod.string().nullish(),
-  subcontractorId: zod.number().nullish(),
-  subcontractorName: zod.string().nullish(),
+  subcontractorIds: zod.array(zod.number()).optional(),
+  subcontractorNames: zod.array(zod.string()).optional(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -278,6 +314,7 @@ export const GetJobResponse = zod.object({
   address: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   estimatedAmount: zod.number().nullish(),
@@ -297,19 +334,22 @@ export const UpdateJobBody = zod.object({
   title: zod.string(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
-  subcontractorId: zod.number().nullish(),
-  status: zod.enum([
-    "scheduled",
-    "in_progress",
-    "awaiting_approval",
-    "completed",
-    "invoiced",
-    "cancelled",
-  ]),
+  subcontractorIds: zod.array(zod.number()).optional(),
+  status: zod
+    .enum([
+      "scheduled",
+      "in_progress",
+      "awaiting_approval",
+      "completed",
+      "invoiced",
+      "cancelled",
+    ])
+    .optional(),
   jobType: zod.string().nullish(),
   address: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   estimatedAmount: zod.number().nullish(),
@@ -323,8 +363,8 @@ export const UpdateJobResponse = zod.object({
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   clientName: zod.string().nullish(),
-  subcontractorId: zod.number().nullish(),
-  subcontractorName: zod.string().nullish(),
+  subcontractorIds: zod.array(zod.number()).optional(),
+  subcontractorNames: zod.array(zod.string()).optional(),
   status: zod.enum([
     "scheduled",
     "in_progress",
@@ -337,6 +377,7 @@ export const UpdateJobResponse = zod.object({
   address: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   estimatedAmount: zod.number().nullish(),
@@ -616,6 +657,7 @@ export const ListExpensesResponseItem = zod.object({
   jobTitle: zod.string().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
+  recurringExpenseId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 export const ListExpensesResponse = zod.array(ListExpensesResponseItem);
@@ -652,6 +694,7 @@ export const GetExpenseResponse = zod.object({
   jobTitle: zod.string().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
+  recurringExpenseId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -684,6 +727,7 @@ export const UpdateExpenseResponse = zod.object({
   jobTitle: zod.string().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
+  recurringExpenseId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -716,7 +760,116 @@ export const UploadExpenseReceiptResponse = zod.object({
   jobTitle: zod.string().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
+  recurringExpenseId: zod.number().nullish(),
   createdAt: zod.string(),
+});
+
+/**
+ * @summary List all recurring expense templates
+ */
+export const ListRecurringExpensesResponseItem = zod.object({
+  id: zod.number(),
+  description: zod.string(),
+  amount: zod.number(),
+  category: zod.string(),
+  vendor: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  jobTitle: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  frequency: zod.enum(["weekly", "biweekly", "monthly", "quarterly", "yearly"]),
+  startDate: zod.string(),
+  endDate: zod.string().nullish(),
+  nextDueDate: zod.string(),
+  active: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const ListRecurringExpensesResponse = zod.array(
+  ListRecurringExpensesResponseItem,
+);
+
+/**
+ * @summary Create a recurring expense template
+ */
+export const CreateRecurringExpenseBody = zod.object({
+  description: zod.string(),
+  amount: zod.number(),
+  category: zod.string(),
+  vendor: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  frequency: zod.enum(["weekly", "biweekly", "monthly", "quarterly", "yearly"]),
+  startDate: zod.string(),
+  endDate: zod.string().nullish(),
+});
+
+/**
+ * @summary Get a recurring expense template
+ */
+export const GetRecurringExpenseParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetRecurringExpenseResponse = zod.object({
+  id: zod.number(),
+  description: zod.string(),
+  amount: zod.number(),
+  category: zod.string(),
+  vendor: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  jobTitle: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  frequency: zod.enum(["weekly", "biweekly", "monthly", "quarterly", "yearly"]),
+  startDate: zod.string(),
+  endDate: zod.string().nullish(),
+  nextDueDate: zod.string(),
+  active: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Update a recurring expense template
+ */
+export const UpdateRecurringExpenseParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateRecurringExpenseBody = zod.object({
+  description: zod.string().optional(),
+  amount: zod.number().optional(),
+  category: zod.string().optional(),
+  vendor: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  frequency: zod
+    .enum(["weekly", "biweekly", "monthly", "quarterly", "yearly"])
+    .optional(),
+  startDate: zod.string().optional(),
+  endDate: zod.string().nullish(),
+  active: zod.boolean().optional(),
+});
+
+export const UpdateRecurringExpenseResponse = zod.object({
+  id: zod.number(),
+  description: zod.string(),
+  amount: zod.number(),
+  category: zod.string(),
+  vendor: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  jobTitle: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  frequency: zod.enum(["weekly", "biweekly", "monthly", "quarterly", "yearly"]),
+  startDate: zod.string(),
+  endDate: zod.string().nullish(),
+  nextDueDate: zod.string(),
+  active: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a recurring expense template
+ */
+export const DeleteRecurringExpenseParams = zod.object({
+  id: zod.coerce.number(),
 });
 
 /**
@@ -834,6 +987,9 @@ export const ListSubcontractorsResponseItem = zod.object({
   address: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
+  portalToken: zod.string().nullish(),
+  portalApproved: zod.boolean(),
+  portalPinSet: zod.boolean(),
 });
 export const ListSubcontractorsResponse = zod.array(
   ListSubcontractorsResponseItem,
@@ -876,6 +1032,9 @@ export const GetSubcontractorResponse = zod.object({
   address: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
+  portalToken: zod.string().nullish(),
+  portalApproved: zod.boolean(),
+  portalPinSet: zod.boolean(),
 });
 
 /**
@@ -912,6 +1071,9 @@ export const UpdateSubcontractorResponse = zod.object({
   address: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
+  portalToken: zod.string().nullish(),
+  portalApproved: zod.boolean(),
+  portalPinSet: zod.boolean(),
 });
 
 /**
@@ -938,6 +1100,71 @@ export const Get1099ReportResponseItem = zod.object({
   alerts: zod.array(zod.string()),
 });
 export const Get1099ReportResponse = zod.array(Get1099ReportResponseItem);
+
+/**
+ * @summary Check whether a PIN session is valid for a portal token
+ */
+export const PortalCheckSessionBody = zod.object({
+  token: zod.string(),
+});
+
+export const PortalCheckSessionResponse = zod.object({
+  valid: zod.boolean(),
+  pinSet: zod.boolean(),
+});
+
+/**
+ * @summary Set the portal PIN for the first time
+ */
+export const portalSetPinBodyPinMin = 4;
+export const portalSetPinBodyPinMax = 6;
+
+export const portalSetPinBodyPinRegExp = new RegExp("^\\d{4,6}$");
+
+export const PortalSetPinBody = zod.object({
+  token: zod.string(),
+  pin: zod
+    .string()
+    .min(portalSetPinBodyPinMin)
+    .max(portalSetPinBodyPinMax)
+    .regex(portalSetPinBodyPinRegExp),
+});
+
+export const PortalSetPinResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Verify the portal PIN and issue a session cookie
+ */
+export const portalVerifyPinBodyPinMin = 4;
+export const portalVerifyPinBodyPinMax = 6;
+
+export const portalVerifyPinBodyPinRegExp = new RegExp("^\\d{4,6}$");
+
+export const PortalVerifyPinBody = zod.object({
+  token: zod.string(),
+  pin: zod
+    .string()
+    .min(portalVerifyPinBodyPinMin)
+    .max(portalVerifyPinBodyPinMax)
+    .regex(portalVerifyPinBodyPinRegExp),
+});
+
+export const PortalVerifyPinResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Admin — clear a subcontractor's portal PIN
+ */
+export const ResetPortalPinParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ResetPortalPinResponse = zod.object({
+  success: zod.boolean(),
+});
 
 /**
  * @summary List all estimates
@@ -1300,8 +1527,8 @@ export const GetDashboardStatsResponse = zod.object({
       description: zod.string().nullish(),
       clientId: zod.number().nullish(),
       clientName: zod.string().nullish(),
-      subcontractorId: zod.number().nullish(),
-      subcontractorName: zod.string().nullish(),
+      subcontractorIds: zod.array(zod.number()).optional(),
+      subcontractorNames: zod.array(zod.string()).optional(),
       status: zod.enum([
         "scheduled",
         "in_progress",
@@ -1314,6 +1541,7 @@ export const GetDashboardStatsResponse = zod.object({
       address: zod.string().nullish(),
       city: zod.string().nullish(),
       state: zod.string().nullish(),
+      locationName: zod.string().nullish(),
       startDate: zod.string().nullish(),
       endDate: zod.string().nullish(),
       estimatedAmount: zod.number().nullish(),

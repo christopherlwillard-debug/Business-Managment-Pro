@@ -29,6 +29,7 @@ import type {
   CreateInvoiceRequest,
   CreateJobRequest,
   CreateMileageLogRequest,
+  CreateRecurringExpenseRequest,
   CreateSubcontractorRequest,
   DailyLog,
   DashboardStats,
@@ -42,6 +43,7 @@ import type {
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   Invoice,
+  InvoiceDraft,
   Job,
   ListDailyLogsParams,
   ListExpensesParams,
@@ -54,9 +56,19 @@ import type {
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
   NineninenineReport,
+  PortalCheckSession200,
+  PortalCheckSessionBody,
+  PortalSetPin200,
+  PortalSetPinBody,
+  PortalVerifyPin200,
+  PortalVerifyPin401,
+  PortalVerifyPinBody,
+  RecurringExpense,
+  ResetPortalPin200,
   Subcontractor,
   TaxReportRow,
   UpdateInvoiceStatusBody,
+  UpdateRecurringExpenseRequest,
   UploadExpenseReceiptBody,
   UploadFileBody,
   UploadedFile,
@@ -1264,6 +1276,93 @@ export const useCreateJob = <
 > => {
   return useMutation(getCreateJobMutationOptions(options));
 };
+
+/**
+ * @summary Get a pre-filled invoice draft for a completed job
+ */
+export const getGetJobInvoiceDraftUrl = (id: number) => {
+  return `/api/jobs/${id}/invoice-draft`;
+};
+
+export const getJobInvoiceDraft = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InvoiceDraft> => {
+  return customFetch<InvoiceDraft>(getGetJobInvoiceDraftUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetJobInvoiceDraftQueryKey = (id: number) => {
+  return [`/api/jobs/${id}/invoice-draft`] as const;
+};
+
+export const getGetJobInvoiceDraftQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJobInvoiceDraft>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobInvoiceDraft>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetJobInvoiceDraftQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getJobInvoiceDraft>>
+  > = ({ signal }) => getJobInvoiceDraft(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJobInvoiceDraft>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJobInvoiceDraftQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJobInvoiceDraft>>
+>;
+export type GetJobInvoiceDraftQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a pre-filled invoice draft for a completed job
+ */
+
+export function useGetJobInvoiceDraft<
+  TData = Awaited<ReturnType<typeof getJobInvoiceDraft>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobInvoiceDraft>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobInvoiceDraftQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get a job
@@ -2667,6 +2766,427 @@ export const useUploadExpenseReceipt = <
 };
 
 /**
+ * @summary List all recurring expense templates
+ */
+export const getListRecurringExpensesUrl = () => {
+  return `/api/recurring-expenses`;
+};
+
+export const listRecurringExpenses = async (
+  options?: RequestInit,
+): Promise<RecurringExpense[]> => {
+  return customFetch<RecurringExpense[]>(getListRecurringExpensesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListRecurringExpensesQueryKey = () => {
+  return [`/api/recurring-expenses`] as const;
+};
+
+export const getListRecurringExpensesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listRecurringExpenses>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRecurringExpenses>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListRecurringExpensesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listRecurringExpenses>>
+  > = ({ signal }) => listRecurringExpenses({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listRecurringExpenses>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListRecurringExpensesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listRecurringExpenses>>
+>;
+export type ListRecurringExpensesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all recurring expense templates
+ */
+
+export function useListRecurringExpenses<
+  TData = Awaited<ReturnType<typeof listRecurringExpenses>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRecurringExpenses>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListRecurringExpensesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a recurring expense template
+ */
+export const getCreateRecurringExpenseUrl = () => {
+  return `/api/recurring-expenses`;
+};
+
+export const createRecurringExpense = async (
+  createRecurringExpenseRequest: CreateRecurringExpenseRequest,
+  options?: RequestInit,
+): Promise<RecurringExpense> => {
+  return customFetch<RecurringExpense>(getCreateRecurringExpenseUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createRecurringExpenseRequest),
+  });
+};
+
+export const getCreateRecurringExpenseMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRecurringExpense>>,
+    TError,
+    { data: BodyType<CreateRecurringExpenseRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createRecurringExpense>>,
+  TError,
+  { data: BodyType<CreateRecurringExpenseRequest> },
+  TContext
+> => {
+  const mutationKey = ["createRecurringExpense"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createRecurringExpense>>,
+    { data: BodyType<CreateRecurringExpenseRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createRecurringExpense(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateRecurringExpenseMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createRecurringExpense>>
+>;
+export type CreateRecurringExpenseMutationBody =
+  BodyType<CreateRecurringExpenseRequest>;
+export type CreateRecurringExpenseMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a recurring expense template
+ */
+export const useCreateRecurringExpense = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createRecurringExpense>>,
+    TError,
+    { data: BodyType<CreateRecurringExpenseRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createRecurringExpense>>,
+  TError,
+  { data: BodyType<CreateRecurringExpenseRequest> },
+  TContext
+> => {
+  return useMutation(getCreateRecurringExpenseMutationOptions(options));
+};
+
+/**
+ * @summary Get a recurring expense template
+ */
+export const getGetRecurringExpenseUrl = (id: number) => {
+  return `/api/recurring-expenses/${id}`;
+};
+
+export const getRecurringExpense = async (
+  id: number,
+  options?: RequestInit,
+): Promise<RecurringExpense> => {
+  return customFetch<RecurringExpense>(getGetRecurringExpenseUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetRecurringExpenseQueryKey = (id: number) => {
+  return [`/api/recurring-expenses/${id}`] as const;
+};
+
+export const getGetRecurringExpenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof getRecurringExpense>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getRecurringExpense>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetRecurringExpenseQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getRecurringExpense>>
+  > = ({ signal }) => getRecurringExpense(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getRecurringExpense>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetRecurringExpenseQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getRecurringExpense>>
+>;
+export type GetRecurringExpenseQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a recurring expense template
+ */
+
+export function useGetRecurringExpense<
+  TData = Awaited<ReturnType<typeof getRecurringExpense>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getRecurringExpense>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetRecurringExpenseQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a recurring expense template
+ */
+export const getUpdateRecurringExpenseUrl = (id: number) => {
+  return `/api/recurring-expenses/${id}`;
+};
+
+export const updateRecurringExpense = async (
+  id: number,
+  updateRecurringExpenseRequest: UpdateRecurringExpenseRequest,
+  options?: RequestInit,
+): Promise<RecurringExpense> => {
+  return customFetch<RecurringExpense>(getUpdateRecurringExpenseUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateRecurringExpenseRequest),
+  });
+};
+
+export const getUpdateRecurringExpenseMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateRecurringExpense>>,
+    TError,
+    { id: number; data: BodyType<UpdateRecurringExpenseRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateRecurringExpense>>,
+  TError,
+  { id: number; data: BodyType<UpdateRecurringExpenseRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateRecurringExpense"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateRecurringExpense>>,
+    { id: number; data: BodyType<UpdateRecurringExpenseRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateRecurringExpense(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateRecurringExpenseMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateRecurringExpense>>
+>;
+export type UpdateRecurringExpenseMutationBody =
+  BodyType<UpdateRecurringExpenseRequest>;
+export type UpdateRecurringExpenseMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a recurring expense template
+ */
+export const useUpdateRecurringExpense = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateRecurringExpense>>,
+    TError,
+    { id: number; data: BodyType<UpdateRecurringExpenseRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateRecurringExpense>>,
+  TError,
+  { id: number; data: BodyType<UpdateRecurringExpenseRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateRecurringExpenseMutationOptions(options));
+};
+
+/**
+ * @summary Delete a recurring expense template
+ */
+export const getDeleteRecurringExpenseUrl = (id: number) => {
+  return `/api/recurring-expenses/${id}`;
+};
+
+export const deleteRecurringExpense = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteRecurringExpenseUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteRecurringExpenseMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteRecurringExpense>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteRecurringExpense>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteRecurringExpense"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteRecurringExpense>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteRecurringExpense(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteRecurringExpenseMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteRecurringExpense>>
+>;
+
+export type DeleteRecurringExpenseMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a recurring expense template
+ */
+export const useDeleteRecurringExpense = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteRecurringExpense>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteRecurringExpense>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteRecurringExpenseMutationOptions(options));
+};
+
+/**
  * @summary List mileage logs
  */
 export const getListMileageLogsUrl = (params?: ListMileageLogsParams) => {
@@ -3631,6 +4151,348 @@ export function useGet1099Report<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Check whether a PIN session is valid for a portal token
+ */
+export const getPortalCheckSessionUrl = () => {
+  return `/api/portal/check-session`;
+};
+
+export const portalCheckSession = async (
+  portalCheckSessionBody: PortalCheckSessionBody,
+  options?: RequestInit,
+): Promise<PortalCheckSession200> => {
+  return customFetch<PortalCheckSession200>(getPortalCheckSessionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(portalCheckSessionBody),
+  });
+};
+
+export const getPortalCheckSessionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalCheckSession>>,
+    TError,
+    { data: BodyType<PortalCheckSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof portalCheckSession>>,
+  TError,
+  { data: BodyType<PortalCheckSessionBody> },
+  TContext
+> => {
+  const mutationKey = ["portalCheckSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof portalCheckSession>>,
+    { data: BodyType<PortalCheckSessionBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return portalCheckSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PortalCheckSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof portalCheckSession>>
+>;
+export type PortalCheckSessionMutationBody = BodyType<PortalCheckSessionBody>;
+export type PortalCheckSessionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Check whether a PIN session is valid for a portal token
+ */
+export const usePortalCheckSession = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalCheckSession>>,
+    TError,
+    { data: BodyType<PortalCheckSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof portalCheckSession>>,
+  TError,
+  { data: BodyType<PortalCheckSessionBody> },
+  TContext
+> => {
+  return useMutation(getPortalCheckSessionMutationOptions(options));
+};
+
+/**
+ * @summary Set the portal PIN for the first time
+ */
+export const getPortalSetPinUrl = () => {
+  return `/api/portal/set-pin`;
+};
+
+export const portalSetPin = async (
+  portalSetPinBody: PortalSetPinBody,
+  options?: RequestInit,
+): Promise<PortalSetPin200> => {
+  return customFetch<PortalSetPin200>(getPortalSetPinUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(portalSetPinBody),
+  });
+};
+
+export const getPortalSetPinMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalSetPin>>,
+    TError,
+    { data: BodyType<PortalSetPinBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof portalSetPin>>,
+  TError,
+  { data: BodyType<PortalSetPinBody> },
+  TContext
+> => {
+  const mutationKey = ["portalSetPin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof portalSetPin>>,
+    { data: BodyType<PortalSetPinBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return portalSetPin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PortalSetPinMutationResult = NonNullable<
+  Awaited<ReturnType<typeof portalSetPin>>
+>;
+export type PortalSetPinMutationBody = BodyType<PortalSetPinBody>;
+export type PortalSetPinMutationError = ErrorType<void>;
+
+/**
+ * @summary Set the portal PIN for the first time
+ */
+export const usePortalSetPin = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalSetPin>>,
+    TError,
+    { data: BodyType<PortalSetPinBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof portalSetPin>>,
+  TError,
+  { data: BodyType<PortalSetPinBody> },
+  TContext
+> => {
+  return useMutation(getPortalSetPinMutationOptions(options));
+};
+
+/**
+ * @summary Verify the portal PIN and issue a session cookie
+ */
+export const getPortalVerifyPinUrl = () => {
+  return `/api/portal/verify-pin`;
+};
+
+export const portalVerifyPin = async (
+  portalVerifyPinBody: PortalVerifyPinBody,
+  options?: RequestInit,
+): Promise<PortalVerifyPin200> => {
+  return customFetch<PortalVerifyPin200>(getPortalVerifyPinUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(portalVerifyPinBody),
+  });
+};
+
+export const getPortalVerifyPinMutationOptions = <
+  TError = ErrorType<PortalVerifyPin401 | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalVerifyPin>>,
+    TError,
+    { data: BodyType<PortalVerifyPinBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof portalVerifyPin>>,
+  TError,
+  { data: BodyType<PortalVerifyPinBody> },
+  TContext
+> => {
+  const mutationKey = ["portalVerifyPin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof portalVerifyPin>>,
+    { data: BodyType<PortalVerifyPinBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return portalVerifyPin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PortalVerifyPinMutationResult = NonNullable<
+  Awaited<ReturnType<typeof portalVerifyPin>>
+>;
+export type PortalVerifyPinMutationBody = BodyType<PortalVerifyPinBody>;
+export type PortalVerifyPinMutationError = ErrorType<PortalVerifyPin401 | void>;
+
+/**
+ * @summary Verify the portal PIN and issue a session cookie
+ */
+export const usePortalVerifyPin = <
+  TError = ErrorType<PortalVerifyPin401 | void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalVerifyPin>>,
+    TError,
+    { data: BodyType<PortalVerifyPinBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof portalVerifyPin>>,
+  TError,
+  { data: BodyType<PortalVerifyPinBody> },
+  TContext
+> => {
+  return useMutation(getPortalVerifyPinMutationOptions(options));
+};
+
+/**
+ * @summary Admin — clear a subcontractor's portal PIN
+ */
+export const getResetPortalPinUrl = (id: number) => {
+  return `/api/subcontractors/${id}/reset-portal-pin`;
+};
+
+export const resetPortalPin = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ResetPortalPin200> => {
+  return customFetch<ResetPortalPin200>(getResetPortalPinUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getResetPortalPinMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resetPortalPin>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resetPortalPin>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["resetPortalPin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resetPortalPin>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return resetPortalPin(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResetPortalPinMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resetPortalPin>>
+>;
+
+export type ResetPortalPinMutationError = ErrorType<void>;
+
+/**
+ * @summary Admin — clear a subcontractor's portal PIN
+ */
+export const useResetPortalPin = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resetPortalPin>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resetPortalPin>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getResetPortalPinMutationOptions(options));
+};
 
 /**
  * @summary List all estimates

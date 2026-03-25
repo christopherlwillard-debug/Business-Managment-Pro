@@ -11,12 +11,13 @@ export interface CreateJobRequest {
   title: string;
   description?: string | null;
   clientId?: number | null;
-  subcontractorId?: number | null;
-  status: CreateJobRequestStatus;
+  subcontractorIds?: number[];
+  status?: CreateJobRequestStatus;
   jobType?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  locationName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   estimatedAmount?: number | null;

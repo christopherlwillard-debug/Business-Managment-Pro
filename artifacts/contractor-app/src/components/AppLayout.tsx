@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, Briefcase, FileText, Receipt, Navigation,
+  LayoutDashboard, Briefcase, Receipt, Navigation,
   Calculator, HardHat, ClipboardList, ShieldAlert, Users,
   Settings, Menu, X, Building2, BookOpen, LogOut
 } from "lucide-react";
@@ -29,7 +29,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null },
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs" },
     { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates" },
-    { name: "Invoices", href: "/invoices", icon: FileText, feature: "invoices" },
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses" },
     { name: "Daily Logs", href: "/daily-logs", icon: ClipboardList, feature: "daily_logs" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage" },
@@ -58,7 +57,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const bottomNavItems = [
     { name: "Home", href: "/", icon: LayoutDashboard },
-    { name: "Invoices", href: "/invoices", icon: FileText },
+    { name: "Jobs", href: "/jobs", icon: Briefcase },
     { name: "Clients", href: "/clients", icon: Users },
     { name: "Mileage", href: "/mileage", icon: Navigation },
     { name: "Expenses", href: "/expenses", icon: Receipt },

@@ -8,7 +8,6 @@ import { useAuth } from "@workspace/replit-auth-web";
 import { AppLayout } from "./components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
-import Invoices from "./pages/Invoices";
 import Expenses from "./pages/Expenses";
 import Mileage from "./pages/Mileage";
 import Estimates from "./pages/Estimates";
@@ -64,7 +63,6 @@ function AdminApp() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/jobs" component={Jobs} />
-        <Route path="/invoices" component={Invoices} />
         <Route path="/expenses" component={Expenses} />
         <Route path="/mileage" component={Mileage} />
         <Route path="/estimates" component={Estimates} />

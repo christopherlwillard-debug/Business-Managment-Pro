@@ -17,5 +17,6 @@ export interface Expense {
   jobTitle?: string | null;
   receiptUrl?: string | null;
   notes?: string | null;
+  recurringExpenseId?: number | null;
   createdAt: string;
 }

@@ -13,13 +13,14 @@ export interface Job {
   description?: string | null;
   clientId?: number | null;
   clientName?: string | null;
-  subcontractorId?: number | null;
-  subcontractorName?: string | null;
+  subcontractorIds?: number[];
+  subcontractorNames?: string[];
   status: JobStatus;
   jobType?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  locationName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   estimatedAmount?: number | null;

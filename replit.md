@@ -37,6 +37,16 @@ artifacts-monorepo/
 └── package.json
 ```
 
+## Jobs Page (Unified)
+
+The `/jobs` route is the unified Jobs + Invoice workflow:
+- **JobCard**: shows job details; completed jobs get a "Review Invoice" button
+- **JobFormDialog**: create/edit with multi-subcontractor picker, work location, status (Scheduled/Completed)
+- **InvoiceEditorDialog** (`src/components/InvoiceEditorDialog.tsx`): reusable full-page invoice builder modal — handles create (from job draft) and edit (from existing invoice)
+- **SavedInvoicesSection**: table of all job-linked invoices with Edit/Mark Paid/Delete
+- Invoices route (`/invoices`) removed from router and nav — all invoice work flows through Jobs
+- `GET /api/jobs/:id/invoice-draft` pre-fills the invoice editor from job data
+
 ## Authentication
 
 - **Auth provider**: Replit OIDC (OpenID Connect with PKCE)

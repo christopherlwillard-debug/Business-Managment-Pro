@@ -295,6 +295,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  /jobs/{id}/invoice-draft:
+    get:
+      operationId: getJobInvoiceDraft
+      tags: [jobs]
+      summary: Get a pre-filled invoice draft for a completed job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice draft pre-filled from job data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceDraft"
+
   /jobs/{id}:
     get:
       operationId: getJob
@@ -1519,12 +1538,14 @@ components:
         clientName:
           type: string
           nullable: true
-        subcontractorId:
-          type: integer
-          nullable: true
-        subcontractorName:
-          type: string
-          nullable: true
+        subcontractorIds:
+          type: array
+          items:
+            type: integer
+        subcontractorNames:
+          type: array
+          items:
+            type: string
         status:
           type: string
           enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled]
@@ -1538,6 +1559,9 @@ components:
           type: string
           nullable: true
         state:
+          type: string
+          nullable: true
+        locationName:
           type: string
           nullable: true
         startDate:
@@ -1570,9 +1594,10 @@ components:
         clientId:
           type: integer
           nullable: true
-        subcontractorId:
-          type: integer
-          nullable: true
+        subcontractorIds:
+          type: array
+          items:
+            type: integer
         status:
           type: string
           enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled]
@@ -1586,6 +1611,9 @@ components:
           type: string
           nullable: true
         state:
+          type: string
+          nullable: true
+        locationName:
           type: string
           nullable: true
         startDate:
@@ -1603,7 +1631,53 @@ components:
         notes:
           type: string
           nullable: true
-      required: [title, status]
+      required: [title]
+
+    InvoiceDraft:
+      type: object
+      properties:
+        clientId:
+          type: integer
+          nullable: true
+        clientName:
+          type: string
+          nullable: true
+        clientEmail:
+          type: string
+          nullable: true
+        clientAddress:
+          type: string
+          nullable: true
+        clientPhone:
+          type: string
+          nullable: true
+        clientCity:
+          type: string
+          nullable: true
+        clientState:
+          type: string
+          nullable: true
+        clientZip:
+          type: string
+          nullable: true
+        jobId:
+          type: integer
+        jobTitle:
+          type: string
+        locationName:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceLineItem'
+      required: [jobId, jobTitle, lineItems]
 
     Invoice:
       type: object

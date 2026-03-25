@@ -20,4 +20,7 @@ export interface Subcontractor {
   address?: string | null;
   notes?: string | null;
   createdAt: string;
+  portalToken?: string | null;
+  portalApproved: boolean;
+  portalPinSet: boolean;
 }
