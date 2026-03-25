@@ -352,6 +352,12 @@ function InvoiceBuilder({
                 </p>
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-3">
                   <div>
+                    <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Name</label>
+                    <input type="text" placeholder="e.g. Main Office"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
+                      value={form.locationName || ""} onChange={e => setField("locationName", e.target.value)} />
+                  </div>
+                  <div>
                     <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">City</label>
                     <input type="text" placeholder="e.g. Louisville"
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
@@ -686,14 +692,21 @@ function InvoiceViewModal({
                       </div>
                     : <p className="text-gray-300 italic text-xs">No client specified</p>}
                 </div>
-                {(invoice.city || invoice.state) && (
+                {(viewInvoice?.locationName || invoice.city || invoice.state) && (
                   <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
                     <p className="text-[9px] uppercase tracking-widest font-bold text-amber-400 mb-2 flex items-center gap-1">
                       <MapPin className="w-2.5 h-2.5" /> Work Location
                     </p>
-                    <p className="font-semibold text-gray-800 text-sm">
-                      {[invoice.city, invoice.state].filter(Boolean).join(", ")}
-                    </p>
+                    <div className="space-y-1">
+                      {viewInvoice?.locationName && (
+                        <p className="font-semibold text-gray-800 text-sm">{viewInvoice.locationName}</p>
+                      )}
+                      {(invoice.city || invoice.state) && (
+                        <p className="text-xs text-gray-700">
+                          {[invoice.city, invoice.state].filter(Boolean).join(", ")}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -776,7 +789,7 @@ export default function Invoices() {
     clientId: "", jobId: "",
     issueDate: new Date().toISOString().slice(0, 10),
     dueDate: "", status: "draft", taxRate: "",
-    city: "", state: "KY", notes: "", terms: "Net 30",
+    city: "", state: "KY", locationName: "", notes: "", terms: "Net 30",
     clientEmail: "", clientPhone: "", clientAddress: "", 
     clientCity: "", clientState: "", clientZip: "", clientNotes: "",
   });
@@ -786,6 +799,7 @@ export default function Invoices() {
   const [isNewClient, setIsNewClient] = useState(false);
   const [clientInput, setClientInput] = useState("");
   const [viewInvoice,  setViewInvoice]  = useState<any | null>(null);
+  const [viewLocationName, setViewLocationName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting,     setDeleting]     = useState(false);
 
