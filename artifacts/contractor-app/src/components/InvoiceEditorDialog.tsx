@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   useCreateInvoice, useUpdateInvoice, useCreateClient, useListClients,
   useListJobs, useGetSettings,
+  Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -12,26 +13,32 @@ import {
 interface LineItem { description: string; quantity: number; unitPrice: number; }
 function emptyLine(): LineItem { return { description: "", quantity: 1, unitPrice: 0 }; }
 
+interface InvoiceFormState {
+  clientId: string;
+  jobId: string;
+  issueDate: string;
+  dueDate: string;
+  status: string;
+  taxRate: string;
+  city: string;
+  state: string;
+  locationName: string;
+  notes: string;
+  terms: string;
+  clientEmail: string;
+  clientPhone: string;
+  clientAddress: string;
+  clientCity: string;
+  clientState: string;
+  clientZip: string;
+  clientNotes: string;
+}
+
 interface InvoiceEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialData?: {
-    clientId?: number | null;
-    clientName?: string | null;
-    clientEmail?: string | null;
-    clientAddress?: string | null;
-    clientPhone?: string | null;
-    clientCity?: string | null;
-    clientState?: string | null;
-    clientZip?: string | null;
-    jobId?: number | null;
-    jobTitle?: string | null;
-    locationName?: string | null;
-    city?: string | null;
-    state?: string | null;
-    lineItems?: { description: string; quantity: number; unitPrice: number }[];
-  };
-  existingInvoice?: any;
+  initialData?: InvoiceDraft | null;
+  existingInvoice?: Invoice;
   onSaved?: () => void;
 }
 
@@ -46,7 +53,7 @@ export function InvoiceEditorDialog({
   const updateInvoice          = useUpdateInvoice();
   const createClientMutation   = useCreateClient();
 
-  const s = settings as any;
+  const s: AppSettings | undefined = settings;
   const prefix        = s?.invoicePrefix     ?? "INV-2026-";
   const nextNum       = s?.invoiceNextNumber ?? 1001;
   const previewNumber = existingInvoice?.invoiceNumber ?? `${prefix}${nextNum}`;
@@ -100,7 +107,7 @@ export function InvoiceEditorDialog({
 
   function makeInitialLineItems(): LineItem[] {
     if (existingInvoice?.lineItems?.length) {
-      return existingInvoice.lineItems.map((li: any) => ({
+      return existingInvoice.lineItems.map(li => ({
         description: li.description,
         quantity: li.quantity,
         unitPrice: li.unitPrice,
@@ -118,7 +125,7 @@ export function InvoiceEditorDialog({
     return "";
   }
 
-  const [form, setFormState] = useState(makeInitialForm);
+  const [form, setFormState] = useState<InvoiceFormState>(makeInitialForm);
   const [lineItems, setLineItems] = useState<LineItem[]>(makeInitialLineItems);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -155,11 +162,11 @@ export function InvoiceEditorDialog({
   const taxAmount = subtotal * taxRate / 100;
   const total     = subtotal + taxAmount;
 
-  const suggestions = clientInput.trim()
-    ? (clients as any[]).filter(c => c.name.toLowerCase().includes(clientInput.toLowerCase()))
-    : (clients as any[]);
-  const hasExact = (clients as any[]).some(c => c.name.toLowerCase() === clientInput.toLowerCase());
-  const selectedClient = (clients as any[]).find(c => String(c.id) === form.clientId);
+  const suggestions: Client[] = clientInput.trim()
+    ? clients.filter(c => c.name.toLowerCase().includes(clientInput.toLowerCase()))
+    : clients;
+  const hasExact = clients.some(c => c.name.toLowerCase() === clientInput.toLowerCase());
+  const selectedClient = clients.find(c => String(c.id) === form.clientId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -173,14 +180,14 @@ export function InvoiceEditorDialog({
       let resolvedClientId = form.clientId ? parseInt(form.clientId) : undefined;
       if (isNewClient && clientInput.trim()) {
         const nc = await createClientMutation.mutateAsync({ data: { name: clientInput.trim() } });
-        resolvedClientId = (nc as any).id;
+        resolvedClientId = nc.id;
       }
-      const payload: any = {
+      const payload: CreateInvoiceRequest = {
         clientId:  resolvedClientId,
         jobId:     form.jobId    ? parseInt(form.jobId)    : undefined,
         issueDate: form.issueDate,
         dueDate:   form.dueDate  || undefined,
-        status:    form.status   as any,
+        status:    form.status   as CreateInvoiceRequest["status"],
         taxRate:   form.taxRate  ? parseFloat(form.taxRate) : undefined,
         locationName: form.locationName || undefined,
         city:      form.city     || undefined,
@@ -206,18 +213,18 @@ export function InvoiceEditorDialog({
     }
   }
 
-  const logoUrl: string | null  = (s as any)?.logoUrl ?? null;
-  const logoSize: string        = (s as any)?.invoiceLogoSize     ?? "medium";
-  const logoPos: string         = (s as any)?.invoiceLogoPosition ?? "top-left";
+  const logoUrl: string | null  = s?.logoUrl ?? null;
+  const logoSize: string        = s?.invoiceLogoSize     ?? "medium";
+  const logoPos: string         = s?.invoiceLogoPosition ?? "top-left";
   const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const companyName    = (s as any)?.companyName    || "";
-  const companyEmail   = (s as any)?.companyEmail   || "";
-  const companyPhone   = (s as any)?.companyPhone   || "";
-  const companyAddress = (s as any)?.companyAddress || "";
-  const companyCity    = (s as any)?.companyCity    || "";
-  const companyState   = (s as any)?.companyState   || "";
-  const companyZip     = (s as any)?.companyZip     || "";
+  const companyName    = s?.companyName    || "";
+  const companyEmail   = s?.companyEmail   || "";
+  const companyPhone   = s?.companyPhone   || "";
+  const companyAddress = s?.companyAddress || "";
+  const companyCity    = s?.companyCity    || "";
+  const companyState   = s?.companyState   || "";
+  const companyZip     = s?.companyZip     || "";
 
   const docInput = "bg-transparent border-0 border-b border-transparent focus:border-amber-400 focus:outline-none focus:bg-amber-50/40 rounded-none transition-colors text-inherit font-inherit w-full placeholder-gray-300 px-0.5";
   const docSelect = "bg-transparent border-0 border-b border-transparent focus:border-amber-400 focus:outline-none focus:bg-amber-50/40 rounded-none transition-colors text-inherit font-inherit cursor-pointer px-0.5";
@@ -388,7 +395,7 @@ export function InvoiceEditorDialog({
                             {suggestions.length === 0 && !clientInput.trim() && (
                               <p className="px-3 py-2 text-xs text-gray-400">No clients yet</p>
                             )}
-                            {suggestions.map((c: any) => (
+                            {suggestions.map((c: Client) => (
                               <button key={c.id} type="button"
                                 onMouseDown={() => {
                                   setClientInput(c.name);
@@ -432,7 +439,7 @@ export function InvoiceEditorDialog({
                             <div key={key}>
                               <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">{label}</label>
                               <input type={type} className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                value={(form as any)[key]} onChange={e => setField(key, e.target.value)} />
+                                value={form[key as keyof InvoiceFormState]} onChange={e => setField(key, e.target.value)} />
                             </div>
                           ))}
                           <div className="grid grid-cols-3 gap-1.5">

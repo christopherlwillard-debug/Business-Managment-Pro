@@ -228,6 +228,9 @@ export interface CreateInvoiceRequest {
   taxRate?: number | null;
   notes?: string | null;
   terms?: string | null;
+  locationName?: string | null;
+  city?: string | null;
+  state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
 }
 
@@ -536,6 +539,26 @@ export interface CreateDailyLogRequest {
   photoUrls?: string[];
 }
 
+export type AppSettingsInvoiceLogoSize =
+  | (typeof AppSettingsInvoiceLogoSize)[keyof typeof AppSettingsInvoiceLogoSize]
+  | null;
+
+export const AppSettingsInvoiceLogoSize = {
+  small: "small",
+  medium: "medium",
+  large: "large",
+} as const;
+
+export type AppSettingsInvoiceLogoPosition =
+  | (typeof AppSettingsInvoiceLogoPosition)[keyof typeof AppSettingsInvoiceLogoPosition]
+  | null;
+
+export const AppSettingsInvoiceLogoPosition = {
+  "top-left": "top-left",
+  "top-center": "top-center",
+  "top-right": "top-right",
+} as const;
+
 export interface AppSettings {
   companyName?: string | null;
   companyAddress?: string | null;
@@ -554,6 +577,8 @@ export interface AppSettings {
   currency?: string | null;
   enabledFeatures: string[];
   thresholdAmount1099?: number | null;
+  invoiceLogoSize?: AppSettingsInvoiceLogoSize;
+  invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {

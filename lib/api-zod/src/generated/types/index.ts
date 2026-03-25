@@ -7,6 +7,8 @@
  */
 
 export * from "./appSettings";
+export * from "./appSettingsInvoiceLogoPosition";
+export * from "./appSettingsInvoiceLogoSize";
 export * from "./authorizationSessionHeaderParameter";
 export * from "./authUser";
 export * from "./authUserEnvelope";

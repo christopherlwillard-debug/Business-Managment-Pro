@@ -447,6 +447,9 @@ export const CreateInvoiceBody = zod.object({
   taxRate: zod.number().nullish(),
   notes: zod.string().nullish(),
   terms: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
   lineItems: zod
     .array(
       zod.object({
@@ -514,6 +517,9 @@ export const UpdateInvoiceBody = zod.object({
   taxRate: zod.number().nullish(),
   notes: zod.string().nullish(),
   terms: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
   lineItems: zod
     .array(
       zod.object({
@@ -1459,6 +1465,10 @@ export const GetSettingsResponse = zod.object({
   currency: zod.string().nullish(),
   enabledFeatures: zod.array(zod.string()),
   thresholdAmount1099: zod.number().nullish(),
+  invoiceLogoSize: zod.enum(["small", "medium", "large"]).nullish(),
+  invoiceLogoPosition: zod
+    .enum(["top-left", "top-center", "top-right"])
+    .nullish(),
 });
 
 /**
@@ -1482,6 +1492,10 @@ export const UpdateSettingsBody = zod.object({
   currency: zod.string().nullish(),
   enabledFeatures: zod.array(zod.string()),
   thresholdAmount1099: zod.number().nullish(),
+  invoiceLogoSize: zod.enum(["small", "medium", "large"]).nullish(),
+  invoiceLogoPosition: zod
+    .enum(["top-left", "top-center", "top-right"])
+    .nullish(),
 });
 
 export const UpdateSettingsResponse = zod.object({
@@ -1502,6 +1516,10 @@ export const UpdateSettingsResponse = zod.object({
   currency: zod.string().nullish(),
   enabledFeatures: zod.array(zod.string()),
   thresholdAmount1099: zod.number().nullish(),
+  invoiceLogoSize: zod.enum(["small", "medium", "large"]).nullish(),
+  invoiceLogoPosition: zod
+    .enum(["top-left", "top-center", "top-right"])
+    .nullish(),
 });
 
 /**

@@ -1791,6 +1791,15 @@ components:
         terms:
           type: string
           nullable: true
+        locationName:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
         lineItems:
           type: array
           items:
@@ -2415,6 +2424,14 @@ components:
             type: string
         thresholdAmount1099:
           type: number
+          nullable: true
+        invoiceLogoSize:
+          type: string
+          enum: [small, medium, large]
+          nullable: true
+        invoiceLogoPosition:
+          type: string
+          enum: [top-left, top-center, top-right]
           nullable: true
       required: [enabledFeatures]
 

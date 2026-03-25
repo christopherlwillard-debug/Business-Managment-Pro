@@ -5,6 +5,8 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { AppSettingsInvoiceLogoPosition } from "./appSettingsInvoiceLogoPosition";
+import type { AppSettingsInvoiceLogoSize } from "./appSettingsInvoiceLogoSize";
 
 export interface AppSettings {
   companyName?: string | null;
@@ -24,4 +26,6 @@ export interface AppSettings {
   currency?: string | null;
   enabledFeatures: string[];
   thresholdAmount1099?: number | null;
+  invoiceLogoSize?: AppSettingsInvoiceLogoSize;
+  invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
 }

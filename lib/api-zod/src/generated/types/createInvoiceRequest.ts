@@ -17,5 +17,8 @@ export interface CreateInvoiceRequest {
   taxRate?: number | null;
   notes?: string | null;
   terms?: string | null;
+  locationName?: string | null;
+  city?: string | null;
+  state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
 }

@@ -3,13 +3,14 @@ import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, useListInvoices,
   useUpdateInvoiceStatus, useDeleteInvoice,
+  Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
 import {
-  Briefcase, MapPin, Calendar, DollarSign, HardHat, Users,
+  Briefcase, MapPin, Calendar, HardHat, Users,
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock,
 } from "lucide-react";
@@ -23,6 +24,14 @@ const INVOICE_STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-orange-100 text-orange-700",
 };
 
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  paid:      "Paid",
+  sent:      "Pending",
+  draft:     "Draft",
+  overdue:   "Overdue",
+  cancelled: "Cancelled",
+};
+
 function displayStatus(status: string): "scheduled" | "completed" {
   if (status === "completed" || status === "invoiced") return "completed";
   return "scheduled";
@@ -32,7 +41,7 @@ function displayStatus(status: string): "scheduled" | "completed" {
 function SubcontractorPicker({
   subcontractors, selected, onChange,
 }: {
-  subcontractors: any[];
+  subcontractors: Subcontractor[];
   selected: number[];
   onChange: (ids: number[]) => void;
 }) {
@@ -87,11 +96,11 @@ function SubcontractorPicker({
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted,
 }: {
-  job: any;
-  onEdit: (job: any) => void;
-  onDelete: (job: any) => void;
-  onReviewInvoice: (job: any) => void;
-  onMarkCompleted: (job: any) => void;
+  job: Job;
+  onEdit: (job: Job) => void;
+  onDelete: (job: Job) => void;
+  onReviewInvoice: (job: Job) => void;
+  onMarkCompleted: (job: Job) => void;
 }) {
   const isCompleted = displayStatus(job.status) === "completed";
 
@@ -174,9 +183,9 @@ function JobFormDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  editJob: any | null;
-  clients: any[];
-  subcontractors: any[];
+  editJob: Job | null;
+  clients: Client[];
+  subcontractors: Subcontractor[];
   onSaved: () => void;
 }) {
   const createJob = useCreateJob();
@@ -217,11 +226,11 @@ function JobFormDialog({
     setSubmitting(true);
     setError("");
     try {
-      const payload: any = {
+      const payload: CreateJobRequest = {
         title: form.title.trim(),
         clientId: form.clientId ? parseInt(form.clientId) : undefined,
         subcontractorIds: subIds,
-        status: form.status,
+        status: form.status as CreateJobRequest["status"],
         locationName: form.locationName || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
@@ -421,13 +430,13 @@ function SavedInvoicesSection() {
   const queryClient   = useQueryClient();
 
   const [collapsed, setCollapsed]       = useState(false);
-  const [editInvoice, setEditInvoice]   = useState<any | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [editInvoice, setEditInvoice]   = useState<Invoice | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null);
   const [deleting, setDeleting]         = useState(false);
 
-  const jobInvoices = (invoices as any[]).filter(inv => inv.jobId != null);
+  const jobInvoices = invoices.filter(inv => inv.jobId != null);
 
-  async function handleMarkPaid(inv: any) {
+  async function handleMarkPaid(inv: Invoice) {
     await updateStatus.mutateAsync({ id: inv.id, data: { status: "paid" } });
     queryClient.invalidateQueries();
   }
@@ -486,7 +495,7 @@ function SavedInvoicesSection() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {jobInvoices.map((inv: any) => (
+                  {jobInvoices.map((inv: Invoice) => (
                     <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-5 py-3 font-mono text-xs font-semibold text-foreground">{inv.invoiceNumber}</td>
                       <td className="px-5 py-3 text-sm text-foreground">{inv.clientName ?? <span className="text-muted-foreground italic">No client</span>}</td>
@@ -494,7 +503,7 @@ function SavedInvoicesSection() {
                       <td className="px-5 py-3 text-right font-bold text-amber-600">{formatCurrency(inv.total)}</td>
                       <td className="px-5 py-3 text-center">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
-                          {inv.status}
+                          {INVOICE_STATUS_LABELS[inv.status] ?? inv.status}
                         </span>
                       </td>
                       <td className="px-5 py-3">
@@ -556,18 +565,17 @@ export default function Jobs() {
 
   const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "completed">("all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
-  const [editJob, setEditJob]           = useState<any | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [editJob, setEditJob]           = useState<Job | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const [deleting, setDeleting]         = useState(false);
 
   const [invoiceEditorOpen, setInvoiceEditorOpen] = useState(false);
-  const [invoiceDraftData, setInvoiceDraftData]   = useState<any>(null);
+  const [invoiceDraftData, setInvoiceDraftData]   = useState<InvoiceDraft | null>(null);
   const [invoiceFetching, setInvoiceFetching]     = useState(false);
 
   const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  const allJobs       = jobs as any[];
-  const filteredJobs  = allJobs.filter(j => {
+  const filteredJobs  = jobs.filter(j => {
     if (statusFilter === "all") return true;
     return displayStatus(j.status) === statusFilter;
   });
@@ -576,7 +584,7 @@ export default function Jobs() {
   const showAll       = statusFilter === "all";
 
   function openNewJob() { setEditJob(null); setJobFormOpen(true); }
-  function openEditJob(job: any) { setEditJob(job); setJobFormOpen(true); }
+  function openEditJob(job: Job) { setEditJob(job); setJobFormOpen(true); }
 
   async function handleDeleteConfirmed() {
     if (!deleteTarget) return;
@@ -587,12 +595,12 @@ export default function Jobs() {
     } finally { setDeleting(false); setDeleteTarget(null); }
   }
 
-  async function handleMarkCompleted(job: any) {
+  async function handleMarkCompleted(job: Job) {
     await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
     queryClient.invalidateQueries();
   }
 
-  async function handleReviewInvoice(job: any) {
+  async function handleReviewInvoice(job: Job) {
     setInvoiceFetching(true);
     try {
       const resp = await fetch(`${BASE}/api/jobs/${job.id}/invoice-draft`, { credentials: "include" });
@@ -621,8 +629,8 @@ export default function Jobs() {
       <div className="flex gap-2 overflow-x-auto pb-1">
         {([
           { key: "all",       label: "All Jobs" },
-          { key: "scheduled", label: "Scheduled", count: allJobs.filter(j => displayStatus(j.status) === "scheduled").length },
-          { key: "completed", label: "Completed",  count: allJobs.filter(j => displayStatus(j.status) === "completed").length },
+          { key: "scheduled", label: "Scheduled", count: jobs.filter(j => displayStatus(j.status) === "scheduled").length },
+          { key: "completed", label: "Completed",  count: jobs.filter(j => displayStatus(j.status) === "completed").length },
         ] as const).map(f => (
           <button key={f.key}
             onClick={() => setStatusFilter(f.key)}
@@ -645,7 +653,7 @@ export default function Jobs() {
       )}
 
       {/* Empty state */}
-      {!isLoading && allJobs.length === 0 && (
+      {!isLoading && jobs.length === 0 && (
         <Card className="py-16 text-center space-y-3">
           <Briefcase className="w-12 h-12 text-muted-foreground/30 mx-auto" />
           <p className="font-semibold text-foreground">No jobs yet</p>
@@ -658,7 +666,7 @@ export default function Jobs() {
       )}
 
       {/* Jobs grid */}
-      {!isLoading && allJobs.length > 0 && (
+      {!isLoading && jobs.length > 0 && (
         <>
           {(showAll || statusFilter === "scheduled") && scheduledJobs.length > 0 && (
             <div>
@@ -715,8 +723,8 @@ export default function Jobs() {
           open={jobFormOpen}
           onOpenChange={setJobFormOpen}
           editJob={editJob}
-          clients={clients as any[]}
-          subcontractors={subcontractors as any[]}
+          clients={clients}
+          subcontractors={subcontractors}
           onSaved={() => queryClient.invalidateQueries()}
         />
       )}
