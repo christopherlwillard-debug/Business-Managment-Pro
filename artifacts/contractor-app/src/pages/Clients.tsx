@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useListClients, useCreateClient, useUpdateClient } from "@workspace/api-client-react";
-import { Users, Plus, Phone, Mail, MapPin, Edit2 } from "lucide-react";
+import { useListClients, useCreateClient, useUpdateClient, useDeleteClient } from "@workspace/api-client-react";
+import { Users, Plus, Phone, Mail, MapPin, Edit2, Trash2, AlertTriangle, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -8,8 +8,11 @@ export default function Clients() {
   const { data: clients, isLoading, refetch } = useListClients();
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
+  const deleteMutation = useDeleteClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -52,6 +55,20 @@ export default function Clients() {
     setEditingClient(null);
   };
 
+  const handleDeleteConfirmed = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await deleteMutation.mutateAsync({
+        id: deleteTarget.id,
+      });
+      refetch();
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -82,13 +99,22 @@ export default function Clients() {
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4 gap-2">
                   <h3 className="text-xl font-bold font-display text-foreground truncate flex-1">{client.name}</h3>
-                  <button
-                    onClick={() => openEditDialog(client)}
-                    className="flex-shrink-0 p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    title="Edit client"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => openEditDialog(client)}
+                      className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      title="Edit client"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(client)}
+                      className="p-2 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors"
+                      title="Delete client"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-3">
                   {client.phone && (
@@ -184,6 +210,45 @@ export default function Clients() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
+          <div className="relative w-full max-w-sm bg-card rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-foreground text-base">Permanently delete client?</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <span className="font-semibold text-foreground">{deleteTarget.name}</span>
+                  {" "}will be{" "}
+                  <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button 
+                onClick={() => setDeleteTarget(null)} 
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDeleteConfirmed} 
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {isDeleting ? "Deleting…" : <>
+                  <Trash2 className="w-4 h-4" /> Delete
+                </>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
