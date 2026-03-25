@@ -122,6 +122,8 @@ export default function Mileage() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState("");
+  const [interruptionPrompt, setInterruptionPrompt] = useState(false);
+  const wasHiddenWhileTracking = useRef(false);
   const [manual, setManual] = useState<ManualForm>({
     date: today, startLocation: "", endLocation: "", miles: "",
     purpose: "", classification: "business", jobId: "",
@@ -153,6 +155,24 @@ export default function Mileage() {
       if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
+  }, []);
+
+  // Detect when user leaves and returns while GPS tracking is active
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (watchId.current !== null) {
+          wasHiddenWhileTracking.current = true;
+        }
+      } else {
+        if (wasHiddenWhileTracking.current && watchId.current !== null) {
+          wasHiddenWhileTracking.current = false;
+          setInterruptionPrompt(true);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
   const startTracking = useCallback(() => {
@@ -416,6 +436,39 @@ export default function Mileage() {
           </div>
         );
       })()}
+
+      {/* ── Return-from-interruption prompt ── */}
+      {interruptionPrompt && phase === "tracking" && (
+        <div className="flex items-start gap-3 px-4 py-4 rounded-xl bg-orange-50 border-2 border-orange-300 text-orange-900 shadow-md">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-orange-500" />
+          <div className="flex-1">
+            <p className="text-sm font-bold mb-1">Tracking may have paused.</p>
+            <p className="text-sm mb-3">
+              You left this tab while tracking was active — GPS may have stopped. Did you miss any distance?
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setInterruptionPrompt(false);
+                  stopTracking();
+                  setShowManualForm(true);
+                }}
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+              >
+                Log Missed Miles Manually
+              </button>
+              <button
+                type="button"
+                onClick={() => setInterruptionPrompt(false)}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-orange-100 text-orange-800 hover:bg-orange-200 transition-colors"
+              >
+                Continue Tracking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Foreground-required notice (while GPS tracking) ── */}
       {phase === "tracking" && (

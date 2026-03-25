@@ -378,7 +378,7 @@ export interface MileageLog {
   ratePerMile: number;
   deductionAmount: number;
   notes?: string | null;
-  source?: MileageLogSource;
+  source: MileageLogSource;
   createdAt: string;
 }
 

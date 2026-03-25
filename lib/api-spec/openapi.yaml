@@ -2043,7 +2043,7 @@ components:
           default: gps
         createdAt:
           type: string
-      required: [id, date, miles, classification, ratePerMile, deductionAmount, createdAt]
+      required: [id, date, miles, classification, ratePerMile, deductionAmount, source, createdAt]
 
     CreateMileageLogRequest:
       type: object
