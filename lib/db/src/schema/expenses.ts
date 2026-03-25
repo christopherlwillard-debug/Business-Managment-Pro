@@ -15,7 +15,7 @@ export const expensesTable = pgTable("expenses", {
   subcontractorId: integer("subcontractor_id"),
   receiptUrl: text("receipt_url"),
   notes: text("notes"),
-  recurringExpenseId: integer("recurring_expense_id").references(() => recurringExpensesTable.id),
+  recurringExpenseId: integer("recurring_expense_id").references(() => recurringExpensesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -2,10 +2,10 @@ import cron from "node-cron";
 import { db } from "@workspace/db";
 import { recurringExpensesTable, expensesTable } from "@workspace/db/schema";
 import { lte, eq, and } from "drizzle-orm";
-import { advanceDate } from "../routes/recurring-expenses.js";
+import { advanceDate, localDateStr } from "../routes/recurring-expenses.js";
 
 async function processRecurringExpenses() {
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateStr();
   try {
     const due = await db
       .select()

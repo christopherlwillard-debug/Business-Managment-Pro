@@ -7,6 +7,10 @@ const router = Router();
 
 const FREQUENCIES = ["weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
 
+export function localDateStr(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function advanceDate(dateStr: string, frequency: string): string {
   const [year, month, day] = dateStr.split("-").map(Number);
   const d = new Date(year, month - 1, day);
@@ -17,7 +21,7 @@ export function advanceDate(dateStr: string, frequency: string): string {
     case "quarterly": d.setMonth(d.getMonth() + 3); break;
     case "yearly":    d.setFullYear(d.getFullYear() + 1); break;
   }
-  return d.toISOString().split("T")[0];
+  return localDateStr(d);
 }
 
 function formatTemplate(t: typeof recurringExpensesTable.$inferSelect, jobTitle?: string | null) {
