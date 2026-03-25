@@ -285,7 +285,6 @@ function InvoiceBuilder({
                               setField("clientState", c.state || "");
                               setField("clientZip", c.zip || "");
                               setField("clientNotes", c.notes || "");
-                              if (c.city) setField("city", c.city);
                               setIsNewClient(false);
                               setShowClientDrop(false);
                             }}
