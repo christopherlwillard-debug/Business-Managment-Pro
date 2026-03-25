@@ -267,15 +267,15 @@ export default function Subcontractors() {
       {/* Portal Invite Modal */}
       {inviteModal && (
         <Dialog open={!!inviteModal} onOpenChange={() => { setInviteModal(null); setPortalError(null); }}>
-          <DialogContent className="max-w-lg bg-card border-border shadow-2xl p-6 rounded-2xl">
+          <DialogContent className="w-[calc(100vw-32px)] max-w-lg bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl">
             <DialogHeader>
-              <DialogTitle className="text-xl font-display flex items-center gap-2">
-                <Link2 className="w-5 h-5 text-primary" />
-                Portal Access — {inviteModal.name}
+              <DialogTitle className="text-lg sm:text-xl font-display flex items-center gap-2 pr-6">
+                <Link2 className="w-5 h-5 text-primary flex-shrink-0" />
+                <span className="truncate">Portal Access — {inviteModal.name}</span>
               </DialogTitle>
             </DialogHeader>
 
-            <div className="mt-4 space-y-5">
+            <div className="mt-4 space-y-4">
               {/* Error display */}
               {portalError && (
                 <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -287,20 +287,22 @@ export default function Subcontractors() {
               {inviteModal.token && inviteModal.portalApproved ? (
                 <>
                   {/* Active portal state */}
-                  <div className="flex items-start gap-4 p-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-100">
-                      <ShieldCheck className="w-5 h-5 text-emerald-700" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-emerald-900">Portal Access Active</p>
-                      <p className="text-xs mt-0.5 text-emerald-700">
-                        {inviteModal.name} can log in and use their portal with the link below.
-                      </p>
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-100">
+                        <ShieldCheck className="w-5 h-5 text-emerald-700" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-emerald-900">Portal Access Active</p>
+                        <p className="text-xs mt-0.5 text-emerald-700">
+                          {inviteModal.name} can log in and use their portal with the link below.
+                        </p>
+                      </div>
                     </div>
                     <button
                       onClick={() => revokeAccess(inviteModal.id)}
                       disabled={revoking}
-                      className="flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-xs transition-colors disabled:opacity-50 bg-red-100 text-red-700 hover:bg-red-200 border border-red-200"
+                      className="self-start sm:self-auto flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-xs transition-colors disabled:opacity-50 bg-red-100 text-red-700 hover:bg-red-200 border border-red-200"
                     >
                       {revoking ? "…" : "Revoke"}
                     </button>
@@ -316,19 +318,19 @@ export default function Subcontractors() {
                   {/* Portal link */}
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Portal Link</label>
-                    <div className="flex gap-2">
-                      <div className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-xs font-mono text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-xs font-mono text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
                         {getPortalUrl(inviteModal.token)}
                       </div>
                       <button
                         onClick={() => copyLink(inviteModal.token!)}
-                        className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex-shrink-0 ${
+                        className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors sm:flex-shrink-0 ${
                           copied
                             ? "bg-emerald-600 text-white"
                             : "bg-primary text-primary-foreground hover:bg-primary/90"
                         }`}
                       >
-                        {copied ? <><CheckCheck className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy</>}
+                        {copied ? <><CheckCheck className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy Link</>}
                       </button>
                     </div>
                   </div>
@@ -339,7 +341,7 @@ export default function Subcontractors() {
                     </p>
                   )}
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <button
                       onClick={() => previewPortal(inviteModal.token!)}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition-colors"
@@ -349,7 +351,7 @@ export default function Subcontractors() {
                     <button
                       onClick={() => generateAndApprovePortalLink(inviteModal.id)}
                       disabled={generating}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition-colors text-muted-foreground disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition-colors text-muted-foreground disabled:opacity-50"
                     >
                       <RefreshCw className={`w-4 h-4 ${generating ? "animate-spin" : ""}`} />
                       {generating ? "Regenerating…" : "New Link"}
@@ -363,20 +365,22 @@ export default function Subcontractors() {
               ) : inviteModal.token && !inviteModal.portalApproved ? (
                 <>
                   {/* Revoked state — has token but not approved */}
-                  <div className="flex items-start gap-4 p-4 rounded-2xl border-2 border-amber-200 bg-amber-50">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-100">
-                      <ShieldX className="w-5 h-5 text-amber-700" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-amber-900">Access Revoked</p>
-                      <p className="text-xs mt-0.5 text-amber-700">
-                        {inviteModal.name} has a portal link but access has been revoked. Re-enable to restore access.
-                      </p>
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 rounded-2xl border-2 border-amber-200 bg-amber-50">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-100">
+                        <ShieldX className="w-5 h-5 text-amber-700" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-amber-900">Access Revoked</p>
+                        <p className="text-xs mt-0.5 text-amber-700">
+                          {inviteModal.name} has a portal link but access has been revoked. Re-enable to restore access.
+                        </p>
+                      </div>
                     </div>
                     <button
                       onClick={() => generateAndApprovePortalLink(inviteModal.id)}
                       disabled={generating}
-                      className="flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-xs transition-colors disabled:opacity-50 bg-emerald-600 text-white hover:bg-emerald-700"
+                      className="self-start sm:self-auto flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-xs transition-colors disabled:opacity-50 bg-emerald-600 text-white hover:bg-emerald-700"
                     >
                       {generating ? "…" : "Re-enable"}
                     </button>
