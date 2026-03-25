@@ -853,7 +853,6 @@ export default function Invoices() {
           taxRate:   form.taxRate  ? parseFloat(form.taxRate) : undefined,
           city:      form.city     || undefined,
           state:     form.state    || undefined,
-          locationName: form.locationName || undefined,
           notes:     form.notes    || undefined,
           terms:     form.terms    || undefined,
           lineItems: lineItems

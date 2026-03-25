@@ -19,7 +19,6 @@ export const invoicesTable = pgTable("invoices", {
   amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }),
   city: text("city"),
   state: text("state"),
-  locationName: text("location_name"),
   notes: text("notes"),
   terms: text("terms"),
   lineItems: jsonb("line_items").default("[]"),
