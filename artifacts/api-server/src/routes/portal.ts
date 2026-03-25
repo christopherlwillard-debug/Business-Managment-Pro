@@ -81,10 +81,12 @@ async function requirePinSession(req: Request, res: Response, next: NextFunction
   const sub = await getSubByToken(token);
   if (!sub) return res.status(404).json({ error: "Invalid portal link" });
 
-  // No PIN configured → open access (backwards-compatible)
-  if (!sub.portalPinHash) return next();
+  // PIN not yet set → frontend must guide sub through PIN setup before data loads
+  if (!sub.portalPinHash) {
+    return res.status(401).json({ error: "PIN setup required", requirePinSetup: true });
+  }
 
-  // PIN is configured → verify session
+  // PIN is configured → verify signed session cookie
   const sessions = getVerifiedPortalSessions(req);
   const exp = sessions[token];
   if (!exp || exp < Date.now()) {
