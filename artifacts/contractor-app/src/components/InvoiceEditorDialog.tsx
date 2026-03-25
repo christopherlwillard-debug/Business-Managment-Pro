@@ -581,7 +581,7 @@ export function InvoiceEditorDialog({
                         <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-400 w-[12%]">Qty</th>
                         <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-400 w-[19%]">Unit Price</th>
                         <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-400 w-[14%]">Total</th>
-                        <th className="w-[5%]" />
+                        <th className="print-hide w-[5%]" />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -605,7 +605,7 @@ export function InvoiceEditorDialog({
                           <td className="py-1.5 pl-1 text-right font-semibold text-gray-900">
                             {formatCurrency(li.quantity * li.unitPrice)}
                           </td>
-                          <td className="py-1.5 pl-1 text-center">
+                          <td className="print-hide py-1.5 pl-1 text-center">
                             <button type="button" onClick={() => removeLine(i)}
                               className="text-gray-300 hover:text-red-400 transition-colors">
                               <Trash2 className="w-3 h-3" />

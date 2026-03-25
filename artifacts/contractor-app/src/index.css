@@ -170,6 +170,7 @@
   .invoice-print-area button { display: none !important; }
   .invoice-print-area span.print-value { display: inline !important; }
   .invoice-print-area p.print-value { display: block !important; }
+  .invoice-print-area .print-hide { display: none !important; }
   @page { margin: 0.75in; size: auto; }
 }
 
