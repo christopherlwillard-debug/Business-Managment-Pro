@@ -3,7 +3,7 @@ import { useListSubcontractors, useCreateSubcontractor } from "@workspace/api-cl
 import { formatCurrency } from "@/lib/utils";
 import {
   HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy, ExternalLink,
-  RefreshCw, CheckCheck, ShieldCheck, ShieldX, Clock,
+  RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,8 +18,9 @@ export default function Subcontractors() {
     name: string; token: string | null; id: number; portalApproved: boolean;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [approving, setApproving] = useState(false);
+  const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -41,32 +42,59 @@ export default function Subcontractors() {
     }
   };
 
-  async function generatePortalLink(subId: number) {
+  async function generateAndApprovePortalLink(subId: number) {
     setGenerating(true);
+    setPortalError(null);
     try {
-      const res = await fetch(`${BASE}/api/portal/generate/${subId}`, { method: "POST" });
-      const data = await res.json();
-      if (data.portalToken) {
-        setInviteModal(prev => prev ? { ...prev, token: data.portalToken } : null);
-        refetch();
+      const genRes = await fetch(`${BASE}/api/portal/generate/${subId}`, { method: "POST" });
+      if (!genRes.ok) {
+        const err = await genRes.json().catch(() => ({}));
+        throw new Error(err.error || `Generate failed (${genRes.status})`);
       }
+      const genData = await genRes.json();
+      const token = genData.portalToken;
+      if (!token) throw new Error("No token returned from server");
+
+      const approveRes = await fetch(`${BASE}/api/portal/approve/${subId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved: true }),
+      });
+      if (!approveRes.ok) {
+        const err = await approveRes.json().catch(() => ({}));
+        throw new Error(err.error || `Approve failed (${approveRes.status})`);
+      }
+
+      setInviteModal(prev => prev ? { ...prev, token, portalApproved: true } : null);
+      refetch();
+    } catch (err: any) {
+      console.error(err);
+      setPortalError(err.message || "Failed to generate portal link. Please try again.");
     } finally {
       setGenerating(false);
     }
   }
 
-  async function toggleApproval(subId: number, approve: boolean) {
-    setApproving(true);
+  async function revokeAccess(subId: number) {
+    setRevoking(true);
+    setPortalError(null);
     try {
-      await fetch(`${BASE}/api/portal/approve/${subId}`, {
+      const res = await fetch(`${BASE}/api/portal/approve/${subId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approved: approve }),
+        body: JSON.stringify({ approved: false }),
       });
-      setInviteModal(prev => prev ? { ...prev, portalApproved: approve } : null);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Revoke failed (${res.status})`);
+      }
+      setInviteModal(prev => prev ? { ...prev, portalApproved: false } : null);
       refetch();
+    } catch (err: any) {
+      console.error(err);
+      setPortalError(err.message || "Failed to revoke access. Please try again.");
     } finally {
-      setApproving(false);
+      setRevoking(false);
     }
   }
 
@@ -80,8 +108,19 @@ export default function Subcontractors() {
     setTimeout(() => setCopied(false), 2500);
   }
 
+  function previewPortal(token: string) {
+    const url = getPortalUrl(token);
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  }
+
   function openInviteModal(sub: any) {
     setCopied(false);
+    setPortalError(null);
     setInviteModal({
       name: sub.name,
       token: sub.portalToken ?? null,
@@ -164,11 +203,11 @@ export default function Subcontractors() {
                           }`}
                         >
                           {hasToken && approved ? (
-                            <><ShieldCheck className="w-3.5 h-3.5" /> Approved</>
+                            <><ShieldCheck className="w-3.5 h-3.5" /> Active</>
                           ) : hasToken ? (
-                            <><Clock className="w-3.5 h-3.5" /> Pending</>
+                            <><ShieldX className="w-3.5 h-3.5" /> Revoked</>
                           ) : (
-                            <><Link2 className="w-3.5 h-3.5" /> Invite</>
+                            <><Link2 className="w-3.5 h-3.5" /> Set Up Portal</>
                           )}
                         </button>
                       </td>
@@ -222,9 +261,9 @@ export default function Subcontractors() {
         </DialogContent>
       </Dialog>
 
-      {/* Portal Invite + Approval Modal */}
+      {/* Portal Invite Modal */}
       {inviteModal && (
-        <Dialog open={!!inviteModal} onOpenChange={() => setInviteModal(null)}>
+        <Dialog open={!!inviteModal} onOpenChange={() => { setInviteModal(null); setPortalError(null); }}>
           <DialogContent className="max-w-lg bg-card border-border shadow-2xl p-6 rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-display flex items-center gap-2">
@@ -234,41 +273,33 @@ export default function Subcontractors() {
             </DialogHeader>
 
             <div className="mt-4 space-y-5">
-              {inviteModal.token ? (
+              {/* Error display */}
+              {portalError && (
+                <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{portalError}</p>
+                </div>
+              )}
+
+              {inviteModal.token && inviteModal.portalApproved ? (
                 <>
-                  {/* Approval toggle — the key feature */}
-                  <div className={`flex items-start gap-4 p-4 rounded-2xl border-2 transition-colors ${
-                    inviteModal.portalApproved
-                      ? "border-emerald-300 bg-emerald-50"
-                      : "border-amber-200 bg-amber-50"
-                  }`}>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      inviteModal.portalApproved ? "bg-emerald-100" : "bg-amber-100"
-                    }`}>
-                      {inviteModal.portalApproved
-                        ? <ShieldCheck className="w-5 h-5 text-emerald-700" />
-                        : <Clock className="w-5 h-5 text-amber-700" />}
+                  {/* Active portal state */}
+                  <div className="flex items-start gap-4 p-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-100">
+                      <ShieldCheck className="w-5 h-5 text-emerald-700" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${inviteModal.portalApproved ? "text-emerald-900" : "text-amber-900"}`}>
-                        {inviteModal.portalApproved ? "Portal Access Approved" : "Access Pending Your Approval"}
-                      </p>
-                      <p className={`text-xs mt-0.5 ${inviteModal.portalApproved ? "text-emerald-700" : "text-amber-700"}`}>
-                        {inviteModal.portalApproved
-                          ? `${inviteModal.name} can currently access their portal using the link below.`
-                          : `${inviteModal.name} has a link but cannot access the portal until you approve them.`}
+                      <p className="font-semibold text-sm text-emerald-900">Portal Access Active</p>
+                      <p className="text-xs mt-0.5 text-emerald-700">
+                        {inviteModal.name} can log in and use their portal with the link below.
                       </p>
                     </div>
                     <button
-                      onClick={() => toggleApproval(inviteModal.id, !inviteModal.portalApproved)}
-                      disabled={approving}
-                      className={`flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-xs transition-colors disabled:opacity-50 ${
-                        inviteModal.portalApproved
-                          ? "bg-red-100 text-red-700 hover:bg-red-200 border border-red-200"
-                          : "bg-emerald-600 text-white hover:bg-emerald-700"
-                      }`}
+                      onClick={() => revokeAccess(inviteModal.id)}
+                      disabled={revoking}
+                      className="flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-xs transition-colors disabled:opacity-50 bg-red-100 text-red-700 hover:bg-red-200 border border-red-200"
                     >
-                      {approving ? "…" : inviteModal.portalApproved ? "Revoke" : "Approve"}
+                      {revoking ? "…" : "Revoke"}
                     </button>
                   </div>
 
@@ -300,16 +331,14 @@ export default function Subcontractors() {
                   </div>
 
                   <div className="flex gap-3">
-                    <a
-                      href={getPortalUrl(inviteModal.token)}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => previewPortal(inviteModal.token!)}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition-colors"
                     >
                       <ExternalLink className="w-4 h-4" /> Preview Portal
-                    </a>
+                    </button>
                     <button
-                      onClick={() => generatePortalLink(inviteModal.id)}
+                      onClick={() => generateAndApprovePortalLink(inviteModal.id)}
                       disabled={generating}
                       className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition-colors text-muted-foreground disabled:opacity-50"
                     >
@@ -319,10 +348,33 @@ export default function Subcontractors() {
                   </div>
 
                   <p className="text-xs text-muted-foreground text-center">
-                    Generating a new link will invalidate the old one.
+                    Generating a new link will invalidate the old one. Revoke to block access anytime.
                   </p>
                 </>
+              ) : inviteModal.token && !inviteModal.portalApproved ? (
+                <>
+                  {/* Revoked state — has token but not approved */}
+                  <div className="flex items-start gap-4 p-4 rounded-2xl border-2 border-amber-200 bg-amber-50">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-100">
+                      <ShieldX className="w-5 h-5 text-amber-700" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-amber-900">Access Revoked</p>
+                      <p className="text-xs mt-0.5 text-amber-700">
+                        {inviteModal.name} has a portal link but access has been revoked. Re-enable to restore access.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => generateAndApprovePortalLink(inviteModal.id)}
+                      disabled={generating}
+                      className="flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-xs transition-colors disabled:opacity-50 bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      {generating ? "…" : "Re-enable"}
+                    </button>
+                  </div>
+                </>
               ) : (
+                /* No token yet */
                 <div className="text-center py-4 space-y-4">
                   <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto">
                     <Link2 className="w-7 h-7 text-muted-foreground" />
@@ -330,17 +382,20 @@ export default function Subcontractors() {
                   <div>
                     <p className="text-sm font-medium text-foreground">No portal link yet</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Generate a secure link for {inviteModal.name}. You'll be able to approve or revoke their access at any time.
+                      Generate a secure link for {inviteModal.name}. They'll be able to access it immediately — you can revoke access at any time.
                     </p>
                   </div>
                   <button
-                    onClick={() => generatePortalLink(inviteModal.id)}
+                    onClick={() => generateAndApprovePortalLink(inviteModal.id)}
                     disabled={generating}
                     className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md"
                   >
                     <Link2 className="w-4 h-4" />
                     {generating ? "Generating…" : "Generate Portal Link"}
                   </button>
+                  <p className="text-xs text-muted-foreground">
+                    The sub can access the portal immediately after you generate the link.
+                  </p>
                 </div>
               )}
             </div>

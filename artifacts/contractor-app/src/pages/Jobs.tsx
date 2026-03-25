@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { useListJobs, useCreateJob, useListClients } from "@workspace/api-client-react";
+import { useListJobs, useCreateJob, useListClients, useListSubcontractors } from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Plus, Search, MapPin, Calendar, DollarSign, Building } from "lucide-react";
+import { Plus, MapPin, Calendar, DollarSign, Building, HardHat, Briefcase } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function Jobs() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const { data: jobs, isLoading } = useListJobs(statusFilter ? { status: statusFilter } : undefined);
   const { data: clients } = useListClients();
+  const { data: subs } = useListSubcontractors();
   const createMutation = useCreateJob();
-  
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -20,6 +21,7 @@ export default function Jobs() {
         data: {
           title: formData.get("title") as string,
           clientId: formData.get("clientId") ? parseInt(formData.get("clientId") as string) : undefined,
+          subcontractorId: formData.get("subcontractorId") ? parseInt(formData.get("subcontractorId") as string) : undefined,
           status: formData.get("status") as any || "scheduled",
           jobType: formData.get("jobType") as string,
           address: formData.get("address") as string,
@@ -40,7 +42,7 @@ export default function Jobs() {
           <h1 className="text-3xl font-display font-bold text-foreground">Jobs</h1>
           <p className="text-muted-foreground mt-1">Manage active, scheduled, and completed jobs.</p>
         </div>
-        <button 
+        <button
           onClick={() => setIsDialogOpen(true)}
           className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
         >
@@ -55,8 +57,8 @@ export default function Jobs() {
             key={status}
             onClick={() => setStatusFilter(status)}
             className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-              statusFilter === status 
-                ? 'bg-accent text-accent-foreground shadow-sm' 
+              statusFilter === status
+                ? 'bg-accent text-accent-foreground shadow-sm'
                 : 'bg-card text-muted-foreground border border-border hover:border-accent/50'
             }`}
           >
@@ -81,14 +83,20 @@ export default function Jobs() {
                   <span className="font-display font-bold text-lg">{formatCurrency(job.estimatedAmount)}</span>
                 )}
               </div>
-              
+
               <h3 className="text-xl font-bold text-foreground mb-2 line-clamp-1">{job.title}</h3>
-              
+
               <div className="space-y-2 mt-auto pt-4 flex-1">
                 {job.clientName && (
                   <div className="flex items-center text-sm text-muted-foreground">
                     <Building className="w-4 h-4 mr-2 text-primary/50" />
                     {job.clientName}
+                  </div>
+                )}
+                {job.subcontractorName && (
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <HardHat className="w-4 h-4 mr-2 text-amber-500/70" />
+                    <span className="text-amber-700 font-medium">{job.subcontractorName}</span>
                   </div>
                 )}
                 {(job.address || job.city) && (
@@ -126,7 +134,7 @@ export default function Jobs() {
               <label className="block text-sm font-medium mb-1">Job Title *</label>
               <input name="title" required className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none transition-all" placeholder="e.g. Smith Kitchen Remodel" />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Client</label>
@@ -146,6 +154,14 @@ export default function Jobs() {
             </div>
 
             <div>
+              <label className="block text-sm font-medium mb-1">Assign Subcontractor</label>
+              <select name="subcontractorId" className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none">
+                <option value="">None (Admin job)</option>
+                {subs?.map(s => <option key={s.id} value={s.id}>{s.name}{(s as any).trade ? ` — ${(s as any).trade}` : ""}</option>)}
+              </select>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium mb-1">Estimated Amount</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -158,11 +174,11 @@ export default function Jobs() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Address</label>
-                <input name="address" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none" />
+                <input name="address" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">City</label>
-                <input name="city" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none" />
+                <input name="city" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
               </div>
             </div>
 
