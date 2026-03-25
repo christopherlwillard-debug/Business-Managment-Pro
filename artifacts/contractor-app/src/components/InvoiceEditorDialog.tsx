@@ -7,7 +7,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
-  Building2, MapPin, Check, X, Plus, Trash2, Lock,
+  Building2, MapPin, Check, X, Plus, Trash2, Lock, Printer,
 } from "lucide-react";
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
@@ -249,6 +249,13 @@ export function InvoiceEditorDialog({
                 className="px-4 py-1.5 rounded-xl text-sm text-gray-500 hover:bg-gray-100 transition-colors">
                 Cancel
               </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-4 py-1.5 rounded-xl font-semibold text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <Printer className="w-4 h-4" /> Print / Export PDF
+              </button>
               <button type="submit" disabled={submitting}
                 className="flex items-center gap-2 px-5 py-1.5 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 shadow transition-all active:scale-95 disabled:opacity-60">
                 {submitting ? "Saving…" : <><Check className="w-4 h-4" /> Save Invoice</>}
@@ -264,7 +271,7 @@ export function InvoiceEditorDialog({
 
           {/* Invoice document */}
           <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
-            <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+            <div className="invoice-print-area max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
               <div className="h-2 bg-gradient-to-r from-amber-500 to-amber-400" />
               <div className="p-6 space-y-6">
 
