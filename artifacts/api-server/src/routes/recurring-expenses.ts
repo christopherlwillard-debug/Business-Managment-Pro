@@ -102,6 +102,23 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid frequency" });
     }
 
+    const scheduleChanged = frequency !== undefined || startDate !== undefined;
+    let nextDueDate: string | undefined;
+    if (scheduleChanged) {
+      const [current] = await db
+        .select()
+        .from(recurringExpensesTable)
+        .where(eq(recurringExpensesTable.id, id));
+      if (current) {
+        const effectiveStart = startDate ?? current.startDate;
+        const effectiveFreq  = frequency ?? current.frequency;
+        const today = localDateStr();
+        let next = effectiveStart;
+        while (next < today) next = advanceDate(next, effectiveFreq);
+        nextDueDate = next;
+      }
+    }
+
     const [updated] = await db.update(recurringExpensesTable).set({
       ...(description !== undefined && { description }),
       ...(amount !== undefined && { amount: amount.toString() }),
@@ -113,6 +130,7 @@ router.put("/:id", async (req, res) => {
       ...(startDate !== undefined && { startDate }),
       ...(endDate !== undefined && { endDate: endDate || null }),
       ...(active !== undefined && { active }),
+      ...(nextDueDate !== undefined && { nextDueDate }),
     }).where(eq(recurringExpensesTable.id, id)).returning();
 
     if (!updated) return res.status(404).json({ error: "Recurring expense not found" });
