@@ -170,152 +170,7 @@ export function InvoiceEditorDialog({
   const selectedClient = clients.find(c => String(c.id) === form.clientId);
 
   function handlePrint() {
-    const win = window.open("", "_blank", "width=900,height=1100");
-    if (!win) {
-      window.print();
-      return;
-    }
-
-    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const row = (label: string, val: string) => val
-      ? `<tr><td style="color:#9ca3af;padding:2px 8px 2px 0;white-space:nowrap;font-size:11px;font-weight:600;">${esc(label)}</td><td style="font-size:11px;color:#374151;">${esc(val)}</td></tr>`
-      : "";
-
-    const clientLines = [
-      clientInput,
-      form.clientEmail,
-      form.clientPhone,
-      form.clientAddress,
-      [form.clientCity, form.clientState, form.clientZip].filter(Boolean).join(", "),
-    ].filter(Boolean);
-
-    const locationLines = [
-      form.locationName,
-      [form.city, form.state].filter(Boolean).join(", "),
-    ].filter(Boolean);
-
-    const lineItemRows = lineItems
-      .filter(l => l.description.trim())
-      .map(l => `
-        <tr style="border-bottom:1px solid #f3f4f6;">
-          <td style="padding:6px 8px 6px 0;font-size:11px;color:#374151;">${esc(l.description)}</td>
-          <td style="padding:6px 4px;text-align:right;font-size:11px;color:#374151;">${l.quantity}</td>
-          <td style="padding:6px 4px;text-align:right;font-size:11px;color:#374151;">$${l.unitPrice.toFixed(2)}</td>
-          <td style="padding:6px 0 6px 4px;text-align:right;font-size:11px;font-weight:600;color:#111827;">$${(l.quantity * l.unitPrice).toFixed(2)}</td>
-        </tr>`)
-      .join("");
-
-    const logoImgHtml = logoUrl
-      ? `<img src="${base}${logoUrl}" style="height:${logoPx}px;width:auto;max-width:${logoPx * 2.5}px;object-fit:contain;display:block;" />`
-      : `<div style="width:44px;height:44px;background:#fef3c7;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;">🏗️</div>`;
-    const companyContactHtml = `
-      <div style="font-size:18px;font-weight:800;color:#111827;margin-top:6px;">${esc(companyName)}</div>
-      ${companyAddress ? `<div style="font-size:11px;color:#6b7280;">${esc(companyAddress)}</div>` : ""}
-      ${(companyCity||companyState||companyZip) ? `<div style="font-size:11px;color:#6b7280;">${esc([companyCity,companyState,companyZip].filter(Boolean).join(", "))}</div>` : ""}
-      ${companyPhone ? `<div style="font-size:11px;color:#6b7280;">${esc(companyPhone)}</div>` : ""}
-      ${companyEmail ? `<div style="font-size:11px;color:#6b7280;">${esc(companyEmail)}</div>` : ""}`;
-    const companyBlockHtml = logoPos === "top-center"
-      ? `<div style="flex:1;text-align:center;">${logoImgHtml}${companyContactHtml}</div>`
-      : logoPos === "top-right"
-      ? `<div style="flex:1;">${companyContactHtml}</div>`
-      : `<div style="flex:1;">${logoImgHtml}${companyContactHtml}</div>`;
-    const logoRightHtml = logoPos === "top-right"
-      ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">${logoImgHtml}`
-      : "";
-    const logoRightClose = logoPos === "top-right" ? "</div>" : "";
-
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Invoice ${previewNumber}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111827; background: #fff; padding: 48px; }
-    @page { margin: 0.75in; size: letter; }
-    @media print { body { padding: 0; } }
-  </style>
-</head>
-<body>
-  <div style="border-top:6px solid #f59e0b; padding-top:24px;">
-    <!-- Header -->
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;">
-      ${companyBlockHtml}
-      ${logoRightHtml}
-      <div style="text-align:right;min-width:180px;">
-        <div style="font-size:28px;font-weight:900;color:#e5e7eb;letter-spacing:.1em;text-transform:uppercase;">Invoice</div>
-        <div style="font-size:14px;font-weight:700;color:#f59e0b;margin-top:-4px;">${esc(previewNumber)}</div>
-        <table style="margin-top:12px;margin-left:auto;">
-          <tbody>
-            ${row("Date", form.issueDate)}
-            ${row("Due", form.dueDate)}
-            ${row("Terms", form.terms)}
-            ${row("Status", form.status.charAt(0).toUpperCase() + form.status.slice(1))}
-          </tbody>
-        </table>
-      </div>
-      ${logoRightClose}
-    </div>
-
-    <!-- Bill To + Work Location -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;">
-      <div>
-        <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Bill To</div>
-        <div style="background:#f9fafb;border-radius:8px;padding:12px;font-size:11px;color:#374151;line-height:1.6;">
-          ${clientLines.map((l, i) => i === 0 ? `<div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:2px;">${esc(l)}</div>` : `<div>${esc(l)}</div>`).join("")}
-          ${clientLines.length === 0 ? '<div style="color:#9ca3af;font-style:italic;">No client assigned</div>' : ""}
-        </div>
-      </div>
-      ${locationLines.length > 0 ? `
-      <div>
-        <div style="font-size:9px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">📍 Work Location</div>
-        <div style="background:#fffbeb;border-radius:8px;padding:12px;font-size:11px;color:#374151;line-height:1.6;">
-          ${locationLines.map((l, i) => i === 0 ? `<div style="font-weight:600;font-size:12px;color:#111827;">${esc(l)}</div>` : `<div>${esc(l)}</div>`).join("")}
-        </div>
-      </div>` : "<div></div>"}
-    </div>
-
-    <!-- Line Items -->
-    <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
-      <thead>
-        <tr style="border-bottom:2px solid #111827;">
-          <th style="text-align:left;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:50%;">Description</th>
-          <th style="text-align:right;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:12%;">Qty</th>
-          <th style="text-align:right;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:20%;">Unit Price</th>
-          <th style="text-align:right;padding-bottom:8px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;width:18%;">Total</th>
-        </tr>
-      </thead>
-      <tbody>${lineItemRows}</tbody>
-    </table>
-
-    <!-- Totals -->
-    <div style="display:flex;justify-content:flex-end;margin-bottom:32px;">
-      <div style="width:200px;">
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;padding:3px 0;">
-          <span>Subtotal</span><span>$${subtotal.toFixed(2)}</span>
-        </div>
-        ${taxRate > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;padding:3px 0;">
-          <span>Tax (${taxRate}%)</span><span>$${taxAmount.toFixed(2)}</span>
-        </div>` : ""}
-        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;color:#f59e0b;border-top:2px solid #111827;padding-top:8px;margin-top:4px;">
-          <span style="color:#111827;">Total Due</span><span>$${total.toFixed(2)}</span>
-        </div>
-      </div>
-    </div>
-
-    ${form.notes ? `<div style="border-top:1px solid #e5e7eb;padding-top:16px;margin-bottom:16px;">
-      <div style="font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Notes</div>
-      <div style="font-size:11px;color:#374151;white-space:pre-wrap;">${esc(form.notes)}</div>
-    </div>` : ""}
-
-    <div style="border-top:4px solid #f59e0b;margin-top:8px;"></div>
-  </div>
-  <script>window.onload = function() { window.print(); }; window.onafterprint = function() { window.close(); };</script>
-</body>
-</html>`;
-
-    win.document.write(html);
-    win.document.close();
+    window.print();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -470,13 +325,19 @@ export function InvoiceEditorDialog({
                         <tbody>
                           <tr>
                             <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Date</td>
-                            <td><input type="date" className={docInput + " text-gray-700 text-xs"} required
-                              value={form.issueDate} onChange={e => setField("issueDate", e.target.value)} /></td>
+                            <td>
+                              <input type="date" className={docInput + " text-gray-700 text-xs"} required
+                                value={form.issueDate} onChange={e => setField("issueDate", e.target.value)} />
+                              <span className="print-value text-gray-700 text-xs">{form.issueDate}</span>
+                            </td>
                           </tr>
                           <tr>
                             <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Due</td>
-                            <td><input type="date" className={docInput + " text-gray-700 text-xs"}
-                              value={form.dueDate} onChange={e => setField("dueDate", e.target.value)} /></td>
+                            <td>
+                              <input type="date" className={docInput + " text-gray-700 text-xs"}
+                                value={form.dueDate} onChange={e => setField("dueDate", e.target.value)} />
+                              {form.dueDate && <span className="print-value text-gray-700 text-xs">{form.dueDate}</span>}
+                            </td>
                           </tr>
                           <tr>
                             <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Terms</td>
@@ -488,6 +349,7 @@ export function InvoiceEditorDialog({
                                 <option>Net 30</option>
                                 <option>Net 60</option>
                               </select>
+                              <span className="print-value text-gray-700 text-xs">{form.terms}</span>
                             </td>
                           </tr>
                           <tr>
@@ -500,6 +362,7 @@ export function InvoiceEditorDialog({
                                 <option value="paid">Paid</option>
                                 <option value="overdue">Overdue</option>
                               </select>
+                              <span className="print-value text-xs font-semibold text-gray-700 capitalize">{form.status}</span>
                             </td>
                           </tr>
                         </tbody>
@@ -569,6 +432,7 @@ export function InvoiceEditorDialog({
                             onFocus={() => setShowClientDrop(true)}
                             onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
                           />
+                          <span className="print-value font-bold text-sm text-gray-900">{clientInput}</span>
                           {isNewClient && (
                             <span className="absolute right-3 top-[calc(100%-1.5rem)] text-[9px] font-bold bg-amber-400 text-white px-1.5 py-0.5 rounded-full">NEW</span>
                           )}
@@ -622,6 +486,7 @@ export function InvoiceEditorDialog({
                                 <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">{label}</label>
                                 <input type={type} className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
                                   value={form[key as keyof InvoiceFormState]} onChange={e => setField(key, e.target.value)} />
+                                <span className="print-value text-xs text-gray-700">{form[key as keyof InvoiceFormState] as string}</span>
                               </div>
                             ))}
                             <div className="grid grid-cols-3 gap-1.5">
@@ -629,16 +494,19 @@ export function InvoiceEditorDialog({
                                 <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">City</label>
                                 <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
                                   value={form.clientCity} onChange={e => setField("clientCity", e.target.value)} />
+                                <span className="print-value text-xs text-gray-700">{form.clientCity}</span>
                               </div>
                               <div className="col-span-1">
                                 <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">State</label>
                                 <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
                                   value={form.clientState} onChange={e => setField("clientState", e.target.value)} />
+                                <span className="print-value text-xs text-gray-700">{form.clientState}</span>
                               </div>
                               <div className="col-span-1">
                                 <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Zip</label>
                                 <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
                                   value={form.clientZip} onChange={e => setField("clientZip", e.target.value)} />
+                                <span className="print-value text-xs text-gray-700">{form.clientZip}</span>
                               </div>
                             </div>
                           </>
@@ -677,17 +545,20 @@ export function InvoiceEditorDialog({
                           <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">Location Name</label>
                           <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
                             placeholder="e.g. 123 Main St" value={form.locationName} onChange={e => setField("locationName", e.target.value)} />
+                          <span className="print-value text-xs font-semibold text-gray-800">{form.locationName}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">City</label>
                             <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
                               value={form.city} onChange={e => setField("city", e.target.value)} />
+                            <span className="print-value text-xs text-gray-600">{form.city}</span>
                           </div>
                           <div>
                             <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide block mb-0.5">State</label>
                             <input type="text" className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-white text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
                               value={form.state} onChange={e => setField("state", e.target.value)} />
+                            <span className="print-value text-xs text-gray-600">{form.state}</span>
                           </div>
                         </div>
                       </div>
@@ -713,14 +584,17 @@ export function InvoiceEditorDialog({
                           <td className="py-1.5 pr-2">
                             <input type="text" className={docInput} placeholder="Item description"
                               value={li.description} onChange={e => setLine(i, "description", e.target.value)} />
+                            <span className="print-value text-gray-700">{li.description}</span>
                           </td>
                           <td className="py-1.5 px-1 text-right">
                             <input type="number" min="0" step="any" className={docInput + " text-right w-14"}
                               value={li.quantity} onChange={e => setLine(i, "quantity", e.target.value)} />
+                            <span className="print-value text-gray-700">{li.quantity}</span>
                           </td>
                           <td className="py-1.5 px-1 text-right">
                             <input type="number" min="0" step="0.01" className={docInput + " text-right"}
                               value={li.unitPrice} onChange={e => setLine(i, "unitPrice", e.target.value)} />
+                            <span className="print-value text-gray-700">${li.unitPrice.toFixed(2)}</span>
                           </td>
                           <td className="py-1.5 pl-1 text-right font-semibold text-gray-900">
                             {formatCurrency(li.quantity * li.unitPrice)}
@@ -748,6 +622,7 @@ export function InvoiceEditorDialog({
                     <input type="number" min="0" max="100" step="0.1"
                       className="w-20 px-2 py-1 text-xs rounded-lg border border-gray-200 text-right focus:outline-none focus:ring-1 focus:ring-amber-400"
                       value={form.taxRate} onChange={e => setField("taxRate", e.target.value)} />
+                    <span className="print-value text-xs text-gray-700">{form.taxRate || "0"}%</span>
                   </div>
                   <div className="w-48 space-y-1 text-xs">
                     <div className="flex justify-between text-gray-500">
@@ -774,6 +649,9 @@ export function InvoiceEditorDialog({
                     placeholder="Payment instructions, notes to client…"
                     value={form.notes} onChange={e => setField("notes", e.target.value)}
                   />
+                  {form.notes && (
+                    <p className="print-value text-xs text-gray-700 whitespace-pre-wrap mt-1">{form.notes}</p>
+                  )}
                 </div>
 
               </div>

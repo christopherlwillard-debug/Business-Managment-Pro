@@ -145,7 +145,10 @@
 }
 
 
-/* ── Print stylesheet for direct browser print (Ctrl+P / Cmd+P) ── */
+/* Print-value spans: hidden normally, revealed only during print */
+.print-value { display: none !important; }
+
+/* ── Print stylesheet (Print button, Ctrl+P, or Cmd+P) ── */
 @media print {
   body * { visibility: hidden; }
   .invoice-print-area,
@@ -165,6 +168,7 @@
   .invoice-print-area select,
   .invoice-print-area textarea,
   .invoice-print-area button { display: none !important; }
+  .invoice-print-area .print-value { display: inline !important; }
   @page { margin: 0.75in; size: auto; }
 }
 
