@@ -1,19 +1,49 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, invoicesTable } from "@workspace/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 
 const router = Router();
 
-function formatJob(row: any): any {
+type JobRow = {
+  id: number;
+  title: string;
+  description: string | null;
+  clientId: number | null;
+  clientName: string | null;
+  status: string;
+  jobType: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  locationName: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  estimatedAmount: string | null;
+  actualAmount: string | null;
+  notes: string | null;
+  createdAt: Date;
+  subcontractorId?: number | null;
+  subcontractorName?: string | null;
+};
+
+type FormattedJob = Omit<JobRow, "estimatedAmount" | "actualAmount" | "createdAt" | "subcontractorId" | "subcontractorName"> & {
+  estimatedAmount: number | null;
+  actualAmount: number | null;
+  createdAt: string;
+  subcontractorIds: number[];
+  subcontractorNames: string[];
+};
+
+function formatJob(row: JobRow & { subcontractorIds: number[]; subcontractorNames: string[] }): FormattedJob {
+  const { subcontractorId: _sid, subcontractorName: _sname, ...rest } = row;
   return {
-    ...row,
-    estimatedAmount: row.estimatedAmount ? parseFloat(row.estimatedAmount) : null,
-    actualAmount: row.actualAmount ? parseFloat(row.actualAmount) : null,
-    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
-    subcontractorIds: row.subcontractorIds ?? [],
-    subcontractorNames: row.subcontractorNames ?? [],
+    ...rest,
+    estimatedAmount: rest.estimatedAmount ? parseFloat(rest.estimatedAmount) : null,
+    actualAmount: rest.actualAmount ? parseFloat(rest.actualAmount) : null,
+    createdAt: rest.createdAt instanceof Date ? rest.createdAt.toISOString() : rest.createdAt,
+    subcontractorIds: row.subcontractorIds,
+    subcontractorNames: row.subcontractorNames,
   };
 }
 
@@ -106,7 +136,7 @@ router.get("/", async (req, res) => {
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(jobsTable.createdAt);
 
-    const jobMap = new Map<number, any>();
+    const jobMap = new Map<number, JobRow & { subcontractorIds: number[]; subcontractorNames: string[] }>();
     for (const r of rows) {
       if (!jobMap.has(r.id)) {
         jobMap.set(r.id, { ...r, subcontractorIds: [], subcontractorNames: [] });
@@ -159,19 +189,20 @@ router.get("/:id/invoice-draft", async (req, res) => {
     const job = await getJobWithSubs(id);
     if (!job) return res.status(404).json({ error: "Job not found" });
 
-    const [client] = job.clientId
-      ? await db.select().from(clientsTable).where(eq(clientsTable.id, job.clientId))
-      : [null];
+    type ClientRow = typeof clientsTable.$inferSelect;
+    const clientResult: ClientRow | null = job.clientId
+      ? (await db.select().from(clientsTable).where(eq(clientsTable.id, job.clientId)))[0] ?? null
+      : null;
 
     const draft = {
       clientId: job.clientId ?? null,
       clientName: job.clientName ?? null,
-      clientEmail: (client as any)?.email ?? null,
-      clientAddress: (client as any)?.address ?? null,
-      clientPhone: (client as any)?.phone ?? null,
-      clientCity: (client as any)?.city ?? null,
-      clientState: (client as any)?.state ?? null,
-      clientZip: (client as any)?.zip ?? null,
+      clientEmail: clientResult?.email ?? null,
+      clientAddress: clientResult?.address ?? null,
+      clientPhone: clientResult?.phone ?? null,
+      clientCity: clientResult?.city ?? null,
+      clientState: clientResult?.state ?? null,
+      clientZip: clientResult?.zip ?? null,
       jobId: job.id,
       jobTitle: job.title,
       locationName: job.locationName ?? null,
