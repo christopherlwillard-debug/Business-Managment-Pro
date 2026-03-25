@@ -65,6 +65,7 @@ function setPortalSession(res: Response, token: string, current: Record<string, 
   res.cookie(PORTAL_SESSION_COOKIE, JSON.stringify({ s: current, t }), {
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     maxAge: 24 * 60 * 60 * 1000, // 24-hour cookie lifetime
   });
 }

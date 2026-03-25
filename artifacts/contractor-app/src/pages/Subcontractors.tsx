@@ -120,6 +120,8 @@ export default function Subcontractors() {
         throw new Error(err.error || `Reset failed (${res.status})`);
       }
       setPinResetDone(prev => ({ ...prev, [subId]: true }));
+      // Immediately reflect cleared PIN status in the invite modal
+      setInviteModal(prev => prev && prev.id === subId ? { ...prev, portalPinSet: false } : prev);
       refetch();
       setTimeout(() => setPinResetDone(prev => ({ ...prev, [subId]: false })), 3000);
     } catch (err: any) {
