@@ -173,70 +173,76 @@ function InvoiceBuilder({
               );
 
               const invoiceDetailsEl = (
-                <div className="text-right space-y-1.5 min-w-[180px]">
-                <div>
-                  <p className="text-3xl font-black tracking-widest text-gray-200 uppercase">Invoice</p>
-                  <p className="text-sm font-bold text-amber-600 -mt-1">{previewNumber}</p>
+                <div className="text-right space-y-2 min-w-[220px]">
+                  <div>
+                    <p className="text-3xl font-black tracking-widest text-gray-200 uppercase">Invoice</p>
+                    <p className="text-sm font-bold text-amber-600 -mt-1">{previewNumber}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <table className="text-xs w-full text-right">
+                      <tbody>
+                        <tr>
+                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Date</td>
+                          <td>
+                            <input type="date" className={docInput + " text-gray-700 text-xs"} required
+                              value={form.issueDate} onChange={e => setField("issueDate", e.target.value)} />
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Due</td>
+                          <td>
+                            <input type="date" className={docInput + " text-gray-700 text-xs"}
+                              value={form.dueDate} onChange={e => setField("dueDate", e.target.value)} />
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Terms</td>
+                          <td>
+                            <select className={docSelect + " text-gray-700 text-xs"}
+                              value={form.terms} onChange={e => setField("terms", e.target.value)}>
+                              <option>Due on receipt</option>
+                              <option>Net 15</option>
+                              <option>Net 30</option>
+                              <option>Net 60</option>
+                            </select>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="text-gray-400 pr-2 py-1.5 whitespace-nowrap font-semibold">Status</td>
+                          <td>
+                            <select className={docSelect + " text-xs font-semibold text-gray-700"}
+                              value={form.status} onChange={e => setField("status", e.target.value)}>
+                              <option value="draft">Draft</option>
+                              <option value="sent">Sent</option>
+                              <option value="paid">Paid</option>
+                              <option value="overdue">Overdue</option>
+                            </select>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <table className="text-xs ml-auto text-right">
-                  <tbody>
-                    <tr>
-                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Date</td>
-                      <td>
-                        <input type="date" className={docInput + " text-gray-700 text-xs"} required
-                          value={form.issueDate} onChange={e => setField("issueDate", e.target.value)} />
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Due</td>
-                      <td>
-                        <input type="date" className={docInput + " text-gray-700 text-xs"}
-                          value={form.dueDate} onChange={e => setField("dueDate", e.target.value)} />
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Terms</td>
-                      <td>
-                        <select className={docSelect + " text-gray-700 text-xs"}
-                          value={form.terms} onChange={e => setField("terms", e.target.value)}>
-                          <option>Due on receipt</option>
-                          <option>Net 15</option>
-                          <option>Net 30</option>
-                          <option>Net 60</option>
-                        </select>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="text-gray-400 pr-2 py-0.5 whitespace-nowrap font-semibold">Status</td>
-                      <td>
-                        <select className={docSelect + " text-xs font-semibold text-gray-700"}
-                          value={form.status} onChange={e => setField("status", e.target.value)}>
-                          <option value="draft">Draft</option>
-                          <option value="sent">Sent</option>
-                          <option value="paid">Paid</option>
-                          <option value="overdue">Overdue</option>
-                        </select>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
               );
 
               if (logoPos === "top-right") {
                 return (
-                  <div className="flex justify-between items-start gap-6">
-                    {companyBlock}
-                    <div className="flex flex-col items-end gap-2">
-                      {logoEl}
-                      {invoiceDetailsEl}
+                  <div className="space-y-5">
+                    <div className="flex justify-between items-start gap-6">
+                      {companyBlock}
+                      <div className="flex flex-col items-end gap-2">
+                        {logoEl}
+                      </div>
                     </div>
+                    {invoiceDetailsEl}
                   </div>
                 );
               }
               return (
-                <div className="flex justify-between items-start gap-6">
-                  {companyBlock}
+                <div className="space-y-5">
+                  <div className="flex justify-between items-start gap-6">
+                    {companyBlock}
+                  </div>
                   {invoiceDetailsEl}
                 </div>
               );
@@ -322,6 +328,12 @@ function InvoiceBuilder({
                   <span className="font-normal text-gray-300">(KY tax)</span>
                 </p>
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 space-y-3">
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">Name</label>
+                    <input type="text" placeholder="e.g. Main Office"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-gray-300"
+                      value={form.locationName || ""} onChange={e => setField("locationName", e.target.value)} />
+                  </div>
                   <div>
                     <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide block mb-1">City</label>
                     <input type="text" placeholder="e.g. Louisville"
