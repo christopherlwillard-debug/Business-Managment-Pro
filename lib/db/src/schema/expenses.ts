@@ -2,6 +2,7 @@ import { pgTable, serial, text, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { jobsTable } from "./jobs";
+import { recurringExpensesTable } from "./recurring-expenses";
 
 export const expensesTable = pgTable("expenses", {
   id: serial("id").primaryKey(),
@@ -14,7 +15,7 @@ export const expensesTable = pgTable("expenses", {
   subcontractorId: integer("subcontractor_id"),
   receiptUrl: text("receipt_url"),
   notes: text("notes"),
-  recurringExpenseId: integer("recurring_expense_id"),
+  recurringExpenseId: integer("recurring_expense_id").references(() => recurringExpensesTable.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

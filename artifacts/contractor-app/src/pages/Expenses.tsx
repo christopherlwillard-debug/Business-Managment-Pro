@@ -355,9 +355,9 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 function ExpenseViewModal({
-  expense, onClose, onDelete,
+  expense, onClose, onDelete, onJumpToTemplate,
 }: {
-  expense: any; onClose: () => void; onDelete: () => void;
+  expense: any; onClose: () => void; onDelete: () => void; onJumpToTemplate?: (id: number) => void;
 }) {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const receiptUrl = expense.receiptUrl
@@ -377,9 +377,14 @@ function ExpenseViewModal({
             <Receipt className="w-4 h-4 text-amber-500" />
             <span className="font-bold text-gray-900">Expense Detail</span>
             {expense.recurringExpenseId && (
-              <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-100">
-                <RotateCcw className="w-2.5 h-2.5" /> Recurring
-              </span>
+              <button
+                type="button"
+                onClick={() => { onClose(); onJumpToTemplate?.(expense.recurringExpenseId!); }}
+                title="View recurring template"
+                className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-100 hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-2.5 h-2.5" /> Recurring ↓
+              </button>
             )}
           </div>
           <div className="flex items-center gap-1">
@@ -670,7 +675,15 @@ function RecurringModal({
 }
 
 // ─── Recurring Section ────────────────────────────────────────────────────────
-function RecurringSection({ jobs }: { jobs: any[] }) {
+function RecurringSection({
+  jobs,
+  highlightedTemplateId,
+  onClearHighlight,
+}: {
+  jobs: any[];
+  highlightedTemplateId: number | null;
+  onClearHighlight: () => void;
+}) {
   const { data: templates = [], isLoading } = useRecurringExpenses();
   const updateRecurring = useUpdateRecurring();
   const deleteRecurring = useDeleteRecurring();
@@ -678,6 +691,17 @@ function RecurringSection({ jobs }: { jobs: any[] }) {
   const [collapsed,   setCollapsed]   = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RecurringExpense | null>(null);
   const [deletingId,  setDeletingId]  = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!highlightedTemplateId) return;
+    setCollapsed(false);
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`template-row-${highlightedTemplateId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    const clear = setTimeout(() => onClearHighlight(), 3500);
+    return () => { clearTimeout(timer); clearTimeout(clear); };
+  }, [highlightedTemplateId]);
 
   async function toggleActive(t: RecurringExpense) {
     await updateRecurring.mutateAsync({ id: t.id, data: { active: !t.active } });
@@ -756,7 +780,15 @@ function RecurringSection({ jobs }: { jobs: any[] }) {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {templates.map(t => (
-                    <tr key={t.id} className={`transition-colors ${t.active ? "hover:bg-muted/20" : "opacity-60 hover:bg-muted/10"}`}>
+                    <tr
+                      key={t.id}
+                      id={`template-row-${t.id}`}
+                      className={`transition-all duration-500 ${
+                        highlightedTemplateId === t.id
+                          ? "bg-blue-50 ring-2 ring-inset ring-blue-300"
+                          : t.active ? "hover:bg-muted/20" : "opacity-60 hover:bg-muted/10"
+                      }`}
+                    >
                       <td className="px-6 py-3">
                         <div className="font-medium text-foreground">{t.description}</div>
                         {t.vendor && (
@@ -870,16 +902,22 @@ export default function Expenses() {
   const saveVendor        = useSaveVendor();
   const deleteExpense     = useDeleteExpense();
 
-  const [isDialogOpen, setIsDialogOpen]       = useState(false);
-  const [importOpen,   setImportOpen]         = useState(false);
-  const [receiptFile, setReceiptFile]         = useState<File | null>(null);
-  const [uploadError, setUploadError]         = useState("");
-  const [vendor, setVendor]                   = useState("");
-  const [category, setCategory]               = useState(CATEGORIES[0]);
-  const [subcontractorId, setSubcontractorId] = useState("");
-  const [viewExpense,  setViewExpense]        = useState<any | null>(null);
-  const [deleteTarget, setDeleteTarget]       = useState<any | null>(null);
-  const [deleting,     setDeleting]           = useState(false);
+  const [isDialogOpen, setIsDialogOpen]               = useState(false);
+  const [importOpen,   setImportOpen]                 = useState(false);
+  const [receiptFile, setReceiptFile]                 = useState<File | null>(null);
+  const [uploadError, setUploadError]                 = useState("");
+  const [vendor, setVendor]                           = useState("");
+  const [category, setCategory]                       = useState(CATEGORIES[0]);
+  const [subcontractorId, setSubcontractorId]         = useState("");
+  const [viewExpense,  setViewExpense]                = useState<any | null>(null);
+  const [deleteTarget, setDeleteTarget]               = useState<any | null>(null);
+  const [deleting,     setDeleting]                   = useState(false);
+  const [highlightedTemplateId, setHighlightedTemplateId] = useState<number | null>(null);
+
+  function jumpToTemplate(id: number) {
+    setHighlightedTemplateId(id);
+    document.getElementById("recurring-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function openDialog() {
     setIsDialogOpen(true);
@@ -996,9 +1034,14 @@ export default function Expenses() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</span>
                         {exp.recurringExpenseId && (
-                          <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-blue-100 flex-shrink-0">
-                            <RotateCcw className="w-2.5 h-2.5" /> Recurring
-                          </span>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); jumpToTemplate(exp.recurringExpenseId!); }}
+                            title="View recurring template"
+                            className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-blue-100 flex-shrink-0 hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" /> Recurring ↓
+                          </button>
                         )}
                       </div>
                       {exp.vendor && (
@@ -1054,7 +1097,13 @@ export default function Expenses() {
       </Card>
 
       {/* Recurring Expenses Section */}
-      <RecurringSection jobs={jobs ?? []} />
+      <div id="recurring-section">
+        <RecurringSection
+          jobs={jobs ?? []}
+          highlightedTemplateId={highlightedTemplateId}
+          onClearHighlight={() => setHighlightedTemplateId(null)}
+        />
+      </div>
 
       <Dialog open={isDialogOpen} onOpenChange={open => { setIsDialogOpen(open); if (!open) setReceiptFile(null); }}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
@@ -1187,6 +1236,7 @@ export default function Expenses() {
             setDeleteTarget(viewExpense);
             setViewExpense(null);
           }}
+          onJumpToTemplate={id => { setViewExpense(null); jumpToTemplate(id); }}
         />
       )}
 
