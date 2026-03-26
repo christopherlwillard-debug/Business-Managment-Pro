@@ -1338,11 +1338,11 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
                   </div>
                 </div>
 
-                {/* Delete button */}
+                {/* Delete button — always visible on touch, fade-in on hover for desktop */}
                 <button onClick={() => {
                   if (!confirm("Delete this trip?")) return;
                   delMut.mutate(m.id);
-                }} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100">
+                }} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
