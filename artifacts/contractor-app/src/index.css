@@ -172,11 +172,13 @@
   .invoice-print-area p.print-value { display: block !important; }
   .invoice-print-area a.print-value { display: inline-flex !important; }
   .invoice-print-area .print-hide { display: none !important; }
-  /* Attachment links: show full filename without truncation */
-  .invoice-print-area a[href] {
+  /* Attachment chips: remove width constraints and show full filenames */
+  .invoice-print-area a[href],
+  .invoice-print-area a.print-value {
     max-width: none !important;
   }
-  .invoice-print-area a[href] span {
+  .invoice-print-area a[href] span,
+  .invoice-print-area a.print-value span {
     overflow: visible !important;
     text-overflow: clip !important;
     white-space: normal !important;

@@ -715,8 +715,8 @@ export function InvoiceEditorDialog({
                           <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0 print-hide" />
                           <span className="truncate flex-1 print-hide">{att.name}</span>
                           <a href={`${base}${att.url}`} target="_blank" rel="noopener noreferrer"
-                            className="print-value items-center gap-1 text-amber-700 underline truncate flex-1">
-                            {att.name}
+                            className="print-value items-center gap-1 text-amber-700 underline flex-1">
+                            <span>{att.name}</span>
                           </a>
                           <button type="button"
                             onClick={() => setAttachments(a => a.filter((_, idx) => idx !== i))}
