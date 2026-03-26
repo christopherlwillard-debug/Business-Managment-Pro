@@ -16,7 +16,7 @@ export default function Subcontractors() {
   const deleteMutation = useDeleteSubcontractor();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string; hasLinkedRecords: boolean } | null>(null);
   const [inviteModal, setInviteModal] = useState<{
     name: string; token: string | null; id: number; portalApproved: boolean; portalPinSet: boolean;
   } | null>(null);
@@ -253,7 +253,7 @@ export default function Subcontractors() {
                       </td>
                       <td className="px-4 py-4 text-center">
                         <button
-                          onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name })}
+                          onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name, hasLinkedRecords: (sub.ytdPayments ?? 0) > 0 })}
                           disabled={deletingId === sub.id}
                           className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors mx-auto disabled:opacity-40"
                           title="Delete subcontractor"
@@ -281,8 +281,14 @@ export default function Subcontractors() {
             </DialogHeader>
             <div className="mt-3 space-y-4">
               <p className="text-sm text-muted-foreground">
-                Are you sure you want to delete <strong className="text-foreground">{deleteConfirm.name}</strong>? This will remove them from your subcontractor list. Any linked expenses and payments will remain in your records.
+                Are you sure you want to delete <strong className="text-foreground">{deleteConfirm.name}</strong>? This will remove them from your subcontractor list.
               </p>
+              {deleteConfirm.hasLinkedRecords && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
+                  <span>This subcontractor has linked payment records. Those expenses and payments will remain in your records but will no longer be associated with a subcontractor.</span>
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setDeleteConfirm(null)}
