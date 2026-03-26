@@ -157,7 +157,6 @@ function JobDailyLogPanel({
       setForm({ date: today, notes: "", workCompleted: "" });
       setPendingPhotos([]);
       queryClient.invalidateQueries({ queryKey: ["listDailyLogs"] });
-      queryClient.invalidateQueries();
     } finally {
       setSubmitting(false);
     }
@@ -168,7 +167,6 @@ function JobDailyLogPanel({
     try {
       await deleteLog.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: ["listDailyLogs"] });
-      queryClient.invalidateQueries();
     } finally {
       setDeletingId(null);
     }
