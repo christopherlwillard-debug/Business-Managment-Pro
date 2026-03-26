@@ -1313,7 +1313,7 @@ function TaxCalendarTab({ year }: { year: number }) {
         {[
           { key: "overdue" as const, label: "Overdue", count: totalOverdue, icon: XCircle, active: "bg-red-50 border-red-200 text-red-600", inactive: "bg-card border-border text-muted-foreground" },
           { key: "due-soon" as const, label: "Due Soon", count: totalDueSoon, icon: Clock, active: "bg-amber-50 border-amber-200 text-amber-600", inactive: "bg-card border-border text-muted-foreground" },
-          { key: "filed" as const, label: "Filed / Done", count: totalFiled, icon: CheckCircle, active: "bg-emerald-50 border-emerald-200 text-emerald-600", inactive: "bg-card border-border text-emerald-600" },
+          { key: "filed" as const, label: "Filed / Complete", count: totalFiled, icon: CheckCircle, active: "bg-emerald-50 border-emerald-200 text-emerald-600", inactive: "bg-card border-border text-emerald-600" },
           { key: "na" as const, label: "N/A", count: totalNa, icon: Shield, active: "bg-muted border-border text-muted-foreground", inactive: "bg-card border-border text-muted-foreground" },
         ].map(({ key, label, count, icon: Icon, active, inactive }) => (
           <button
