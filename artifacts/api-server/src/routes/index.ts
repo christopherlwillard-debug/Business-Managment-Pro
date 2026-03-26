@@ -21,6 +21,7 @@ import paymentsRouter from "./payments";
 import taxReportsRouter from "./tax-reports";
 import recurringExpensesRouter from "./recurring-expenses";
 import materialsRouter from "./materials";
+import materialListsRouter from "./material-lists";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -62,5 +63,6 @@ router.use("/payments", paymentsRouter);
 router.use("/tax-reports", taxReportsRouter);
 router.use("/recurring-expenses", recurringExpensesRouter);
 router.use("/materials", materialsRouter);
+router.use("/material-lists", materialListsRouter);
 
 export default router;

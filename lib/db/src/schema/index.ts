@@ -14,3 +14,4 @@ export * from "./settings";
 export * from "./vendors";
 export * from "./compliance";
 export * from "./materials";
+export * from "./material-lists";
