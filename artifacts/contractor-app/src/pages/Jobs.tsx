@@ -5,7 +5,10 @@ import {
   useUpdateInvoiceStatus, useDeleteInvoice, getJobInvoiceDraft,
   useListDailyLogs, useCreateDailyLog, useDeleteDailyLog,
   useGetSettings,
+  useListMaterials, useListMaterialLists, useCreateMaterialList,
+  useDeleteMaterialList, useAttachMaterialListToInvoice,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
+  MaterialList, MaterialListItemInput,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -16,7 +19,7 @@ import {
   Briefcase, MapPin, Calendar, HardHat, Users,
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
-  AlertCircle, ArrowLeft, Eye,
+  AlertCircle, ArrowLeft, Eye, Package, ListChecks, Link2, Search,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -94,6 +97,375 @@ function SubcontractorPicker({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Job Materials Panel ───────────────────────────────────────────────────────
+function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data: lists = [], isLoading } = useListMaterialLists({ jobId: job.id });
+  const { data: allMaterials = [] } = useListMaterials({ includeInactive: false });
+  const createList = useCreateMaterialList();
+  const deleteList = useDeleteMaterialList();
+  const attachToInvoice = useAttachMaterialListToInvoice();
+
+  const [showForm, setShowForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newMarkup, setNewMarkup] = useState(40);
+  const [newItems, setNewItems] = useState<MaterialListItemInput[]>([]);
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [attachMsg, setAttachMsg] = useState<Record<number, { ok: boolean; text: string }>>({});
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const filtered = allMaterials.filter(m =>
+    !search || m.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function addItem(m: typeof allMaterials[0]) {
+    const idx = newItems.findIndex(i => i.materialId === m.id);
+    if (idx >= 0) {
+      setNewItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: it.qty + 1 } : it));
+    } else {
+      setNewItems(prev => [...prev, {
+        materialId: m.id,
+        nameSnapshot: m.name,
+        unitSnapshot: m.unit,
+        unitCostSnapshot: m.unitCost,
+        qty: 1,
+      }]);
+    }
+  }
+
+  function removeItem(idx: number) {
+    setNewItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function setQty(idx: number, val: number) {
+    setNewItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: Math.max(0.01, val) } : it));
+  }
+
+  function resetForm() {
+    setNewName("");
+    setNewMarkup(40);
+    setNewItems([]);
+    setSearch("");
+    setFormError("");
+  }
+
+  async function handleCreate() {
+    if (!newName.trim()) { setFormError("List name is required."); return; }
+    if (newItems.length === 0) { setFormError("Add at least one material."); return; }
+    setFormError("");
+    setSaving(true);
+    try {
+      await createList.mutateAsync({
+        name: newName.trim(),
+        jobId: job.id,
+        markup: newMarkup,
+        items: newItems,
+      });
+      qc.invalidateQueries({ queryKey: ["/api/material-lists"] });
+      resetForm();
+      setShowForm(false);
+    } catch {
+      setFormError("Failed to save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(listId: number) {
+    setDeletingId(listId);
+    try {
+      await deleteList.mutateAsync(listId);
+      qc.invalidateQueries({ queryKey: ["/api/material-lists"] });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleAttach(list: MaterialList) {
+    try {
+      const res = await attachToInvoice.mutateAsync(list.id);
+      setAttachMsg(prev => ({
+        ...prev,
+        [list.id]: {
+          ok: true,
+          text: res.created
+            ? "Created a new draft invoice with these materials."
+            : "Added to existing draft invoice.",
+        },
+      }));
+      qc.invalidateQueries({ queryKey: ["/api/invoices"] });
+    } catch (err: any) {
+      setAttachMsg(prev => ({
+        ...prev,
+        [list.id]: { ok: false, text: err?.message || "Failed to attach to invoice." },
+      }));
+    }
+  }
+
+  const formSubtotal = newItems.reduce((s, it) => s + it.unitCostSnapshot * it.qty * (newMarkup / 100 + 1), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative ml-auto w-full max-w-lg bg-card border-l border-border flex flex-col h-full shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border/50 flex-shrink-0 bg-card">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <ListChecks className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground font-medium">Material Lists</p>
+              <h2 className="font-bold text-foreground text-sm truncate">{job.title}</h2>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Add new list form */}
+          {showForm ? (
+            <div className="p-5 border-b border-border/50 bg-muted/20 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5 text-amber-500" /> New Material List
+                </h3>
+                <button onClick={() => { setShowForm(false); resetForm(); }} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {formError && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> {formError}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">List Name *</label>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    placeholder="e.g. Foundation Materials"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Markup %</label>
+                  <input
+                    type="number" min="0" max="200" step="5"
+                    value={newMarkup}
+                    onChange={e => setNewMarkup(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              {/* Catalog picker */}
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Add from Catalog</label>
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search materials…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div className="bg-background border border-border rounded-xl max-h-36 overflow-y-auto divide-y divide-border/50">
+                  {filtered.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-muted-foreground text-center">No materials found</p>
+                  ) : filtered.map(m => (
+                    <div key={m.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/30 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">{m.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{formatCurrency(m.unitCost)}/{m.unit}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addItem(m)}
+                        className="w-5 h-5 flex items-center justify-center bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors flex-shrink-0"
+                      >
+                        <Plus className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Selected items */}
+              {newItems.length > 0 && (
+                <div className="bg-background border border-border rounded-xl overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40">
+                      <tr>
+                        <th className="text-left px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase">Item</th>
+                        <th className="text-right px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase">Qty</th>
+                        <th className="text-right px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase">Extended</th>
+                        <th className="w-6" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {newItems.map((it, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-1.5 font-medium text-foreground">{it.nameSnapshot}</td>
+                          <td className="px-2 py-1.5">
+                            <input
+                              type="number" min="0.01" step="0.5"
+                              value={it.qty}
+                              onChange={e => setQty(idx, parseFloat(e.target.value) || 0)}
+                              className="w-14 text-right px-1 py-0.5 border border-border rounded-lg text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 text-right font-semibold text-amber-600">
+                            {formatCurrency(it.unitCostSnapshot * it.qty * (newMarkup / 100 + 1))}
+                          </td>
+                          <td className="pr-2 py-1.5 text-center">
+                            <button onClick={() => removeItem(idx)} className="text-muted-foreground hover:text-destructive">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-muted/20">
+                      <tr>
+                        <td colSpan={2} className="px-3 py-1.5 text-right text-xs font-bold text-foreground">Total</td>
+                        <td className="px-2 py-1.5 text-right font-bold text-amber-600">{formatCurrency(formSubtotal)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              <button
+                onClick={handleCreate}
+                disabled={saving}
+                className="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save List"}
+              </button>
+            </div>
+          ) : (
+            <div className="p-5 border-b border-border/50 bg-muted/20">
+              <button
+                onClick={() => setShowForm(true)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 text-amber-600 text-sm font-semibold hover:bg-amber-50 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> New Material List
+              </button>
+            </div>
+          )}
+
+          {/* Existing lists */}
+          <div className="p-5 space-y-4">
+            <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5">
+              <ListChecks className="w-3.5 h-3.5 text-muted-foreground" />
+              Lists
+              {lists.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">{lists.length}</span>
+              )}
+            </h3>
+
+            {isLoading ? (
+              <div className="flex justify-center py-6">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : lists.length === 0 ? (
+              <div className="py-8 text-center space-y-2">
+                <Package className="w-8 h-8 text-muted-foreground/30 mx-auto" />
+                <p className="text-sm text-muted-foreground">No material lists yet. Create one above.</p>
+              </div>
+            ) : (
+              lists.map((list: MaterialList) => {
+                const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * (list.markup / 100 + 1), 0);
+                const isExpanded = expandedId === list.id;
+                const msg = attachMsg[list.id];
+                return (
+                  <div key={list.id} className="rounded-xl border border-border/50 bg-background overflow-hidden">
+                    <div className="p-3.5 flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-foreground">{list.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {list.items.length} item{list.items.length !== 1 ? "s" : ""} · {list.markup}% markup · <span className="text-amber-600 font-semibold">{formatCurrency(subtotal)}</span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : list.id)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50"
+                        >
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(list.id)}
+                          disabled={deletingId === list.id}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Attach to invoice button */}
+                    <div className="px-3.5 pb-3">
+                      <button
+                        onClick={() => handleAttach(list)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors"
+                      >
+                        <Link2 className="w-3 h-3" /> Attach to Invoice
+                      </button>
+                      {msg && (
+                        <p className={`mt-1.5 text-xs ${msg.ok ? "text-emerald-600" : "text-destructive"}`}>{msg.text}</p>
+                      )}
+                    </div>
+
+                    {/* Expanded items */}
+                    {isExpanded && list.items.length > 0 && (
+                      <div className="border-t border-border/50">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/30">
+                            <tr>
+                              <th className="text-left px-3.5 py-1.5 text-[10px] font-bold text-muted-foreground uppercase">Item</th>
+                              <th className="text-right px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase">Qty</th>
+                              <th className="text-right px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase">Extended</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50">
+                            {list.items.map(item => (
+                              <tr key={item.id} className="hover:bg-muted/20">
+                                <td className="px-3.5 py-1.5 text-foreground">{item.nameSnapshot}</td>
+                                <td className="px-2 py-1.5 text-right text-muted-foreground">{item.qty}</td>
+                                <td className="px-3 py-1.5 text-right font-semibold text-amber-600">
+                                  {formatCurrency(item.unitCostSnapshot * item.qty * (list.markup / 100 + 1))}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -329,7 +701,7 @@ function JobDailyLogPanel({
 
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate,
+  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -338,8 +710,10 @@ function JobCard({
   onMarkCompleted: (job: Job) => void;
   logCount: number;
   lastLogDate?: string;
+  materialListCount: number;
 }) {
   const [logPanelOpen, setLogPanelOpen] = useState(false);
+  const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
 
   return (
@@ -415,6 +789,19 @@ function JobCard({
           )}
         </button>
 
+        {/* Material Lists button */}
+        <button
+          onClick={() => setMaterialsPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+          <Package className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <span className="flex-1 text-left">Materials</span>
+          {materialListCount > 0 ? (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">{materialListCount}</span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">No lists</span>
+          )}
+        </button>
+
         {isCompleted ? (
           <button
             onClick={() => onReviewInvoice(job)}
@@ -432,6 +819,9 @@ function JobCard({
 
       {logPanelOpen && (
         <JobDailyLogPanel job={job} onClose={() => setLogPanelOpen(false)} />
+      )}
+      {materialsPanelOpen && (
+        <JobMaterialsPanel job={job} onClose={() => setMaterialsPanelOpen(false)} />
       )}
     </>
   );
@@ -887,12 +1277,19 @@ export default function Jobs() {
   const deleteJobMutation                 = useDeleteJob();
   const updateJob                         = useUpdateJob();
   const { data: allLogs = [] }            = useListDailyLogs();
+  const { data: allMaterialLists = [] }   = useListMaterialLists();
 
   // Compute per-job log indicators
   const logsByJob = allLogs.reduce<Record<number, DailyLog[]>>((acc, log) => {
     if (log.jobId == null) return acc;
     if (!acc[log.jobId]) acc[log.jobId] = [];
     acc[log.jobId].push(log);
+    return acc;
+  }, {});
+
+  const materialListCountByJob = allMaterialLists.reduce<Record<number, number>>((acc, list) => {
+    if (list.jobId == null) return acc;
+    acc[list.jobId] = (acc[list.jobId] ?? 0) + 1;
     return acc;
   }, {});
 
@@ -1026,7 +1423,8 @@ export default function Jobs() {
                     <JobCard key={job.id} job={job} onEdit={openEditJob}
                       onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                       onMarkCompleted={handleMarkCompleted}
-                      logCount={jobLogs.length} lastLogDate={lastLog?.date} />
+                      logCount={jobLogs.length} lastLogDate={lastLog?.date}
+                      materialListCount={materialListCountByJob[job.id] ?? 0} />
                   );
                 })}
               </div>
@@ -1050,7 +1448,8 @@ export default function Jobs() {
                     <JobCard key={job.id} job={job} onEdit={openEditJob}
                       onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                       onMarkCompleted={handleMarkCompleted}
-                      logCount={jobLogs.length} lastLogDate={lastLog?.date} />
+                      logCount={jobLogs.length} lastLogDate={lastLog?.date}
+                      materialListCount={materialListCountByJob[job.id] ?? 0} />
                   );
                 })}
               </div>

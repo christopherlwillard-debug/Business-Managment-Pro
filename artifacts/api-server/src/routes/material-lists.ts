@@ -3,12 +3,11 @@ import { db } from "@workspace/db";
 import {
   materialListsTable,
   materialListItemsTable,
-  materialsTable,
   jobsTable,
   invoicesTable,
-  clientsTable,
+  settingsTable,
 } from "@workspace/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 const router = Router();
 
@@ -208,6 +207,19 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+async function getNextInvoiceNumber() {
+  const [settings] = await db.select().from(settingsTable).limit(1);
+  const prefix = settings?.invoicePrefix ?? "INV-2026-";
+  const num = settings?.invoiceNextNumber ?? 1001;
+  if (settings) {
+    await db
+      .update(settingsTable)
+      .set({ invoiceNextNumber: num + 1 })
+      .where(eq(settingsTable.id, settings.id));
+  }
+  return `${prefix}${num}`;
+}
+
 router.post("/:id/attach-to-invoice", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -216,63 +228,73 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
     const list = await getListWithItems(id);
     if (!list) return res.status(404).json({ error: "Material list not found" });
 
-    const markup = list.markup / 100 + 1;
+    if (!list.jobId) {
+      return res.status(400).json({ error: "This list is not linked to a job. Link it to a job first." });
+    }
+
+    const markupMult = list.markup / 100 + 1;
     const totalCost = list.items.reduce((s, item) => {
-      return s + item.unitCostSnapshot * item.qty * markup;
+      return s + item.unitCostSnapshot * item.qty * markupMult;
     }, 0);
 
     const description = `Materials – ${list.name}`;
 
-    if (list.jobId) {
-      const [existingInvoice] = await db
-        .select()
-        .from(invoicesTable)
-        .where(
-          and(
-            eq(invoicesTable.jobId, list.jobId),
-            eq(invoicesTable.status, "draft")
-          )
-        )
-        .limit(1);
+    const [existingInvoice] = await db
+      .select()
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.jobId, list.jobId), eq(invoicesTable.status, "draft")))
+      .limit(1);
 
-      if (existingInvoice) {
-        const lineItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems as any[] : [];
-        const matIdx = lineItems.findIndex((li: any) => li.description?.startsWith("Materials – "));
-        const newLineItem = {
-          id: matIdx >= 0 ? lineItems[matIdx].id : (lineItems.length + 1),
-          description,
-          quantity: 1,
-          unitPrice: parseFloat(totalCost.toFixed(2)),
-          total: parseFloat(totalCost.toFixed(2)),
-        };
-        const newItems = matIdx >= 0
-          ? lineItems.map((li: any, i: number) => i === matIdx ? newLineItem : li)
-          : [...lineItems, newLineItem];
+    const lineItemEntry = {
+      description,
+      quantity: 1,
+      unitPrice: parseFloat(totalCost.toFixed(2)),
+      total: parseFloat(totalCost.toFixed(2)),
+    };
 
-        const subtotal = newItems.reduce((s: number, li: any) => s + (li.quantity * li.unitPrice), 0);
-        const taxRate = existingInvoice.taxRate ? parseFloat(existingInvoice.taxRate) : 0;
-        const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
+    if (existingInvoice) {
+      const lineItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems as any[] : [];
+      const matIdx = lineItems.findIndex((li: any) => li.description?.startsWith("Materials – "));
+      const newLineItem = {
+        id: matIdx >= 0 ? lineItems[matIdx].id : (lineItems.length + 1),
+        ...lineItemEntry,
+      };
+      const newItems = matIdx >= 0
+        ? lineItems.map((li: any, i: number) => i === matIdx ? newLineItem : li)
+        : [...lineItems, newLineItem];
 
-        await db.update(invoicesTable).set({
-          lineItems: newItems,
-          subtotal: subtotal.toFixed(2),
-          taxAmount: taxAmount.toFixed(2),
-          total: (subtotal + taxAmount).toFixed(2),
-        }).where(eq(invoicesTable.id, existingInvoice.id));
+      const subtotal = newItems.reduce((s: number, li: any) => s + (li.quantity * li.unitPrice), 0);
+      const taxRate = existingInvoice.taxRate ? parseFloat(existingInvoice.taxRate) : 0;
+      const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
 
-        return res.json({ invoiceId: existingInvoice.id, created: false });
-      }
+      await db.update(invoicesTable).set({
+        lineItems: newItems,
+        subtotal: subtotal.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        total: (subtotal + taxAmount).toFixed(2),
+      }).where(eq(invoicesTable.id, existingInvoice.id));
+
+      return res.json({ invoiceId: existingInvoice.id, created: false });
     }
 
-    res.json({
-      invoiceId: null,
-      created: false,
-      lineItem: {
-        description,
-        quantity: 1,
-        unitPrice: parseFloat(totalCost.toFixed(2)),
-      },
-    });
+    const today = new Date().toISOString().split("T")[0];
+    const invoiceNumber = await getNextInvoiceNumber();
+    const subtotal = parseFloat(totalCost.toFixed(2));
+    const lineItems = [{ id: 1, ...lineItemEntry }];
+
+    const [newInvoice] = await db.insert(invoicesTable).values({
+      invoiceNumber,
+      jobId: list.jobId,
+      status: "draft",
+      issueDate: today,
+      subtotal: subtotal.toFixed(2),
+      taxAmount: "0",
+      total: subtotal.toFixed(2),
+      lineItems,
+      attachments: [],
+    }).returning();
+
+    return res.json({ invoiceId: newInvoice.id, created: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to attach to invoice" });

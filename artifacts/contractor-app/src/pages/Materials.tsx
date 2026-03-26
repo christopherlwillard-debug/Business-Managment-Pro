@@ -905,13 +905,16 @@ export default function Materials() {
       )}
 
       {/* ── Material List Dialog ────────────────────────────────────────────────── */}
-      <MaterialListDialog
-        open={showListDialog}
-        onClose={() => { setShowListDialog(false); setEditingList(null); }}
-        editList={editingList}
-        materials={allActiveMaterials}
-        jobs={jobs as Job[]}
-      />
+      {showListDialog && (
+        <MaterialListDialog
+          key={editingList?.id ?? "new"}
+          open={showListDialog}
+          onClose={() => { setShowListDialog(false); setEditingList(null); }}
+          editList={editingList}
+          materials={allActiveMaterials}
+          jobs={jobs as Job[]}
+        />
+      )}
     </div>
   );
 }
