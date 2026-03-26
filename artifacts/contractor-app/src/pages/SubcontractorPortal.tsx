@@ -7,6 +7,7 @@ import {
   Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
   Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
   Lock, KeyRound, Home, Store, ChevronDown, ImageIcon, Upload,
+  MapPin, Calculator, PenLine, User,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -1079,22 +1080,37 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
     queryFn: () => apiFetch(`/portal/${token}/mileage`),
   });
 
+  const today = new Date().toISOString().slice(0, 10);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", jobId: "" });
+  const [formError, setFormError] = useState("");
+  const [form, setForm] = useState({
+    date: today, miles: "", startLocation: "", endLocation: "",
+    purpose: "", classification: "business", jobId: "",
+  });
   const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const resetForm = () => {
+    setForm({ date: today, miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", jobId: "" });
+    setFormError("");
+  };
 
   const addMut = useMutation({
-    mutationFn: () => apiFetch(`/portal/${token}/mileage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, miles: parseFloat(form.miles), jobId: form.jobId ? parseInt(form.jobId) : undefined }),
-    }),
+    mutationFn: () => {
+      if (!form.date || !form.miles || parseFloat(form.miles) <= 0) {
+        throw new Error("Date and miles are required.");
+      }
+      return apiFetch(`/portal/${token}/mileage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, miles: parseFloat(form.miles), jobId: form.jobId ? parseInt(form.jobId) : undefined }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
       qc.invalidateQueries({ queryKey: ["portal", token] });
       setFormOpen(false);
-      setForm({ date: new Date().toISOString().slice(0, 10), miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", jobId: "" });
+      resetForm();
     },
+    onError: (err: any) => setFormError(err.message || "Failed to save."),
   });
 
   const delMut = useMutation({
@@ -1106,89 +1122,232 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
   });
 
   const businessLogs = (logs as any[]).filter(m => m.classification === "business");
-  const totalMiles = businessLogs.reduce((s: number, m: any) => s + m.miles, 0);
-  const totalDeduction = businessLogs.reduce((s: number, m: any) => s + m.deductionAmount, 0);
+  const allLogs      = logs as any[];
+  const totalBizMiles   = businessLogs.reduce((s: number, m: any) => s + parseFloat(m.miles ?? 0), 0);
+  const totalDeduction  = businessLogs.reduce((s: number, m: any) => s + parseFloat(m.deductionAmount ?? 0), 0);
+  const tripCount       = allLogs.length;
   const previewDeduction = form.miles && form.classification === "business" ? parseFloat(form.miles) * ratePerMile : 0;
+
+  const inp2 = "w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring";
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-display font-bold">Mileage Tracker</h2>
-          <p className="text-sm text-muted-foreground">{totalMiles.toFixed(1)} mi · {formatCurrency(totalDeduction)} deduction</p>
+          <p className="text-sm text-muted-foreground">Log business miles and track IRS deductions</p>
         </div>
         <button
-          onClick={() => setFormOpen(!formOpen)}
+          onClick={() => { setFormOpen(!formOpen); if (formOpen) resetForm(); }}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
         >
-          <Plus className="w-4 h-4" /> Log
+          <Plus className="w-4 h-4" /> Log Trip
         </button>
       </div>
 
-      {formOpen && (
-        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date *"><Input type="date" value={form.date} onChange={e => setF("date", e.target.value)} /></Field>
-            <Field label="Miles *"><Input type="number" min="0" step="0.1" value={form.miles} onChange={e => setF("miles", e.target.value)} placeholder="0.0" /></Field>
-            <Field label="From"><Input value={form.startLocation} onChange={e => setF("startLocation", e.target.value)} placeholder="Start location" /></Field>
-            <Field label="To"><Input value={form.endLocation} onChange={e => setF("endLocation", e.target.value)} placeholder="End location" /></Field>
-            <div className="col-span-2">
-              <Field label="Purpose"><Input value={form.purpose} onChange={e => setF("purpose", e.target.value)} placeholder="Job site visit, pickup…" /></Field>
+      {/* Summary bar */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-primary text-primary-foreground rounded-2xl p-4 shadow-md">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-primary-foreground/70 text-xs font-medium">IRS Deduction</p>
+              <p className="text-2xl font-display font-bold mt-1">{formatCurrency(totalDeduction)}</p>
             </div>
-            <Field label="Type">
-              <select value={form.classification} onChange={e => setF("classification", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
-                <option value="business">Business</option>
-                <option value="personal">Personal</option>
-              </select>
-            </Field>
+            <Calculator className="w-5 h-5 opacity-40 mt-0.5" />
+          </div>
+          <p className="text-[10px] text-primary-foreground/50 mt-2">${ratePerMile}/mi rate</p>
+        </div>
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+          <p className="text-muted-foreground text-xs font-medium">Business Miles</p>
+          <p className="text-2xl font-display font-bold text-foreground mt-1">{totalBizMiles.toFixed(1)}</p>
+          <p className="text-[10px] text-muted-foreground mt-2">mi logged</p>
+        </div>
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
+          <p className="text-muted-foreground text-xs font-medium">Trips</p>
+          <p className="text-2xl font-display font-bold text-foreground mt-1">{tripCount}</p>
+          <p className="text-[10px] text-muted-foreground mt-2">total logged</p>
+        </div>
+      </div>
+
+      {/* Entry form */}
+      {formOpen && (
+        <div className="bg-card border border-blue-200 rounded-2xl overflow-hidden shadow-md">
+          <div className="h-1 bg-gradient-to-r from-blue-400 to-blue-600" />
+          <div className="p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <PenLine className="w-4 h-4 text-blue-500" />
+              <h3 className="text-sm font-bold text-foreground">Log Trip Manually</h3>
+            </div>
+
+            {formError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" /> {formError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Date *</label>
+                <input type="date" className={inp2} value={form.date} onChange={e => setF("date", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Miles *</label>
+                <input type="number" min="0" step="0.1" placeholder="e.g. 12.5" className={inp2}
+                  value={form.miles} onChange={e => setF("miles", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">From</label>
+                <input className={inp2} placeholder="e.g. Home" value={form.startLocation} onChange={e => setF("startLocation", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">To</label>
+                <input className={inp2} placeholder="e.g. Job site" value={form.endLocation} onChange={e => setF("endLocation", e.target.value)} />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Purpose / Notes</label>
+              <input className={inp2} placeholder="e.g. Material run to Home Depot" value={form.purpose} onChange={e => setF("purpose", e.target.value)} />
+            </div>
+
+            {/* Business / Personal toggle */}
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-2">Trip Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setF("classification", "business")}
+                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all text-sm font-medium ${
+                    form.classification === "business"
+                      ? "border-primary bg-primary/10 text-primary font-bold"
+                      : "border-border text-muted-foreground hover:border-primary/40"
+                  }`}>
+                  <Briefcase className="w-4 h-4" /> Business
+                </button>
+                <button type="button" onClick={() => setF("classification", "personal")}
+                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all text-sm font-medium ${
+                    form.classification === "personal"
+                      ? "border-border bg-muted text-foreground font-bold"
+                      : "border-border text-muted-foreground hover:border-border"
+                  }`}>
+                  <User className="w-4 h-4" /> Personal
+                </button>
+              </div>
+            </div>
+
             {jobs.length > 0 && (
-              <Field label="Job">
-                <select value={form.jobId} onChange={e => setF("jobId", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
-                  <option value="">None</option>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
+                <select value={form.jobId} onChange={e => setF("jobId", e.target.value)} className={inp2}>
+                  <option value="">No specific job</option>
                   {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
                 </select>
-              </Field>
+              </div>
             )}
-          </div>
-          {previewDeduction > 0 && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-800">
-              IRS deduction for this trip: <strong>{formatCurrency(previewDeduction)}</strong> ({parseFloat(form.miles).toFixed(1)} mi × ${ratePerMile}/mi)
+
+            {previewDeduction > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                <span className="font-semibold">Auto-expense:</span>{" "}
+                <span className="font-bold">{formatCurrency(previewDeduction)}</span> mileage expense will be created ({parseFloat(form.miles).toFixed(1)} mi × ${ratePerMile}/mi).
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => addMut.mutate()}
+                disabled={!form.date || !form.miles || addMut.isPending}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors shadow"
+              >
+                {addMut.isPending ? "Saving…" : form.classification === "business" ? "Save & Log Expense" : "Save Trip"}
+              </button>
+              <button onClick={() => { setFormOpen(false); resetForm(); }}
+                className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={() => addMut.mutate()}
-              disabled={!form.date || !form.miles || addMut.isPending}
-              className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              {addMut.isPending ? "Saving…" : "Save Trip"}
-            </button>
-            <button onClick={() => setFormOpen(false)} className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted"><X className="w-4 h-4" /></button>
           </div>
         </div>
       )}
 
-      {(logs as any[]).length === 0 ? (
-        <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground">
-          <Navigation className="w-8 h-8 mx-auto mb-2 opacity-20" />
-          <p className="text-sm">No trips logged yet. Tap Log to get started.</p>
+      {/* Trip list */}
+      {allLogs.length === 0 ? (
+        <div className="bg-card border border-border rounded-2xl p-10 text-center">
+          <Navigation className="w-8 h-8 mx-auto mb-2 opacity-20 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No trips logged yet.</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">Tap "Log Trip" above to record your first trip.</p>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm divide-y divide-border/50">
-          {(logs as any[]).map(m => (
-            <div key={m.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">{m.miles.toFixed(1)} mi{m.purpose ? ` — ${m.purpose}` : ""}</p>
-                <p className="text-xs text-muted-foreground">
-                  {m.date}{m.startLocation && m.endLocation ? ` · ${m.startLocation} → ${m.endLocation}` : ""}
-                  {m.classification === "business" ? ` · ${formatCurrency(m.deductionAmount)} deduction` : " · Personal"}
-                </p>
+        <div className="space-y-2">
+          {allLogs.map((m: any) => {
+            const miles    = parseFloat(m.miles ?? 0);
+            const deduct   = parseFloat(m.deductionAmount ?? 0);
+            const isBiz    = m.classification === "business";
+            const hasRoute = m.startLocation || m.endLocation;
+            return (
+              <div key={m.id} className={`bg-card border rounded-2xl p-4 shadow-sm flex gap-3 group hover:shadow-md transition-all ${
+                isBiz ? "border-primary/20" : "border-border/50"
+              }`}>
+                {/* Left accent bar */}
+                <div className={`w-1 rounded-full flex-shrink-0 ${isBiz ? "bg-primary" : "bg-muted-foreground/30"}`} />
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      {/* Route line */}
+                      {hasRoute ? (
+                        <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                          <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="truncate">
+                            {m.startLocation || "—"} → {m.endLocation || "—"}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-medium text-foreground">
+                          {m.purpose || (isBiz ? "Business trip" : "Personal trip")}
+                        </p>
+                      )}
+
+                      {/* Purpose (if route was shown) */}
+                      {hasRoute && m.purpose && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{m.purpose}</p>
+                      )}
+
+                      {/* Meta row */}
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        <span className="text-xs text-muted-foreground">{m.date}</span>
+                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          isBiz ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                        }`}>
+                          {m.classification}
+                        </span>
+                        {m.jobTitle && (
+                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{m.jobTitle}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: miles + deduction */}
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-base font-display font-bold text-foreground">{miles.toFixed(1)} mi</p>
+                      {isBiz && deduct > 0 && (
+                        <p className="text-xs font-semibold text-emerald-600">+{formatCurrency(deduct)}</p>
+                      )}
+                      {!isBiz && (
+                        <p className="text-[10px] text-muted-foreground">personal</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delete button */}
+                <button onClick={() => {
+                  if (!confirm("Delete this trip?")) return;
+                  delMut.mutate(m.id);
+                }} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <button onClick={() => delMut.mutate(m.id)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors flex-shrink-0">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
