@@ -9,6 +9,7 @@ import {
   useUpdateInvoiceStatus,
   useDeleteInvoice,
   useGetSettings,
+  InvoiceAttachment,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -16,6 +17,7 @@ import { Card } from "@/components/ui/card";
 import {
   FileText, Download, Plus, Trash2, X,
   Building2, MapPin, Check, Eye, AlertTriangle, Printer, Mail, Phone,
+  Paperclip, Upload,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -36,6 +38,7 @@ function InvoiceBuilder({
   clients, jobs, settings, previewNumber,
   submitting, formError, onSubmit, onCancel,
   isNewClient, setIsNewClient, clientInput, setClientInput,
+  attachments, onAttachmentsChange,
 }: {
   form: any; setField: (k: string, v: string) => void;
   lineItems: LineItem[]; setLineItems: React.Dispatch<React.SetStateAction<LineItem[]>>;
@@ -44,9 +47,35 @@ function InvoiceBuilder({
   onSubmit: (e: React.FormEvent) => void; onCancel: () => void;
   isNewClient: boolean; setIsNewClient: (v: boolean) => void;
   clientInput: string; setClientInput: (v: string) => void;
+  attachments: InvoiceAttachment[]; onAttachmentsChange: (a: InvoiceAttachment[]) => void;
 }) {
   const [showClientDrop, setShowClientDrop] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const clientRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    setUploadingFile(true);
+    try {
+      const results: InvoiceAttachment[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`${base}/api/uploads`, { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          results.push({ name: data.filename || file.name, url: data.url, size: data.size });
+        }
+      }
+      if (results.length) onAttachmentsChange([...attachments, ...results]);
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   const s = settings ?? {};
   const companyName    = s.companyName    || "";
@@ -457,6 +486,46 @@ function InvoiceBuilder({
               />
             </div>
 
+            {/* ── Attachments ── */}
+            <div className="border-t border-gray-100 pt-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-1.5">
+                  <Paperclip className="w-3 h-3" /> Attachments
+                </p>
+                <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${uploadingFile ? "text-gray-400" : "text-amber-600 hover:bg-amber-50"}`}>
+                  <Upload className="w-3 h-3" />
+                  {uploadingFile ? "Uploading…" : "Add files"}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="sr-only"
+                    onChange={handleFileChange}
+                    disabled={uploadingFile}
+                  />
+                </label>
+              </div>
+              {attachments.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((att, i) => (
+                    <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 max-w-[200px]">
+                      <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      <span className="truncate flex-1">{att.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => onAttachmentsChange(attachments.filter((_, idx) => idx !== i))}
+                        className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0 ml-1"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-300 italic">No attachments — click "Add files" to attach PDFs, images, or other documents</p>
+              )}
+            </div>
+
           </div>
           <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-500" />
         </div>
@@ -760,6 +829,29 @@ function InvoiceViewModal({
                   <p className="text-gray-600 text-xs leading-relaxed whitespace-pre-wrap">{invoice.notes}</p>
                 </div>
               )}
+
+              {/* Attachments */}
+              {Array.isArray(invoice.attachments) && invoice.attachments.length > 0 && (
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2 flex items-center gap-1">
+                    <Paperclip className="w-2.5 h-2.5" /> Attachments
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(invoice.attachments as InvoiceAttachment[]).map((att, i) => (
+                      <a
+                        key={i}
+                        href={`${base}${att.url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 hover:bg-amber-100 transition-colors max-w-[200px]"
+                      >
+                        <Paperclip className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{att.name}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-500" />
           </div>
@@ -794,6 +886,7 @@ export default function Invoices() {
     clientCity: "", clientState: "", clientZip: "", clientNotes: "",
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
+  const [invoiceAttachments, setInvoiceAttachments] = useState<InvoiceAttachment[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError,  setFormError]  = useState("");
   const [isNewClient, setIsNewClient] = useState(false);
@@ -822,6 +915,7 @@ export default function Invoices() {
       locationName: "",
     });
     setLineItems([emptyLine()]);
+    setInvoiceAttachments([]);
     setFormError("");
     setClientInput("");
     setIsNewClient(false);
@@ -858,6 +952,7 @@ export default function Invoices() {
           lineItems: lineItems
             .filter(l => l.description.trim())
             .map(l => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice })),
+          attachments: invoiceAttachments,
         },
       });
       queryClient.invalidateQueries();
@@ -962,7 +1057,14 @@ export default function Invoices() {
                       onClick={() => setViewInvoice(inv)}
                       className="hover:bg-muted/30 transition-colors cursor-pointer group">
                       <td className="px-6 py-4 font-medium text-foreground group-hover:text-primary transition-colors">
-                        {inv.invoiceNumber}
+                        <div className="flex items-center gap-2">
+                          {inv.invoiceNumber}
+                          {Array.isArray(inv.attachments) && inv.attachments.length > 0 && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-gray-400" title={`${inv.attachments.length} attachment${inv.attachments.length > 1 ? "s" : ""}`}>
+                              <Paperclip className="w-3 h-3" />{inv.attachments.length}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{formatDate(inv.issueDate)}</td>
                       <td className="px-6 py-4">
@@ -1038,6 +1140,8 @@ export default function Invoices() {
               onCancel={() => !submitting && setOpen(false)}
               isNewClient={isNewClient} setIsNewClient={setIsNewClient}
               clientInput={clientInput} setClientInput={setClientInput}
+              attachments={invoiceAttachments}
+              onAttachmentsChange={setInvoiceAttachments}
             />
           </div>
         </div>

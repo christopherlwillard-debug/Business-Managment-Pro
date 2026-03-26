@@ -23,6 +23,7 @@ export const invoicesTable = pgTable("invoices", {
   notes: text("notes"),
   terms: text("terms"),
   lineItems: jsonb("line_items").default("[]"),
+  attachments: jsonb("attachments").default("[]"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

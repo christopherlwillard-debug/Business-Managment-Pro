@@ -44,7 +44,7 @@ The `/jobs` route is the unified Jobs + Invoice workflow:
 - **JobFormDialog**: create/edit with multi-subcontractor picker, work location, status (Scheduled/Completed)
 - **InvoiceEditorDialog** (`src/components/InvoiceEditorDialog.tsx`): reusable full-page invoice builder modal — handles create (from job draft) and edit (from existing invoice)
 - **SavedInvoicesSection**: table of all job-linked invoices with Edit/Mark Paid/Delete
-- Invoices route (`/invoices`) removed from router and nav — all invoice work flows through Jobs
+- Invoices route (`/invoices`) restored to router and sidebar nav ("Invoices" with FileText icon)
 - `GET /api/jobs/:id/invoice-draft` pre-fills the invoice editor from job data
 
 ## Authentication
@@ -66,7 +66,7 @@ The `/jobs` route is the unified Jobs + Invoice workflow:
 ### Frontend Pages (artifacts/contractor-app/src/pages/)
 - **Dashboard** - Business health overview with revenue/expense charts, active jobs, overdue invoices
 - **Jobs** - Job management with statuses (scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled)
-- **Invoices** - Invoice creation with line items + TAX REPORT tab (shows jobs by city/location for operating tax tracking)
+- **Invoices** - Invoice creation with line items, file attachments (PDF/image upload via /api/uploads), TAX REPORT tab (shows jobs by city/location for operating tax tracking); paperclip badge on list rows
 - **Expenses** - Expense logging with receipt upload + "Click to View Receipt" link
 - **Mileage** - Trip logging with IRS deduction calculator (default 72.5¢/mile for 2026)
 - **Estimates** - Job estimator with templates, line items by category, markup %, contingency %

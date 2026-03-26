@@ -146,7 +146,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName } = req.body;
+    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments = [] } = req.body;
     const invoiceNumber = await getNextInvoiceNumber();
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
@@ -167,6 +167,7 @@ router.post("/", async (req, res) => {
       notes,
       terms,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
+      attachments: Array.isArray(attachments) ? attachments : [],
     }).returning();
 
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, invoice.id));
@@ -192,7 +193,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName } = req.body;
+    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments } = req.body;
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
     await db.update(invoicesTable).set({
@@ -208,6 +209,7 @@ router.put("/:id", async (req, res) => {
       locationName: locationName || null,
       notes, terms,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
+      ...(attachments !== undefined ? { attachments: Array.isArray(attachments) ? attachments : [] } : {}),
     }).where(eq(invoicesTable.id, id));
 
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));

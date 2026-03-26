@@ -179,6 +179,12 @@ export interface InvoiceLineItem {
   total: number;
 }
 
+export interface InvoiceAttachment {
+  name: string;
+  url: string;
+  size?: number | null;
+}
+
 export interface Invoice {
   id: number;
   invoiceNumber: string;
@@ -199,6 +205,7 @@ export interface Invoice {
   notes?: string | null;
   terms?: string | null;
   lineItems?: InvoiceLineItem[];
+  attachments?: InvoiceAttachment[] | null;
   createdAt: string;
 }
 
@@ -232,6 +239,7 @@ export interface CreateInvoiceRequest {
   city?: string | null;
   state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
+  attachments?: InvoiceAttachment[] | null;
 }
 
 export interface TaxReportRow {

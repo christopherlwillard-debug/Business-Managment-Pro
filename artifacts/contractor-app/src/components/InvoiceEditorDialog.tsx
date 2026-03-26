@@ -2,12 +2,12 @@ import { useState, useRef, useEffect } from "react";
 import {
   useCreateInvoice, useUpdateInvoice, useCreateClient, useListClients,
   useListJobs, useGetSettings,
-  Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest,
+  Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest, InvoiceAttachment,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
-  Building2, MapPin, Check, X, Plus, Trash2, Lock, Printer,
+  Building2, MapPin, Check, X, Plus, Trash2, Lock, Printer, Paperclip, Upload,
 } from "lucide-react";
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
@@ -128,18 +128,22 @@ export function InvoiceEditorDialog({
 
   const [form, setFormState] = useState<InvoiceFormState>(makeInitialForm);
   const [lineItems, setLineItems] = useState<LineItem[]>(makeInitialLineItems);
+  const [attachments, setAttachments] = useState<InvoiceAttachment[]>(() => existingInvoice?.attachments ?? []);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [isNewClient, setIsNewClient] = useState(false);
   const [clientInput, setClientInput] = useState(makeInitialClientInput);
   const [showClientDrop, setShowClientDrop] = useState(false);
   const clientRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setFormState(makeInitialForm());
       setLineItems(makeInitialLineItems());
       setClientInput(makeInitialClientInput());
+      setAttachments(existingInvoice?.attachments ?? []);
       setIsNewClient(false);
       setFormError("");
     }
@@ -148,6 +152,30 @@ export function InvoiceEditorDialog({
   function setField(k: string, v: string) {
     setFormState(f => ({ ...f, [k]: v }));
   }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    setUploadingFile(true);
+    try {
+      const results: InvoiceAttachment[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`${base}/api/uploads`, { method: "POST", body: fd });
+        if (res.ok) {
+          const data = await res.json();
+          results.push({ name: data.filename || file.name, url: data.url, size: data.size });
+        }
+      }
+      if (results.length) setAttachments(prev => [...prev, ...results]);
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   function setLine(i: number, k: keyof LineItem, v: string) {
     setLineItems(ls =>
       ls.map((l, idx) => idx === i ? { ...l, [k]: k === "description" ? v : parseFloat(v) || 0 } : l)
@@ -208,6 +236,7 @@ export function InvoiceEditorDialog({
         lineItems: lineItems
           .filter(l => l.description.trim())
           .map(l => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice })),
+        attachments,
       };
       if (isEdit) {
         await updateInvoice.mutateAsync({ id: existingInvoice.id, data: payload });
@@ -657,6 +686,44 @@ export function InvoiceEditorDialog({
                   />
                   {form.notes && (
                     <p className="print-value text-xs text-gray-700 whitespace-pre-wrap mt-1">{form.notes}</p>
+                  )}
+                </div>
+
+                {/* Attachments */}
+                <div className="border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-1">
+                      <Paperclip className="w-3 h-3" /> Attachments
+                    </label>
+                    <label className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${uploadingFile ? "text-gray-400" : "text-amber-600 hover:bg-amber-50"}`}>
+                      <Upload className="w-3 h-3" />
+                      {uploadingFile ? "Uploading…" : "Add files"}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="sr-only"
+                        onChange={handleFileChange}
+                        disabled={uploadingFile}
+                      />
+                    </label>
+                  </div>
+                  {attachments.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {attachments.map((att, i) => (
+                        <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 max-w-[180px]">
+                          <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                          <span className="truncate flex-1">{att.name}</span>
+                          <button type="button"
+                            onClick={() => setAttachments(a => a.filter((_, idx) => idx !== i))}
+                            className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-300 italic">No attachments yet</p>
                   )}
                 </div>
 
