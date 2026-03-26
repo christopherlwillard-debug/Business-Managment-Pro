@@ -1,0 +1,553 @@
+Compliance needs to be added to the dashboard so i can see it 
+
+Daily log is still on navigation and should have been added in the jobs sections where we can upload photos and notes in the in progress of the job sections before it goes to complete and finish invoice.
+
+Need to be able to delete contractors 
+
+Compliance items need to be editable 
+
+Mileage on my app still doesnt show the button to add mileage manually
+
+I need my accounting/tax tab to be 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. Annual Report with Kentucky Secretary of State (Required for Good Standing)
+•  What it is: A simple update confirming or updating your LLC’s principal office address, registered agent/office, and member/manager info (for single-member LLCs, this is typically just you).
+•  Due date: Anytime between January 1 and June 30 each year (your first one is due in the calendar year after formation). The state usually mails a postcard reminder in January.
+•  Fee: $15 (paid with the report).
+•  How to file: Online (preferred and fastest) at the Secretary of State’s FastTrack portal, or return the postcard by mail/in person.
+•  Why it matters: This is the main filing that keeps your LLC in good standing. Missing the June 30 deadline puts you in bad standing; you get a 60-day notice, and failure to file by August 31 can lead to administrative dissolution (your LLC is dissolved and loses protections). Reinstatement is possible but involves extra steps and fees.
+•  Official source: Kentucky Secretary of State (sos.ky.gov) or Kentucky Business One Stop (onestop.ky.gov).
+2. Limited Liability Entity Tax (LLET) – Form 725 (State Business Tax Filing)
+•  What it is: Kentucky’s tax on limited-liability entities (including single-member LLCs, even if treated as a “disregarded entity” for income tax purposes). It’s based on Kentucky gross receipts or gross profits (minimum $175 if ≤ $3 million; higher sliding scale above that). It’s separate from your personal income tax but filed together in many cases.
+•  Due date: April 15 (for calendar-year filers; 15th day of the 4th month after your tax year ends). Estimated payments required if you expect liability over $5,000.
+•  How to file: Use Form 725 (Kentucky Single Member LLC Individually Owned Income and LLET Return). It can often be e-filed with your personal Kentucky individual return (Form 740) via tax software. Payment goes to the Kentucky Department of Revenue.
+•  Electronic filing: Required if federal gross receipts > $1 million.
+•  Note: This is the key state-level tax filing for your LLC (beyond personal income taxes). Late filing incurs penalties and interest.
+3. Federal Tax Filings (IRS)
+•  What it is: Your single-member LLC is a disregarded entity, so business income/loss flows to your personal taxes.
+	•  File Form 1040 + Schedule C (profit/loss from business) and Schedule SE (self-employment tax if applicable).
+	•  Make quarterly estimated tax payments (Form 1040-ES) if you expect to owe $1,000+ in taxes.
+•  Due date: April 15 (or extension to October 15).
+•  EIN: You should have one (easy to get from IRS.gov); it’s required for banking/taxes in most cases.
+4. Sales & Use Tax (If Applicable)
+•  If your LLC sells taxable goods, services, or collects sales tax, you need a sales tax permit (registered once via Kentucky Department of Revenue/Kentucky Online Gateway).
+•  File periodic sales tax returns (monthly, quarterly, or annual depending on your volume).
+•  No filing if you have zero taxable sales, but you must still be registered if required by your business type.
+5. Local Occupational/Business License & Net Profit Fee (Owensboro & Daviess County – Required)
+•  What it is: Owensboro/Daviess County requires an occupational business license for any person or entity doing business there. You pay a minimum annual fee plus a net profit license fee (greater of $75 or 1.78% of net profits from activity in Owensboro).
+•  Due/renewal: Initial application before starting; then annual Net Profit License Fee Return (filed at the end of your tax year, along with payment). If you have employees, there’s also payroll withholding (filed quarterly/monthly).
+•  Fee: $75 minimum annual license fee (City of Owensboro administers for both city and county).
+•  How to handle: File the Occupational Business License Application with the Occupational Tax Administrator (City of Owensboro). Contact: (270) 687-5600 or check owensboro.org or daviessky.org.
+•  Why it matters: Operating without it can lead to fines or shutdown.
+6. Beneficial Ownership Information (BOI) Report – Federal (FinCEN)
+•  One-time initial report (filed online at FinCEN.gov/BOI) with your name, address, ID info, and beneficial owners (for single-member LLC: usually just you).
+•  Not annual—only update within 30 days if ownership/control changes. No routine yearly filing unless something changes.
+7. Other Recurring or Possible Requirements
+•  Registered agent: Must keep a valid one in Kentucky (can be you or a service). Update via SOS if it changes.
+•  Personal property tax: If your LLC owns business personal property (equipment, furniture, etc.), file an annual return with your county Property Valuation Administrator (usually due around May 15).
+•  Employees (if any): Unemployment insurance, workers’ comp insurance, and withholding tax returns (quarterly/annual).
+•  Industry-specific licenses/permits: Many professions (contractors, food service, etc.) require annual renewal—check Kentucky Department of Professional Licensing or onestop.ky.gov.
+•  Record-keeping: Maintain internal financial records, operating agreement updates, etc. (not filed, but required for audits/taxes).
+Quick Action Plan & Resources
+•  Central hub: Start at Kentucky Business One Stop (onestop.ky.gov) — register/login for a dashboard that tracks your business filings, taxes, and permits.
+•  Tax account: Kentucky Online Gateway (KOG) for DOR filings.
+•  Secretary of State filings: sos.ky.gov (annual report).
+•  Local: Owensboro Occupational Tax Administrator or Daviess County Fiscal Court.
+•  Track deadlines: Use a calendar or service like a CPA/accounting software for April 15 (taxes + LLET) and June 30 (annual report).
+Missing any of these can result in penalties, bad standing, or loss of your LLC’s liability protection. Rules are current as of 2026 with no major changes noted for single-member LLCs. If your LLC is brand new, inactive, or operates in other states, let me know for more tailored details. Strongly recommend consulting a Kentucky-licensed CPA or attorney (or using free resources at the Owensboro Small Business Development Center) for your specific numbers—they can handle filings and minimize taxes legally.
+
+
+
+
+To reorganize your app so it tracks data exactly like your spreadsheet—specifically with the detailed expense columns and the clickable receipt links—we need to upgrade your data structure.
+Based on the file you uploaded, your "Business Expense List" has 12 specific columns. Here is the plan to move that logic into your Replit app so it looks and acts like a professional database rather than just a simple list.
+1. The New "Expense" Data Schema
+Your app should now capture and display these exact fields to match your tax records:
+Categories: Primary Category, Tax Category, and Form 1040 Schedule C Category.
+Business Details: Business Name, Client, and Account/Source (e.g., Chase *1326).
+The Transaction: Merchant, Description, Date, and Amount.
+The Receipt: A stored URL (like the S3 links in your sheet) that opens the image.
+2. Implementation Code for Replit (Streamlit)
+You can replace your current "Expenses" code with this version. It includes a "Spreadsheet View" that handles the receipt links and a "Detailed Entry" form.
+To reorganize your app so it tracks data exactly like your spreadsheet—specifically with the detailed expense columns and the clickable receipt links—we need to upgrade your data structure.
+
+import streamlit as st
+import pandas as pd
+
+# 1. Setup the Column Headers exactly like your spreadsheet
+EXPENSE_COLUMNS = [
+    "CATEGORY", "TAX CATEGORY", "FORM 1040 SCHED C CATEGORY", 
+    "ACCOUNT", "BUSINESS", "CLIENT", "MERCHANT", 
+    "SOURCE", "DESCRIPTION", "RECEIPT", "DATE", "AMOUNT"
+]
+
+def show_detailed_expenses():
+    st.header("📋 Business Expense Manager")
+
+    # --- SECTION A: SPREADSHEET VIEW ---
+    st.subheader("Current Expenses (Spreadsheet View)")
+    
+    # Load your data (Assuming a file named 'business_expenses.csv' exists)
+    try:
+        df = pd.read_csv("business_expenses.csv")
+    except FileNotFoundError:
+        df = pd.DataFrame(columns=EXPENSE_COLUMNS)
+
+    # Display the table with a clickable Receipt Link
+    # We use st.column_config to turn the 'RECEIPT' text into a button/link
+    st.dataframe(
+        df,
+        column_config={
+            "RECEIPT": st.column_config.LinkColumn("View Receipt"),
+            "AMOUNT": st.column_config.NumberColumn("Amount", format="$%.2f"),
+            "DATE": st.column_config.DateColumn("Date")
+        },
+        hide_index=True,
+    )
+
+    # --- SECTION B: DETAILED ENTRY FORM ---
+    with st.expander("➕ Add New Detailed Expense"):
+        with st.form("detailed_expense_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                category = st.selectbox("Category", ["Supplies (non-office)", "Software / SaaS", "Insurance"])
+                tax_cat = st.text_input("Tax Category", value="Supplies")
+                biz = st.text_input("Business", value="Willards General Contracting LLC")
+                merchant = st.text_input("Merchant")
+                
+            with col2:
+                client = st.text_input("Client", value="Willards General Contracting LLC")
+                source = st.text_input("Source", value="Chase *1326")
+                amount = st.number_input("Amount", step=0.01)
+                date = st.date_input("Date")
+
+            desc = st.text_area("Description")
+            receipt_url = st.text_input("Receipt Link (URL)")
+
+            if st.form_submit_button("Save to Records"):
+                # Code to append this row to 'business_expenses.csv'
+                new_row = {
+                    "CATEGORY": category, "TAX CATEGORY": tax_cat, 
+                    "BUSINESS": biz, "MERCHANT": merchant, "CLIENT": client,
+                    "SOURCE": source, "AMOUNT": amount, "DATE": str(date),
+                    "DESCRIPTION": desc, "RECEIPT": receipt_url
+                }
+                # (Logic to save to CSV goes here)
+                st.success("Expense logged and synced with spreadsheet format!")
+3. Key Improvements for Your App:
+The Link Column: In the code above, the st.column_config.LinkColumn turns the long URL from your spreadsheet into a neat, clickable "View Receipt" link directly in the app table.
+Default Values: I’ve added your business name ("Willards General Contracting LLC") and common bank account ("Chase *1326") as default values in the form to save you typing time.
+Search and Filter: Because this uses a DataFrame, you can add a search bar at the top to instantly find expenses for a specific "Merchant" or "Client."
+4. Why this makes your taxes easier:
+When it's time to export for your accountant, the app will generate a CSV that is already formatted like the one you uploaded. You won't have to manually edit columns or find receipts in your email; the links will be right there in the file.
+Since your spreadsheet already has the data and the receipt links, the "coding" part is just creating a bridge between that file and your app interface.
+Here is the exact code to point your Replit app at the spreadsheet data you uploaded. This will make your app "mirror" the spreadsheet, including the clickable receipt links.
+1. The "Read" Logic for Replit
+Instead of a blank form, we use this code to pull the existing data from your Business Expense List file.
+import streamlit as st
+import pandas as pd
+
+def show_accounting_tab():
+    st.title("📊 Tax & Expense Tracker")
+
+    # 1. Point the app to your existing spreadsheet file
+    # (Using the filename from your upload)
+    file_path = "TaxSummary_20260101_to_20261231.xlsx - Business Expense List.csv"
+
+    try:
+        # We skip the first row because your file has a title header at the top
+        df = pd.read_csv(file_path, skiprows=1)
+        
+        # Clean up: Remove any "Report Total" rows so they don't mess up your list
+        df = df[df['CATEGORY'] != 'Report Total']
+
+        st.subheader("Current Expenses")
+        
+        # 2. This is the magic part: It tells the app to treat the 
+        # 'RECEIPT' column as a clickable link.
+        st.dataframe(
+            df,
+            column_config={
+                "RECEIPT": st.column_config.LinkColumn("View Receipt"),
+                "AMOUNT": st.column_config.NumberColumn("Amount", format="$%.2f"),
+                "DATE": st.column_config.DateColumn("Date")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+    except Exception as e:
+        st.error(f"Could not load the spreadsheet file. Error: {e}")
+
+    # 3. Keep the "Add New" section below it 
+    # so future entries match this exact format.
+    with st.expander("➕ Log a New Expense"):
+        st.info("New entries will be added to the bottom of your spreadsheet list.")
+        # (Form code goes here...)
+Why we still do this in code:
+The "View Receipt" Link: In a raw spreadsheet, a long S3 link (like https://s3.amazonaws.com/...) is ugly and hard to click on a phone. The code above turns that long text into a clean "View Receipt" button.
+Mobile Formatting: Spreadsheets are hard to read on a phone screen. This code "reflows" the data so you can scroll through your expenses easily while on a job site.
+Automatic Cleanup: Your exported file has a "Report Total" row at the bottom. The code automatically hides that row so it doesn't look like a glitch in your app's list.
+What you should do next in Replit:
+Make sure the .csv file you uploaded is in the same folder as your main.py or app.py.
+Paste the "Read" logic above into your app's code.
+Now, whenever you update that CSV file (or add to it via the app), the "Accounting" tab will update automatically.
+Would you like me to do the same "Mirroring" code for your Income and Mileage lists so the whole tax summary is viewable in the app?
+This consolidated code will turn your Replit app into a full-scale mirror of your tax spreadsheet. It uses three separate tabs to display your Income, Expenses, and Mileage exactly as they appear in your records, with clickable receipt links and proper currency formatting.
+The Unified Accounting Code
+Copy and paste this into your main app file in Replit. It is designed to read the specific filenames you uploaded.
+import streamlit as st
+import pandas as pd
+
+def show_accounting_dashboard():
+    st.title("📂 Business Financial Records")
+    
+    # Define the file paths based on your uploads
+    income_file = "TaxSummary_20260101_to_20261231.xlsx - Business Income List.csv"
+    expense_file = "TaxSummary_20260101_to_20261231.xlsx - Business Expense List.csv"
+    mileage_file = "TaxSummary_20260101_to_20261231.xlsx - Business Mileage List.csv"
+
+    # Create Tabs for the different sections
+    tab_inc, tab_exp, tab_mil = st.tabs(["💰 Business Income", "🧾 Business Expenses", "🚗 Mileage Log"])
+
+    # --- TAB 1: INCOME ---
+    with tab_inc:
+        st.subheader("Income Records")
+        try:
+            df_inc = pd.read_csv(income_file, skiprows=1)
+            # Remove total rows and empty rows
+            df_inc = df_inc[df_inc['BUSINESS'].notna() & (df_inc['BUSINESS'] != 'Report Total')]
+            
+            st.dataframe(
+                df_inc,
+                column_config={
+                    "RECEIPT": st.column_config.LinkColumn("View Receipt"),
+                    "AMOUNT": st.column_config.NumberColumn("Amount", format="$%.2f"),
+                    "DATE": st.column_config.DateColumn("Date")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        except Exception as e:
+            st.warning(f"Income file not found or formatted incorrectly.")
+
+    # --- TAB 2: EXPENSES ---
+    with tab_exp:
+        st.subheader("Expense Records")
+        try:
+            df_exp = pd.read_csv(expense_file, skiprows=1)
+            df_exp = df_exp[df_exp['CATEGORY'].notna() & (df_exp['CATEGORY'] != 'Report Total')]
+            
+            st.dataframe(
+                df_exp,
+                column_config={
+                    "RECEIPT": st.column_config.LinkColumn("View Receipt"),
+                    "AMOUNT": st.column_config.NumberColumn("Amount", format="$%.2f"),
+                    "DATE": st.column_config.DateColumn("Date")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        except Exception as e:
+            st.warning(f"Expense file not found.")
+
+    # --- TAB 3: MILEAGE ---
+    with tab_mil:
+        st.subheader("Business Mileage")
+        try:
+            df_mil = pd.read_csv(mileage_file, skiprows=1)
+            df_mil = df_mil[df_mil['DATE'].notna() & (df_mil['DATE'] != 'Report Total')]
+            
+            st.dataframe(
+                df_mil,
+                column_config={
+                    "DISTANCE (MILES)": st.column_config.NumberColumn("Miles", format="%.1f"),
+                    "DEDUCTION AMOUNT": st.column_config.NumberColumn("Tax Deduction", format="$%.2f"),
+                    "DATE": st.column_config.DateColumn("Date")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        except Exception as e:
+            st.warning(f"Mileage file not found.")
+
+    # --- ADD NEW ENTRY SECTION ---
+    st.divider()
+    with st.expander("➕ Add New Entry"):
+        entry_type = st.radio("What are you logging?", ["Income", "Expense", "Mileage"])
+        st.info(f"Fill out the form below to add a new {entry_type} record.")
+        # Future: Add form logic here to append to the CSV files
+Why this works for your specific needs:
+Data Persistence: This code doesn't just "show" data; it reads from the actual .csv files in your Replit folder. If you update those files, the app updates.
+The "Receipt" Magic: In both the Income and Expense tabs, I used st.column_config.LinkColumn. This recognizes the Amazon S3 links in your spreadsheet and makes them clickable buttons so you can view the receipt photo instantly.
+Clean View: I added a "Filter" (using skiprows and removing Report Total) so the app only shows your actual transactions, keeping it looking like a clean app rather than a messy spreadsheet.
+Tax Calculations: For the Mileage tab, it specifically formats the Deduction Amount as currency, showing you exactly what your tax write-off is for each trip.
+Next Steps
+Now that you can view everything correctly, would you like me to write the Save Logic? This would allow you to type a new expense into the app on your phone, and have it automatically append a new row to your Business Expense List.csv file.
+That’s the right move. By setting up the Save Logic, you’re turning the app from a "viewer" into a "collector." This ensures that when you’re out at Home Depot or finishing a job, you can log the data immediately, and it will be perfectly formatted for your 2026 Tax Summary.
+Here is the Python code to add to your Replit project. This includes the logic to append new rows to your CSV files while maintaining the exact column order of your original spreadsheets.
+The "Save to CSV" Logic
+Add this function to your app. It handles the "heavy lifting" of making sure the new data is saved permanently in your Replit storage.
+import csv
+import os
+
+def append_to_csv(file_path, data_dict, columns):
+    # Check if the file exists; if not, we create it with headers
+    file_exists = os.path.isfile(file_path)
+    
+    with open(file_path, mode='a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        # If it's a brand new file, we write the headers first
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(data_dict)
+
+# --- Updated "Add New Entry" Section ---
+def show_entry_form():
+    st.divider()
+    with st.expander("➕ Log a New Entry", expanded=True):
+        entry_type = st.radio("What are you logging?", ["Income", "Expense", "Mileage"])
+        
+        if entry_type == "Expense":
+            with st.form("new_expense"):
+                # We use your existing spreadsheet columns as the keys
+                col1, col2 = st.columns(2)
+                with col1:
+                    cat = st.selectbox("Category", ["Supplies (non-office)", "Software / SaaS", "Repairs", "Taxes and licenses"])
+                    tax_cat = st.text_input("Tax Category", value="Supplies")
+                    merchant = st.text_input("Merchant")
+                with col2:
+                    amount = st.number_input("Amount", min_value=0.0, step=0.01)
+                    date = st.date_input("Date")
+                    receipt = st.text_input("Receipt URL (Paste link here)")
+                
+                desc = st.text_area("Description")
+                
+                if st.form_submit_button("Save Expense"):
+                    new_data = {
+                        "CATEGORY": cat, "TAX CATEGORY": tax_cat, "MERCHANT": merchant,
+                        "AMOUNT": amount, "DATE": str(date), "RECEIPT": receipt,
+                        "DESCRIPTION": desc, "BUSINESS": "Willards General Contracting LLC",
+                        "SOURCE": "Chase *1326", "CLIENT": "Willards General Contracting LLC",
+                        "ACCOUNT": "Supplies", "FORM 1040 SCHED C CATEGORY": tax_cat
+                    }
+                    # This matches the column order of your 'Business Expense List'
+                    cols = ["CATEGORY", "TAX CATEGORY", "FORM 1040 SCHED C CATEGORY", "ACCOUNT", 
+                            "BUSINESS", "CLIENT", "MERCHANT", "SOURCE", "DESCRIPTION", "RECEIPT", "DATE", "AMOUNT"]
+                    
+                    append_to_csv("TaxSummary_20260101_to_20261231.xlsx - Business Expense List.csv", new_data, cols)
+                    st.success("Expense added to spreadsheet!")
+                    st.rerun() # Refreshes the app to show the new row in the table
+How this improves your workflow:
+Immediate Sync: As soon as you hit "Save Expense," the logic appends the row to the bottom of your CSV. When you scroll up to your "Expense Records" tab, the new item will already be there.
+No More Data Cleaning: I’ve hard-coded the "Business Name" and "Account Source" as defaults. You only have to fill in the parts that change (Merchant, Amount, Date).
+Receipt Link Readiness: If you use a cloud service (like Google Drive or Dropbox) to host your receipt photos, you just paste the link into the app. The app will then render that as a clickable button in your records.
+Automatic Tax Prep: Because this follows your TaxSummary format, you can simply download these CSVs at the end of the year and hand them to your tax professional. No manual sorting required.
+A Pro-Tip for Replit:
+If you want to be able to upload the receipt photo directly from your phone's camera instead of pasting a URL, we can add a File Uploader that saves the image into a receipts/ folder in your Replit project and automatically generates the link for you.
+Would you like me to add that "Direct Photo Upload" feature next?
+This is a game-changer for mobile use. Instead of manually moving files and pasting links, you can just tap "Browse," take a photo with your phone, and the app will handle the rest.
+To make this work in Replit, we need to add two things:
+A storage folder: To hold the actual image files.
+File handling code: To rename the photo (so they don't overwrite each other) and save the path into your spreadsheet.
+The Updated "Photo Upload" Code
+Replace your show_entry_form and add the new save_receipt function.
+import streamlit as st
+import pandas as pd
+import os
+from datetime import datetime
+
+# 1. Create a folder for receipts if it doesn't exist
+RECEIPT_DIR = "receipts"
+if not os.path.exists(RECEIPT_DIR):
+    os.makedirs(RECEIPT_DIR)
+
+def save_receipt(uploaded_file):
+    """Saves the uploaded file and returns the local path."""
+    if uploaded_file is not None:
+        # Create a unique filename: receipt_20240325_1430.jpg
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_ext = uploaded_file.name.split(".")[-1]
+        file_name = f"receipt_{timestamp}.{file_ext}"
+        file_path = os.path.join(RECEIPT_DIR, file_name)
+        
+        with open(file_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        return file_path
+    return ""
+
+def show_entry_form():
+    st.divider()
+    with st.expander("➕ Log a New Entry", expanded=True):
+        entry_type = st.radio("What are you logging?", ["Income", "Expense", "Mileage"])
+        
+        if entry_type == "Expense":
+            with st.form("new_expense", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    cat = st.selectbox("Category", ["Supplies (non-office)", "Software / SaaS", "Repairs", "Taxes and licenses"])
+                    merchant = st.text_input("Merchant")
+                    amount = st.number_input("Amount", min_value=0.0, step=0.01)
+                with col2:
+                    date = st.date_input("Date")
+                    # NEW: The Camera/File Uploader
+                    uploaded_file = st.file_uploader("Capture/Upload Receipt", type=['jpg', 'png', 'pdf'])
+                
+                desc = st.text_area("Description")
+                
+                if st.form_submit_button("Save to Records"):
+                    # Handle the photo saving
+                    receipt_path = save_receipt(uploaded_file)
+                    
+                    new_data = {
+                        "CATEGORY": cat,
+                        "TAX CATEGORY": cat, # Simplified for the form
+                        "FORM 1040 SCHED C CATEGORY": cat,
+                        "ACCOUNT": "Business Account",
+                        "BUSINESS": "Willards General Contracting LLC",
+                        "CLIENT": "Willards General Contracting LLC",
+                        "MERCHANT": merchant,
+                        "SOURCE": "Chase *1326",
+                        "DESCRIPTION": desc,
+                        "RECEIPT": receipt_path, # Saves the local file path
+                        "DATE": str(date),
+                        "AMOUNT": amount
+                    }
+                    
+                    # Define column order to match your spreadsheet exactly
+                    cols = ["CATEGORY", "TAX CATEGORY", "FORM 1040 SCHED C CATEGORY", "ACCOUNT", 
+                            "BUSINESS", "CLIENT", "MERCHANT", "SOURCE", "DESCRIPTION", "RECEIPT", "DATE", "AMOUNT"]
+                    
+                    # Call your append function (from the previous step)
+                    append_to_csv("TaxSummary_20260101_to_20261231.xlsx - Business Expense List.csv", new_data, cols)
+                    
+                    st.success(f"Successfully logged ${amount} for {merchant}. Photo saved to /{receipt_path}")
+                    st.rerun()
+How this works on your phone:
+Tap "Browse files": Your phone will automatically ask if you want to "Take Photo" or "Photo Library."
+Snap the Receipt: Once you take the picture, Streamlit uploads it to your Replit workspace.
+Automatic Storage: The app saves the image in a folder named receipts and writes the location (e.g., receipts/receipt_20260325.jpg) into the RECEIPT column of your spreadsheet.
+One-Click Review: Later, when you're looking at your "Expense Records" tab in the app, you can see exactly which entries have photos and click them to view.
+Important Note for Replit:
+Since these images are now stored locally on Replit (instead of on a public web link like S3), they won't automatically open in a new browser tab unless we configure a "Static File" route.
+Would you like me to add a small "Image Viewer" pop-up so you can view the receipts directly inside the app without leaving the page?
+Adding an image viewer directly in the app makes the workflow much faster. Instead of downloading a file or opening a new tab, you can just click a row in your table and see the receipt immediately.
+In Streamlit, we can use the Row Selection feature. When you click a row in your expense list, the app will "pop up" the image on the side or below the table.
+The Updated "View & Preview" Code
+Replace the show_accounting_dashboard function in your Replit project with this version. It adds the logic to detect which row you've clicked and display the image.
+import streamlit as st
+import pandas as pd
+import os
+
+def show_accounting_dashboard():
+    st.title("📂 Business Financial Records")
+    
+    # Define the file paths
+    expense_file = "TaxSummary_20260101_to_20261231.xlsx - Business Expense List.csv"
+
+    # --- TAB 2: EXPENSES (With Preview Logic) ---
+    st.subheader("Expense Records")
+    st.info("💡 Click a row to preview the receipt image below.")
+
+    try:
+        # 1. Load data
+        df_exp = pd.read_csv(expense_file, skiprows=1)
+        df_exp = df_exp[df_exp['CATEGORY'].notna() & (df_exp['CATEGORY'] != 'Report Total')]
+        
+        # 2. Add Row Selection to the table
+        # on_select="rerun" allows the app to react immediately when you click a row
+        event = st.dataframe(
+            df_exp,
+            column_config={
+                "RECEIPT": st.column_config.TextColumn("Receipt Path"), # Show the path/link
+                "AMOUNT": st.column_config.NumberColumn("Amount", format="$%.2f"),
+                "DATE": st.column_config.DateColumn("Date")
+            },
+            hide_index=True,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single_row"
+        )
+
+        # 3. THE PREVIEW POP-UP LOGIC
+        # Check if a row was selected
+        selected_rows = event.selection.rows
+        if selected_rows:
+            index = selected_rows[0]
+            receipt_path = df_exp.iloc[index]["RECEIPT"]
+            merchant_name = df_exp.iloc[index]["MERCHANT"]
+            
+            # Create a nice preview area
+            st.divider()
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                st.write(f"### Receipt Preview")
+                st.write(f"**Merchant:** {merchant_name}")
+                st.write(f"**Date:** {df_exp.iloc[index]['DATE']}")
+                st.write(f"**Amount:** ${df_exp.iloc[index]['AMOUNT']}")
+            
+            with col2:
+                if pd.isna(receipt_path) or receipt_path == "":
+                    st.warning("No receipt image attached to this record.")
+                elif receipt_path.startswith("http"):
+                    # It's an external link (like your S3 links)
+                    st.image(receipt_path, caption=f"Receipt from {merchant_name}")
+                elif os.path.exists(receipt_path):
+                    # It's a local file in your Replit 'receipts/' folder
+                    st.image(receipt_path, caption=f"Local Receipt: {receipt_path}")
+                else:
+                    st.error(f"File not found at: {receipt_path}")
+
+    except Exception as e:
+        st.error(f"Error loading records: {e}")
+
+    # (Add your "Log a New Entry" form below this...)
+Why this is the "Pro" way to do it:
+Contextual Viewing: You don't have to hunt for a file. If you see a weird $291.89 charge from Home Depot, you just click that row, and the photo appears instantly right there.
+Hybrid Support: I wrote the code to handle both your old data (the https://s3.amazonaws... links) and your new data (the local receipts/image.jpg files). The app will automatically figure out which one it is and display it correctly.
+No Extra Windows: It keeps everything inside one clean mobile screen. If you're on your phone, the image will appear neatly below the list.
+What to check in Replit:
+Make sure you have pip install pandas streamlit in your requirements.txt.
+If you have a lot of receipts, Replit might start to run low on space. Since these are text and small images, you should be fine for a long time
