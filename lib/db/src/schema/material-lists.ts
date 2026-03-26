@@ -5,6 +5,7 @@ import { materialsTable } from "./materials";
 export const materialListsTable = pgTable("material_lists", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  userId: text("user_id"),
   jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
   markup: numeric("markup", { precision: 5, scale: 2 }).notNull().default("40"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

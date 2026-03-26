@@ -1,14 +1,16 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { dailyLogsTable, jobsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, type SQL } from "drizzle-orm";
 
 const router = Router();
 
-function format(log: any, jobTitle?: string | null) {
+type DailyLogRow = typeof dailyLogsTable.$inferSelect & { jobTitle?: string | null };
+
+function format(log: DailyLogRow) {
   return {
     ...log,
-    jobTitle: jobTitle ?? null,
+    jobTitle: log.jobTitle ?? null,
     hoursWorked: log.hoursWorked ? parseFloat(log.hoursWorked) : null,
     photoUrls: Array.isArray(log.photoUrls) ? log.photoUrls : [],
     createdAt: log.createdAt instanceof Date ? log.createdAt.toISOString() : log.createdAt,
@@ -18,7 +20,7 @@ function format(log: any, jobTitle?: string | null) {
 router.get("/", async (req, res) => {
   try {
     const { jobId, startDate, endDate } = req.query;
-    const conditions: any[] = [];
+    const conditions: SQL[] = [];
     if (jobId) conditions.push(eq(dailyLogsTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(dailyLogsTable.date, startDate as string));
     if (endDate) conditions.push(lte(dailyLogsTable.date, endDate as string));
@@ -30,7 +32,7 @@ router.get("/", async (req, res) => {
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(dailyLogsTable.date);
 
-    res.json(logs.map(l => format(l, l.jobTitle)));
+    res.json(logs.map(l => format(l)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch daily logs" });
@@ -39,7 +41,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { jobId, date, weather, crewCount, workCompleted, issues, materialsUsed, hoursWorked, notes, photoUrls } = req.body;
+    const { jobId, date, weather, crewCount, workCompleted, issues, materialsUsed, hoursWorked, notes, photoUrls, materialListId } = req.body;
     if (!date) return res.status(400).json({ error: "Date is required" });
 
     const [log] = await db.insert(dailyLogsTable).values({
@@ -49,14 +51,15 @@ router.post("/", async (req, res) => {
       hoursWorked: hoursWorked?.toString() ?? null,
       notes,
       photoUrls: photoUrls ?? [],
+      materialListId: materialListId || null,
     }).returning();
 
-    let jobTitle = null;
+    let jobTitle: string | null = null;
     if (log.jobId) {
       const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, log.jobId));
-      jobTitle = job?.title;
+      jobTitle = job?.title ?? null;
     }
-    res.status(201).json(format(log, jobTitle));
+    res.status(201).json(format({ ...log, jobTitle }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create daily log" });
@@ -65,9 +68,13 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const [log] = await db.select({ ...dailyLogsTable, jobTitle: jobsTable.title }).from(dailyLogsTable).leftJoin(jobsTable, eq(dailyLogsTable.jobId, jobsTable.id)).where(eq(dailyLogsTable.id, parseInt(req.params.id)));
+    const [log] = await db
+      .select({ ...dailyLogsTable, jobTitle: jobsTable.title })
+      .from(dailyLogsTable)
+      .leftJoin(jobsTable, eq(dailyLogsTable.jobId, jobsTable.id))
+      .where(eq(dailyLogsTable.id, parseInt(req.params.id)));
     if (!log) return res.status(404).json({ error: "Daily log not found" });
-    res.json(format(log, log.jobTitle));
+    res.json(format(log));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch daily log" });
@@ -77,7 +84,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { jobId, date, weather, crewCount, workCompleted, issues, materialsUsed, hoursWorked, notes, photoUrls } = req.body;
+    const { jobId, date, weather, crewCount, workCompleted, issues, materialsUsed, hoursWorked, notes, photoUrls, materialListId } = req.body;
     const [log] = await db.update(dailyLogsTable).set({
       jobId: jobId || null, date, weather,
       crewCount: crewCount ?? null,
@@ -85,15 +92,16 @@ router.put("/:id", async (req, res) => {
       hoursWorked: hoursWorked?.toString() ?? null,
       notes,
       photoUrls: photoUrls ?? [],
+      materialListId: materialListId || null,
     }).where(eq(dailyLogsTable.id, id)).returning();
     if (!log) return res.status(404).json({ error: "Daily log not found" });
 
-    let jobTitle = null;
+    let jobTitle: string | null = null;
     if (log.jobId) {
       const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, log.jobId));
-      jobTitle = job?.title;
+      jobTitle = job?.title ?? null;
     }
-    res.json(format(log, jobTitle));
+    res.json(format({ ...log, jobTitle }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update daily log" });

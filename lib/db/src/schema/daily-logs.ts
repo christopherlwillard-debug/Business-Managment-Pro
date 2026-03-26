@@ -2,6 +2,7 @@ import { pgTable, serial, text, timestamp, integer, numeric, jsonb } from "drizz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { jobsTable } from "./jobs";
+import { materialListsTable } from "./material-lists";
 
 export const dailyLogsTable = pgTable("daily_logs", {
   id: serial("id").primaryKey(),
@@ -15,6 +16,7 @@ export const dailyLogsTable = pgTable("daily_logs", {
   hoursWorked: numeric("hours_worked", { precision: 5, scale: 2 }),
   notes: text("notes"),
   photoUrls: jsonb("photo_urls").default("[]"),
+  materialListId: integer("material_list_id").references(() => materialListsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -91,13 +91,24 @@ export function useDeleteMaterialList() {
   });
 }
 
+export interface AttachToInvoiceRequest {
+  id: number;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentSize?: number;
+}
+
 export function useAttachMaterialListToInvoice() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) =>
-      customFetch<{ invoiceId: number | null; created: boolean; lineItem?: object }>(
+    mutationFn: ({ id, ...body }: AttachToInvoiceRequest) =>
+      customFetch<{ invoiceId: number | null; created: boolean }>(
         `/api/material-lists/${id}/attach-to-invoice`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/invoices"] });

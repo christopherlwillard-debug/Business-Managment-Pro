@@ -7,7 +7,7 @@ import {
   invoicesTable,
   settingsTable,
 } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, SQL } from "drizzle-orm";
 
 const router = Router();
 
@@ -27,6 +27,12 @@ interface LineItem {
   total: number;
 }
 
+interface InvoiceAttachment {
+  name: string;
+  url: string;
+  size?: number | null;
+}
+
 function fmtItem(row: typeof materialListItemsTable.$inferSelect) {
   return {
     ...row,
@@ -35,7 +41,10 @@ function fmtItem(row: typeof materialListItemsTable.$inferSelect) {
   };
 }
 
-async function getListWithItems(id: number) {
+async function getListWithItems(id: number, userId?: string) {
+  const conditions: SQL[] = [eq(materialListsTable.id, id)];
+  if (userId) conditions.push(eq(materialListsTable.userId, userId));
+
   const [list] = await db
     .select({
       id: materialListsTable.id,
@@ -47,7 +56,7 @@ async function getListWithItems(id: number) {
     })
     .from(materialListsTable)
     .leftJoin(jobsTable, eq(materialListsTable.jobId, jobsTable.id))
-    .where(eq(materialListsTable.id, id));
+    .where(and(...conditions));
 
   if (!list) return null;
 
@@ -67,6 +76,11 @@ async function getListWithItems(id: number) {
 router.get("/", async (req, res) => {
   try {
     const { jobId } = req.query;
+    const userId = req.user?.id;
+
+    const conditions: SQL[] = [];
+    if (userId) conditions.push(eq(materialListsTable.userId, userId));
+    if (jobId) conditions.push(eq(materialListsTable.jobId, parseInt(jobId as string)));
 
     const lists = await db
       .select({
@@ -79,7 +93,7 @@ router.get("/", async (req, res) => {
       })
       .from(materialListsTable)
       .leftJoin(jobsTable, eq(materialListsTable.jobId, jobsTable.id))
-      .where(jobId ? eq(materialListsTable.jobId, parseInt(jobId as string)) : undefined)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(materialListsTable.createdAt);
 
     const allItems = await db.select().from(materialListItemsTable);
@@ -113,10 +127,13 @@ router.post("/", async (req, res) => {
 
     if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
 
+    const userId = req.user?.id ?? null;
+
     const [list] = await db
       .insert(materialListsTable)
       .values({
         name: name.trim(),
+        userId,
         jobId: jobId || null,
         markup: markup.toString(),
       })
@@ -147,7 +164,7 @@ router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-    const result = await getListWithItems(id);
+    const result = await getListWithItems(id, req.user?.id);
     if (!result) return res.status(404).json({ error: "Material list not found" });
     res.json(result);
   } catch (err) {
@@ -170,6 +187,10 @@ router.put("/:id", async (req, res) => {
 
     if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
 
+    const userId = req.user?.id;
+    const updateConditions: SQL[] = [eq(materialListsTable.id, id)];
+    if (userId) updateConditions.push(eq(materialListsTable.userId, userId));
+
     await db
       .update(materialListsTable)
       .set({
@@ -177,7 +198,7 @@ router.put("/:id", async (req, res) => {
         jobId: jobId || null,
         markup: markup.toString(),
       })
-      .where(eq(materialListsTable.id, id));
+      .where(and(...updateConditions));
 
     await db.delete(materialListItemsTable).where(eq(materialListItemsTable.listId, id));
 
@@ -207,7 +228,10 @@ router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-    await db.delete(materialListsTable).where(eq(materialListsTable.id, id));
+    const userId = req.user?.id;
+    const delConditions: SQL[] = [eq(materialListsTable.id, id)];
+    if (userId) delConditions.push(eq(materialListsTable.userId, userId));
+    await db.delete(materialListsTable).where(and(...delConditions));
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -233,7 +257,13 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
-    const list = await getListWithItems(id);
+    const { attachmentUrl, attachmentName, attachmentSize } = (req.body ?? {}) as {
+      attachmentUrl?: string;
+      attachmentName?: string;
+      attachmentSize?: number;
+    };
+
+    const list = await getListWithItems(id, req.user?.id);
     if (!list) return res.status(404).json({ error: "Material list not found" });
 
     if (!list.jobId) {
@@ -260,6 +290,10 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       total: parseFloat(totalCost.toFixed(2)),
     };
 
+    const newAttachment: InvoiceAttachment | null = attachmentUrl
+      ? { name: attachmentName ?? `Material List – ${list.name}.html`, url: attachmentUrl, size: attachmentSize ?? null }
+      : null;
+
     if (existingInvoice) {
       const rawItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems : [];
       const lineItems = rawItems as LineItem[];
@@ -276,11 +310,18 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       const taxRate = existingInvoice.taxRate ? parseFloat(existingInvoice.taxRate) : 0;
       const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
 
+      const rawAttachments = Array.isArray(existingInvoice.attachments) ? existingInvoice.attachments : [];
+      const existingAttachments = rawAttachments as InvoiceAttachment[];
+      const updatedAttachments: InvoiceAttachment[] = newAttachment
+        ? [...existingAttachments.filter(a => a.name !== newAttachment.name), newAttachment]
+        : existingAttachments;
+
       await db.update(invoicesTable).set({
         lineItems: newItems,
         subtotal: subtotal.toFixed(2),
         taxAmount: taxAmount.toFixed(2),
         total: (subtotal + taxAmount).toFixed(2),
+        attachments: updatedAttachments,
       }).where(eq(invoicesTable.id, existingInvoice.id));
 
       return res.json({ invoiceId: existingInvoice.id, created: false });
@@ -300,7 +341,7 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       taxAmount: "0",
       total: subtotal.toFixed(2),
       lineItems,
-      attachments: [],
+      attachments: newAttachment ? [newAttachment] : [],
     }).returning();
 
     return res.json({ invoiceId: newInvoice.id, created: true });

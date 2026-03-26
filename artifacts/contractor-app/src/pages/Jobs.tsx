@@ -189,8 +189,56 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
   }
 
   async function handleAttach(list: MaterialList) {
+    const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const markupMult = list.markup / 100 + 1;
+    const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+    const rows = list.items.map(it => `
+      <tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee">${it.nameSnapshot}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center">${it.unitSnapshot || "ea"}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">$${it.unitCostSnapshot.toFixed(2)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center">${it.qty}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">$${(it.unitCostSnapshot * it.qty * markupMult).toFixed(2)}</td>
+      </tr>`).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Material List – ${list.name}</title>
+    <style>body{font-family:sans-serif;font-size:13px;color:#222;padding:24px}h1{font-size:18px;margin:0 0 4px}
+    table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#f5f5f5;padding:6px 8px;text-align:left;border-bottom:2px solid #ddd}
+    .total{text-align:right;margin-top:12px;font-weight:bold;font-size:15px}</style></head>
+    <body><h1>Material List: ${list.name}</h1>
+    <p style="color:#666;margin:0">Job: ${job.title} &nbsp;|&nbsp; Date: ${today}${list.markup > 0 ? ` &nbsp;|&nbsp; Markup: ${list.markup}%` : ""}</p>
+    <table><thead><tr><th>Item</th><th style="text-align:center">Unit</th><th style="text-align:right">Unit Cost</th><th style="text-align:center">Qty</th><th style="text-align:right">Extended</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <p class="total">Total: $${subtotal.toFixed(2)}</p></body></html>`;
+
+    let attachmentUrl: string | undefined;
+    let attachmentName: string | undefined;
+    let attachmentSize: number | undefined;
+
     try {
-      const res = await attachToInvoice.mutateAsync(list.id);
+      const blob = new Blob([html], { type: "text/html" });
+      const fd = new FormData();
+      const filename = `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.html`;
+      fd.append("file", blob, filename);
+      const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
+      if (uploadRes.ok) {
+        const uploaded = await uploadRes.json() as { url: string; filename: string; size: number };
+        attachmentUrl = uploaded.url;
+        attachmentName = `Material List – ${list.name}.html`;
+        attachmentSize = uploaded.size;
+      }
+    } catch {
+    }
+
+    try {
+      const res = await attachToInvoice.mutateAsync({
+        id: list.id,
+        attachmentUrl,
+        attachmentName,
+        attachmentSize,
+      });
       setAttachMsg(prev => ({
         ...prev,
         [list.id]: {
@@ -201,10 +249,11 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
         },
       }));
       qc.invalidateQueries({ queryKey: ["/api/invoices"] });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to attach to invoice.";
       setAttachMsg(prev => ({
         ...prev,
-        [list.id]: { ok: false, text: err?.message || "Failed to attach to invoice." },
+        [list.id]: { ok: false, text: msg },
       }));
     }
   }
@@ -479,16 +528,19 @@ function JobDailyLogPanel({
 }) {
   const queryClient = useQueryClient();
   const { data: logs = [], isLoading } = useListDailyLogs({ jobId: job.id });
+  const { data: materialLists = [] } = useListMaterialLists({ jobId: job.id });
   const createLog  = useCreateDailyLog();
   const deleteLog  = useDeleteDailyLog();
+  const attachToInvoice = useAttachMaterialListToInvoice();
 
   const today = new Date().toISOString().split("T")[0];
-  const [form, setForm] = useState({ date: today, notes: "", workCompleted: "" });
+  const [form, setForm] = useState({ date: today, notes: "", workCompleted: "", materialListId: "" });
   const [submitting, setSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [attachMsg, setAttachMsg] = useState<Record<number, { ok: boolean; text: string }>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
@@ -526,13 +578,48 @@ function JobDailyLogPanel({
           notes: form.notes || undefined,
           workCompleted: form.workCompleted || undefined,
           photoUrls: pendingPhotos.length > 0 ? pendingPhotos : undefined,
+          materialListId: form.materialListId ? parseInt(form.materialListId) : undefined,
         },
       });
-      setForm({ date: today, notes: "", workCompleted: "" });
+      setForm({ date: today, notes: "", workCompleted: "", materialListId: "" });
       setPendingPhotos([]);
       queryClient.invalidateQueries({ queryKey: ["/api/daily-logs"] });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handlePushToInvoice(log: DailyLog) {
+    if (!log.materialListId) return;
+    const list = materialLists.find(l => l.id === log.materialListId);
+    if (!list) return;
+    const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const markupMult = list.markup / 100 + 1;
+    const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
+    const today2 = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const rows = list.items.map(it => `<tr><td>${it.nameSnapshot}</td><td>${it.unitSnapshot || "ea"}</td><td>$${it.unitCostSnapshot.toFixed(2)}</td><td>${it.qty}</td><td>$${(it.unitCostSnapshot * it.qty * markupMult).toFixed(2)}</td></tr>`).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Material List – ${list.name}</title></head><body><h1>Material List: ${list.name}</h1><p>Job: ${job.title} | Date: ${today2}</p><table><thead><tr><th>Item</th><th>Unit</th><th>Unit Cost</th><th>Qty</th><th>Extended</th></tr></thead><tbody>${rows}</tbody></table><p>Total: $${subtotal.toFixed(2)}</p></body></html>`;
+    let attachmentUrl: string | undefined;
+    let attachmentName: string | undefined;
+    let attachmentSize: number | undefined;
+    try {
+      const blob = new Blob([html], { type: "text/html" });
+      const fd = new FormData();
+      fd.append("file", blob, `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.html`);
+      const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
+      if (uploadRes.ok) {
+        const up = await uploadRes.json() as { url: string; filename: string; size: number };
+        attachmentUrl = up.url;
+        attachmentName = `Material List – ${list.name}.html`;
+        attachmentSize = up.size;
+      }
+    } catch { }
+    try {
+      await attachToInvoice.mutateAsync({ id: list.id, attachmentUrl, attachmentName, attachmentSize });
+      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: true, text: "Pushed to invoice." } }));
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+    } catch {
+      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: false, text: "Failed to push to invoice." } }));
     }
   }
 
@@ -599,6 +686,22 @@ function JobDailyLogPanel({
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
+
+              {/* Material List picker */}
+              {materialLists.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Attach Material List</label>
+                  <select
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    value={form.materialListId}
+                    onChange={e => setForm(f => ({ ...f, materialListId: e.target.value }))}>
+                    <option value="">None</option>
+                    {materialLists.map(l => (
+                      <option key={l.id} value={String(l.id)}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Photo upload */}
               <div>
@@ -689,6 +792,28 @@ function JobDailyLogPanel({
                       ))}
                     </div>
                   )}
+                  {log.materialListId != null && (() => {
+                    const list = materialLists.find(l => l.id === log.materialListId);
+                    if (!list) return null;
+                    const markupMult = list.markup / 100 + 1;
+                    const total = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
+                    const msg = attachMsg[log.id];
+                    return (
+                      <div className="mt-1 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-0.5">Material List</p>
+                          <p className="text-xs font-medium text-foreground truncate">{list.name}</p>
+                          <p className="text-xs text-amber-600 font-bold">{formatCurrency(total)}</p>
+                          {msg && <p className={`text-[10px] mt-0.5 ${msg.ok ? "text-emerald-600" : "text-destructive"}`}>{msg.text}</p>}
+                        </div>
+                        <button
+                          onClick={() => handlePushToInvoice(log)}
+                          className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors">
+                          <FileText className="w-3 h-3" /> Push to Invoice
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))
             )}

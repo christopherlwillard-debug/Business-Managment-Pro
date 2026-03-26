@@ -559,6 +559,7 @@ export interface DailyLog {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls: string[];
+  materialListId?: number | null;
   createdAt: string;
 }
 
@@ -573,6 +574,7 @@ export interface CreateDailyLogRequest {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls?: string[];
+  materialListId?: number | null;
 }
 
 export type AppSettingsInvoiceLogoSize =
