@@ -154,15 +154,15 @@
   .invoice-print-area,
   .invoice-print-area * { visibility: visible; }
   .invoice-print-area {
-    position: absolute;
-    top: 0;
-    left: 0;
+    position: fixed;
+    inset: 0;
     width: 100%;
     max-width: 100% !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     border: none !important;
     overflow: visible !important;
+    background: white !important;
   }
   .invoice-print-area input,
   .invoice-print-area select,
@@ -170,8 +170,9 @@
   .invoice-print-area button { display: none !important; }
   .invoice-print-area span.print-value { display: inline !important; }
   .invoice-print-area p.print-value { display: block !important; }
+  .invoice-print-area a.print-value { display: inline-flex !important; }
   .invoice-print-area .print-hide { display: none !important; }
-  @page { margin: 0.75in; size: auto; }
+  @page { size: letter portrait; margin: 0.5in; }
 }
 
 /* Custom Scrollbar for a premium feel */

@@ -510,11 +510,15 @@ function InvoiceBuilder({
                   {attachments.map((att, i) => (
                     <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 max-w-[200px]">
                       <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                      <span className="truncate flex-1">{att.name}</span>
+                      <span className="truncate flex-1 print-hide">{att.name}</span>
+                      <a href={att.url} target="_blank" rel="noopener noreferrer"
+                        className="print-value items-center gap-1 text-amber-700 underline truncate flex-1">
+                        {att.name}
+                      </a>
                       <button
                         type="button"
                         onClick={() => onAttachmentsChange(attachments.filter((_, idx) => idx !== i))}
-                        className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0 ml-1"
+                        className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0 ml-1 print-hide"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -634,7 +638,7 @@ function InvoiceViewModal({
 
         {/* Invoice document */}
         <div className="flex-1 overflow-y-auto p-5">
-          <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden text-[12.5px] text-gray-900">
+          <div className="invoice-print-area bg-white rounded-xl shadow border border-gray-200 overflow-hidden text-[12.5px] text-gray-900">
             <div className="h-2 bg-gradient-to-r from-amber-500 to-amber-400" />
             <div className="p-8 space-y-6">
 

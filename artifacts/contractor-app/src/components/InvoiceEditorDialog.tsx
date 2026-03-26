@@ -713,10 +713,14 @@ export function InvoiceEditorDialog({
                       {attachments.map((att, i) => (
                         <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 max-w-[180px]">
                           <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                          <span className="truncate flex-1">{att.name}</span>
+                          <span className="truncate flex-1 print-hide">{att.name}</span>
+                          <a href={att.url} target="_blank" rel="noopener noreferrer"
+                            className="print-value items-center gap-1 text-amber-700 underline truncate flex-1">
+                            {att.name}
+                          </a>
                           <button type="button"
                             onClick={() => setAttachments(a => a.filter((_, idx) => idx !== i))}
-                            className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0">
+                            className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0 print-hide">
                             <X className="w-3 h-3" />
                           </button>
                         </div>
