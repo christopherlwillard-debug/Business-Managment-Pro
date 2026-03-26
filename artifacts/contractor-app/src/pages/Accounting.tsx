@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
   TrendingUp, TrendingDown, DollarSign, MapPin, Receipt,
   Navigation, HardHat, FileSpreadsheet, Printer, AlertCircle, CheckCircle2,
-  Download, FileText, BarChart3, AlertTriangle
+  Download, FileText, BarChart3, AlertTriangle, Calendar, ExternalLink,
+  ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
 } from "lucide-react";
 import { useScheduleCReport, useAllSubcontractorsPayments, useCreatePayment, useUpdatePayment, useDeletePayment, type Payment } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -77,10 +78,460 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Other": "bg-slate-100 text-slate-600",
 };
 
+// ─── KY LLC Filing Calendar ────────────────────────────────────────────────
+
+type FilingStatus = "not-filed" | "filed" | "na";
+
+interface Filing {
+  id: string;
+  name: string;
+  authority: string;
+  dueDate: (year: number) => Date | null;
+  dueDateLabel: (year: number) => string;
+  fee: string;
+  description: string;
+  link: string;
+  linkLabel: string;
+  learnMore: string;
+  penalty: string;
+  conditional?: string;
+}
+
+const KY_FILINGS: Filing[] = [
+  {
+    id: "ky-annual-report",
+    name: "KY Annual Report",
+    authority: "KY Secretary of State",
+    dueDate: (y) => new Date(y, 5, 30),
+    dueDateLabel: (y) => `June 30, ${y}`,
+    fee: "$15",
+    description: "Annual LLC filing to keep your business in good standing with the state.",
+    link: "https://sos.ky.gov",
+    linkLabel: "sos.ky.gov",
+    learnMore: "Every Kentucky LLC must file an Annual Report with the Secretary of State by June 30 each year. This report confirms your registered agent, principal office address, and members/managers. Failure to file can result in administrative dissolution of your LLC.",
+    penalty: "Late or missing filings can result in administrative dissolution of your LLC and a $50+ late fee. A dissolved LLC loses liability protection.",
+  },
+  {
+    id: "ky-llet-725",
+    name: "LLET / Form 725",
+    authority: "KY Dept. of Revenue",
+    dueDate: (y) => new Date(y, 3, 15),
+    dueDateLabel: (y) => `April 15, ${y}`,
+    fee: "$175 minimum",
+    description: "Kentucky Limited Liability Entity Tax — required for all LLCs doing business in KY.",
+    link: "https://onestop.ky.gov",
+    linkLabel: "Kentucky Online Gateway",
+    learnMore: "The LLET is Kentucky's annual business privilege tax on LLCs. For a single-member LLC, you file Form 725. The tax is the greater of $175 or a percentage of gross receipts / gross profits. It is due the same day as your federal return (April 15 for calendar-year filers). If you need more time, you can pay the $175 minimum by April 15 and file an extension.",
+    penalty: "Penalty of 2% per month (up to 20%) on unpaid tax, plus interest at 1% per month. Minimum $175 due even with no income.",
+  },
+  {
+    id: "federal-1040",
+    name: "Federal 1040 + Schedule C + SE",
+    authority: "IRS",
+    dueDate: (y) => new Date(y, 3, 15),
+    dueDateLabel: (y) => `April 15, ${y}`,
+    fee: "No state fee",
+    description: "Personal income tax return including business profit/loss and self-employment tax.",
+    link: "https://www.irs.gov/forms-pubs/about-schedule-c-form-1040",
+    linkLabel: "IRS.gov / Schedule C",
+    learnMore: "As a single-member LLC, you report your business income and expenses on Schedule C of your personal Form 1040. Self-employment tax (Social Security + Medicare, ~15.3%) is calculated on Schedule SE. The net profit from Schedule C flows to your 1040 as ordinary income. You may request a 6-month extension (Form 4868) by April 15, but any taxes owed must still be paid by April 15 to avoid penalties.",
+    penalty: "Late filing: 5% of unpaid tax per month (max 25%). Late payment: 0.5% per month. Failure-to-pay interest accrues from due date.",
+  },
+  {
+    id: "est-q1",
+    name: "Quarterly Estimated Tax — Q1",
+    authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y, 3, 15),
+    dueDateLabel: (y) => `April 15, ${y}`,
+    fee: "Pay estimated tax owed",
+    description: "Q1 estimated payment covering Jan 1 – Mar 31 income.",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
+    linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "If you expect to owe $1,000 or more in federal income taxes after withholding, you must make quarterly estimated payments. Q1 covers January–March income. Use Form 1040-ES to calculate. You can pay online at IRS Direct Pay (no fee). As a rule of thumb, pay 25% of your prior year's total tax liability or 90% of current-year estimated tax.",
+    penalty: "Underpayment penalty (typically ~8% annualized rate) on amounts underpaid, plus interest.",
+  },
+  {
+    id: "est-q2",
+    name: "Quarterly Estimated Tax — Q2",
+    authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y, 5, 15),
+    dueDateLabel: (y) => `June 15, ${y}`,
+    fee: "Pay estimated tax owed",
+    description: "Q2 estimated payment covering Apr 1 – May 31 income.",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
+    linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "Q2 covers April–May income and is due June 15. Note: this is a shorter payment period than Q1 or Q3. Use IRS Direct Pay or EFTPS to submit. Keep a record of each payment — you'll need these amounts when filing your return to claim credit for estimated taxes paid.",
+    penalty: "Underpayment penalty on any shortfall, calculated from the due date of each installment.",
+  },
+  {
+    id: "est-q3",
+    name: "Quarterly Estimated Tax — Q3",
+    authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y, 8, 15),
+    dueDateLabel: (y) => `September 15, ${y}`,
+    fee: "Pay estimated tax owed",
+    description: "Q3 estimated payment covering Jun 1 – Aug 31 income.",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
+    linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "Q3 covers June–August income and is due September 15. This is often when contractors are at peak revenue — consider reviewing your YTD income and adjusting your payment upward if business has been strong to avoid an underpayment penalty at tax time.",
+    penalty: "Underpayment penalty calculated from September 15 if payment was insufficient.",
+  },
+  {
+    id: "est-q4",
+    name: "Quarterly Estimated Tax — Q4",
+    authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y + 1, 0, 15),
+    dueDateLabel: (y) => `January 15, ${y + 1}`,
+    fee: "Pay estimated tax owed",
+    description: "Q4 estimated payment covering Sep 1 – Dec 31 income.",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
+    linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "Q4 covers September–December income and is due January 15 of the following year. You can skip the Q4 payment if you file your complete tax return and pay all taxes owed by January 31. This is a good time to do a year-end tax review and decide if you want to make any last-minute deductions (e.g., equipment purchases before Dec 31).",
+    penalty: "Underpayment penalty from January 15 if payment was insufficient.",
+  },
+  {
+    id: "owensboro-occ-license",
+    name: "Owensboro Occ. License / Net Profit Return",
+    authority: "City of Owensboro",
+    dueDate: (y) => new Date(y, 3, 15),
+    dueDateLabel: (y) => `April 15, ${y} (same as federal)`,
+    fee: "$75 minimum or 1.39% of net profit",
+    description: "Annual net profit return for work performed in Owensboro city limits.",
+    link: "https://owensboro.org/city-services/finance/occupational-license/",
+    linkLabel: "owensboro.org / Occ. License",
+    learnMore: "If you performed work within the Owensboro city limits, you owe a local occupational tax on your net profit. The rate is 1.39% with a $75 annual minimum license fee. File the Net Profit Return each year by April 15. You can pay online or mail to the Owensboro Finance Department. Use the Income by City/Location report on this page to determine how much of your income was earned in Owensboro.",
+    penalty: "Late filing penalty of 5% per month (max 25%) plus 1% interest per month on unpaid tax.",
+  },
+  {
+    id: "ky-sales-use-tax",
+    name: "KY Sales & Use Tax",
+    authority: "KY Dept. of Revenue",
+    dueDate: (_y) => null,
+    dueDateLabel: (_y) => "Monthly or quarterly (if applicable)",
+    fee: "6% of taxable sales",
+    description: "Required only if you sell taxable goods or collect sales tax from customers.",
+    link: "https://revenue.ky.gov/Business/Sales-Use-Tax/Pages/default.aspx",
+    linkLabel: "KY Revenue / Sales Tax",
+    learnMore: "Most contractor services are not subject to Kentucky sales tax. However, if you sell materials, equipment, or taxable goods directly to customers (rather than charging for services), you may need to collect and remit 6% KY sales tax. If you are collecting sales tax, you must register with the KY Department of Revenue and file returns monthly or quarterly. Check with your CPA if you're unsure whether your work involves taxable sales.",
+    penalty: "Failure to collect/remit sales tax can result in back-taxes, penalties (2%/month up to 20%), interest, and personal liability.",
+    conditional: "Only required if you sell taxable goods",
+  },
+  {
+    id: "boi-report",
+    name: "BOI Report (Beneficial Ownership)",
+    authority: "FinCEN (Federal)",
+    dueDate: (_y) => null,
+    dueDateLabel: (_y) => "One-time (or within 30 days of change)",
+    fee: "No fee",
+    description: "One-time federal report of who owns and controls the business. Required for most LLCs.",
+    link: "https://www.fincen.gov/boi",
+    linkLabel: "fincen.gov/boi",
+    learnMore: "Under the Corporate Transparency Act, most U.S. LLCs must file a Beneficial Ownership Information (BOI) report with FinCEN. For LLCs formed before January 1, 2024, the initial report was due by January 1, 2025. For new LLCs formed after January 1, 2024, the report is due within 90 days of formation. After filing, you must update the report within 30 days of any changes to ownership or contact information. Filing is free at the FinCEN portal.",
+    penalty: "Civil penalties of $500/day per violation. Criminal penalties of up to $10,000 and 2 years imprisonment for willful violations.",
+    conditional: "One-time filing — mark N/A once complete",
+  },
+  {
+    id: "personal-property-tax",
+    name: "Personal Property Tax Return",
+    authority: "Daviess County PVA",
+    dueDate: (y) => new Date(y, 4, 15),
+    dueDateLabel: (y) => `May 15, ${y} (if applicable)`,
+    fee: "Based on assessed value",
+    description: "Annual return for business personal property (equipment, tools, vehicles) if applicable.",
+    link: "https://www.daviesspva.org",
+    linkLabel: "Daviess County PVA",
+    learnMore: "If your business owns tangible personal property (tools, equipment, machinery, computers, furniture) valued above the threshold, you must file an annual Personal Property Tax Return with the Daviess County Property Valuation Administrator (PVA) by May 15. The PVA assesses the value and you'll receive a tax bill. Note: vehicles registered in your business name are typically assessed separately through the motor vehicle registration process.",
+    penalty: "Late returns receive a 10% penalty on the assessed value. Failure to file can result in estimated assessment plus penalties.",
+    conditional: "Only required if business owns tangible personal property",
+  },
+];
+
+function getFilingStatusColor(filing: Filing, year: number, status: FilingStatus): string {
+  if (status === "filed") return "bg-emerald-50 border-emerald-200";
+  if (status === "na") return "bg-muted/30 border-border";
+  const due = filing.dueDate(year);
+  if (!due) return "bg-card border-border";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  if (due < today) return "bg-red-50 border-red-200";
+  const soon = new Date(today);
+  soon.setDate(soon.getDate() + 30);
+  if (due <= soon) return "bg-amber-50 border-amber-200";
+  return "bg-card border-border";
+}
+
+function getFilingDueDateStyle(filing: Filing, year: number, status: FilingStatus): string {
+  if (status === "filed" || status === "na") return "text-muted-foreground";
+  const due = filing.dueDate(year);
+  if (!due) return "text-muted-foreground";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  if (due < today) return "text-red-600 font-semibold";
+  const soon = new Date(today);
+  soon.setDate(soon.getDate() + 30);
+  if (due <= soon) return "text-amber-600 font-semibold";
+  return "text-foreground";
+}
+
+function getFilingDueBadge(filing: Filing, year: number, status: FilingStatus) {
+  if (status === "filed") return null;
+  if (status === "na") return null;
+  const due = filing.dueDate(year);
+  if (!due) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueCopy = new Date(due);
+  dueCopy.setHours(0, 0, 0, 0);
+  if (dueCopy < today) return { label: "Overdue", cls: "bg-red-100 text-red-700" };
+  const soon = new Date(today);
+  soon.setDate(soon.getDate() + 30);
+  if (dueCopy <= soon) {
+    const days = Math.ceil((dueCopy.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return { label: `Due in ${days}d`, cls: "bg-amber-100 text-amber-700" };
+  }
+  return null;
+}
+
+const STATUS_CYCLE: FilingStatus[] = ["not-filed", "filed", "na"];
+
+function FilingCalendarTab({ year }: { year: number }) {
+  const storageKey = `ky-filing-statuses-${year}`;
+
+  const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const getStatus = useCallback((id: string): FilingStatus => statuses[id] ?? "not-filed", [statuses]);
+
+  const cycleStatus = useCallback((id: string) => {
+    setStatuses(prev => {
+      const current = prev[id] ?? "not-filed";
+      const idx = STATUS_CYCLE.indexOf(current);
+      const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+      const updated = { ...prev, [id]: next };
+      try { localStorage.setItem(storageKey, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, [storageKey]);
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let overdue = 0, dueSoon = 0, filed = 0, na = 0;
+  for (const f of KY_FILINGS) {
+    const st = getStatus(f.id);
+    if (st === "filed") { filed++; continue; }
+    if (st === "na") { na++; continue; }
+    const due = f.dueDate(year);
+    if (!due) continue;
+    const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
+    if (dueCopy < today) overdue++;
+    else {
+      const soon = new Date(today); soon.setDate(soon.getDate() + 30);
+      if (dueCopy <= soon) dueSoon++;
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className={`rounded-xl border p-4 flex items-center gap-3 ${overdue > 0 ? "bg-red-50 border-red-200" : "bg-card border-border"}`}>
+          <XCircle className={`w-6 h-6 flex-shrink-0 ${overdue > 0 ? "text-red-600" : "text-muted-foreground"}`} />
+          <div>
+            <p className={`text-2xl font-display font-bold ${overdue > 0 ? "text-red-600" : "text-muted-foreground"}`}>{overdue}</p>
+            <p className="text-xs text-muted-foreground font-medium">Overdue</p>
+          </div>
+        </div>
+        <div className={`rounded-xl border p-4 flex items-center gap-3 ${dueSoon > 0 ? "bg-amber-50 border-amber-200" : "bg-card border-border"}`}>
+          <Clock className={`w-6 h-6 flex-shrink-0 ${dueSoon > 0 ? "text-amber-600" : "text-muted-foreground"}`} />
+          <div>
+            <p className={`text-2xl font-display font-bold ${dueSoon > 0 ? "text-amber-600" : "text-muted-foreground"}`}>{dueSoon}</p>
+            <p className="text-xs text-muted-foreground font-medium">Due Soon</p>
+          </div>
+        </div>
+        <div className="rounded-xl border bg-card border-border p-4 flex items-center gap-3">
+          <CheckCircle className="w-6 h-6 flex-shrink-0 text-emerald-600" />
+          <div>
+            <p className="text-2xl font-display font-bold text-emerald-600">{filed}</p>
+            <p className="text-xs text-muted-foreground font-medium">Filed / Complete</p>
+          </div>
+        </div>
+        <div className="rounded-xl border bg-card border-border p-4 flex items-center gap-3">
+          <Shield className="w-6 h-6 flex-shrink-0 text-muted-foreground" />
+          <div>
+            <p className="text-2xl font-display font-bold text-muted-foreground">{na}</p>
+            <p className="text-xs text-muted-foreground font-medium">N/A</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filing List */}
+      <div className="space-y-3">
+        {KY_FILINGS.map(filing => {
+          const status = getStatus(filing.id);
+          const isExpanded = expanded[filing.id];
+          const badge = getFilingDueBadge(filing, year, status);
+          const rowBg = getFilingStatusColor(filing, year, status);
+          const dateStyle = getFilingDueDateStyle(filing, year, status);
+
+          return (
+            <div key={filing.id} className={`rounded-2xl border ${rowBg} overflow-hidden transition-colors`}>
+              <div className="p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                  {/* Status Toggle */}
+                  <button
+                    onClick={() => cycleStatus(filing.id)}
+                    className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors mt-0.5 ${
+                      status === "filed"
+                        ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-200"
+                        : status === "na"
+                        ? "bg-muted text-muted-foreground hover:bg-muted/80"
+                        : "bg-background border border-border text-muted-foreground hover:bg-muted/40"
+                    }`}
+                    title={`Status: ${status === "not-filed" ? "Not Filed" : status === "filed" ? "Filed" : "N/A"} — click to cycle`}
+                  >
+                    {status === "filed" ? <CheckCircle className="w-5 h-5" /> :
+                     status === "na" ? <XCircle className="w-4 h-4" /> :
+                     <Clock className="w-4 h-4" />}
+                  </button>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className={`font-semibold text-foreground ${status === "na" ? "opacity-50" : ""}`}>{filing.name}</span>
+                      {badge && (
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>{badge.label}</span>
+                      )}
+                      {filing.conditional && (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{filing.conditional}</span>
+                      )}
+                      {status === "filed" && (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Filed</span>
+                      )}
+                      {status === "na" && (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">N/A</span>
+                      )}
+                    </div>
+                    <p className={`text-xs font-medium mb-1.5 ${status === "na" ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{filing.authority}</p>
+                    <p className={`text-sm mb-2 ${status === "na" ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{filing.description}</p>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                      <span className={`flex items-center gap-1 ${dateStyle}`}>
+                        <Calendar className="w-3.5 h-3.5" />
+                        {filing.dueDateLabel(year)}
+                      </span>
+                      {filing.fee !== "No state fee" && filing.fee !== "Pay estimated tax owed" && (
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <DollarSign className="w-3.5 h-3.5" /> {filing.fee}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right side actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <a
+                      href={filing.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">File</span>
+                    </a>
+                    <button
+                      onClick={() => toggleExpand(filing.id)}
+                      className="flex items-center gap-1 h-8 px-3 rounded-lg border border-border bg-background hover:bg-muted/40 text-xs font-medium text-muted-foreground transition-colors"
+                    >
+                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      <span className="hidden sm:inline">Learn More</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Learn More Panel */}
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-border/60 space-y-3 text-sm">
+                    <div>
+                      <p className="font-semibold text-foreground mb-1">What it is</p>
+                      <p className="text-muted-foreground">{filing.learnMore}</p>
+                    </div>
+                    <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                      <p className="font-semibold text-red-800 mb-0.5 text-xs uppercase tracking-wide">Penalty for missing</p>
+                      <p className="text-red-700 text-sm">{filing.penalty}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={filing.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-primary hover:underline text-sm font-medium"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        {filing.linkLabel}
+                      </a>
+                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground text-xs">{filing.authority}</span>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-xs text-muted-foreground italic">Toggle status:</span>
+                      <button onClick={() => cycleStatus(filing.id)} className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold border transition-colors ${
+                        status === "not-filed" ? "bg-background border-border text-foreground hover:bg-muted/40" :
+                        status === "filed" ? "bg-emerald-100 border-emerald-200 text-emerald-700 hover:bg-emerald-200" :
+                        "bg-muted border-border text-muted-foreground hover:bg-muted/60"
+                      }`}>
+                        {status === "filed" ? <><CheckCircle className="w-3.5 h-3.5" /> Filed</> :
+                         status === "na" ? <><XCircle className="w-3.5 h-3.5" /> N/A</> :
+                         <><Clock className="w-3.5 h-3.5" /> Not Filed</>}
+                      </button>
+                      <span className="text-xs text-muted-foreground">← click to change</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* CPA Disclaimer */}
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+        <div className="flex gap-3">
+          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-blue-900 mb-1">Informational Only — Consult a CPA</p>
+            <p className="text-sm text-blue-800">
+              This filing calendar is provided for general guidance only and does not constitute legal or tax advice.
+              Due dates, fees, and requirements can change. Always verify current requirements with the relevant authority
+              and consult a qualified CPA or tax professional before making filing decisions.
+              Kentucky SBDC (<a href="https://kysbdc.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">kysbdc.com</a>) offers free small-business advising if you need help.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
 export default function Accounting() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
-  const [activeTab, setActiveTab] = useState<"accounting" | "schedule-c">("accounting");
+  const [activeTab, setActiveTab] = useState<"accounting" | "schedule-c" | "filing-calendar">("accounting");
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
@@ -146,6 +597,16 @@ export default function Accounting() {
           }`}
         >
           <BarChart3 className="w-4 h-4 inline mr-2" /> Schedule C
+        </button>
+        <button
+          onClick={() => setActiveTab("filing-calendar")}
+          className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === "filing-calendar"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Calendar className="w-4 h-4 inline mr-2" /> Filing Calendar
         </button>
       </div>
 
@@ -474,6 +935,11 @@ export default function Accounting() {
             </>
           )}
         </>
+      )}
+
+      {/* Filing Calendar Tab */}
+      {activeTab === "filing-calendar" && (
+        <FilingCalendarTab year={year} />
       )}
 
       {/* Schedule C Tab */}
