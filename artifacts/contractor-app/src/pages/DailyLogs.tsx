@@ -1,5 +1,4 @@
-import { useListDailyLogs } from "@workspace/api-client-react";
-import { useListMaterialLists } from "@workspace/api-client-react/src/hooks/useMaterialLists";
+import { useListDailyLogs, useListMaterialLists } from "@workspace/api-client-react";
 import { ClipboardList } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDate, formatCurrency } from "@/lib/utils";
