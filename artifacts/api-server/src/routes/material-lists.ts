@@ -294,7 +294,10 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
     const [existingInvoice] = await db
       .select()
       .from(invoicesTable)
-      .where(eq(invoicesTable.jobId, list.jobId))
+      .where(and(
+        eq(invoicesTable.jobId, list.jobId),
+        eq(invoicesTable.status, "draft"),
+      ))
       .orderBy(desc(invoicesTable.id))
       .limit(1);
 
@@ -309,7 +312,7 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       ? { name: attachmentName ?? `Material List – ${list.name}.html`, url: attachmentUrl, size: attachmentSize ?? null }
       : null;
 
-    if (existingInvoice) {
+    if (existingInvoice && existingInvoice.status === "draft") {
       const rawItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems : [];
       const lineItems = rawItems as LineItem[];
       const matIdx = lineItems.findIndex((li) => li.description === "Materials");
