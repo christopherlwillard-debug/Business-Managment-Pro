@@ -64,6 +64,7 @@ export default function Materials() {
     category: categoryFilter || undefined,
     includeInactive: showInactive,
   });
+  const { data: allActiveMaterials = [] } = useListMaterials({ includeInactive: false });
   const { data: settings } = useGetSettings();
   const s = (settings ?? {}) as AppSettings;
 
@@ -135,7 +136,7 @@ export default function Materials() {
   const quoteTax = quoteSubtotal * (quoteInfo.taxRate / 100);
   const quoteTotal = quoteSubtotal + quoteTax;
 
-  const filteredForQuote = materials.filter(m =>
+  const filteredForQuote = allActiveMaterials.filter(m =>
     !quoteSearch || m.name.toLowerCase().includes(quoteSearch.toLowerCase())
   );
 
