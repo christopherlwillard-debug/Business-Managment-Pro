@@ -39,6 +39,9 @@ router.use(authRouter);
 // Portal routes are public — token-based auth is handled inside the router
 router.use("/portal", portalRouter);
 
+// Vendor list is non-sensitive (global names like "Home Depot") — public for portal combobox
+router.use("/vendors", vendorsRouter);
+
 // All other routes require a valid session
 router.use(requireAuth);
 
@@ -56,7 +59,6 @@ router.use("/daily-logs", dailyLogsRouter);
 router.use("/settings", settingsRouter);
 router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);
-router.use("/vendors", vendorsRouter);
 router.use("/compliance-items", complianceItemsRouter);
 router.use("/expense-import", expenseImportRouter);
 router.use("/payments", paymentsRouter);

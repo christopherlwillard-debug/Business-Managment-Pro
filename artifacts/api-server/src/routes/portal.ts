@@ -522,9 +522,27 @@ tokenRouter.post("/upload", portalUpload.single("file"), async (req, res) => {
 });
 
 // Serve portal receipt files — gated by requirePinSession (applied to all tokenRouter routes)
+// Verifies the file is referenced by one of this subcontractor's expenses (object-level authorization)
 tokenRouter.get("/uploads/:filename", async (req, res) => {
   try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+
     const filename = path.basename(req.params.filename); // prevent path traversal
+    const portalScopedUrl = `/api/portal/${req.params.token}/uploads/${filename}`;
+
+    // Verify this file belongs to one of the subcontractor's expenses
+    const [ownerExpense] = await db
+      .select({ id: expensesTable.id })
+      .from(expensesTable)
+      .where(and(
+        eq(expensesTable.subcontractorId, sub.id),
+        eq(expensesTable.receiptUrl, portalScopedUrl),
+      ))
+      .limit(1);
+
+    if (!ownerExpense) return res.status(403).json({ error: "Access denied" });
+
     const filePath = path.join(portalUploadsDir, filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File not found" });
     res.sendFile(filePath);

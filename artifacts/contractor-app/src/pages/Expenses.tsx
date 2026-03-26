@@ -1042,6 +1042,7 @@ export default function Expenses() {
   const uploadMutation    = useUploadExpenseReceipt();
   const saveVendor        = useSaveVendor();
   const deleteExpense     = useDeleteExpense();
+  const updateExpense     = useUpdateExpense();
 
   const [isDialogOpen, setIsDialogOpen]               = useState(false);
   const [importOpen,   setImportOpen]                 = useState(false);
@@ -1050,9 +1051,9 @@ export default function Expenses() {
   const [vendor, setVendor]                           = useState("");
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
-  const [viewExpense,  setViewExpense]                = useState<any | null>(null);
-  const [editTarget,   setEditTarget]                 = useState<any | null>(null);
-  const [deleteTarget, setDeleteTarget]               = useState<any | null>(null);
+  const [viewExpense,   setViewExpense]                = useState<any | null>(null);
+  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string} | null>(null);
+  const [deleteTarget,  setDeleteTarget]              = useState<any | null>(null);
   const [deleting,     setDeleting]                   = useState(false);
   const [highlightedTemplateId, setHighlightedTemplateId] = useState<number | null>(null);
 
@@ -1167,7 +1168,89 @@ export default function Expenses() {
                   </td>
                 </tr>
               ) : (
-                expenses?.map(exp => (
+                expenses?.map(exp => {
+                  const isEditing = editingRow?.id === exp.id;
+                  if (isEditing) {
+                    return (
+                      <tr key={exp.id} className="bg-amber-500/5 border-l-2 border-amber-500">
+                        <td className="px-3 py-2">
+                          <input type="date" value={editingRow.date}
+                            onChange={e => setEditingRow(r => r && ({ ...r, date: e.target.value }))}
+                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
+                        </td>
+                        <td className="px-3 py-2 space-y-1">
+                          <input type="text" value={editingRow.description}
+                            onChange={e => setEditingRow(r => r && ({ ...r, description: e.target.value }))}
+                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
+                            placeholder="Description" />
+                          <VendorCombobox value={editingRow.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <select value={editingRow.category}
+                            onChange={e => setEditingRow(r => r && ({ ...r, category: e.target.value }))}
+                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none">
+                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <select value={editingRow.jobId}
+                            onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
+                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none">
+                            <option value="">— None —</option>
+                            {jobs?.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1.5 text-xs text-muted-foreground">$</span>
+                            <input type="number" step="0.01" min="0" value={editingRow.amount}
+                              onChange={e => setEditingRow(r => r && ({ ...r, amount: e.target.value }))}
+                              className="w-full pl-5 pr-2 py-1 text-xs text-right rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {exp.receiptUrl ? (
+                            <a href={exp.receiptUrl} target="_blank" rel="noreferrer"
+                              className="text-xs text-primary hover:underline flex items-center gap-1 justify-center">
+                              <ExternalLink className="w-3 h-3" />View
+                            </a>
+                          ) : <span className="text-xs text-muted-foreground italic">No receipt</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={async () => {
+                                await updateExpense.mutateAsync({
+                                  id: editingRow.id,
+                                  data: {
+                                    description: editingRow.description,
+                                    amount: parseFloat(editingRow.amount),
+                                    date: editingRow.date,
+                                    category: editingRow.category,
+                                    vendor: editingRow.vendor || undefined,
+                                    jobId: editingRow.jobId ? parseInt(editingRow.jobId) : undefined,
+                                    notes: editingRow.notes || undefined,
+                                    receiptUrl: exp.receiptUrl,
+                                  },
+                                });
+                                if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
+                                setEditingRow(null);
+                              }}
+                              disabled={updateExpense.isPending}
+                              className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                              {updateExpense.isPending ? "…" : "Save"}
+                            </button>
+                            <button
+                              onClick={() => setEditingRow(null)}
+                              className="w-6 h-6 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
                   <tr key={exp.id}
                     onClick={() => setViewExpense(exp)}
                     className="hover:bg-muted/30 transition-colors cursor-pointer group">
@@ -1224,7 +1307,16 @@ export default function Expenses() {
                           className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button onClick={() => setEditTarget(exp)}
+                        <button onClick={() => setEditingRow({
+                            id: exp.id,
+                            description: exp.description ?? "",
+                            amount: String(exp.amount ?? ""),
+                            date: exp.date ?? "",
+                            category: exp.category ?? CATEGORIES[0],
+                            vendor: exp.vendor ?? "",
+                            jobId: exp.jobId ? String(exp.jobId) : "",
+                            notes: exp.notes ?? "",
+                          })}
                           className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
                           <Pencil className="w-4 h-4" />
                         </button>
@@ -1235,7 +1327,8 @@ export default function Expenses() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1372,15 +1465,6 @@ export default function Expenses() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Expense Edit Dialog */}
-      {editTarget && (
-        <ExpenseEditDialog
-          expense={editTarget}
-          jobs={jobs ?? []}
-          onClose={() => setEditTarget(null)}
-        />
-      )}
 
       {/* Expense View Modal */}
       {viewExpense && (
