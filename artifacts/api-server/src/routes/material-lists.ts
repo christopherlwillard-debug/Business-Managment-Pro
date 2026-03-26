@@ -188,8 +188,19 @@ router.put("/:id", async (req, res) => {
     if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
 
     const userId = req.user?.id;
-    const updateConditions: SQL[] = [eq(materialListsTable.id, id)];
-    if (userId) updateConditions.push(eq(materialListsTable.userId, userId));
+
+    // Verify ownership before making any changes
+    const ownerCheck = await db
+      .select({ id: materialListsTable.id })
+      .from(materialListsTable)
+      .where(
+        userId
+          ? and(eq(materialListsTable.id, id), eq(materialListsTable.userId, userId))
+          : eq(materialListsTable.id, id)
+      )
+      .limit(1);
+
+    if (ownerCheck.length === 0) return res.status(404).json({ error: "Material list not found" });
 
     await db
       .update(materialListsTable)
@@ -198,7 +209,7 @@ router.put("/:id", async (req, res) => {
         jobId: jobId || null,
         markup: markup.toString(),
       })
-      .where(and(...updateConditions));
+      .where(eq(materialListsTable.id, id));
 
     await db.delete(materialListItemsTable).where(eq(materialListItemsTable.listId, id));
 
@@ -215,7 +226,7 @@ router.put("/:id", async (req, res) => {
       );
     }
 
-    const result = await getListWithItems(id);
+    const result = await getListWithItems(id, userId);
     if (!result) return res.status(404).json({ error: "Material list not found" });
     res.json(result);
   } catch (err) {

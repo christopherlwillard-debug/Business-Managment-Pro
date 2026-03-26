@@ -325,7 +325,46 @@ function MaterialListCard({
     setAttaching(true);
     setAttachMsg(null);
     try {
-      const res = await attachMutation.mutateAsync(list.id);
+      const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const markupMult = list.markup / 100 + 1;
+      const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      const rows = list.items.map(it => `
+        <tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee">${it.nameSnapshot}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center">${it.unitSnapshot || "ea"}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">$${it.unitCostSnapshot.toFixed(2)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center">${it.qty}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">$${(it.unitCostSnapshot * it.qty * markupMult).toFixed(2)}</td>
+        </tr>`).join("");
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Material List – ${list.name}</title>
+      <style>body{font-family:sans-serif;font-size:13px;color:#222;padding:24px}h1{font-size:18px;margin:0 0 4px}
+      table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#f5f5f5;padding:6px 8px;text-align:left;border-bottom:2px solid #ddd}
+      .total{text-align:right;margin-top:12px;font-weight:bold;font-size:15px}</style></head>
+      <body><h1>Material List: ${list.name}</h1>
+      <p style="color:#666;margin:0">Job: ${list.jobTitle || "General"} &nbsp;|&nbsp; Date: ${today}${list.markup > 0 ? ` &nbsp;|&nbsp; Markup: ${list.markup}%` : ""}</p>
+      <table><thead><tr><th>Item</th><th style="text-align:center">Unit</th><th style="text-align:right">Unit Cost</th><th style="text-align:center">Qty</th><th style="text-align:right">Extended</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <p class="total">Total: $${subtotal.toFixed(2)}</p></body></html>`;
+
+      let attachmentUrl: string | undefined;
+      let attachmentName: string | undefined;
+      let attachmentSize: number | undefined;
+
+      try {
+        const blob = new Blob([html], { type: "text/html" });
+        const fd = new FormData();
+        const filename = `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.html`;
+        fd.append("file", blob, filename);
+        const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
+        if (uploadRes.ok) {
+          const uploaded = await uploadRes.json() as { url: string; filename: string; size: number };
+          attachmentUrl = uploaded.url;
+          attachmentName = `Material List – ${list.name}.html`;
+          attachmentSize = uploaded.size;
+        }
+      } catch { /* attachment upload is best-effort */ }
+
+      const res = await attachMutation.mutateAsync({ id: list.id, attachmentUrl, attachmentName, attachmentSize });
       if (res.invoiceId) {
         setAttachMsg({ ok: true, text: `Added to invoice draft for ${list.jobTitle || "job"}.` });
       } else {
