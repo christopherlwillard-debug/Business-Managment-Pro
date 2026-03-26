@@ -4,17 +4,19 @@ import {
   useListClients, useListSubcontractors, useListInvoices,
   useUpdateInvoiceStatus, useDeleteInvoice, getJobInvoiceDraft,
   useListDailyLogs, useCreateDailyLog, useDeleteDailyLog,
+  useGetSettings,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
+import { InvoiceViewModal } from "@/components/InvoiceViewModal";
 import {
   Briefcase, MapPin, Calendar, HardHat, Users,
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
-  AlertCircle, ArrowLeft,
+  AlertCircle, ArrowLeft, Eye,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -687,18 +689,26 @@ function DeleteConfirm({
 }
 
 // ─── Saved Invoices Section ────────────────────────────────────────────────────
+const UNPAID_STATUSES = new Set(["draft", "pending", "sent", "overdue"]);
+
 function SavedInvoicesSection() {
   const { data: invoices = [], isLoading } = useListInvoices();
+  const { data: settings }  = useGetSettings();
   const updateStatus  = useUpdateInvoiceStatus();
   const deleteInvoice = useDeleteInvoice();
   const queryClient   = useQueryClient();
 
   const [collapsed, setCollapsed]       = useState(false);
+  const [activeTab, setActiveTab]       = useState<"unpaid" | "paid">("unpaid");
   const [editInvoice, setEditInvoice]   = useState<Invoice | null>(null);
+  const [viewInvoice, setViewInvoice]   = useState<Invoice | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null);
   const [deleting, setDeleting]         = useState(false);
 
   const jobInvoices = invoices.filter(inv => inv.jobId != null);
+  const unpaidInvoices = jobInvoices.filter(inv => UNPAID_STATUSES.has(inv.status));
+  const paidInvoices   = jobInvoices.filter(inv => inv.status === "paid");
+  const tabInvoices    = activeTab === "unpaid" ? unpaidInvoices : paidInvoices;
 
   async function handleMarkPaid(inv: Invoice) {
     await updateStatus.mutateAsync({ id: inv.id, data: { status: "paid" } });
@@ -711,10 +721,76 @@ function SavedInvoicesSection() {
     try {
       await deleteInvoice.mutateAsync({ id: deleteTarget.id });
       queryClient.invalidateQueries();
+      if (viewInvoice?.id === deleteTarget.id) setViewInvoice(null);
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
     }
+  }
+
+  function renderTable(rows: Invoice[]) {
+    if (rows.length === 0) {
+      return (
+        <div className="py-10 text-center space-y-2 text-muted-foreground px-6">
+          <FileText className="w-8 h-8 mx-auto text-muted-foreground/30" />
+          {activeTab === "unpaid"
+            ? <p className="text-sm">No outstanding invoices. Mark a job Completed and click "Review Invoice" to create one.</p>
+            : <p className="text-sm">No paid invoices yet.</p>}
+        </div>
+      );
+    }
+    return (
+      <table className="w-full text-sm">
+        <thead className="bg-muted/30 border-b border-border/50">
+          <tr>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Invoice #</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date</th>
+            <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Total</th>
+            <th className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
+            <th className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/50">
+          {rows.map((inv: Invoice) => (
+            <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
+              <td className="px-5 py-3 font-mono text-xs font-semibold text-foreground">{inv.invoiceNumber}</td>
+              <td className="px-5 py-3 text-sm text-foreground">{inv.clientName ?? <span className="text-muted-foreground italic">No client</span>}</td>
+              <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(inv.issueDate)}</td>
+              <td className="px-5 py-3 text-right font-bold text-amber-600">{formatCurrency(inv.total)}</td>
+              <td className="px-5 py-3 text-center">
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
+                  {INVOICE_STATUS_LABELS[inv.status] ?? inv.status}
+                </span>
+              </td>
+              <td className="px-5 py-3">
+                <div className="flex items-center justify-center gap-1">
+                  <button onClick={() => setViewInvoice(inv)}
+                    title="View / Print"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors">
+                    <Eye className="w-3 h-3" /> View
+                  </button>
+                  <button onClick={() => setEditInvoice(inv)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-foreground hover:bg-muted/50 transition-colors">
+                    <Edit2 className="w-3 h-3" /> Edit
+                  </button>
+                  {inv.status !== "paid" && (
+                    <button onClick={() => handleMarkPaid(inv)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors">
+                      <Check className="w-3 h-3" /> Paid
+                    </button>
+                  )}
+                  <button onClick={() => setDeleteTarget(inv)}
+                    className="p-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
   }
 
   return (
@@ -725,10 +801,10 @@ function SavedInvoicesSection() {
           onClick={() => setCollapsed(c => !c)}>
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 text-amber-500" />
-            <span className="font-semibold text-foreground">Saved Invoices</span>
-            {jobInvoices.length > 0 && (
+            <span className="font-semibold text-foreground">Invoices</span>
+            {unpaidInvoices.length > 0 && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
-                {jobInvoices.length}
+                {unpaidInvoices.length} unpaid
               </span>
             )}
           </div>
@@ -736,64 +812,39 @@ function SavedInvoicesSection() {
         </div>
 
         {!collapsed && (
-          <div className="overflow-x-auto">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-10">
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : jobInvoices.length === 0 ? (
-              <div className="py-10 text-center space-y-2 text-muted-foreground px-6">
-                <FileText className="w-8 h-8 mx-auto text-muted-foreground/30" />
-                <p className="text-sm">No saved invoices yet. Mark a job Completed and click "Review Invoice" to create one.</p>
-              </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-muted/30 border-b border-border/50">
-                  <tr>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Invoice #</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date</th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Total</th>
-                    <th className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
-                    <th className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {jobInvoices.map((inv: Invoice) => (
-                    <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3 font-mono text-xs font-semibold text-foreground">{inv.invoiceNumber}</td>
-                      <td className="px-5 py-3 text-sm text-foreground">{inv.clientName ?? <span className="text-muted-foreground italic">No client</span>}</td>
-                      <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(inv.issueDate)}</td>
-                      <td className="px-5 py-3 text-right font-bold text-amber-600">{formatCurrency(inv.total)}</td>
-                      <td className="px-5 py-3 text-center">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
-                          {INVOICE_STATUS_LABELS[inv.status] ?? inv.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => setEditInvoice(inv)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-foreground hover:bg-muted/50 transition-colors">
-                            <Edit2 className="w-3 h-3" /> Edit
-                          </button>
-                          {inv.status !== "paid" && (
-                            <button onClick={() => handleMarkPaid(inv)}
-                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors">
-                              <Check className="w-3 h-3" /> Mark Paid
-                            </button>
-                          )}
-                          <button onClick={() => setDeleteTarget(inv)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <>
+            {/* Tabs */}
+            <div className="flex border-b border-border/50 bg-muted/10">
+              <button
+                onClick={() => setActiveTab("unpaid")}
+                className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 ${activeTab === "unpaid" ? "border-amber-500 text-amber-600" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                Unpaid
+                {unpaidInvoices.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">
+                    {unpaidInvoices.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab("paid")}
+                className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 ${activeTab === "paid" ? "border-emerald-500 text-emerald-600" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                Paid
+                {paidInvoices.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                    {paidInvoices.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : renderTable(tabInvoices)}
+            </div>
+          </>
         )}
       </Card>
 
@@ -803,6 +854,15 @@ function SavedInvoicesSection() {
           onOpenChange={open => { if (!open) setEditInvoice(null); }}
           existingInvoice={editInvoice}
           onSaved={() => { setEditInvoice(null); queryClient.invalidateQueries(); }}
+        />
+      )}
+
+      {viewInvoice && (
+        <InvoiceViewModal
+          invoice={viewInvoice}
+          settings={settings}
+          onClose={() => setViewInvoice(null)}
+          onDelete={() => { setDeleteTarget(viewInvoice); setViewInvoice(null); }}
         />
       )}
 

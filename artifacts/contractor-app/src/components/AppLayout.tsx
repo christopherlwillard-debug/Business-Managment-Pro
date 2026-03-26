@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   Calculator, HardHat, Users,
-  Settings, Menu, X, Building2, BookOpen, LogOut, FileText, Package
+  Settings, Menu, X, Building2, BookOpen, LogOut, Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
@@ -28,7 +28,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const allNavItems = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null },
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs" },
-    { name: "Invoices", href: "/invoices", icon: FileText, feature: "invoices" },
     { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates" },
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage" },
