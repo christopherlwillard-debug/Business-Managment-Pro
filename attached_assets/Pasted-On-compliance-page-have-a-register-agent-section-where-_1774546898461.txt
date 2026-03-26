@@ -1,0 +1,553 @@
+On compliance page have a register agent section where i can list the register agent and all task they do to stay compliant and in good standing 
+
+Material doesnt add into invoice current invoice for that job it just creates a different invoic
+
+
+When creating a new job is doesn't allow scrolling and some of the fields overlap
+
+End date really instead needed so
+It can be left off or just add it to start date and make it like start-end date and have it one field which ever is easiest or better in your opinion
+
+Expense on portal doesn't allow receipt uploads 
+
+Also on portal the mileage tracker isn't the same thing as I have where it's an automatic tracker 
+And I noticed that on the portal when adding expenses the fields over lap
+
+And the expenses can't be edited when you log them in. The store and vendor should go off or add to the database for all vendors where it will populate them on portal as well
+Also is there anyway that on the portal it will create the 1099 form for them at the end of year going off all that data and then issue me a copy as well or will I need to issue my subcontractors a 1099 
+The short answer is yes, you can definitely build your Replit app to generate those forms, but you will still be the one "issuing" them in the eyes of the IRS.
+Here is how the 1099 process works for a business owner like you in 2026:
+1. Do You Need to Issue Them?
+As of the 2026 tax year, the rules have changed thanks to the One Big Beautiful Bill Act (OBBBA).
+• New Threshold: You are only required to issue a 1099-NEC if you paid a subcontractor $2,000 or more in the calendar year. (Previously, this was only $600).
+• The Exception: If you pay your subcontractors via Credit Card or a Third-Party Payment App (like PayPal, Venmo, or Square), you do not issue a 1099-NEC. In those cases, the payment processor handles the reporting via a Form 1099-K.
+• The Rule: If you pay them via Cash, Check, or ACH (Direct Deposit) and it’s over $2,000, you must issue the 1099-NEC.
+2. Can Your App Create the Forms?
+Since you are already tracking income and expenses in your BMS, your app has all the data it needs to generate these forms automatically.
+Option A: The "PDF Generator" (Manual Filing)
+You can code your Replit app to take the total "Income" for a subcontractor and "stamp" it onto a standard 1099-NEC PDF template.
+• How it works: At the end of the year, the subcontractor clicks a button in their portal, and the app generates a PDF for them to download.
+• Your Copy: The app saves a copy to your "Admin" folder simultaneously.
+• The Catch: You still have to manually log into the IRS website (using their IRIS system) and type in the numbers to "file" them federally.
+Option B: The "Full Auto" Route (API Integration)
+If you don't want to touch tax forms at all, you can connect your Replit app to a service like Tax1099 or Track1099 via an API.
+• How it works: On January 1st, your app sends the data to the service.
+• The Result: They electronically file with the IRS, mail a paper copy to the sub (or email it), and give you a digital receipt. This usually costs about $2–$3 per form, but it saves hours of work.
+3. What You Need from the Subcontractors
+To make this work, your portal needs to collect a W-9 from them as part of their onboarding. Your Replit app should store:
+1. Their Legal Name (or Business Name).
+2. Their Address.
+3. Their Taxpayer Identification Number (TIN or SSN).
+Pro Tip: Set up a "Hard Block" in your BMS. Do not allow a subcontractor to "Claim a Job" or "Submit an Expense" until they have filled out their tax info in the portal. It is much harder to get that info from them after you've already paid them.
+Building a 1099 reporting tool directly into your Replit BMS is a great move for staying organized. Since we are in the 2026 tax year, you actually have a much lighter workload than in previous years due to recent law changes.
+Under the One Big Beautiful Bill Act (OBBBA), the IRS has officially raised the reporting threshold for Form 1099-NEC and 1099-MISC from $600 to $2,000. This means you only have to issue a form to a subcontractor if you paid them $2,000 or more this year.
+1. The Year-End Logic
+To build this in Replit, you’ll want a script that scans your "Income/Payments" database and groups them by Subcontractor ID. Here is the logic the code should follow:
+• Step 1: Filter all payments made between January 1 and December 31, 2026.
+• Step 2: Exclude any payments made via Credit Card or Third-Party Apps (like Square or Venmo), as those are reported on a 1099-K by the payment processor, not you.
+• Step 3: Sum the remaining payments (Cash, Check, ACH) for each subcontractor.
+• Step 4: If the total is \bm{\ge} $2,000, flag that subcontractor for a 1099-NEC.
+2. Automating the "Issue" Process
+You can set up your portal so that on January 1st, 2027, it automatically handles the distribution:
+• For the Subcontractor: A "Tax Center" tab appears in their portal. They click a button, and the app generates a PDF of the 1099-NEC using their stored W-9 info and the payment total.
+• For You: The app generates a ZIP file containing all the 1099s for your records, plus a "Master Sheet" (which acts like an informal Form 1096) that lists every sub and what they were paid.
+3. Filing with the IRS
+While your app can create the forms, it doesn't "file" them with the government unless you use an API.
+• Manual: You download the forms from your app and upload them to the IRS IRIS portal.
+• Automatic: You can use a Replit "Secret" to store an API key for a service like Tax1099. Your app can then "push" the data to them, and they will electronically file it with the IRS for a small fee (usually $2-$3 per sub).
+Pro-Tip: The "W-9 Guardrail"
+To make sure you aren't chasing people for Social Security numbers in January, add this logic to your Replit portal:
+If Subcontractor_Total_Paid > $1,500 AND W9_Status == "Missing"
+Then Disable "Submit Expense" button and show alert: "Please upload your W-9 to continue using the portal."
+This is a smart way to automate your "Admin" days. Since you are using Replit, you can build a script that handles the heavy lifting of tax season while you focus on the actual work.
+1. The "2026 Rule" Change
+Because it is now 2026, you have a much higher threshold to worry about. Thanks to the One Big Beautiful Bill Act (OBBBA), the IRS raised the reporting limit for 1099-NEC (Non-Employee Compensation) from $600 to $2,000.  
+• Under $2,000: You do not need to issue a 1099-NEC.  
+• $2,000 or more: You must issue one by January 31st of the following year.
+• The "Credit Card" Rule: If you paid them via credit card or a processor like Square, you don't issue a 1099-NEC at all—the payment processor handles it (via 1099-K).
+2. How the Portal Handles It
+You can code your Replit app to act as your personal tax assistant. Here is how the workflow looks:
+Step A: The Threshold Calculator
+Your app should run a "Year-End Report" that filters your income/expense database.
+• Logic: Sum(Payments) where Payment_Method == "Check/ACH/Cash" and Year == 2026.
+• The Alert: If a subcontractor hits $2,000, the app flags them as "1099 Required."
+Step B: Auto-Generating the PDF
+You can use a Python library in Replit called reportlab or fpdf to take your stored data (Subcontractor Name, TIN, Address, and Total Paid) and "draw" it onto a standard 1099-NEC template.
+• For the Sub: They log into their portal, see a "Tax Documents" tab, and download their copy.
+• For You: The app saves a copy in your "Admin" folder and generates a summary list (similar to a Form 1096) so you know exactly what was reported.
+3. Will You Still Need to "Issue" It?
+Yes. Even though the app creates the form, the IRS needs to receive a copy too.
+• Option 1 (Manual): You download the PDFs your app made and upload them to the IRS's IRIS portal.
+• Option 2 (Automatic): You can connect your Replit app to an API like Tax1099. Your app "pushes" the data to them, and they electronically file it with the IRS for a small fee (usually $2–$3 per form). This is the "set it and forget it" method.
+A Logic Example for Your App
+To keep things clean, you can use a simple function in your BMS code:
+def check_1099_status(sub_id, total_paid):
+    threshold = 2000  # The 2026 OBBBA threshold
+    if total_paid >= threshold:
+        return "⚠️ 1099-NEC Required"
+    else:
+        return "✅ Below Threshold"
+Would you like me to show you how to set up a "W-9 Upload" button in the subcontractor portal so you have their Tax IDs ready before January hits?
+Small Business Tax Filing Requirements
+This video explains the basics of filing 1099 forms in bulk, which is helpful for understanding the data you need to collect in your app.
+To set this up in Replit, you can create a simple workflow that ensures you have every subcontractor's tax information before you ever send a payment. This prevents the "January headache" of chasing people for their Social Security or Tax ID numbers.
+1. The "W-9 Upload" Component
+In your subcontractor portal, you can add a file upload button specifically for their W-9.
+• How it works: Use a simple HTML <input type="file"> tag. When the subcontractor selects their signed W-9 (PDF or Image), the Replit Agent can write a script to save that file into a private folder in your database.
+• Pro-Tip: For security, ensure this folder is marked as "Private" in your Replit settings so only you (the Admin) can access the files.
+2. The "Compliance Gate" Logic
+The best way to use this data is to make it a requirement. You can add a "status" check to every subcontractor’s profile in your database:
+// Simple logic for your portal
+if (subcontractor.w9_on_file == false) {
+  // Gray out the "Submit Invoice" or "Claim Job" button
+  disableButton("submit-invoice-btn");
+  showAlert("Please upload your W-9 in the 'Tax Docs' tab to unlock payments.");
+}
+3. Generating the 1099 PDF
+Once you have the data and the year ends, you can use a library like FPDF (for Python) or PDFKit (for Node.js) in Replit to generate the actual form.
+1. Map the Data: Your code will take the Legal Name, Address, and TIN from their W-9 and the Total Paid from your income tracker.
+2. Fill the Template: The code "draws" these values onto a blank 1099-NEC digital template.
+3. The Output: It generates two PDFs—one for the subcontractor to download from their portal and one for your "Company Records" folder.
+4. Issuing the Forms
+Once the PDFs are generated:
+• To the Subcontractor: They can log in and download it. In 2026, providing a digital copy via a secure portal is a standard and acceptable way to "issue" the form.
+• To the IRS: You can download the "IRS Copy" from your Replit admin panel and upload it to the IRS IRIS portal.
+To set this up, you can use the Replit Agent to build a secure "Compliance Gate." This ensures that no subcontractor can submit an invoice or get paid until their tax information is safely stored in your system.
+1. The Prompt for Replit Agent
+Copy and paste this specific prompt into your Replit Agent to build the W-9 and 1099 tracking system. It follows the 2026 tax rules (the $2,000 threshold) and ensures security.
+Prompt: "Build a 'Tax Compliance' module for my subcontractor portal.
+Create a secure file upload button for W-9 forms (PDF only).
+Use Replit App Storage (Object Storage) to store these files privately—only the Admin should have access.
+Add a field in the subcontractor database for 'Tax ID' (TIN/SSN) and 'W9_Status'.
+Create a logic gate: if 'W9_Status' is 'Missing', disable the 'Submit Expense' and 'Submit Income' buttons for that user.
+Build a 'Year-End 1099 Report' for the Admin that sums all payments to a sub. If the total is >= $2,000 (per the 2026 OBBBA rule) and paid via ACH/Check/Cash, flag them as '1099 Required'."
+How the System Will Work
+• Security: By using App Storage, your subcontractors' sensitive tax forms aren't just sitting in a regular folder; they are stored in an encrypted "bucket" backed by Google Cloud infrastructure.  
+• Automation: The system will automatically "nag" the subcontractors to upload their forms. You won't have to send a single manual email.
+• Tax Ready: On January 1st, you’ll just click one button in your Admin dashboard, and it will give you a list of exactly who needs a 1099 and their total earnings.
+3. Verification & Filing
+Once the Agent builds the module:
+1. View the Uploads: You can go to the App Storage tab in Replit to see the uploaded PDFs.
+2. Generate Forms: You can ask the Agent to "Add a PDF generator using the fpdf library" to actually create the 1099-NEC PDFs using the data from the portal.
+3. IRS Filing: Since you're in Owensboro, you can handle the federal filing through the IRS IRIS portal by simply uploading the totals your app calculated.
+Key Data to Collect in Your App
+To ensure your 1099s are valid, your portal's W-9 form should specifically save these four items into your database:
+• Legal Name (Must match their tax return)
+• Business Type (Individual, LLC, C-Corp, etc.)
+• Address
+• TIN/SSN (Taxpayer Identification Number)
+Would you like me to help you write the specific "Year-End Summary" code that calculates these totals for your admin dashboard?
+Automate everything with Zapier AI Agents
+This video is a great starting point for understanding how AI "Agents" can connect different business tools to automate your paperwork and filing.
+The short answer is no, you do not file the Form W-9 with the IRS.  
+Think of the W-9 as a "data collection" tool for your business. When a subcontractor fills it out and gives it to you, they are simply giving you the information you need to do your job as a business owner.
+How it Works in Your Workflow:
+1. The Subcontractor: Fills out the W-9 and uploads it to your Replit portal.
+2. You (The Business): You keep that W-9 in your records (it’s a good idea to keep them for at least 4 years). You do not send this to the IRS.  
+3. The Year-End: You use the information from that W-9 (Name, Address, and Tax ID) to fill out a 1099-NEC form.  
+4. The Filing: The 1099-NEC is the form that actually gets sent to the IRS.
+Why the W-9 is Still Critical
+Even though the IRS never sees the actual W-9 document, it is your "legal shield." If the IRS audits you and asks why you didn't withhold taxes from a subcontractor, you show them the W-9 as proof that the sub certified they were an independent contractor responsible for their own taxes.
+Important 2026 Change
+As we've discussed, for the 2026 tax year, the IRS has officially raised the threshold for those 1099-NEC forms.
+• Old Rule: You needed a W-9 and a 1099 for anyone paid $600.
+• 2026 Rule (OBBBA): You only need to file a 1099 with the IRS if you paid the sub $2,000 or more.
+Pro Tip: Even if you think you’ll only pay someone $500, get the W-9 anyway. It's much easier to get it during onboarding than to chase them down in December when you realize you actually paid them $2,500!
+Would you like me to help you draft a "Privacy Policy" snippet for your portal so your subcontractors know their W-9 data is being stored securely?
+W-9 vs 1099-NEC: Tax form basics for small business & freelancers
+This quick video breaks down the specific roles of each form so you can see exactly which one goes to the government and which one stays in your desk.
+You can definitely build an "AI Compliance Engine" into your app. In fact, since you are building on Replit, you can use the Replit Agent to automate the most annoying parts of tax law—specifically keeping up with the 2026 threshold changes from the One Big Beautiful Bill Act (OBBBA).
+Here is how you can structure this "Engine" to act as a proactive tax agent for your business.
+1. The "Auto-Threshold" Logic
+In 2026, you no longer have to worry about the old $600 rule. Your engine should be programmed with the new $2,000 reporting threshold.  
+• The Logic: Your app should constantly monitor the "Total Paid" field for every subcontractor.
+• The Action: Once a sub hits $1,500 (the "Warning Zone"), the engine automatically emails them: "You're nearing the tax reporting threshold. Please ensure your W-9 is up to date in the portal."
+• The Hard Stop: Once they hit $2,000, the engine flags them for a 1099-NEC and adds them to your "IRS Filing List" for January.
+2. The "Smart Auditor" (Using AI)
+Since you’re already using Replit, you can have a "Mini-Agent" that audits every expense a subcontractor submits.
+• Category Validation: When a sub uploads a receipt, the AI can read it and say, "This looks like a personal meal, not a business expense—flagging for Admin review."
+• Missing Info Detector: The engine can scan their profile daily. If it finds a missing Tax ID or an expired insurance certificate, it can "throttle" their account so they can't accept new jobs until it's fixed.
+3. Year-End "One-Click" Filing
+Instead of you typing data into the IRS website, your engine can prepare a Bulk Upload File.
+• The Export: On January 1st, you click "Generate IRS File." Your app creates a .csv formatted specifically for the IRS IRIS portal.
+• The Receipt: Once you upload that file to the IRS, your app can store the "Confirmation Number" next to each subcontractor's name so you have a perfect audit trail.
+How to Build it in Replit
+You can ask the Replit Agent to build this specifically. Here is a prompt you can use:  
+Build a 'Tax Compliance Engine' for my BMS. It should:
+Calculate total payments for each sub in 2026.
+Flag any sub who exceeds $2,000 (excluding Credit Card payments).
+Generate a 'Tax Health Dashboard' for me showing who has a W-9 on file and who is missing one.
+Create a button that exports all '1099-Required' subs into a CSV format ready for the IRS IRIS portal."*
+Security Note for 2026
+Since you are handling Social Security numbers and Tax IDs, make sure you use Replit Secrets for any API keys and use Encrypted Storage for the W-9 files. This keeps your subcontractors' sensitive data safe from hackers.
+Would you like me to help you design the "Tax Health Dashboard" layout so you can see at a glance who is compliant and who isn't?
+Understanding the OBBBA 2026 tax changes
+This video explains the specific reporting changes under the One Big Beautiful Bill Act, which is the foundation for the logic you'll need in your compliance engine.
+Integrating a "Business Tax Engine" into your app is a great move, especially since the One Big Beautiful Bill Act (OBBBA) has introduced several permanent changes for the 2026 tax year.  
+While your portal's subcontractor logic handles the people you pay, your internal "Business Agent" can handle what you owe to ensure you don't get hit with penalties.
+1. The "Quarterly Estimated" Alarm
+As a business owner, you don't have an employer withholding taxes for you. If you expect to owe $1,000 or more in taxes for the year, the IRS requires you to pay in four installments.  
+• The Engine's Role: It calculates your "Net Profit" (Income minus Expenses) every 3 months.
+• The Action: It sends you a notification 10 days before these 2026 deadlines:
+• April 15, 2026 (Q1)  
+• June 15, 2026 (Q2)  
+• September 15, 2026 (Q3)  
+• January 15, 2027 (Q4)  
+2. Automated Self-Employment Tax Calculation
+You likely have to pay Self-Employment Tax, which is 15.3% of your net earnings (covering Social Security and Medicare).  
+• The Engine's Role: It automatically sets aside a "Tax Reserve" estimate. For 2026, the Social Security portion (12.4%) only applies to the first $184,500 of your income.  
+• The Benefit: Your dashboard shows you a "Safe to Spend" balance vs. a "Tax Reserve" balance so you’re never surprised by a bill in April.
+3. The 2026 "Bonus Depreciation" Tracker
+The OBBBA restored 100% Bonus Depreciation as a permanent fixture. This is huge for your business if you buy equipment (like a new laptop for Replit coding or tools for your trade).  
+• The Engine's Role: When you log an expense over a certain amount (e.g., $2,500), the app asks: "Is this equipment?"
+• The Action: It flags that item as a Section 179 or Bonus Depreciation deduction, allowing you to deduct the full cost in 2026 rather than spreading it out over years.
+4. QBI (Qualified Business Income) Deduction
+Most small business owners can deduct up to 20% of their qualified business income from their taxes.  
+• The Engine's Role: It calculates your likely QBI deduction in real-time. In 2026, even if you are in a "Service" business (like consulting), the new thresholds make it easier to qualify for this massive deduction.  
+How to set this up in Replit
+You can add a "Business Health" tab to your admin dashboard. Use this prompt with the Replit Agent:
+Add a 'Business Tax Engine' to my Admin Dashboard.
+1. Calculate a 15.3% self-employment tax estimate based on net profit.
+2. Create a 'Tax Deadline' countdown for the next quarterly estimated payment.
+3. Add a 'Deduction Optimizer' that flags any single expense over $1,000 as a potential '100% Bonus Depreciation' item.
+4. Display a 'Year-to-Date Tax Liability' estimate so I know how much to set aside."  
+To build a comprehensive "Business Tax Agent" into your Replit app, you should program it to track these specific categories. In 2026, the One Big Beautiful Bill Act (OBBBA) has made some of these deductions even more powerful.
+1. The "Big Three" Operations Categories
+These are your everyday costs. Your app should allow you to tag any expense with these for an instant "Net Profit" view.
+• Software & Subscriptions: This includes your Replit Core plan, Wix hosting, and any AI API costs.
+• Marketing & Advertising: This covers your domain name, business cards, and any social media ads.  
+• Legal & Professional Fees: If you hire a CPA to look over your Replit-generated 1099s, that cost is 100% deductible.
+2. The 2026 Vehicle Tracker
+If you're driving for your business in Owensboro, you have two ways to track this. Your app should let you choose the one that saves you the most:
+• Standard Mileage: The 2026 IRS rate is 72.5 cents per mile. Your app can use a simple "Start Miles" and "End Miles" field to calculate this automatically.  
+• Actual Expenses: If you have a heavy-duty truck (over 6,000 lbs GVWR), you can often deduct the entire cost of the vehicle in the first year using Section 179. The 2026 limit for this is a massive $2,560,000.  
+3. Home Office & Utilities
+Since you're coding and managing your BMS from home, you can deduct a portion of your living expenses.
+• Simplified Method: $5 per square foot of your office space (up to 300 sq ft).
+• Direct Costs: You can also deduct your Internet and Phone bills. Since these are required for your Replit app to function, they are "ordinary and necessary" business expenses.  
+4. Travel & Business Meals
+The OBBBA kept some of the more generous rules for business networking.
+• Business Meals: Generally 50% deductible if you are discussing business with a subcontractor or client.
+• Travel: If you travel for a business conference or to a job site, 100% of the transportation (airfare/gas) and lodging is deductible.
+Your 2026 "Tax Agent" Logic
+You can have the Replit Agent build a "Deduction Optimizer" using this logic:
+How to use this in your Replit BMS:
+Since you want to automate this, here is a simple "pseudo-code" logic you can give to the Replit Agent to handle these categories in your database:
+// Example logic for your 2026 Tax Agent
+function calculateTaxBenefit(expenseType, amount, miles) {
+  const OBBBA_THRESHOLD = 2000;
+  const MILEAGE_RATE = 0.725;
+
+  if (expenseType === "mileage") {
+    return miles * MILEAGE_RATE; // Automatically calculate mileage deduction
+  }
+
+  if (expenseType === "subcontractor_pay" && amount >= OBBBA_THRESHOLD) {
+    return "FLAG: 1099-NEC Required"; // Alert for 1099 filing
+  }
+
+  if (expenseType === "equipment" && amount > 2500) {
+    return "APPLY: 100% Bonus Depreciation"; // Maximize first-year write-off
+  }
+}
+Next Step for your App
+Would you like me to generate a CSV Template that includes these headers so you can start importing your existing 2026 expenses into your new system?
+How to use this for your Replit BMS:
+• The $2,000 Rule: Program your "Tax Agent" to only trigger a 1099 alert when a subcontractor's non-credit-card payments hit this amount.  
+• The 72.5c Rule: Set your mileage tracker to multiply "Business Miles" by 0.725 to show your real-time tax deduction.  
+• The $2,500 Rule: Any single equipment purchase under this amount can be fully "expensed" immediately without needing to track depreciation over several years.
+Would you like me to create a CSV file with these headers so you can upload your current 2026 expenses directly into your Replit database?
+Beyond the standard deductions, 2026 offers some unique opportunities due to the One Big Beautiful Bill Act (OBBBA) and local Kentucky programs. Since you are building an app to manage your business, you can actually "hard-code" these strategies into your dashboard so you never miss a deadline or a credit.  
+Here are the high-value tax moves you can make this year:
+1. The Kentucky Small Business Tax Credit (KSBTC)
+Since you are in Owensboro, you have access to a very powerful state-level credit that most people miss.
+• The Reward: Between $3,500 and $25,000 per year.  
+• The Rule: If you hire at least one new full-time employee and keep them for a year, AND you spend at least $5,000 on qualifying equipment or technology (like the servers, computers, or software for your BMS), you can apply for this credit.  
+• App Logic: Add a "Credit Tracker" that logs any equipment purchase over $500. Once the total hits $5,000, have the app alert you to check your hiring status for the KSBTC.
+2. "Double-Dipping" on your Internet & Phone
+As a developer and business owner, your internet isn't just a utility; it's a "production cost."
+• The Strategy: Instead of just taking the $1,500 simplified home office deduction, you can often get a bigger break by calculating the actual business-use percentage of your high-speed internet and phone.  
+• App Logic: Create a simple "Log" where you check off "Work Hours" vs. "Total Hours." The app can then calculate: (Work Hours / Total Hours) * Annual Internet Bill = Deduction.
+3. Startup Cost "Front-Loading"
+If you are still in the early stages of launching this specific app or business:
+• The Rule: You can deduct up to $5,000 in startup costs (legal fees, business registration, market research) in your first year of operations.  
+• The Catch: If your startup costs exceed $50,000, this immediate deduction starts to "phase out."  
+• App Logic: Tag any expense made before your official "Open for Business" date as a "Startup Cost" so it doesn't get mixed in with regular operating expenses.
+4. Self-Employed Health Insurance
+This is one of the best "above-the-line" deductions.
+• The Rule: You can deduct 100% of the health insurance premiums you pay for yourself and your family.  
+• The Benefit: This reduces your Adjusted Gross Income (AGI) directly, which can help you qualify for other credits (like the Earned Income Credit or student loan interest deductions).
+5. Section 174A: Research & Development (R&D)
+The OBBBA restored the ability to immediately expense domestic R&D costs.  
+• The Strategy: Because you are building a custom software system (your BMS), the time and money you spend developing that code counts as R&D.
+• The Benefit: Instead of spreading that cost over 5 years, you can write off the entire cost of development in 2026.
+Summary Checklist for your App Dashboard
+Since it’s now March 2026, there are a few other tax moves you can bake into your app logic to handle your own business taxes more effectively:
+The "Overtime & Tips" Exclusion
+One of the biggest parts of the One Big Beautiful Bill Act (OBBBA) is that it actually eliminated federal income tax on overtime pay and tips. If you ever pay yourself a draw that includes overtime hours, or if your subcontractors receive tips through your portal, your app should flag that income as "Tax-Exempt" so you don't overpay the IRS.  
+Auto Loan Interest Deduction
+This is a brand new one for 2026. If you took out a loan for a vehicle used for your business, you can now deduct up to $10,000 in interest per year. Since you have a truck, your app should track the interest portion of your monthly payments—not just the principal—to maximize this.  
+The "Home Office" Math
+Instead of just taking a flat amount, have your app track your actual Internet and Cell Phone bills. Because you’re using them to develop and run this BMS on Replit, you can often deduct a much higher percentage of those bills than the standard "simplified" home office method allows.
+Kentucky’s Tech Credit
+In Owensboro, you might qualify for the Kentucky Small Business Tax Credit. If you spend $5,000 on "knowledge-based" equipment (like a high-end coding setup or the servers for this app) and hire one person, the state can give you a credit of up to $25,000. It’s worth adding a tracker to see when your tech spending hits that $5,000 mark.
+Section 179 for Your Truck
+Since you have a Ford F-150, if it’s used more than 50% for business, you can likely write off the entire remaining value this year. The 2026 limit for this "Section 179" deduction is over $2.5 million, so you could potentially wipe out your entire tax bill if you bought the truck recently.  
+Would you like me to show you how to set up the "Overtime Tracker" in your app so it automatically separates that tax-free income from your regular earnings?
+Since it’s now March 2026, there are a few other tax moves you can bake into your app logic to handle your own business taxes more effectively:
+The "Overtime & Tips" Exclusion
+One of the biggest parts of the One Big Beautiful Bill Act (OBBBA) is that it actually eliminated federal income tax on overtime pay and tips. If you ever pay yourself a draw that includes overtime hours, or if your subcontractors receive tips through your portal, your app should flag that income as "Tax-Exempt" so you don't overpay the IRS.  
+Auto Loan Interest Deduction
+This is a brand new one for 2026. If you took out a loan for a vehicle used for your business, you can now deduct up to $10,000 in interest per year. Since you have a truck, your app should track the interest portion of your monthly payments—not just the principal—to maximize this.  
+The "Home Office" Math
+Instead of just taking a flat amount, have your app track your actual Internet and Cell Phone bills. Because you’re using them to develop and run this BMS on Replit, you can often deduct a much higher percentage of those bills than the standard "simplified" home office method allows.
+Kentucky’s Tech Credit
+In Owensboro, you might qualify for the Kentucky Small Business Tax Credit. If you spend $5,000 on "knowledge-based" equipment (like a high-end coding setup or the servers for this app) and hire one person, the state can give you a credit of up to $25,000. It’s worth adding a tracker to see when your tech spending hits that $5,000 mark.
+Section 179 for Your Truck
+Since you have a Ford F-150, if it’s used more than 50% for business, you can likely write off the entire remaining value this year. The 2026 limit for this "Section 179" deduction is over $2.5 million, so you could potentially wipe out your entire tax bill if you bought the truck recently.  
+Would you like me to show you how to set up the "Overtime Tracker" in your app so it automatically separates that tax-free income from your regular earnings?
+The "New Truck" Interest Deduction
+You mentioned having a truck. If you bought a new vehicle after 2024 that was assembled in the U.S. (like many F-150s), you can now deduct up to $10,000 in interest annually.  
+How to code it:
+• Amortization Tracker: Add a feature where you input your monthly truck payment. The app can split the principal from the interest.
+• The Logic: If you use the truck for both personal and business, the app can help you decide which is better: claiming it as a "Personal Vehicle Interest" deduction (new for 2026) or as a "Business Expense." You can’t double-dip, so the app can run the numbers to see which saves you more.
+3. The Kentucky Tech Credit (KSBTC)
+Living in Owensboro gives you a local edge. The Kentucky Small Business Tax Credit is still active in 2026.
+How to code it:
+• Tech Spending Gate: Program a "Credit Watch" that flags any technology or equipment purchase (computers, software, tools) titled in your business name.
+• The Goal: Once your total hits $5,000, the app should trigger a reminder to check if you’ve had a full-time employee (earning at least $10.88/hr) on the payroll for at least 12 months. If both are true, you can apply for a state credit between $3,500 and $25,000.
+4. Self-Employed "Tips" Deduction
+If your app ever handles services where you or your subs receive tips, the OBBBA now allows a deduction for "Qualified Tips" up to $25,000.  
+How to code it:
+• Category Tagging: In your "Income" module, make sure "Tips" are a separate line item from "Service Fees."
+• Exclusion Logic: Your app should subtract these tips from your "Taxable Net Income" estimate so you aren't overpaying your quarterly estimated taxes.
+I don't think anyone will get overtime so that's not a worry 
+2. The Ford F-150 "Interest Shield"
+Since you have a truck, this is a huge 2026 win.
+• The Rule: The OBBBA added a specific deduction for auto loan interest on American-made vehicles (up to $10,000/year).
+• The App Logic: Have your expense tracker ask for the "Interest" portion of your monthly payment.
+• The Benefit: This is an "above-the-line" deduction, meaning it lowers your overall taxable income before you even start looking at other expenses.  
+3. The "2026 Bonus" on Tech
+You're building this app on Replit, which means you're likely spending money on software, AI APIs, and hardware.
+• The Rule: 100% Bonus Depreciation is now permanent for 2026.
+• The App Logic: Any "Equipment" or "Software" purchase should be flagged as "Immediate Write-Off."
+• The Benefit: If you spend $3,000 on a new dev setup, you don't have to wait 5 years to deduct it—you take the full $3,000 off your 2026 taxes right now.
+4. The "Owensboro Advantage" (KSBTC)
+Since you're in Kentucky, keep an eye on your tech spending.
+• The Goal: If your app's "Equipment/Tech" category hits $5,000, your app should alert you to apply for the Kentucky Small Business Tax Credit.
+• The Reward: It's essentially a state-level "thank you" for investing in your business, potentially giving you thousands back on your state taxes.
+Would you like me to help you write a simple prompt for the Replit Agent to build a "Tax-Free Tip Tracker" so your subs keep more of what they earn?
+We will not be getting tips so not worried about that either 
+Since it’s March 2026, the tax landscape has shifted significantly. If you’re building an Accounting, Taxes, and Compliance page for your app, you should design it to be a "Command Center" that handles these four major areas automatically.
+1. The Subcontractor Compliance Module
+This is where you manage the people you pay. In 2026, the One Big Beautiful Bill Act (OBBBA) makes this much easier.
+• Threshold Monitor: Set a tracker for the new $2,000 reporting limit. The app should flag any sub who crosses this mark in non-credit card payments.
+• W-9 Digital Vault: A secure spot to view the uploaded W-9s you’ve collected. It should show a green "Compliant" badge once a TIN/SSN is verified.
+• 1099-K Reverter: Since the IRS went back to the old $20,000 / 200 transaction rule for 2026, your app should remind you that you don't need to issue forms for subs paid via Venmo or Square unless they hit those massive numbers.  
+2. The Business Deduction Dashboard
+This section should calculate your real-time tax savings so you aren't surprised in April.
+• 100% Bonus Depreciation Tracker: Tag any equipment over $2,500. The app should show you that you are getting the full deduction this year rather than over time.
+• Mileage Calculator: A simple field to enter business miles. In 2026, the rate is 72.5 cents per mile. The app should display the running dollar amount of that deduction (e.g., "You've saved $725 in taxes this month from driving").  
+• Home Office & Tech: A place to log your Replit subscription, internet, and phone. It should calculate the business-use percentage automatically.
+3. State & Local Incentives (The Kentucky Section)
+Since your business is in Owensboro, you have some specific "Home Field" advantages to track here.
+• LLET Exemption Alert: Kentucky passed a new rule for 2026: if your gross receipts are under $100,000, you are now exempt from the Limited Liability Entity Tax (LLET). Your app should show your progress toward that $100k cap.  
+• KSBTC Milestone: A progress bar toward $5,000 in tech spending. Once you hit it, the app should give you the link to apply for the Kentucky Small Business Tax Credit.
+4. The "Tax Reserve" Calculator
+This is the most practical part of the page. It tells you how much money you can actually spend vs. what you need to save.
+• Self-Employment Estimate: Automatically set aside 15.3% of your net profit.
+• Quarterly Countdown: Large, clear dates for the 2026 quarterly deadlines (April 15, June 15, Sept 15, and Jan 15).
+• "Safe to Spend" Balance: This is your total bank balance minus the estimated taxes and upcoming subcontractor payments.
+Would you like me to give you a "Feature List" for the Replit Agent to build out the "Business Deduction Dashboard" first?
+Since it’s now March 2026, the rules have shifted in your favor. Here is a specific "Feature List" you can give to the Replit Agent to build your Business Deduction Dashboard. This logic is based on the One Big Beautiful Bill Act (OBBBA) and the latest 2026 IRS rates.
+1. The "Daily Deduction" Mileage Tracker
+Instead of just a list, make this a "live" counter that turns miles into dollars.
+• The Logic: Set a variable MILEAGE_RATE = 0.725 (the 2026 IRS rate).
+• The Feature: An input for "Trip Purpose" and "Miles Driven." The dashboard should show a "Total Tax Savings" bubble that multiplies your total miles by $0.725.
+2. The "Section 179" Heavy Equipment Alert
+Since you have a Ford F-150, this is where you track the truck and your coding gear.
+• The Logic: Flag any single expense over $2,500.
+• The Feature: A "Bonus Depreciation" toggle. If on, it shows the full cost of the item being deducted from your 2026 income immediately.
+• Special Truck Logic: For your F-150, add an interest tracker. The OBBBA now allows a deduction for auto loan interest on American-made vehicles (up to $10,000/year). Have the app separate your interest payments from the principal.  
+3. The "2026 Threshold" Compliance Gate
+This prevents you from doing unnecessary paperwork for subcontractors.
+• The Logic: Set the NEC_THRESHOLD = 2000.
+• The Feature: A progress bar for each subcontractor. It should only count payments made via Cash, Check, or ACH.
+• The Alert: When a sub hits $2,000, the bar turns red and says: "1099-NEC Required: Ensure W-9 is on file." (Note: Because of the 2026 reverter, if you pay them via Square/Venmo, they won't trigger this unless they hit $20,000).
+4. The "Owensboro Small Business" Perks
+Since you're in Kentucky, your app needs these specific state-level trackers:
+• LLET Exemption Tracker: In 2026, if your gross receipts are under $100,000, you are exempt from the Kentucky Limited Liability Entity Tax (saving you at least $175). Show a "Road to $100k" meter.  
+• KSBTC Progress Bar: A counter for "Tech & Equipment" spending. Once it hits $5,000, the app should display: "Milestone Reached! You may now qualify for the Kentucky Small Business Tax Credit."
+5. The "Tax-Free Tip" Filter
+If your business accepts tips, the OBBBA made them deductible up to $25,000.  
+• The Feature: A separate "Income Category" for Tips.
+• The Calculation: Your "Estimated Tax Owed" should exclude these tips from the math so you aren't paying federal tax on money the IRS now considers exempt.
+Suggested Replit Agent Prompt:
+Build a '2026 Business Tax Dashboard' using the following rules:
+Calculate mileage deductions at $0.725/mile.
+Flag subcontractors for 1099s only if Cash/ACH payments exceed $2,000.
+Track tech spending toward a $5,000 Kentucky Tax Credit goal.
+Create a 'Tax Reserve' view that sets aside 15.3% of net profit but excludes Qualified Tips and Auto Loan Interest (up to $10k) from the taxable total."
+Would you like me to help you design the "Tax Reserve" view so it tells you exactly how much 'Safe to Spend' cash you have in your business account?
+Since it's March 2026, your "Tax Reserve" view can be a game-changer for your cash flow. Because of the One Big Beautiful Bill Act (OBBBA), you actually have more "Safe to Spend" cash than business owners did in previous years.
+Here is how you should structure that view in your app to give you an accurate, real-time look at your money:
+The "Safe to Spend" Logic
+Your app should take your total bank balance and subtract these three "buckets" to show you what you can actually use:
+1. The Self-Employment Tax Reserve: * The Math: Set aside 15.3% of your Net Profit (Income minus Expenses).   
+• The 2026 Update: Your app should only apply the full 15.3% to the first $184,500 of your income. Anything above that only gets hit with the 2.9% Medicare portion.  
+• The Adjustment: Subtract the "Employer Half" (7.65%) from your taxable total before calculating, as the IRS lets you deduct that.  
+2. The Subcontractor "Escrow":
+• The app should look at all "Approved" jobs that haven't been paid yet and "hold" that cash in the view so you don't accidentally spend the money you owe your team.
+3. The "OBBBA" Bonus (Cash Back):
+• This is the "fun" part of the dashboard. The app should add back the tax savings from the new 2026 deductions to your "Safe to Spend" total.
+• Mileage: Every mile you log adds 72.5 cents back to your "effective" cash.  
+• Truck Interest: Up to $833/month ($10k/year) in auto loan interest is now a direct deduction that lowers your tax bill.  
+A 2026 "Compliance Alert" for your Admin
+Since you are in Owensboro, add a small "State Tax" indicator.
+• The LLET Rule: If your app shows your gross receipts are under $100,000 for 2026, it should display a green checkmark: "LLET Exempt (Kentucky State Tax Saved)."
+• The Quarterly Countdown: It should show a big countdown to the next estimated payment deadline (June 15, 2026).
+Replit Agent Prompt for the "Safe to Spend" View:
+Create a 'Safe to Spend' dashboard widget.
+Start with 'Total Bank Balance'.
+Subtract 'Unpaid Subcontractor Invoices'.
+Subtract a 'Tax Reserve' (15.3% of Net Profit).
+Add back 'Estimated Tax Savings' from mileage logged at 72.5c/mile and Auto Loan Interest up to $10k/year.  
+Display the final number as 'Available Cash'."
+Would you like me to help you set up the "Notification" system so your app pings you whenever a subcontractor hits that $2,000 threshold so you can verify their W-9 is ready?
+Since it’s now March 2026, the "One Big Beautiful Bill Act" (OBBBA) is officially in full effect. Building a "Compliance & Tax" page on your app is a smart move to automate these new rules so you don't have to think about them.
+Here is a breakdown of what that page should actually do for you:
+1. The Subcontractor Gateway
+This part of the page handles the people you hire. Since the reporting threshold jumped from $600 to $2,000 this year, your app should act as a filter.  
+• W-9 Status: It should show a list of your subs with a simple "Status" light (Green if you have their W-9, Red if you don't).
+• Threshold Alert: A progress bar for each person. Once you pay them $2,000 in a calendar year (via cash, check, or ACH), the app should automatically flag them for a 1099-NEC.
+• Digital Storage: A secure link to the PDF of their W-9 so you have it ready for the IRS's required 4-year record-keeping.
+2. The Business Deduction Dashboard
+This is where the app "finds" you money. In 2026, several deductions became even more valuable.
+• Mileage Log: A simple button to "Add Trip." It should multiply your miles by the new 72.5 cents rate and show you a running total of your "Tax Savings."
+• Bonus Depreciation: Any equipment or software (like your Replit subscription or a new laptop) over $2,500 should be automatically flagged for a 100% write-off this year.
+• Auto Loan Interest: Since you have a truck, the app should have a field for "Loan Interest." The OBBBA now allows you to deduct up to $10,000 of that interest annually.  
+3. The "Safe to Spend" Calculator
+This is the most practical tool for a business owner. It looks at your bank balance and tells you what’s actually yours.
+• Self-Employment Reserve: It should automatically calculate 15.3% of your net profit and "hide" that from your available balance.
+• The LLET Tracker: In Kentucky, if you stay under $100,000 in gross receipts, you’re now exempt from the Limited Liability Entity Tax. The app should show a "Road to $100k" progress bar.
+• Tax-Free Income: The OBBBA made tips and overtime premiums (up to $12,500) tax-exempt for many. If your app handles payments, it should subtract those amounts before calculating your tax reserve.  
+4. Kentucky Compliance & Credits
+Living in Owensboro gives you access to specific state benefits.
+• KSBTC Milestone: The Kentucky Small Business Tax Credit kicks in if you spend $5,000 on tech/equipment and hire someone. Your page should have a tracker for that $5,000 goal.  
+• Quarterly Deadlines: A countdown clock to the next estimated tax payment (the next one is June 15, 2026).
+Would you like me to help you draft the "Threshold Logic" script so your app knows exactly when to trigger a 1099-NEC alert?
+Since it’s now March 2026, your Replit app can be a powerhouse for these new "One Big Beautiful Bill Act" (OBBBA) benefits. Here’s how to build that "Threshold Logic" and a few other key automations into your business logic.
+1. The 1099-NEC Threshold Logic
+The OBBBA officially raised the 1099-NEC reporting limit from $600 to $2,000 for the 2026 tax year. This means you have much less paperwork for smaller vendors.  
+How to code it:
+Create a function in your app that monitors payments to every subcontractor.
+• The Filter: Only count payments made via Cash, Check, or ACH. (Payments made via Credit Card or apps like Square/Venmo are reported by the processor, not you).
+• The Warning: When a sub's total hits $1,500, have the app send an automated email: "You are approaching the $2,000 tax reporting threshold. Please ensure your W-9 is uploaded to the portal."
+• The Hard Stop: Once they hit $2,000, the app should flag their profile as "1099-Required" and add them to a year-end export list.
+2. The "New Truck" Interest Deduction
+You mentioned having a truck. If you bought a new vehicle after 2024 that was assembled in the U.S. (like many F-150s), the OBBBA now allows you to deduct up to $10,000 in interest annually.  
+How to code it:
+• Amortization Tracker: Add a feature where you input your monthly truck payment. The app can split the principal from the interest.
+• The Logic: If you use the truck for both personal and business, the app can help you decide which is better: claiming it as a "Personal Vehicle Interest" deduction (new for 2026) or as a "Business Expense."
+3. The Kentucky Tech Credit (KSBTC)
+Living in Owensboro gives you a local edge. The Kentucky Small Business Tax Credit is active for 2026 and offers between $3,500 and $25,000.  
+How to code it:
+• Tech Spending Gate: Program a "Credit Watch" that flags any technology or equipment purchase (computers, software, tools) titled in your business name.
+• The Goal: Once your total hits $5,000, the app should trigger a reminder to check if you’ve had a full-time employee (earning at least $10.88/hr) on the payroll for at least 12 months. If both are true, you can apply for that state credit.
+4. Self-Employed "Tips" Deduction
+If your app handles services where you or your subs receive tips, the OBBBA now allows a federal tax deduction for "Qualified Tips" up to $25,000.  
+How to code it:
+• Category Tagging: In your "Income" module, make sure "Tips" are a separate line item from "Service Fees."
+• Exclusion Logic: Your app should subtract these tips from your "Taxable Net Income" estimate so you aren't overpaying your quarterly estimated taxes.
+To round out your Accounting, Taxes, and Compliance page, here are the final pieces that will make it a professional-grade "Business Agent" for 2026.
+1. The "Audit-Ready" Document Vault
+Since you have the data, you need to protect it. The IRS requires you to keep records for at least 4 years (7 if you claim a loss).
+• Automated Backups: Your page should have a "Generate Annual Archive" button. This bundles every receipt, W-9, and mileage log into a single encrypted ZIP file.
+• Verification Log: Create a small "History" feed that time-stamps when a W-9 was uploaded and verified. If the IRS ever asks, "Why didn't you file a 1099 for this person?", you can show the digital trail of their total payments staying under the $2,000 OBBBA threshold.
+2. The "Tax Liability" Real-Time Estimator
+Since you're already tracking income and expenses, your page should have a "Live Tax Bill" counter.
+• Federal Estimate: Calculate 15.3% for Self-Employment tax on your net profit.
+• The 2026 Deductions: Ensure the math subtracts your Standard Mileage ($0.725/mile) and your Auto Loan Interest (up to $10,000) before showing you the estimate.
+• The Result: A simple display: "Estimated Tax Owed: $X,XXX. Next Payment Due: June 15, 2026."
+3. The Kentucky Compliance Check
+Living in Owensboro, you have specific state filings that your app can handle:
+• LLET Status: A simple "On Track" indicator for the $100,000 gross receipts exemption.
+• Annual Report Reminder: Kentucky requires an Annual Report filed with the Secretary of State (usually by June 15th). Your app should have a notification for this to avoid the $100 late fee.
+4. The "Tax Health" Score
+This is a quick visual for your dashboard.
+• Green: All subs have W-9s, quarterly taxes are calculated, and backup is synced.
+• Yellow: A subcontractor has crossed $1,500 but hasn't uploaded a W-9 yet.
+• Red: A subcontractor has crossed $2,000 without a W-9, or a tax deadline is within 7 days.
+Would you like me to help you write the "Archive" script that gathers all your 2026 tax documents into a single folder for your records?
+Since it’s March 2026, keeping your business "audit-proof" is all about how you organize your digital files. The IRS accepts digital records as long as they are identical to the originals and contain all the required details (date, amount, vendor, and business purpose).  
+Here is the best way to structure your files and the script to bundle them up safely.
+1. The "Golden Standard" Folder Structure
+Before you run an archive script, your app should be saving files into a structure that an IRS agent can understand in seconds. I recommend this layout:
+• Tax_Year_2026/
+• Income/ (Invoices sent to clients, 1099-K forms from Square/Venmo)
+• Expenses/ (Receipts for software, Replit subs, and tools)
+• Subcontractors/ (Foldered by name: W-9 PDF + Payment Ledger)
+• Vehicle/ (Mileage logs + Auto loan interest statements for your F-150)
+• State_Local/ (Kentucky Annual Report + KSBTC application info)
+2. The Python Archive Script
+You can add this code to your Replit project. It uses the built-in zipfile module to create a compressed, dated backup of your entire tax folder.
+import zipfile
+import os
+from datetime import datetime
+
+def archive_tax_documents(source_dir, output_filename=None):
+    # Set a default filename with today's date if none provided
+    if not output_filename:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        output_filename = f"Business_Tax_Archive_{date_str}.zip"
+    
+    # Create the zip file
+    with zipfile.ZipFile(output_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(source_dir):
+            for file in files:
+                # Create the full path to the file
+                file_path = os.path.join(root, file)
+                # Add to zip, maintaining the folder structure (arcname)
+                zipf.write(file_path, os.path.relpath(file_path, source_dir))
+    
+    print(f"Successfully created archive: {output_filename}")
+    return output_filename
+
+# Example usage for your 2026 records
+# archive_tax_documents('tax_records_2026')
+Why this matters for 2026
+• The 4-Year Rule: The IRS generally requires you to keep records for 3 to 4 years, but most experts recommend 7 years to be completely safe. Running this script every December (or every quarter) ensures you have a "snapshot" that can't be accidentally deleted or overwritten.
+• The $2,000 OBBBA Trigger: By archiving your Subcontractor folder, you have proof of every payment. If a sub claims they didn't need a 1099 but they actually hit $2,100, your archive will have the timestamped ledger to protect you from "failure to file" penalties.
+Would you like me to show you how to set up a "Cloud Sync" so this ZIP file is automatically sent to your Google Drive or email every time you run it?
+Mastering Python's zipfile for file compression
+This video explains the technical details of the zipfile module used in the script above, helping you understand how it handles file paths and compression levels.
+Since you’ve already got the trackers and the archive script ready to go, the last few things to handle for your 2026 Tax & Compliance page are "Future-Proofing" moves.
+The One Big Beautiful Bill Act (OBBBA) and the Corporate Transparency Act have some specific deadlines and perks you should keep on your radar.
+1. Beneficial Ownership Information (BOI) Filing
+This is a non-tax compliance requirement that carries heavy penalties if missed.  
+• The Rule: Most small businesses must report their "Beneficial Owners" to FinCEN.  
+• The Deadline: If you started your business before 2024, you should have filed by Jan 1, 2025. However, if you've had any changes (like a new home address in Owensboro or a new driver's license), you must file an update within 30 days.  
+• App Action: Add a "Compliance Checkbox" to your dashboard: "Has your business address or ID changed this month?" If yes, trigger a link to the FinCEN filing portal.
+2. The "Solo 401(k)" or SEP IRA Boost
+If your app is making a profit, 2026 is a great year to "hide" that money from the IRS while saving for yourself.
+• The 2026 Limits: The IRS raised the contribution limits for 2026. You can now put away up to $24,500 as an "employee" (yourself) and an additional amount as the "employer," up to a total of $72,000.  
+• App Action: Add a "Retirement Forecast" widget. It can show you how much your taxable income would drop if you contributed just 10% of your current net profit to a Solo 401(k).
+3. The "Childcare Credit" Expansion
+If you have kids or if you eventually hire a subcontractor who needs childcare to work for you:
+• The 2026 Perk: The OBBBA increased the Employer-Provided Childcare Credit to 50% of costs, up to $600,000 for small businesses.  
+• App Action: If you pay for childcare so you can focus on coding this app, log those expenses separately. While it's usually a personal credit, in 2026 there are more ways to bridge that as a business benefit if structured correctly.
+4. Kentucky Sales Tax for Software
+Since you are building an app:
+• The KY Rule: Kentucky charges a 6% sales tax on "prewritten computer software," including AI-powered apps and SaaS.
+• App Action: If you plan on selling access to this BMS to other businesses, your Accounting page needs a "Sales Tax" toggle to collect and remit that 6% to the state of Kentucky.
+Final "Tax Agent" Feature Checklist:
+• FinCEN Update Reminder: (Triggers when your profile data changes).
+• Retirement Contribution Calculator: (Uses the new $72,000 limit).
+• Kentucky Sales Tax Collector: (6% for any software sales).
+• QBI Deduction Monitor: Displays your 20% deduction (now permanent under OBBBA).  
+Would you like me to help you write the logic for the "6% Kentucky Sales Tax" calculator so it's ready if you decide to sell subscriptions to your app?
+Solo 401(k) contribution limits for 2026
+This video breaks down the specific 2026 contribution limits for self-employed individuals, which is key for the "Retirement Forecast" widget we discussed.
+
+
+
