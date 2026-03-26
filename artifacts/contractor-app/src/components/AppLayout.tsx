@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
-  Calculator, HardHat, ClipboardList, ShieldAlert, Users,
+  Calculator, HardHat, ShieldAlert, Users,
   Settings, Menu, X, Building2, BookOpen, LogOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { logout } = useAuth();
   const enabledFeatures: string[] = (settings as any)?.enabledFeatures ?? [
     "invoices", "expenses", "mileage",
-    "estimates", "subcontractors", "daily_logs", "compliance", "clients",
+    "estimates", "subcontractors", "compliance", "clients",
   ];
 
   const allNavItems = [
@@ -30,7 +30,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs" },
     { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates" },
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses" },
-    { name: "Daily Logs", href: "/daily-logs", icon: ClipboardList, feature: "daily_logs" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors" },
     { name: "Clients", href: "/clients", icon: Users, feature: "clients" },

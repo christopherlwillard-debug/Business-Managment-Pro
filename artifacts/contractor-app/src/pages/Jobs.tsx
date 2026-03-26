@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, useListInvoices,
   useUpdateInvoiceStatus, useDeleteInvoice, getJobInvoiceDraft,
-  Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest,
+  useListDailyLogs, useCreateDailyLog, useDeleteDailyLog,
+  Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -12,8 +13,11 @@ import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
 import {
   Briefcase, MapPin, Calendar, HardHat, Users,
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
-  Edit2, CheckCircle, Clock,
+  Edit2, CheckCircle, Clock, ClipboardList, Upload,
+  AlertCircle, ArrowLeft,
 } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 const INVOICE_STATUS_COLORS: Record<string, string> = {
@@ -92,88 +96,344 @@ function SubcontractorPicker({
   );
 }
 
+// ─── Job Daily Log Panel ───────────────────────────────────────────────────────
+function JobDailyLogPanel({
+  job, onClose,
+}: {
+  job: Job;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: logs = [], isLoading } = useListDailyLogs({ jobId: job.id });
+  const createLog  = useCreateDailyLog();
+  const deleteLog  = useDeleteDailyLog();
+
+  const today = new Date().toISOString().split("T")[0];
+  const [form, setForm] = useState({ date: today, notes: "", workCompleted: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
+  const [photoError, setPhotoError] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setPhotoError("Only image files are allowed."); return; }
+    setUploadingPhoto(true);
+    setPhotoError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json();
+      setPendingPhotos(p => [...p, url]);
+    } catch {
+      setPhotoError("Photo upload failed. Please try again.");
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.date) return;
+    setSubmitting(true);
+    try {
+      await createLog.mutateAsync({
+        data: {
+          jobId: job.id,
+          date: form.date,
+          notes: form.notes || undefined,
+          workCompleted: form.workCompleted || undefined,
+          photoUrls: pendingPhotos.length > 0 ? pendingPhotos : undefined,
+        },
+      });
+      setForm({ date: today, notes: "", workCompleted: "" });
+      setPendingPhotos([]);
+      queryClient.invalidateQueries({ queryKey: ["listDailyLogs"] });
+      queryClient.invalidateQueries();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteLog(id: number) {
+    setDeletingId(id);
+    try {
+      await deleteLog.mutateAsync({ id });
+      queryClient.invalidateQueries({ queryKey: ["listDailyLogs"] });
+      queryClient.invalidateQueries();
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      {/* Panel */}
+      <div className="relative ml-auto w-full max-w-lg bg-card border-l border-border flex flex-col h-full shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border/50 flex-shrink-0 bg-card">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <ClipboardList className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground font-medium">Daily Log</p>
+              <h2 className="font-bold text-foreground text-sm truncate">{job.title}</h2>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Add entry form */}
+          <div className="p-5 border-b border-border/50 bg-muted/20">
+            <h3 className="font-semibold text-foreground text-sm mb-3 flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5 text-amber-500" /> Add Entry
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
+                <input type="date"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={form.date}
+                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Work Completed</label>
+                <textarea rows={2}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                  placeholder="Describe what was done today…"
+                  value={form.workCompleted}
+                  onChange={e => setForm(f => ({ ...f, workCompleted: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Additional Notes / Issues</label>
+                <textarea rows={2}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                  placeholder="Any issues, materials, or other notes…"
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+
+              {/* Photo upload */}
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Photos</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {pendingPhotos.map((url, i) => (
+                    <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border group">
+                      <img src={`${BASE}${url}`} alt="" className="w-full h-full object-cover" />
+                      <button type="button"
+                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                        onClick={() => setPendingPhotos(p => p.filter((_, j) => j !== i))}>
+                        <X className="w-4 h-4 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    className="w-16 h-16 rounded-lg border-2 border-dashed border-border hover:border-amber-400 hover:bg-amber-50 transition-colors flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-amber-600 disabled:opacity-50">
+                    {uploadingPhoto
+                      ? <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                      : <><Upload className="w-3.5 h-3.5" /><span className="text-[10px] font-medium">Add</span></>}
+                  </button>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                </div>
+                {photoError && (
+                  <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="w-3 h-3" />{photoError}</p>
+                )}
+              </div>
+
+              <button type="submit" disabled={submitting || !form.date}
+                className="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-60">
+                {submitting ? "Saving…" : "Save Entry"}
+              </button>
+            </form>
+          </div>
+
+          {/* Log history */}
+          <div className="p-5 space-y-4">
+            <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5">
+              <ClipboardList className="w-3.5 h-3.5 text-muted-foreground" />
+              Log History
+              {logs.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-bold">{logs.length}</span>
+              )}
+            </h3>
+
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : sortedLogs.length === 0 ? (
+              <div className="py-10 text-center space-y-2">
+                <ClipboardList className="w-8 h-8 text-muted-foreground/30 mx-auto" />
+                <p className="text-sm text-muted-foreground">No entries yet. Add your first log above.</p>
+              </div>
+            ) : (
+              sortedLogs.map((log: DailyLog) => (
+                <div key={log.id} className="rounded-xl border border-border/50 bg-background p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm text-foreground">{formatDate(log.date)}</span>
+                    <button
+                      onClick={() => handleDeleteLog(log.id)}
+                      disabled={deletingId === log.id}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {log.workCompleted && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Work Completed</p>
+                      <p className="text-sm text-foreground">{log.workCompleted}</p>
+                    </div>
+                  )}
+                  {log.notes && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Notes</p>
+                      <p className="text-sm text-foreground">{log.notes}</p>
+                    </div>
+                  )}
+                  {log.photoUrls && log.photoUrls.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {log.photoUrls.map((url: string, i: number) => (
+                        <a key={i} href={url.startsWith("/api") ? `${BASE}${url}` : url} target="_blank" rel="noopener noreferrer"
+                          className="w-16 h-16 rounded-lg overflow-hidden border border-border block hover:opacity-90 transition-opacity">
+                          <img src={url.startsWith("/api") ? `${BASE}${url}` : url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted,
+  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
   onDelete: (job: Job) => void;
   onReviewInvoice: (job: Job) => void;
   onMarkCompleted: (job: Job) => void;
+  logCount: number;
+  lastLogDate?: string;
 }) {
+  const [logPanelOpen, setLogPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
 
   return (
-    <Card className="p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <h3 className="font-semibold text-foreground text-sm truncate">{job.title}</h3>
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              isCompleted ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
-            }`}>
-              {isCompleted ? <CheckCircle className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
-              {isCompleted ? "Completed" : "Scheduled"}
-            </span>
+    <>
+      <Card className="p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <h3 className="font-semibold text-foreground text-sm truncate">{job.title}</h3>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                isCompleted ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+              }`}>
+                {isCompleted ? <CheckCircle className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
+                {isCompleted ? "Completed" : "Scheduled"}
+              </span>
+            </div>
+            {job.estimatedAmount && (
+              <p className="text-amber-600 font-bold text-sm">{formatCurrency(job.estimatedAmount)}</p>
+            )}
           </div>
-          {job.estimatedAmount && (
-            <p className="text-amber-600 font-bold text-sm">{formatCurrency(job.estimatedAmount)}</p>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={() => onEdit(job)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onDelete(job)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 text-xs text-muted-foreground">
+          {job.clientName && (
+            <div className="flex items-center gap-1.5">
+              <Users className="w-3 h-3 flex-shrink-0" />
+              <span>{job.clientName}</span>
+            </div>
+          )}
+          {(job.locationName || job.city || job.state) && (
+            <div className="flex items-center gap-1.5">
+              <MapPin className="w-3 h-3 flex-shrink-0" />
+              <span>{[job.locationName, job.city, job.state].filter(Boolean).join(", ")}</span>
+            </div>
+          )}
+          {job.startDate && (
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3 h-3 flex-shrink-0" />
+              <span>{formatDate(job.startDate)}{job.endDate && ` – ${formatDate(job.endDate)}`}</span>
+            </div>
+          )}
+          {job.subcontractorNames?.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <HardHat className="w-3 h-3 flex-shrink-0" />
+              <span>{job.subcontractorNames.join(", ")}</span>
+            </div>
           )}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={() => onEdit(job)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => onDelete(job)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
 
-      <div className="space-y-1.5 text-xs text-muted-foreground">
-        {job.clientName && (
-          <div className="flex items-center gap-1.5">
-            <Users className="w-3 h-3 flex-shrink-0" />
-            <span>{job.clientName}</span>
-          </div>
-        )}
-        {(job.locationName || job.city || job.state) && (
-          <div className="flex items-center gap-1.5">
-            <MapPin className="w-3 h-3 flex-shrink-0" />
-            <span>{[job.locationName, job.city, job.state].filter(Boolean).join(", ")}</span>
-          </div>
-        )}
-        {job.startDate && (
-          <div className="flex items-center gap-1.5">
-            <Calendar className="w-3 h-3 flex-shrink-0" />
-            <span>{formatDate(job.startDate)}{job.endDate && ` – ${formatDate(job.endDate)}`}</span>
-          </div>
-        )}
-        {job.subcontractorNames?.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <HardHat className="w-3 h-3 flex-shrink-0" />
-            <span>{job.subcontractorNames.join(", ")}</span>
-          </div>
-        )}
-      </div>
+        {/* Daily Log button + indicator */}
+        <button
+          onClick={() => setLogPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+          <ClipboardList className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <span className="flex-1 text-left">Daily Log</span>
+          {logCount > 0 ? (
+            <span className="flex items-center gap-1">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">{logCount}</span>
+              {lastLogDate && <span className="text-[10px] text-muted-foreground">Last: {formatDate(lastLogDate)}</span>}
+            </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">No entries</span>
+          )}
+        </button>
 
-      {isCompleted ? (
-        <button
-          onClick={() => onReviewInvoice(job)}
-          className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
-          <FileText className="w-3.5 h-3.5" /> Review Invoice
-        </button>
-      ) : (
-        <button
-          onClick={() => onMarkCompleted(job)}
-          className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
-          <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
-        </button>
+        {isCompleted ? (
+          <button
+            onClick={() => onReviewInvoice(job)}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
+            <FileText className="w-3.5 h-3.5" /> Review Invoice
+          </button>
+        ) : (
+          <button
+            onClick={() => onMarkCompleted(job)}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
+            <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
+          </button>
+        )}
+      </Card>
+
+      {logPanelOpen && (
+        <JobDailyLogPanel job={job} onClose={() => setLogPanelOpen(false)} />
       )}
-    </Card>
+    </>
   );
 }
 
@@ -562,6 +822,15 @@ export default function Jobs() {
   const { data: subcontractors = [] }     = useListSubcontractors();
   const deleteJobMutation                 = useDeleteJob();
   const updateJob                         = useUpdateJob();
+  const { data: allLogs = [] }            = useListDailyLogs();
+
+  // Compute per-job log indicators
+  const logsByJob = allLogs.reduce<Record<number, DailyLog[]>>((acc, log) => {
+    if (log.jobId == null) return acc;
+    if (!acc[log.jobId]) acc[log.jobId] = [];
+    acc[log.jobId].push(log);
+    return acc;
+  }, {});
 
   const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "completed">("all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
@@ -676,11 +945,16 @@ export default function Jobs() {
                 </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {scheduledJobs.map(job => (
-                  <JobCard key={job.id} job={job} onEdit={openEditJob}
-                    onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
-                    onMarkCompleted={handleMarkCompleted} />
-                ))}
+                {scheduledJobs.map(job => {
+                  const jobLogs = logsByJob[job.id] ?? [];
+                  const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
+                  return (
+                    <JobCard key={job.id} job={job} onEdit={openEditJob}
+                      onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
+                      onMarkCompleted={handleMarkCompleted}
+                      logCount={jobLogs.length} lastLogDate={lastLog?.date} />
+                  );
+                })}
               </div>
             </div>
           )}
@@ -695,11 +969,16 @@ export default function Jobs() {
                 </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {completedJobs.map(job => (
-                  <JobCard key={job.id} job={job} onEdit={openEditJob}
-                    onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
-                    onMarkCompleted={handleMarkCompleted} />
-                ))}
+                {completedJobs.map(job => {
+                  const jobLogs = logsByJob[job.id] ?? [];
+                  const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
+                  return (
+                    <JobCard key={job.id} job={job} onEdit={openEditJob}
+                      onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
+                      onMarkCompleted={handleMarkCompleted}
+                      logCount={jobLogs.length} lastLogDate={lastLog?.date} />
+                  );
+                })}
               </div>
             </div>
           )}
