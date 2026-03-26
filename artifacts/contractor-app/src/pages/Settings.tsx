@@ -243,7 +243,7 @@ export default function Settings() {
     companyAddress: "", companyCity: "", companyState: "KY", companyZip: "",
     defaultTaxRate: "", invoicePrefix: "INV-2026-",
     defaultPaymentTerms: "Net 30", lateFeePercent: "",
-    mileageRate: "0.725", thresholdAmount1099: "600",
+    mileageRate: "0.725", thresholdAmount1099: "2000",
     invoiceLogoPosition: "top-left", invoiceLogoSize: "medium",
     // SMTP email delivery
     smtpHost: "", smtpPort: "587", smtpUser: "", smtpSecure: "0",
@@ -281,7 +281,7 @@ export default function Settings() {
         defaultPaymentTerms: s.defaultPaymentTerms ?? "Net 30",
         lateFeePercent: s.lateFeePercent != null ? String(s.lateFeePercent) : "",
         mileageRate: s.mileageRate != null ? String(s.mileageRate) : "0.725",
-        thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "600",
+        thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "2000",
         invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
         invoiceLogoSize: s.invoiceLogoSize ?? "medium",
         smtpHost: s.smtpHost ?? "",
@@ -328,7 +328,7 @@ export default function Settings() {
           defaultPaymentTerms: form.defaultPaymentTerms || undefined,
           lateFeePercent: form.lateFeePercent ? parseFloat(form.lateFeePercent) : undefined,
           mileageRate: form.mileageRate ? parseFloat(form.mileageRate) : 0.725,
-          thresholdAmount1099: form.thresholdAmount1099 ? parseFloat(form.thresholdAmount1099) : 600,
+          thresholdAmount1099: form.thresholdAmount1099 ? parseFloat(form.thresholdAmount1099) : 2000,
           invoiceLogoPosition: form.invoiceLogoPosition,
           invoiceLogoSize: form.invoiceLogoSize,
           mileageAutoTrack,
@@ -605,7 +605,7 @@ export default function Settings() {
                     <input className={inp + " pl-7"} type="number" step="0.001" min="0" value={form.mileageRate} onChange={e => setF("mileageRate", e.target.value)} />
                   </div>
                 </LF>
-                <LF label="1099-NEC Threshold ($)" hint="IRS requires 1099 at $600+ per sub per year">
+                <LF label="1099-NEC Threshold ($)" hint="2026 OBBBA rule: $2,000 for qualifying (cash/check/ACH) payments">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                     <input className={inp + " pl-7"} type="number" value={form.thresholdAmount1099} onChange={e => setF("thresholdAmount1099", e.target.value)} />

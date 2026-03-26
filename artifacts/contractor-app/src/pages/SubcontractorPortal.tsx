@@ -1551,7 +1551,7 @@ function TaxReportsTab({ token }: { token: string }) {
               {[
                 { form: "Schedule C", desc: "Report self-employment income & expenses (attach to Form 1040)" },
                 { form: "Schedule SE", desc: "Calculate self-employment tax owed" },
-                { form: "1099-NEC", desc: data.grossIncome >= 600 ? "Your contractor will send this — shows your gross income" : "Not required (income below $600)" },
+                { form: "1099-NEC", desc: (data.qualifyingIncome ?? data.grossIncome) >= 2000 ? "Your contractor will send this — shows your nonemployee compensation" : "Not required unless qualifying payments reach $2,000 (OBBBA 2026)" },
               ].map(({ form, desc }) => (
                 <div key={form} className="flex items-start gap-3">
                   <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-md flex-shrink-0 mt-0.5">{form}</span>
@@ -1577,20 +1577,24 @@ function TaxReportsTab({ token }: { token: string }) {
             <p className="text-xs text-muted-foreground mt-0.5">1099-NEC forms issued by your contractor</p>
           </div>
 
-          {/* Approach notice */}
-          {data.grossIncome >= 1500 && data.grossIncome < 2000 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-amber-900">Approaching 1099-NEC threshold</p>
-                <p className="text-xs text-amber-700 mt-0.5">
-                  You've received {formatCurrency(data.grossIncome)} for {data.year}.
-                  At $2,000 your contractor is required to issue a 1099-NEC.
-                  Please ensure your W-9 info is complete in the W-9 tab.
-                </p>
+          {/* Approach notice — based on qualifying (cash/check/ACH) payments only */}
+          {(() => {
+            const qi = data.qualifyingIncome ?? 0;
+            if (qi >= 1500 && qi < 2000) return (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">Approaching 1099-NEC threshold</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    You have {formatCurrency(qi)} in qualifying payments (cash, check, ACH) for {data.year}.
+                    At $2,000 your contractor is required to issue a 1099-NEC.
+                    Please ensure your W-9 info is complete in the W-9 tab.
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            );
+            return null;
+          })()}
 
           {!docs1099 || (docs1099 as any[]).length === 0 ? (
             <div className="bg-muted/40 border border-border rounded-xl px-4 py-5 text-center">

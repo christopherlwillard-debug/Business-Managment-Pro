@@ -69,7 +69,7 @@ router.get("/report", async (req, res) => {
         subcontractorId: s.id,
         name: s.name,
         totalQualifying,
-        w9Complete: !!(s.w9Signature && s.w9LegalName && (s.w9TaxId || s.w9TaxIdType)),
+        w9Complete: !!(s.w9Signature && s.w9LegalName && s.w9TaxId && s.w9TaxIdType && s.w9Address && s.w9City && s.w9State && s.w9Zip && s.w9TaxClassification),
         w9OnFile: s.w9OnFile,
         requires1099: totalQualifying >= THRESHOLD,
         threshold: THRESHOLD,
@@ -78,7 +78,7 @@ router.get("/report", async (req, res) => {
           ? {
               id: existingRecord.id,
               generatedAt: existingRecord.generatedAt,
-              totalPaid: parseFloat(existingRecord.totalPaid as any),
+              totalPaid: parseFloat(String(existingRecord.totalPaid)),
             }
           : null,
         // W-9 fields for PDF generation (TIN masked for PII protection)
@@ -152,7 +152,7 @@ router.post("/generate/:subcontractorId", async (req, res) => {
       id: record.id,
       subcontractorId: record.subcontractorId,
       taxYear: record.taxYear,
-      totalPaid: parseFloat(record.totalPaid as any),
+      totalPaid: parseFloat(String(record.totalPaid)),
       generatedAt: record.generatedAt,
     });
   } catch (err) {
@@ -184,7 +184,7 @@ router.get("/download/:id", async (req, res) => {
       id: record.id,
       pdfData: record.pdfData,
       taxYear: record.taxYear,
-      totalPaid: parseFloat(record.totalPaid as any),
+      totalPaid: parseFloat(String(record.totalPaid)),
     });
   } catch (err) {
     console.error("1099 download error:", err);
@@ -208,7 +208,7 @@ router.get("/portal/:subcontractorId", async (req, res) => {
       records.map(r => ({
         id: r.id,
         taxYear: r.taxYear,
-        totalPaid: parseFloat(r.totalPaid as any),
+        totalPaid: parseFloat(String(r.totalPaid)),
         generatedAt: r.generatedAt,
         hasPdf: !!r.pdfData,
       }))
