@@ -6,34 +6,28 @@ import {
   Navigation, HardHat, FileSpreadsheet, Printer, AlertCircle, CheckCircle2,
   Download, FileText, BarChart3, AlertTriangle, Calendar, ExternalLink,
   ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
-  ShieldAlert, Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell, FileCheck, X,
+  Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell,
+  FileCheck, X, ChevronRight, Home,
 } from "lucide-react";
-import { useScheduleCReport, useAllSubcontractorsPayments, useCreatePayment, useUpdatePayment, useDeletePayment, useGetComplianceReport, type Payment } from "@workspace/api-client-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useScheduleCReport } from "@workspace/api-client-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function downloadCSV(records: any[], year: number) {
   const headers = ["Invoice #", "Date", "Client", "City", "State", "Subtotal", "Tax Collected", "Total", "Status"];
   const rows = records.map((r: any) => [
-    r.invoiceNumber ?? "",
-    r.issueDate ?? "",
-    r.clientName ?? "",
-    r.city ?? "",
-    r.state ?? "",
-    r.subtotal?.toFixed(2) ?? "0.00",
-    r.taxAmount?.toFixed(2) ?? "0.00",
-    r.total?.toFixed(2) ?? "0.00",
-    r.status ?? "",
+    r.invoiceNumber ?? "", r.issueDate ?? "", r.clientName ?? "",
+    r.city ?? "", r.state ?? "",
+    r.subtotal?.toFixed(2) ?? "0.00", r.taxAmount?.toFixed(2) ?? "0.00",
+    r.total?.toFixed(2) ?? "0.00", r.status ?? "",
   ]);
-  const csvContent = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const csvContent = [headers, ...rows].map(row =>
+    row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
+  ).join("\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `tax-records-${year}.csv`;
-  a.click();
+  a.href = url; a.download = `tax-records-${year}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -41,32 +35,6 @@ async function fetchAccounting(year: number) {
   const res = await fetch(`${BASE}/api/reports/accounting?year=${year}`);
   if (!res.ok) throw new Error("Failed to load accounting data");
   return res.json();
-}
-
-function StatCard({ label, value, sub, icon: Icon, color }: {
-  label: string; value: string; sub?: string; icon: any; color: string;
-}) {
-  return (
-    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex gap-4 items-start">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
-        <Icon className="w-5 h-5" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">{label}</p>
-        <p className="text-2xl font-display font-bold text-foreground">{value}</p>
-        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({ title, sub }: { title: string; sub?: string }) {
-  return (
-    <div className="flex items-baseline gap-3 mb-4">
-      <h2 className="text-lg font-display font-bold text-foreground">{title}</h2>
-      {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
-    </div>
-  );
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -80,169 +48,108 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Other": "bg-slate-100 text-slate-600",
 };
 
-// ─── KY LLC Filing Calendar ────────────────────────────────────────────────
+// ─── KY Filing Calendar Data ────────────────────────────────────────────────
 
 type FilingStatus = "not-filed" | "filed" | "na";
 
 interface Filing {
-  id: string;
-  name: string;
-  authority: string;
+  id: string; name: string; authority: string;
   dueDate: (year: number) => Date | null;
   dueDateLabel: (year: number) => string;
-  fee: string;
-  description: string;
-  link: string;
-  linkLabel: string;
-  learnMore: string;
-  penalty: string;
+  fee: string; description: string;
+  link: string; linkLabel: string; learnMore: string; penalty: string;
   conditional?: string;
 }
 
 const KY_FILINGS: Filing[] = [
   {
-    id: "ky-annual-report",
-    name: "KY Annual Report",
-    authority: "KY Secretary of State",
-    dueDate: (y) => new Date(y, 5, 30),
-    dueDateLabel: (y) => `June 30, ${y}`,
-    fee: "$15",
+    id: "ky-annual-report", name: "KY Annual Report", authority: "KY Secretary of State",
+    dueDate: (y) => new Date(y, 5, 30), dueDateLabel: (y) => `June 30, ${y}`, fee: "$15",
     description: "Annual LLC filing to keep your business in good standing with the state.",
-    link: "https://sos.ky.gov",
-    linkLabel: "sos.ky.gov",
+    link: "https://sos.ky.gov", linkLabel: "sos.ky.gov",
     learnMore: "Every Kentucky LLC must file an Annual Report with the Secretary of State by June 30 each year. This report confirms your registered agent, principal office address, and members/managers. Failure to file can result in administrative dissolution of your LLC.",
     penalty: "Late or missing filings can result in administrative dissolution of your LLC and a $50+ late fee. A dissolved LLC loses liability protection.",
   },
   {
-    id: "ky-llet-725",
-    name: "LLET / Form 725",
-    authority: "KY Dept. of Revenue",
-    dueDate: (y) => new Date(y, 3, 15),
-    dueDateLabel: (y) => `April 15, ${y}`,
-    fee: "$175 minimum",
+    id: "ky-llet-725", name: "LLET / Form 725", authority: "KY Dept. of Revenue",
+    dueDate: (y) => new Date(y, 3, 15), dueDateLabel: (y) => `April 15, ${y}`, fee: "$175 minimum",
     description: "Kentucky Limited Liability Entity Tax — required for all LLCs doing business in KY.",
-    link: "https://onestop.ky.gov",
-    linkLabel: "Kentucky Online Gateway",
-    learnMore: "The LLET is Kentucky's annual business privilege tax on LLCs. For a single-member LLC, you file Form 725. The tax is the greater of $175 or a percentage of gross receipts / gross profits. It is due the same day as your federal return (April 15 for calendar-year filers). If you need more time, you can pay the $175 minimum by April 15 and file an extension.",
+    link: "https://onestop.ky.gov", linkLabel: "Kentucky Online Gateway",
+    learnMore: "The LLET is Kentucky's annual business privilege tax on LLCs. For a single-member LLC, you file Form 725. The tax is the greater of $175 or a percentage of gross receipts / gross profits. It is due the same day as your federal return (April 15 for calendar-year filers).",
     penalty: "Penalty of 2% per month (up to 20%) on unpaid tax, plus interest at 1% per month. Minimum $175 due even with no income.",
   },
   {
-    id: "federal-1040",
-    name: "Federal 1040 + Schedule C + SE",
-    authority: "IRS",
-    dueDate: (y) => new Date(y, 3, 15),
-    dueDateLabel: (y) => `April 15, ${y}`,
-    fee: "No state fee",
+    id: "federal-1040", name: "Federal 1040 + Schedule C + SE", authority: "IRS",
+    dueDate: (y) => new Date(y, 3, 15), dueDateLabel: (y) => `April 15, ${y}`, fee: "No state fee",
     description: "Personal income tax return including business profit/loss and self-employment tax.",
-    link: "https://www.irs.gov/forms-pubs/about-schedule-c-form-1040",
-    linkLabel: "IRS.gov / Schedule C",
-    learnMore: "As a single-member LLC, you report your business income and expenses on Schedule C of your personal Form 1040. Self-employment tax (Social Security + Medicare, ~15.3%) is calculated on Schedule SE. The net profit from Schedule C flows to your 1040 as ordinary income. You may request a 6-month extension (Form 4868) by April 15, but any taxes owed must still be paid by April 15 to avoid penalties.",
-    penalty: "Late filing: 5% of unpaid tax per month (max 25%). Late payment: 0.5% per month. Failure-to-pay interest accrues from due date.",
+    link: "https://www.irs.gov/forms-pubs/about-schedule-c-form-1040", linkLabel: "IRS.gov / Schedule C",
+    learnMore: "As a single-member LLC, you report your business income and expenses on Schedule C of your personal Form 1040. Self-employment tax (Social Security + Medicare, ~15.3%) is calculated on Schedule SE.",
+    penalty: "Late filing: 5% of unpaid tax per month (max 25%). Late payment: 0.5% per month.",
   },
   {
-    id: "est-q1",
-    name: "Quarterly Estimated Tax — Q1",
-    authority: "IRS (Form 1040-ES)",
-    dueDate: (y) => new Date(y, 3, 15),
-    dueDateLabel: (y) => `April 15, ${y}`,
-    fee: "Pay estimated tax owed",
+    id: "est-q1", name: "Quarterly Estimated Tax — Q1", authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y, 3, 15), dueDateLabel: (y) => `April 15, ${y}`, fee: "Pay estimated tax owed",
     description: "Q1 estimated payment covering Jan 1 – Mar 31 income.",
-    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
-    linkLabel: "IRS.gov / 1040-ES",
-    learnMore: "If you expect to owe $1,000 or more in federal income taxes after withholding, you must make quarterly estimated payments. Q1 covers January–March income. Use Form 1040-ES to calculate. You can pay online at IRS Direct Pay (no fee). As a rule of thumb, pay 25% of your prior year's total tax liability or 90% of current-year estimated tax.",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es", linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "If you expect to owe $1,000 or more in federal income taxes after withholding, you must make quarterly estimated payments. Q1 covers January–March income.",
     penalty: "Underpayment penalty (typically ~8% annualized rate) on amounts underpaid, plus interest.",
   },
   {
-    id: "est-q2",
-    name: "Quarterly Estimated Tax — Q2",
-    authority: "IRS (Form 1040-ES)",
-    dueDate: (y) => new Date(y, 5, 15),
-    dueDateLabel: (y) => `June 15, ${y}`,
-    fee: "Pay estimated tax owed",
+    id: "est-q2", name: "Quarterly Estimated Tax — Q2", authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y, 5, 15), dueDateLabel: (y) => `June 15, ${y}`, fee: "Pay estimated tax owed",
     description: "Q2 estimated payment covering Apr 1 – May 31 income.",
-    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
-    linkLabel: "IRS.gov / 1040-ES",
-    learnMore: "Q2 covers April–May income and is due June 15. Note: this is a shorter payment period than Q1 or Q3. Use IRS Direct Pay or EFTPS to submit. Keep a record of each payment — you'll need these amounts when filing your return to claim credit for estimated taxes paid.",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es", linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "Q2 covers April–May income and is due June 15. Note: this is a shorter payment period than Q1 or Q3.",
     penalty: "Underpayment penalty on any shortfall, calculated from the due date of each installment.",
   },
   {
-    id: "est-q3",
-    name: "Quarterly Estimated Tax — Q3",
-    authority: "IRS (Form 1040-ES)",
-    dueDate: (y) => new Date(y, 8, 15),
-    dueDateLabel: (y) => `September 15, ${y}`,
-    fee: "Pay estimated tax owed",
+    id: "est-q3", name: "Quarterly Estimated Tax — Q3", authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y, 8, 15), dueDateLabel: (y) => `September 15, ${y}`, fee: "Pay estimated tax owed",
     description: "Q3 estimated payment covering Jun 1 – Aug 31 income.",
-    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
-    linkLabel: "IRS.gov / 1040-ES",
-    learnMore: "Q3 covers June–August income and is due September 15. This is often when contractors are at peak revenue — consider reviewing your YTD income and adjusting your payment upward if business has been strong to avoid an underpayment penalty at tax time.",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es", linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "Q3 covers June–August income and is due September 15.",
     penalty: "Underpayment penalty calculated from September 15 if payment was insufficient.",
   },
   {
-    id: "est-q4",
-    name: "Quarterly Estimated Tax — Q4",
-    authority: "IRS (Form 1040-ES)",
-    dueDate: (y) => new Date(y + 1, 0, 15),
-    dueDateLabel: (y) => `January 15, ${y + 1}`,
-    fee: "Pay estimated tax owed",
+    id: "est-q4", name: "Quarterly Estimated Tax — Q4", authority: "IRS (Form 1040-ES)",
+    dueDate: (y) => new Date(y + 1, 0, 15), dueDateLabel: (y) => `January 15, ${y + 1}`, fee: "Pay estimated tax owed",
     description: "Q4 estimated payment covering Sep 1 – Dec 31 income.",
-    link: "https://www.irs.gov/forms-pubs/about-form-1040-es",
-    linkLabel: "IRS.gov / 1040-ES",
-    learnMore: "Q4 covers September–December income and is due January 15 of the following year. You can skip the Q4 payment if you file your complete tax return and pay all taxes owed by January 31. This is a good time to do a year-end tax review and decide if you want to make any last-minute deductions (e.g., equipment purchases before Dec 31).",
+    link: "https://www.irs.gov/forms-pubs/about-form-1040-es", linkLabel: "IRS.gov / 1040-ES",
+    learnMore: "Q4 covers September–December income and is due January 15 of the following year.",
     penalty: "Underpayment penalty from January 15 if payment was insufficient.",
   },
   {
-    id: "owensboro-occ-license",
-    name: "Owensboro Occ. License / Net Profit Return",
-    authority: "City of Owensboro",
-    dueDate: (y) => new Date(y, 3, 15),
-    dueDateLabel: (y) => `April 15, ${y} (same as federal)`,
-    fee: "$75 minimum or 1.39% of net profit",
+    id: "owensboro-occ-license", name: "Owensboro Occ. License / Net Profit Return", authority: "City of Owensboro",
+    dueDate: (y) => new Date(y, 3, 15), dueDateLabel: (y) => `April 15, ${y} (same as federal)`, fee: "$75 minimum or 1.39% of net profit",
     description: "Annual net profit return for work performed in Owensboro city limits.",
-    link: "https://owensboro.org/city-services/finance/occupational-license/",
-    linkLabel: "owensboro.org / Occ. License",
-    learnMore: "If you performed work within the Owensboro city limits, you owe a local occupational tax on your net profit. The rate is 1.39% with a $75 annual minimum license fee. File the Net Profit Return each year by April 15. You can pay online or mail to the Owensboro Finance Department. Use the Income by City/Location report on this page to determine how much of your income was earned in Owensboro.",
+    link: "https://owensboro.org/city-services/finance/occupational-license/", linkLabel: "owensboro.org / Occ. License",
+    learnMore: "If you performed work within the Owensboro city limits, you owe a local occupational tax on your net profit. The rate is 1.39% with a $75 annual minimum license fee.",
     penalty: "Late filing penalty of 5% per month (max 25%) plus 1% interest per month on unpaid tax.",
   },
   {
-    id: "ky-sales-use-tax",
-    name: "KY Sales & Use Tax",
-    authority: "KY Dept. of Revenue",
-    dueDate: (_y) => null,
-    dueDateLabel: (_y) => "Monthly or quarterly (if applicable)",
-    fee: "6% of taxable sales",
+    id: "ky-sales-use-tax", name: "KY Sales & Use Tax", authority: "KY Dept. of Revenue",
+    dueDate: (_y) => null, dueDateLabel: (_y) => "Monthly or quarterly (if applicable)", fee: "6% of taxable sales",
     description: "Required only if you sell taxable goods or collect sales tax from customers.",
-    link: "https://revenue.ky.gov/Business/Sales-Use-Tax/Pages/default.aspx",
-    linkLabel: "KY Revenue / Sales Tax",
-    learnMore: "Most contractor services are not subject to Kentucky sales tax. However, if you sell materials, equipment, or taxable goods directly to customers (rather than charging for services), you may need to collect and remit 6% KY sales tax. If you are collecting sales tax, you must register with the KY Department of Revenue and file returns monthly or quarterly. Check with your CPA if you're unsure whether your work involves taxable sales.",
+    link: "https://revenue.ky.gov/Business/Sales-Use-Tax/Pages/default.aspx", linkLabel: "KY Revenue / Sales Tax",
+    learnMore: "Most contractor services are not subject to Kentucky sales tax. However, if you sell materials or equipment directly to customers, you may need to collect and remit 6% KY sales tax.",
     penalty: "Failure to collect/remit sales tax can result in back-taxes, penalties (2%/month up to 20%), interest, and personal liability.",
     conditional: "Only required if you sell taxable goods",
   },
   {
-    id: "boi-report",
-    name: "BOI Report (Beneficial Ownership)",
-    authority: "FinCEN (Federal)",
-    dueDate: (_y) => null,
-    dueDateLabel: (_y) => "One-time (or within 30 days of change)",
-    fee: "No fee",
+    id: "boi-report", name: "BOI Report (Beneficial Ownership)", authority: "FinCEN (Federal)",
+    dueDate: (_y) => null, dueDateLabel: (_y) => "One-time (or within 30 days of change)", fee: "No fee",
     description: "One-time federal report of who owns and controls the business. Required for most LLCs.",
-    link: "https://www.fincen.gov/boi",
-    linkLabel: "fincen.gov/boi",
-    learnMore: "Under the Corporate Transparency Act, most U.S. LLCs must file a Beneficial Ownership Information (BOI) report with FinCEN. For LLCs formed before January 1, 2024, the initial report was due by January 1, 2025. For new LLCs formed after January 1, 2024, the report is due within 90 days of formation. After filing, you must update the report within 30 days of any changes to ownership or contact information. Filing is free at the FinCEN portal.",
+    link: "https://www.fincen.gov/boi", linkLabel: "fincen.gov/boi",
+    learnMore: "Under the Corporate Transparency Act, most U.S. LLCs must file a Beneficial Ownership Information (BOI) report with FinCEN.",
     penalty: "Civil penalties of $500/day per violation. Criminal penalties of up to $10,000 and 2 years imprisonment for willful violations.",
     conditional: "One-time filing — mark N/A once complete",
   },
   {
-    id: "personal-property-tax",
-    name: "Personal Property Tax Return",
-    authority: "Daviess County PVA",
-    dueDate: (y) => new Date(y, 4, 15),
-    dueDateLabel: (y) => `May 15, ${y} (if applicable)`,
-    fee: "Based on assessed value",
+    id: "personal-property-tax", name: "Personal Property Tax Return", authority: "Daviess County PVA",
+    dueDate: (y) => new Date(y, 4, 15), dueDateLabel: (y) => `May 15, ${y} (if applicable)`, fee: "Based on assessed value",
     description: "Annual return for business personal property (equipment, tools, vehicles) if applicable.",
-    link: "https://www.daviesspva.org",
-    linkLabel: "Daviess County PVA",
-    learnMore: "If your business owns tangible personal property (tools, equipment, machinery, computers, furniture) valued above the threshold, you must file an annual Personal Property Tax Return with the Daviess County Property Valuation Administrator (PVA) by May 15. The PVA assesses the value and you'll receive a tax bill. Note: vehicles registered in your business name are typically assessed separately through the motor vehicle registration process.",
+    link: "https://www.daviesspva.org", linkLabel: "Daviess County PVA",
+    learnMore: "If your business owns tangible personal property (tools, equipment, machinery) valued above the threshold, you must file an annual Personal Property Tax Return with the Daviess County PVA by May 15.",
     penalty: "Late returns receive a 10% penalty on the assessed value. Failure to file can result in estimated assessment plus penalties.",
     conditional: "Only required if business owns tangible personal property",
   },
@@ -253,13 +160,11 @@ function getFilingStatusColor(filing: Filing, year: number, status: FilingStatus
   if (status === "na") return "bg-muted/30 border-border";
   const due = filing.dueDate(year);
   if (!due) return "bg-card border-border";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-  if (due < today) return "bg-red-50 border-red-200";
-  const soon = new Date(today);
-  soon.setDate(soon.getDate() + 30);
-  if (due <= soon) return "bg-amber-50 border-amber-200";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
+  if (dueCopy < today) return "bg-red-50 border-red-200";
+  const soon = new Date(today); soon.setDate(soon.getDate() + 30);
+  if (dueCopy <= soon) return "bg-amber-50 border-amber-200";
   return "bg-card border-border";
 }
 
@@ -267,28 +172,22 @@ function getFilingDueDateStyle(filing: Filing, year: number, status: FilingStatu
   if (status === "filed" || status === "na") return "text-muted-foreground";
   const due = filing.dueDate(year);
   if (!due) return "text-muted-foreground";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-  if (due < today) return "text-red-600 font-semibold";
-  const soon = new Date(today);
-  soon.setDate(soon.getDate() + 30);
-  if (due <= soon) return "text-amber-600 font-semibold";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
+  if (dueCopy < today) return "text-red-600 font-semibold";
+  const soon = new Date(today); soon.setDate(soon.getDate() + 30);
+  if (dueCopy <= soon) return "text-amber-600 font-semibold";
   return "text-foreground";
 }
 
 function getFilingDueBadge(filing: Filing, year: number, status: FilingStatus) {
-  if (status === "filed") return null;
-  if (status === "na") return null;
+  if (status === "filed" || status === "na") return null;
   const due = filing.dueDate(year);
   if (!due) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dueCopy = new Date(due);
-  dueCopy.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
   if (dueCopy < today) return { label: "Overdue", cls: "bg-red-100 text-red-700" };
-  const soon = new Date(today);
-  soon.setDate(soon.getDate() + 30);
+  const soon = new Date(today); soon.setDate(soon.getDate() + 30);
   if (dueCopy <= soon) {
     const days = Math.ceil((dueCopy.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     return { label: `Due in ${days}d`, cls: "bg-amber-100 text-amber-700" };
@@ -298,249 +197,12 @@ function getFilingDueBadge(filing: Filing, year: number, status: FilingStatus) {
 
 const STATUS_CYCLE: FilingStatus[] = ["not-filed", "filed", "na"];
 
-function FilingCalendarTab({ year }: { year: number }) {
-  const storageKey = `ky-filing-statuses-${year}`;
-
-  const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-
-  const getStatus = useCallback((id: string): FilingStatus => statuses[id] ?? "not-filed", [statuses]);
-
-  const cycleStatus = useCallback((id: string) => {
-    setStatuses(prev => {
-      const current = prev[id] ?? "not-filed";
-      const idx = STATUS_CYCLE.indexOf(current);
-      const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-      const updated = { ...prev, [id]: next };
-      try { localStorage.setItem(storageKey, JSON.stringify(updated)); } catch {}
-      return updated;
-    });
-  }, [storageKey]);
-
-  const toggleExpand = useCallback((id: string) => {
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
-  }, []);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  let overdue = 0, dueSoon = 0, filed = 0, na = 0;
-  for (const f of KY_FILINGS) {
-    const st = getStatus(f.id);
-    if (st === "filed") { filed++; continue; }
-    if (st === "na") { na++; continue; }
-    const due = f.dueDate(year);
-    if (!due) continue;
-    const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
-    if (dueCopy < today) overdue++;
-    else {
-      const soon = new Date(today); soon.setDate(soon.getDate() + 30);
-      if (dueCopy <= soon) dueSoon++;
-    }
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Summary Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className={`rounded-xl border p-4 flex items-center gap-3 ${overdue > 0 ? "bg-red-50 border-red-200" : "bg-card border-border"}`}>
-          <XCircle className={`w-6 h-6 flex-shrink-0 ${overdue > 0 ? "text-red-600" : "text-muted-foreground"}`} />
-          <div>
-            <p className={`text-2xl font-display font-bold ${overdue > 0 ? "text-red-600" : "text-muted-foreground"}`}>{overdue}</p>
-            <p className="text-xs text-muted-foreground font-medium">Overdue</p>
-          </div>
-        </div>
-        <div className={`rounded-xl border p-4 flex items-center gap-3 ${dueSoon > 0 ? "bg-amber-50 border-amber-200" : "bg-card border-border"}`}>
-          <Clock className={`w-6 h-6 flex-shrink-0 ${dueSoon > 0 ? "text-amber-600" : "text-muted-foreground"}`} />
-          <div>
-            <p className={`text-2xl font-display font-bold ${dueSoon > 0 ? "text-amber-600" : "text-muted-foreground"}`}>{dueSoon}</p>
-            <p className="text-xs text-muted-foreground font-medium">Due Soon</p>
-          </div>
-        </div>
-        <div className="rounded-xl border bg-card border-border p-4 flex items-center gap-3">
-          <CheckCircle className="w-6 h-6 flex-shrink-0 text-emerald-600" />
-          <div>
-            <p className="text-2xl font-display font-bold text-emerald-600">{filed}</p>
-            <p className="text-xs text-muted-foreground font-medium">Filed / Complete</p>
-          </div>
-        </div>
-        <div className="rounded-xl border bg-card border-border p-4 flex items-center gap-3">
-          <Shield className="w-6 h-6 flex-shrink-0 text-muted-foreground" />
-          <div>
-            <p className="text-2xl font-display font-bold text-muted-foreground">{na}</p>
-            <p className="text-xs text-muted-foreground font-medium">N/A</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Filing List */}
-      <div className="space-y-3">
-        {KY_FILINGS.map(filing => {
-          const status = getStatus(filing.id);
-          const isExpanded = expanded[filing.id];
-          const badge = getFilingDueBadge(filing, year, status);
-          const rowBg = getFilingStatusColor(filing, year, status);
-          const dateStyle = getFilingDueDateStyle(filing, year, status);
-
-          return (
-            <div key={filing.id} className={`rounded-2xl border ${rowBg} overflow-hidden transition-colors`}>
-              <div className="p-4 sm:p-5">
-                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-                  {/* Status Toggle */}
-                  <button
-                    onClick={() => cycleStatus(filing.id)}
-                    className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors mt-0.5 ${
-                      status === "filed"
-                        ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-200"
-                        : status === "na"
-                        ? "bg-muted text-muted-foreground hover:bg-muted/80"
-                        : "bg-background border border-border text-muted-foreground hover:bg-muted/40"
-                    }`}
-                    title={`Status: ${status === "not-filed" ? "Not Filed" : status === "filed" ? "Filed" : "N/A"} — click to cycle`}
-                  >
-                    {status === "filed" ? <CheckCircle className="w-5 h-5" /> :
-                     status === "na" ? <XCircle className="w-4 h-4" /> :
-                     <Clock className="w-4 h-4" />}
-                  </button>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className={`font-semibold text-foreground ${status === "na" ? "opacity-50" : ""}`}>{filing.name}</span>
-                      {badge && (
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>{badge.label}</span>
-                      )}
-                      {filing.conditional && (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{filing.conditional}</span>
-                      )}
-                      {status === "filed" && (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Filed</span>
-                      )}
-                      {status === "na" && (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">N/A</span>
-                      )}
-                    </div>
-                    <p className={`text-xs font-medium mb-1.5 ${status === "na" ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{filing.authority}</p>
-                    <p className={`text-sm mb-2 ${status === "na" ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{filing.description}</p>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                      <span className={`flex items-center gap-1 ${dateStyle}`}>
-                        <Calendar className="w-3.5 h-3.5" />
-                        {filing.dueDateLabel(year)}
-                      </span>
-                      {filing.fee !== "No state fee" && filing.fee !== "Pay estimated tax owed" && (
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <DollarSign className="w-3.5 h-3.5" /> {filing.fee}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right side actions */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <a
-                      href={filing.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">File</span>
-                    </a>
-                    <button
-                      onClick={() => toggleExpand(filing.id)}
-                      className="flex items-center gap-1 h-8 px-3 rounded-lg border border-border bg-background hover:bg-muted/40 text-xs font-medium text-muted-foreground transition-colors"
-                    >
-                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      <span className="hidden sm:inline">Learn More</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Learn More Panel */}
-                {isExpanded && (
-                  <div className="mt-4 pt-4 border-t border-border/60 space-y-3 text-sm">
-                    <div>
-                      <p className="font-semibold text-foreground mb-1">What it is</p>
-                      <p className="text-muted-foreground">{filing.learnMore}</p>
-                    </div>
-                    <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-                      <p className="font-semibold text-red-800 mb-0.5 text-xs uppercase tracking-wide">Penalty for missing</p>
-                      <p className="text-red-700 text-sm">{filing.penalty}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={filing.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-primary hover:underline text-sm font-medium"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        {filing.linkLabel}
-                      </a>
-                      <span className="text-muted-foreground">—</span>
-                      <span className="text-muted-foreground text-xs">{filing.authority}</span>
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <span className="text-xs text-muted-foreground italic">Toggle status:</span>
-                      <button onClick={() => cycleStatus(filing.id)} className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold border transition-colors ${
-                        status === "not-filed" ? "bg-background border-border text-foreground hover:bg-muted/40" :
-                        status === "filed" ? "bg-emerald-100 border-emerald-200 text-emerald-700 hover:bg-emerald-200" :
-                        "bg-muted border-border text-muted-foreground hover:bg-muted/60"
-                      }`}>
-                        {status === "filed" ? <><CheckCircle className="w-3.5 h-3.5" /> Filed</> :
-                         status === "na" ? <><XCircle className="w-3.5 h-3.5" /> N/A</> :
-                         <><Clock className="w-3.5 h-3.5" /> Not Filed</>}
-                      </button>
-                      <span className="text-xs text-muted-foreground">← click to change</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* CPA Disclaimer */}
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-        <div className="flex gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold text-blue-900 mb-1">Informational Only — Consult a CPA</p>
-            <p className="text-sm text-blue-800">
-              This filing calendar is provided for general guidance only and does not constitute legal or tax advice.
-              Due dates, fees, and requirements can change. Always verify current requirements with the relevant authority
-              and consult a qualified CPA or tax professional before making filing decisions.
-              Kentucky SBDC (<a href="https://kysbdc.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">kysbdc.com</a>) offers free small-business advising if you need help.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Compliance Items Tab ────────────────────────────────────────────────────
+// ─── Compliance Items ────────────────────────────────────────────────────────
 
 interface ComplianceItem {
-  id: number;
-  title: string;
-  category: string;
-  jurisdiction: string | null;
-  dueDate: string;
-  recurrence: string;
-  status: string;
-  computedStatus: string;
-  daysUntilDue: number;
-  notes: string | null;
+  id: number; title: string; category: string; jurisdiction: string | null;
+  dueDate: string; recurrence: string; status: string; computedStatus: string;
+  daysUntilDue: number; notes: string | null;
 }
 
 const COMPLIANCE_CATEGORIES = [
@@ -549,10 +211,10 @@ const COMPLIANCE_CATEGORIES = [
 ];
 
 const COMPLIANCE_RECURRENCES = [
-  { value: "one-time",  label: "One-time" },
-  { value: "monthly",   label: "Monthly" },
+  { value: "one-time", label: "One-time" },
+  { value: "monthly", label: "Monthly" },
   { value: "quarterly", label: "Quarterly" },
-  { value: "annual",    label: "Annual" },
+  { value: "annual", label: "Annual" },
 ];
 
 const COMPLIANCE_API = `${BASE}/api/compliance-items`;
@@ -573,8 +235,7 @@ function useCreateComplianceItem() {
   return useMutation({
     mutationFn: async (data: Partial<ComplianceItem>) => {
       const res = await fetch(COMPLIANCE_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to create");
@@ -589,8 +250,7 @@ function useUpdateComplianceItem() {
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<ComplianceItem> & { id: number }) => {
       const res = await fetch(`${COMPLIANCE_API}/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to update");
@@ -603,45 +263,32 @@ function useUpdateComplianceItem() {
 function useDeleteComplianceItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: number) => {
-      await fetch(`${COMPLIANCE_API}/${id}`, { method: "DELETE" });
-    },
+    mutationFn: async (id: number) => { await fetch(`${COMPLIANCE_API}/${id}`, { method: "DELETE" }); },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["compliance-items"] }),
   });
 }
 
 function complianceStatusBadge(s: string) {
-  if (s === "overdue")  return "bg-red-100 text-red-700 border-red-200";
+  if (s === "overdue") return "bg-red-100 text-red-700 border-red-200";
   if (s === "due-soon") return "bg-amber-100 text-amber-700 border-amber-200";
   if (s === "complete") return "bg-emerald-100 text-emerald-700 border-emerald-200";
   return "bg-blue-100 text-blue-700 border-blue-200";
 }
 
 function complianceStatusLabel(s: string) {
-  if (s === "overdue")  return "Overdue";
+  if (s === "overdue") return "Overdue";
   if (s === "due-soon") return "Due Soon";
   if (s === "complete") return "Complete";
   return "Upcoming";
 }
 
-function complianceDaysLabel(days: number, status: string) {
-  if (status === "complete") return "Completed";
-  if (days < 0)  return `${Math.abs(days)} day${Math.abs(days) !== 1 ? "s" : ""} overdue`;
-  if (days === 0) return "Due today";
-  return `${days} day${days !== 1 ? "s" : ""} away`;
-}
-
 function complianceCategoryIcon(cat: string) {
   switch (cat) {
-    case "License":       return "🪪";
-    case "Tax Filing":    return "📋";
-    case "Permit":        return "📝";
-    case "Insurance":     return "🛡️";
-    case "Bond":          return "🔒";
-    case "Registration":  return "📄";
-    case "Certification": return "🎓";
-    case "Inspection":    return "🔍";
-    default:              return "📌";
+    case "License": return "🪪"; case "Tax Filing": return "📋";
+    case "Permit": return "📝"; case "Insurance": return "🛡️";
+    case "Bond": return "🔒"; case "Registration": return "📄";
+    case "Certification": return "🎓"; case "Inspection": return "🔍";
+    default: return "📌";
   }
 }
 
@@ -664,24 +311,16 @@ function ComplianceItemForm({
   saving: boolean;
 }) {
   const [form, setForm] = useState({
-    title:        initial?.title        ?? "",
-    category:     initial?.category     ?? "License",
-    jurisdiction: initial?.jurisdiction ?? "",
-    dueDate:      initial?.dueDate      ?? "",
-    recurrence:   initial?.recurrence   ?? "one-time",
-    notes:        initial?.notes        ?? "",
-    status:       initial?.status       ?? "upcoming",
+    title: initial?.title ?? "", category: initial?.category ?? "License",
+    jurisdiction: initial?.jurisdiction ?? "", dueDate: initial?.dueDate ?? "",
+    recurrence: initial?.recurrence ?? "one-time", notes: initial?.notes ?? "",
+    status: initial?.status ?? "upcoming",
   });
-
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const jurisdiction = form.jurisdiction.trim() || null;
-    const notes = form.notes.trim() || null;
-    onSave({ ...form, jurisdiction, notes });
+    onSave({ ...form, jurisdiction: form.jurisdiction.trim() || null, notes: form.notes.trim() || null });
   }
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
@@ -698,8 +337,7 @@ function ComplianceItemForm({
         </div>
         <div>
           <label className={cl}>Due Date *</label>
-          <input type="date" className={ci} required
-            value={form.dueDate} onChange={e => set("dueDate", e.target.value)} />
+          <input type="date" className={ci} required value={form.dueDate} onChange={e => set("dueDate", e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -744,559 +382,191 @@ function ComplianceItemForm({
   );
 }
 
-function ComplianceItemCard({
-  item, onEdit, onDelete, onToggleComplete,
-}: {
-  item: ComplianceItem;
-  onEdit: () => void;
-  onDelete: () => void;
-  onToggleComplete: () => void;
-}) {
-  const s = item.computedStatus;
-  return (
-    <div className={`bg-white rounded-2xl border shadow-sm p-4 flex gap-4 group transition-all hover:shadow-md ${
-      s === "overdue"  ? "border-red-200"    :
-      s === "due-soon" ? "border-amber-200"  :
-      s === "complete" ? "border-emerald-200 opacity-70" :
-      "border-gray-200"
-    }`}>
-      <div className={`flex-shrink-0 w-1 rounded-full ${
-        s === "overdue"  ? "bg-red-400"    :
-        s === "due-soon" ? "bg-amber-400"  :
-        s === "complete" ? "bg-emerald-400":
-        "bg-blue-400"
-      }`} />
-      <div className="text-2xl flex-shrink-0 mt-0.5">{complianceCategoryIcon(item.category)}</div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className={`font-semibold text-gray-900 leading-tight ${s === "complete" ? "line-through text-gray-400" : ""}`}>
-              {item.title}
-            </p>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${complianceStatusBadge(s)}`}>
-                {complianceStatusLabel(s)}
-              </span>
-              <span className="text-xs text-gray-400 font-medium">
-                {complianceDaysLabel(item.daysUntilDue, s)}
-              </span>
-            </div>
-          </div>
-          <div className="flex gap-1 flex-shrink-0">
-            <button onClick={onToggleComplete} title={s === "complete" ? "Mark upcoming" : "Mark complete"}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
-              <CheckCircle2 className="w-4 h-4" />
-            </button>
-            <button onClick={onEdit} title="Edit"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={onDelete} title="Delete"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
-          <span className="flex items-center gap-1">
-            <CalendarClock className="w-3 h-3" />
-            {formatComplianceDate(item.dueDate)}
-          </span>
-          {item.jurisdiction && (
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              {item.jurisdiction}
-            </span>
-          )}
-          {item.recurrence !== "one-time" && (
-            <span className="flex items-center gap-1 capitalize">
-              <RefreshCw className="w-3 h-3" />
-              {COMPLIANCE_RECURRENCES.find(r => r.value === item.recurrence)?.label}
-            </span>
-          )}
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px]">
-            {item.category}
-          </span>
-        </div>
-        {item.notes && (
-          <p className="mt-2 text-xs text-gray-500 leading-relaxed bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">
-            {item.notes}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
+// ─── Overview Dashboard ──────────────────────────────────────────────────────
 
-function ComplianceItemsTab() {
-  const { data: autoReport, isLoading: loadingAuto } = useGetComplianceReport();
-  const { data: items = [], isLoading: loadingItems } = useComplianceItems();
-  const createItem  = useCreateComplianceItem();
-  const updateItem  = useUpdateComplianceItem();
-  const deleteItem  = useDeleteComplianceItem();
+type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records";
 
-  const [showForm,     setShowForm]     = useState(false);
-  const [editTarget,   setEditTarget]   = useState<ComplianceItem | null>(null);
-  const [filterCat,    setFilterCat]    = useState("All");
-  const [filterStatus, setFilterStatus] = useState("All");
-
-  const overdue  = items.filter(i => i.computedStatus === "overdue");
-  const dueSoon  = items.filter(i => i.computedStatus === "due-soon");
-  const complete = items.filter(i => i.computedStatus === "complete");
-  const upcoming = items.filter(i => i.computedStatus === "upcoming");
-
-  const filtered = items.filter(i => {
-    const catOk    = filterCat    === "All" || i.category === filterCat;
-    const statusOk = filterStatus === "All" ||
-      (filterStatus === "overdue"  && i.computedStatus === "overdue")  ||
-      (filterStatus === "due-soon" && i.computedStatus === "due-soon") ||
-      (filterStatus === "upcoming" && i.computedStatus === "upcoming") ||
-      (filterStatus === "complete" && i.computedStatus === "complete");
-    return catOk && statusOk;
-  });
-
-  const allCats = Array.from(new Set(items.map(i => i.category)));
-
-  async function handleSave(data: Partial<ComplianceItem>) {
-    if (editTarget) {
-      await updateItem.mutateAsync({ id: editTarget.id, ...data });
-      setEditTarget(null);
-    } else {
-      await createItem.mutateAsync(data);
-      setShowForm(false);
-    }
-  }
-
-  async function handleToggleComplete(item: ComplianceItem) {
-    const newStatus = item.status === "complete" ? "upcoming" : "complete";
-    await updateItem.mutateAsync({ ...item, status: newStatus });
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm("Delete this compliance item?")) return;
-    await deleteItem.mutateAsync(id);
-  }
-
-  const saving = createItem.isPending || updateItem.isPending;
-
-  return (
-    <div className="space-y-8">
-      {/* Sub-header with Add button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-display font-bold text-foreground">Compliance Items</h2>
-          <p className="text-muted-foreground text-sm mt-0.5">Track license renewals, tax deadlines, permits, and filings.</p>
-        </div>
-        <button
-          onClick={() => { setShowForm(true); setEditTarget(null); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all active:scale-95"
-        >
-          <Plus className="w-5 h-5" /> Add Compliance Item
-        </button>
-      </div>
-
-      {/* Summary ribbon */}
-      {!loadingItems && items.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: "Overdue",  count: overdue.length,  color: "border-red-200 bg-red-50",         text: "text-red-700",     dot: "bg-red-400",     filter: "overdue"  },
-            { label: "Due Soon", count: dueSoon.length,  color: "border-amber-200 bg-amber-50",     text: "text-amber-700",   dot: "bg-amber-400",   filter: "due-soon" },
-            { label: "Upcoming", count: upcoming.length, color: "border-blue-200 bg-blue-50",       text: "text-blue-700",    dot: "bg-blue-400",    filter: "upcoming" },
-            { label: "Complete", count: complete.length, color: "border-emerald-200 bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-400", filter: "complete" },
-          ].map(({ label, count, color, text, dot, filter }) => (
-            <button
-              key={label}
-              onClick={() => setFilterStatus(filterStatus === filter ? "All" : filter)}
-              className={`rounded-2xl border p-4 text-left transition-all hover:shadow-sm active:scale-95 ${color} ${filterStatus === filter ? "ring-2 ring-offset-1 ring-gray-400" : ""}`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div className={`w-2 h-2 rounded-full ${dot}`} />
-                <span className={`text-xs font-semibold uppercase tracking-wide ${text}`}>{label}</span>
-              </div>
-              <p className={`text-2xl font-black ${text}`}>{count}</p>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Add / Edit form panel */}
-      {(showForm || editTarget) && (
-        <div className="bg-white rounded-2xl border border-amber-200 shadow-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-              <FileCheck className="w-5 h-5 text-amber-500" />
-              {editTarget ? "Edit Compliance Item" : "New Compliance Item"}
-            </h2>
-            <button onClick={() => { setShowForm(false); setEditTarget(null); }}
-              className="text-gray-400 hover:text-gray-600 transition-colors">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <ComplianceItemForm
-            initial={editTarget ?? undefined}
-            onSave={handleSave}
-            onCancel={() => { setShowForm(false); setEditTarget(null); }}
-            saving={saving}
-          />
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!loadingItems && items.length === 0 && !showForm && (
-        <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center">
-            <Bell className="w-8 h-8 text-amber-400" />
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700 text-base">No compliance items yet</p>
-            <p className="text-sm text-gray-400 mt-1 max-w-sm">
-              Add license renewals, tax filing deadlines, permit expirations, insurance renewals, and more.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-amber-500 text-white hover:bg-amber-600 shadow transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Add your first item
-          </button>
-          <div className="mt-4 w-full max-w-lg">
-            <p className="text-xs text-gray-400 mb-3 font-semibold uppercase tracking-wide">Common items for KY contractors</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { title: "KY Contractor License Renewal",  category: "License",      jurisdiction: "State of Kentucky" },
-                { title: "Annual Business Report",         category: "Registration", jurisdiction: "KY Secretary of State" },
-                { title: "City Occupational Tax License",  category: "License",      jurisdiction: "City" },
-                { title: "General Liability Insurance",    category: "Insurance",    jurisdiction: "" },
-                { title: "Workers' Comp Policy Renewal",   category: "Insurance",    jurisdiction: "" },
-                { title: "Q1 Estimated Tax Payment",       category: "Tax Filing",   jurisdiction: "IRS / KY DOR" },
-              ].map(s => (
-                <button
-                  key={s.title}
-                  type="button"
-                  onClick={() => { setEditTarget(null); setShowForm(true); }}
-                  className="text-left px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 hover:border-amber-300 hover:bg-amber-50 transition-colors text-xs"
-                >
-                  <span className="text-base mr-1.5">{complianceCategoryIcon(s.category)}</span>
-                  <span className="font-medium text-gray-700">{s.title}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Item list */}
-      {!loadingItems && items.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide mr-1">Filter:</span>
-            {["All", ...allCats].map(c => (
-              <button key={c} onClick={() => setFilterCat(c)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                  filterCat === c
-                    ? "bg-amber-500 text-white border-amber-500"
-                    : "bg-white text-gray-500 border-gray-200 hover:border-amber-300"
-                }`}>
-                {c}
-              </button>
-            ))}
-            {filterStatus !== "All" && (
-              <button onClick={() => setFilterStatus("All")}
-                className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-800 text-white border border-gray-800 flex items-center gap-1">
-                <X className="w-3 h-3" /> Clear filter
-              </button>
-            )}
-          </div>
-          {filtered.length === 0 ? (
-            <p className="text-center text-gray-400 italic py-8 text-sm">No items match the selected filters.</p>
-          ) : (
-            <div className="space-y-3">
-              {filtered.map(item => (
-                <ComplianceItemCard
-                  key={item.id}
-                  item={item}
-                  onEdit={() => { setEditTarget(item); setShowForm(false); }}
-                  onDelete={() => handleDelete(item.id)}
-                  onToggleComplete={() => handleToggleComplete(item)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Automated Alerts */}
-      {!loadingAuto && autoReport && (
-        <div className="space-y-4 pt-4 border-t border-border/50">
-          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-accent" /> Automated Alerts
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="border-border/50 shadow-sm">
-              <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
-                <CardTitle className="font-display flex items-center text-base">
-                  <ShieldAlert className={`w-4 h-4 mr-2 ${autoReport.subcontractor1099Alerts.length > 0 ? "text-accent" : "text-muted-foreground"}`} />
-                  1099 Subcontractor Alerts
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {autoReport.subcontractor1099Alerts.length === 0 ? (
-                  <div className="p-5 text-sm text-muted-foreground flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" /> No W-9 issues found.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border/50">
-                    {autoReport.subcontractor1099Alerts.map((alert, i) => (
-                      <div key={i} className="p-4 bg-accent/5">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="font-bold text-foreground">{alert.name}</span>
-                          <span className="text-accent font-bold font-display">{formatCurrency(alert.ytdPayments)}</span>
-                        </div>
-                        <div className="text-sm text-muted-foreground flex items-start gap-2">
-                          <AlertTriangle className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
-                          {alert.alert}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            <Card className="border-border/50 shadow-sm">
-              <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
-                <CardTitle className="font-display flex items-center text-base">
-                  Mileage Classification
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5">
-                {autoReport.uncategorizedMileageCount === 0 ? (
-                  <div className="text-sm text-muted-foreground flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" /> All trips categorized.
-                  </div>
-                ) : (
-                  <div className="text-center py-2">
-                    <div className="text-4xl font-display font-bold text-primary mb-2">{autoReport.uncategorizedMileageCount}</div>
-                    <p className="text-sm text-muted-foreground mb-4">Trips missing classification.</p>
-                    <button className="text-sm font-medium bg-primary/10 text-primary px-4 py-2 rounded-lg hover:bg-primary/20 transition-colors">
-                      Review Trips
-                    </button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-
-type AccountingTab = "accounting" | "schedule-c" | "filing-calendar" | "compliance-items";
-
-function getInitialTab(): AccountingTab {
-  const params = new URLSearchParams(window.location.search);
-  const tab = params.get("tab");
-  if (tab === "compliance-items" || tab === "schedule-c" || tab === "filing-calendar") return tab;
-  return "accounting";
-}
-
-export default function Accounting() {
-  const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(currentYear);
-  const [activeTab, setActiveTab] = useState<AccountingTab>(getInitialTab);
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["accounting", year],
-    queryFn: () => fetchAccounting(year),
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const { data: report, isLoading: reportLoading } = useScheduleCReport(year);
-  const { data: subPayments } = useAllSubcontractorsPayments(year);
-  const createPayment = useCreatePayment();
-  const updatePayment = useUpdatePayment();
-  const deletePayment = useDeletePayment();
-
+function OverviewTab({ data, year }: { data: any; year: number }) {
+  const [openModule, setOpenModule] = useState<ModuleKey | null>(null);
   const s = data?.summary ?? {};
-  const netColor = (s.netProfit ?? 0) >= 0 ? "text-emerald-600" : "text-red-500";
+  const netProfit = s.netProfit ?? 0;
+
+  function toggleModule(key: ModuleKey) {
+    setOpenModule(prev => prev === key ? null : key);
+  }
+
+  const statTiles = [
+    { label: "Gross Revenue", value: formatCurrency(s.grossRevenue), sub: "All invoices", icon: TrendingUp, color: "bg-emerald-100 text-emerald-700", border: "border-l-emerald-500" },
+    { label: "Collected", value: formatCurrency(s.paidRevenue), sub: "Paid invoices", icon: DollarSign, color: "bg-blue-100 text-blue-700", border: "border-l-blue-500" },
+    { label: "Total Expenses", value: formatCurrency(s.totalExpenses), sub: `+${formatCurrency(s.mileageDeduction ?? 0)} mileage`, icon: TrendingDown, color: "bg-red-100 text-red-700", border: "border-l-red-500" },
+    { label: "Est. Net Profit", value: formatCurrency(netProfit), sub: "Collected − Expenses − Mileage", icon: netProfit >= 0 ? TrendingUp : TrendingDown, color: netProfit >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700", border: netProfit >= 0 ? "border-l-emerald-500" : "border-l-red-500" },
+  ];
+
+  const modules: { key: ModuleKey; label: string; icon: any; stat: string; statLabel: string; color: string }[] = [
+    {
+      key: "city", label: "Income by City", icon: MapPin,
+      stat: data?.incomeByCity?.length > 0 ? `${data.incomeByCity.length} cities` : "No data",
+      statLabel: "For local tax filings", color: "text-primary",
+    },
+    {
+      key: "monthly", label: "Monthly Trend", icon: BarChart3,
+      stat: data?.monthlyIncome?.filter((m: any) => m.gross > 0 || m.expenses > 0).length > 0
+        ? `${data.monthlyIncome.filter((m: any) => m.gross > 0 || m.expenses > 0).length} active months`
+        : "No activity",
+      statLabel: `${year} breakdown`, color: "text-violet-600",
+    },
+    {
+      key: "expenses", label: "Expense Breakdown", icon: Receipt,
+      stat: s.totalExpenses > 0 ? formatCurrency(s.totalExpenses) : "$0",
+      statLabel: "Total categorized", color: "text-orange-600",
+    },
+    {
+      key: "mileage", label: "Mileage & Deductions", icon: Navigation,
+      stat: s.totalMiles ? `${s.totalMiles.toFixed(0)} mi` : "0 mi",
+      statLabel: formatCurrency(s.mileageDeduction ?? 0) + " deduction", color: "text-violet-600",
+    },
+    {
+      key: "subs", label: "Subcontractor / 1099", icon: HardHat,
+      stat: data?.subcontractor1099?.length > 0 ? `${data.subcontractor1099.length} subs` : "None",
+      statLabel: formatCurrency(s.totalSubPayments ?? 0) + " total paid", color: "text-amber-600",
+    },
+    {
+      key: "records", label: "Tax Records", icon: FileSpreadsheet,
+      stat: data?.invoiceRecords?.length > 0 ? `${data.invoiceRecords.length} invoices` : "No invoices",
+      statLabel: "Full ledger · CSV export", color: "text-emerald-600",
+    },
+  ];
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Accounting & Tax Reports</h1>
-          <p className="text-muted-foreground mt-1">Auto-generated financials — income, expenses, mileage, Schedule C, and 1099s in one place.</p>
+    <div className="space-y-6">
+      {s.pendingRevenue > 0 && (
+        <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{formatCurrency(s.pendingRevenue)} pending (sent/overdue) — not yet counted in net profit.</span>
         </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={year}
-            onChange={(e) => setYear(parseInt(e.target.value))}
-            className="h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-background text-sm font-medium hover:bg-muted/60 transition-colors"
-          >
-            <Printer className="w-4 h-4" /> Print
-          </button>
-        </div>
-      </div>
+      )}
 
-      {/* Tab Navigation */}
-      <div className="flex gap-2 border-b border-border">
-        <button
-          onClick={() => setActiveTab("accounting")}
-          className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === "accounting"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4 inline mr-2" /> Accounting Report
-        </button>
-        <button
-          onClick={() => setActiveTab("schedule-c")}
-          className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === "schedule-c"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <BarChart3 className="w-4 h-4 inline mr-2" /> Schedule C
-        </button>
-        <button
-          onClick={() => setActiveTab("filing-calendar")}
-          className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === "filing-calendar"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Calendar className="w-4 h-4 inline mr-2" /> Filing Calendar
-        </button>
-        <button
-          onClick={() => setActiveTab("compliance-items")}
-          className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === "compliance-items"
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <ShieldAlert className="w-4 h-4 inline mr-2" /> Compliance Items
-        </button>
-      </div>
-
-      {activeTab === "accounting" && (
-        <>
-          {isLoading && (
-            <div className="text-center py-20 text-muted-foreground animate-pulse">Loading {year} report…</div>
-          )}
-          {error && (
-            <div className="text-center py-20 text-destructive">Failed to load report. Check that the API is running.</div>
-          )}
-
-          {data && (
-            <>
-          {/* P&L Summary Cards */}
-          <div>
-            <SectionHeader title="Profit & Loss Summary" sub={`Jan 1 – Dec 31, ${year}`} />
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard label="Gross Revenue" value={formatCurrency(s.grossRevenue)} sub="All invoices" icon={TrendingUp} color="bg-emerald-100 text-emerald-600" />
-              <StatCard label="Collected" value={formatCurrency(s.paidRevenue)} sub="Paid invoices" icon={DollarSign} color="bg-blue-100 text-blue-600" />
-              <StatCard label="Total Expenses" value={formatCurrency(s.totalExpenses)} sub={`+${formatCurrency(s.mileageDeduction)} mileage`} icon={TrendingDown} color="bg-red-100 text-red-600" />
-              <div className={`bg-card border border-border rounded-2xl p-5 shadow-sm flex gap-4 items-start border-l-4 ${(s.netProfit ?? 0) >= 0 ? "border-l-emerald-500" : "border-l-red-500"}`}>
-                <div className="min-w-0 w-full">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Est. Net Profit</p>
-                  <p className={`text-2xl font-display font-bold ${netColor}`}>{formatCurrency(s.netProfit)}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Collected − Expenses − Mileage</p>
-                </div>
+      {/* Summary stat tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {statTiles.map(t => (
+          <div key={t.label} className={`bg-card border border-border rounded-2xl p-4 shadow-sm border-l-4 ${t.border}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${t.color}`}>
+                <t.icon className="w-4 h-4" />
               </div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{t.label}</p>
             </div>
-
-            {s.pendingRevenue > 0 && (
-              <div className="mt-3 flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{formatCurrency(s.pendingRevenue)} is pending (sent/overdue) — not yet counted in net profit.</span>
-              </div>
-            )}
+            <p className="text-2xl font-display font-bold text-foreground">{t.value}</p>
+            {t.sub && <p className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</p>}
           </div>
+        ))}
+      </div>
 
-          {/* Income by City */}
-          <div>
-            <SectionHeader
-              title="Income by City / Location"
-              sub="For KY local occupational tax filing"
-            />
-            {data.incomeByCity.length === 0 ? (
-              <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm">
-                <MapPin className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                No invoices with location data yet. Add a city to your invoices to see this report.
+      {/* Module cards grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {modules.map(mod => {
+          const isOpen = openModule === mod.key;
+          return (
+            <button
+              key={mod.key}
+              onClick={() => toggleModule(mod.key)}
+              className={`text-left rounded-2xl border p-4 transition-all hover:shadow-md active:scale-[0.98] ${
+                isOpen
+                  ? "bg-primary/5 border-primary/40 ring-1 ring-primary/20"
+                  : "bg-card border-border hover:border-primary/30"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isOpen ? "bg-primary/10" : "bg-muted/60"}`}>
+                  <mod.icon className={`w-4 h-4 ${isOpen ? "text-primary" : mod.color}`} />
+                </div>
+                {isOpen
+                  ? <ChevronUp className="w-4 h-4 text-primary" />
+                  : <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                }
               </div>
-            ) : (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                    <tr>
-                      <th className="px-5 py-3 text-left">City</th>
-                      <th className="px-5 py-3 text-left">State</th>
-                      <th className="px-5 py-3 text-right">Invoices</th>
-                      <th className="px-5 py-3 text-right">Gross Income</th>
-                      <th className="px-5 py-3 text-right">Collected</th>
-                      <th className="px-5 py-3 text-right">Tax Collected</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {data.incomeByCity.map((row: any) => (
-                      <tr key={`${row.city}-${row.state}`} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3 font-semibold text-foreground flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                          {row.city}
-                        </td>
-                        <td className="px-5 py-3 text-muted-foreground">{row.state || "—"}</td>
-                        <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
-                        <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
-                        <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
-                        <td className="px-5 py-3 text-right text-blue-600">{formatCurrency(row.taxCollected)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
-                    <tr>
-                      <td colSpan={3} className="px-5 py-3 text-foreground">Totals</td>
-                      <td className="px-5 py-3 text-right">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.gross, 0))}</td>
-                      <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.paid, 0))}</td>
-                      <td className="px-5 py-3 text-right text-blue-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.taxCollected, 0))}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+              <p className="font-semibold text-sm text-foreground mb-0.5">{mod.label}</p>
+              <p className={`text-lg font-display font-bold ${isOpen ? "text-primary" : mod.color}`}>{mod.stat}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{mod.statLabel}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Expanded panel — only one open at a time */}
+      {openModule === "city" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-primary" />
+            <span className="font-semibold text-sm text-foreground">Income by City / Location</span>
+            <span className="text-xs text-muted-foreground ml-1">— For KY local occupational tax filing</span>
           </div>
-
-          {/* Monthly Trend */}
-          <div>
-            <SectionHeader title="Monthly Income vs. Expenses" sub={String(year)} />
-            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          {data.incomeByCity.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              <MapPin className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              No invoices with location data yet. Add a city to your invoices to see this report.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
                   <tr>
-                    <th className="px-5 py-3 text-left">Month</th>
-                    <th className="px-5 py-3 text-right">Gross Invoiced</th>
+                    <th className="px-5 py-3 text-left">City</th>
+                    <th className="px-5 py-3 text-left">State</th>
+                    <th className="px-5 py-3 text-right">Invoices</th>
+                    <th className="px-5 py-3 text-right">Gross Income</th>
                     <th className="px-5 py-3 text-right">Collected</th>
-                    <th className="px-5 py-3 text-right">Expenses</th>
-                    <th className="px-5 py-3 text-right">Net</th>
+                    <th className="px-5 py-3 text-right">Tax Collected</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {(data.monthlyIncome as any[]).filter((m: any) => m.gross > 0 || m.expenses > 0).map((m: any) => {
+                  {data.incomeByCity.map((row: any) => (
+                    <tr key={`${row.city}-${row.state}`} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-5 py-3 font-semibold text-foreground">{row.city}</td>
+                      <td className="px-5 py-3 text-muted-foreground">{row.state || "—"}</td>
+                      <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
+                      <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
+                      <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
+                      <td className="px-5 py-3 text-right text-blue-600">{formatCurrency(row.taxCollected)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
+                  <tr>
+                    <td colSpan={3} className="px-5 py-3 text-foreground">Totals</td>
+                    <td className="px-5 py-3 text-right">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.gross, 0))}</td>
+                    <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.paid, 0))}</td>
+                    <td className="px-5 py-3 text-right text-blue-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.taxCollected, 0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {openModule === "monthly" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-violet-600" />
+            <span className="font-semibold text-sm text-foreground">Monthly Income vs. Expenses — {year}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                <tr>
+                  <th className="px-5 py-3 text-left">Month</th>
+                  <th className="px-5 py-3 text-right">Gross Invoiced</th>
+                  <th className="px-5 py-3 text-right">Collected</th>
+                  <th className="px-5 py-3 text-right">Expenses</th>
+                  <th className="px-5 py-3 text-right">Net</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {(data.monthlyIncome as any[]).filter((m: any) => m.gross > 0 || m.expenses > 0).length === 0 ? (
+                  <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">No data for {year}</td></tr>
+                ) : (
+                  (data.monthlyIncome as any[]).filter((m: any) => m.gross > 0 || m.expenses > 0).map((m: any) => {
                     const net = m.paid - m.expenses;
                     const monthName = new Date(m.month + "-15").toLocaleString("default", { month: "long" });
                     return (
@@ -1308,415 +578,955 @@ export default function Accounting() {
                         <td className={`px-5 py-3 text-right font-semibold ${net >= 0 ? "text-emerald-600" : "text-red-500"}`}>{formatCurrency(net)}</td>
                       </tr>
                     );
-                  })}
-                  {(data.monthlyIncome as any[]).every((m: any) => m.gross === 0 && m.expenses === 0) && (
-                    <tr>
-                      <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">No data for {year}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
+        </div>
+      )}
 
-          {/* Expenses by Category */}
-          <div>
-            <SectionHeader title="Expense Breakdown" sub="Schedule C categories" />
-            {data.expensesByCategory.length === 0 ? (
-              <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm">
-                <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                No expenses recorded for {year}.
+      {openModule === "expenses" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-orange-600" />
+            <span className="font-semibold text-sm text-foreground">Expense Breakdown — Schedule C Categories</span>
+          </div>
+          {data.expensesByCategory.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              No expenses recorded for {year}.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                <tr>
+                  <th className="px-5 py-3 text-left">Category</th>
+                  <th className="px-5 py-3 text-right">Transactions</th>
+                  <th className="px-5 py-3 text-right">Total Amount</th>
+                  <th className="px-5 py-3 text-right">% of Expenses</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {data.expensesByCategory.map((cat: any) => {
+                  const pct = s.totalExpenses > 0 ? (cat.amount / s.totalExpenses * 100).toFixed(1) : "0";
+                  const colorClass = CATEGORY_COLORS[cat.category] ?? "bg-gray-100 text-gray-600";
+                  return (
+                    <tr key={cat.category} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${colorClass}`}>{cat.category}</span>
+                      </td>
+                      <td className="px-5 py-3 text-right text-muted-foreground">{cat.count}</td>
+                      <td className="px-5 py-3 text-right font-semibold text-foreground">{formatCurrency(cat.amount)}</td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-muted-foreground text-xs w-8 text-right">{pct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-muted/30 border-t border-border font-semibold">
+                <tr>
+                  <td className="px-5 py-3 text-foreground">Total</td>
+                  <td className="px-5 py-3 text-right text-muted-foreground">{data.expensesByCategory.reduce((s: number, c: any) => s + c.count, 0)}</td>
+                  <td className="px-5 py-3 text-right">{formatCurrency(s.totalExpenses)}</td>
+                  <td className="px-5 py-3" />
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
+
+      {openModule === "mileage" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+            <Navigation className="w-4 h-4 text-violet-600" />
+            <span className="font-semibold text-sm text-foreground">Mileage & Deductions</span>
+            <span className="text-xs text-muted-foreground ml-1">IRS rate: ${s.mileageRate?.toFixed(3)}/mile</span>
+          </div>
+          <div className="p-5 grid grid-cols-3 gap-4">
+            {[
+              { label: "Business Miles", value: s.totalMiles?.toFixed(1) ?? "0", sub: "Tracked this year", icon: Navigation, color: "bg-violet-100 text-violet-600" },
+              { label: "IRS Deduction", value: formatCurrency(s.mileageDeduction), sub: `@ $${s.mileageRate?.toFixed(3)}/mi`, icon: DollarSign, color: "bg-emerald-100 text-emerald-600" },
+              { label: "Sub Payments", value: formatCurrency(s.totalSubPayments), sub: "Total YTD", icon: HardHat, color: "bg-orange-100 text-orange-600" },
+            ].map(t => (
+              <div key={t.label} className="bg-muted/30 rounded-xl p-4 flex gap-3 items-start">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${t.color}`}>
+                  <t.icon className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{t.label}</p>
+                  <p className="text-xl font-display font-bold text-foreground">{t.value}</p>
+                  <p className="text-[11px] text-muted-foreground">{t.sub}</p>
+                </div>
               </div>
-            ) : (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+            ))}
+          </div>
+        </div>
+      )}
+
+      {openModule === "subs" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+            <HardHat className="w-4 h-4 text-amber-600" />
+            <span className="font-semibold text-sm text-foreground">Subcontractor / 1099 Report</span>
+            <span className="text-xs text-muted-foreground ml-1">$600 threshold for {year}</span>
+          </div>
+          {data.subcontractor1099.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              <HardHat className="w-8 h-8 mx-auto mb-2 opacity-20" />No subcontractors on file.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                <tr>
+                  <th className="px-5 py-3 text-left">Subcontractor</th>
+                  <th className="px-5 py-3 text-right">YTD Payments</th>
+                  <th className="px-5 py-3 text-center">1099 Required</th>
+                  <th className="px-5 py-3 text-center">W-9 on File</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {(data.subcontractor1099 as any[]).map((sub: any) => (
+                  <tr key={sub.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-5 py-3 font-medium text-foreground">{sub.name}</td>
+                    <td className={`px-5 py-3 text-right font-semibold ${sub.requires1099 ? "text-amber-600" : "text-foreground"}`}>{formatCurrency(sub.ytdPayments)}</td>
+                    <td className="px-5 py-3 text-center">
+                      {sub.requires1099
+                        ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700"><AlertCircle className="w-3 h-3" /> Yes — File 1099</span>
+                        : <span className="text-muted-foreground text-xs">Not yet (${(sub.threshold - sub.ytdPayments).toFixed(0)} to go)</span>
+                      }
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      {sub.w9OnFile
+                        ? <CheckCircle2 className="w-4 h-4 text-emerald-500 mx-auto" />
+                        : <AlertCircle className="w-4 h-4 text-red-400 mx-auto" />
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {openModule === "records" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span className="font-semibold text-sm text-foreground">Tax Records — All Invoices</span>
+              <span className="text-xs text-muted-foreground ml-1">Full ledger for {year}</span>
+            </div>
+            <button
+              onClick={() => data.invoiceRecords?.length > 0 && downloadCSV(data.invoiceRecords, year)}
+              disabled={!data.invoiceRecords?.length}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow transition-colors disabled:opacity-40"
+            >
+              <Download className="w-3.5 h-3.5" /> Download CSV
+            </button>
+          </div>
+          {(!data.invoiceRecords || data.invoiceRecords.length === 0) ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              No invoices found for {year}.
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
                     <tr>
-                      <th className="px-5 py-3 text-left">Category</th>
-                      <th className="px-5 py-3 text-right">Transactions</th>
-                      <th className="px-5 py-3 text-right">Total Amount</th>
-                      <th className="px-5 py-3 text-right">% of Expenses</th>
+                      <th className="px-4 py-3 text-left">Invoice #</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-left">Client</th>
+                      <th className="px-4 py-3 text-left">City</th>
+                      <th className="px-4 py-3 text-right">Subtotal</th>
+                      <th className="px-4 py-3 text-right">Tax</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {data.expensesByCategory.map((cat: any) => {
-                      const pct = s.totalExpenses > 0 ? (cat.amount / s.totalExpenses * 100).toFixed(1) : "0";
-                      const colorClass = CATEGORY_COLORS[cat.category] ?? "bg-gray-100 text-gray-600";
-                      return (
-                        <tr key={cat.category} className="hover:bg-muted/20 transition-colors">
-                          <td className="px-5 py-3">
-                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${colorClass}`}>{cat.category}</span>
-                          </td>
-                          <td className="px-5 py-3 text-right text-muted-foreground">{cat.count}</td>
-                          <td className="px-5 py-3 text-right font-semibold text-foreground">{formatCurrency(cat.amount)}</td>
-                          <td className="px-5 py-3 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
-                              </div>
-                              <span className="text-muted-foreground text-xs w-8 text-right">{pct}%</span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot className="bg-muted/30 border-t border-border font-semibold">
-                    <tr>
-                      <td className="px-5 py-3 text-foreground">Total</td>
-                      <td className="px-5 py-3 text-right text-muted-foreground">{data.expensesByCategory.reduce((s: number, c: any) => s + c.count, 0)}</td>
-                      <td className="px-5 py-3 text-right">{formatCurrency(s.totalExpenses)}</td>
-                      <td className="px-5 py-3" />
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Mileage Deduction */}
-          <div>
-            <SectionHeader title="Mileage Deduction" sub={`IRS rate: $${s.mileageRate?.toFixed(3)}/mile`} />
-            <div className="grid grid-cols-3 gap-4">
-              <StatCard label="Business Miles" value={s.totalMiles?.toFixed(1) ?? "0"} sub="Tracked this year" icon={Navigation} color="bg-violet-100 text-violet-600" />
-              <StatCard label="IRS Deduction" value={formatCurrency(s.mileageDeduction)} sub={`@ $${s.mileageRate?.toFixed(3)}/mi`} icon={DollarSign} color="bg-emerald-100 text-emerald-600" />
-              <StatCard label="Sub Payments" value={formatCurrency(s.totalSubPayments)} sub="Total YTD" icon={HardHat} color="bg-orange-100 text-orange-600" />
-            </div>
-          </div>
-
-          {/* 1099 / Subcontractors */}
-          <div>
-            <SectionHeader title="Subcontractor / 1099 Report" sub={`$600 threshold for ${year}`} />
-            {data.subcontractor1099.length === 0 ? (
-              <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm">
-                <HardHat className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                No subcontractors on file.
-              </div>
-            ) : (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                    <tr>
-                      <th className="px-5 py-3 text-left">Subcontractor</th>
-                      <th className="px-5 py-3 text-right">YTD Payments</th>
-                      <th className="px-5 py-3 text-center">1099 Required</th>
-                      <th className="px-5 py-3 text-center">W-9 on File</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {(data.subcontractor1099 as any[]).map((sub: any) => (
-                      <tr key={sub.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3 font-medium text-foreground">{sub.name}</td>
-                        <td className={`px-5 py-3 text-right font-semibold ${sub.requires1099 ? "text-amber-600" : "text-foreground"}`}>{formatCurrency(sub.ytdPayments)}</td>
-                        <td className="px-5 py-3 text-center">
-                          {sub.requires1099
-                            ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700"><AlertCircle className="w-3 h-3" /> Yes — File 1099</span>
-                            : <span className="text-muted-foreground text-xs">Not yet (${(sub.threshold - sub.ytdPayments).toFixed(0)} to go)</span>
+                    {(data.invoiceRecords as any[]).map((r: any, i: number) => (
+                      <tr key={i} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2.5 font-mono text-xs font-semibold">{r.invoiceNumber}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{r.issueDate}</td>
+                        <td className="px-4 py-2.5 font-medium">{r.clientName || "—"}</td>
+                        <td className="px-4 py-2.5">
+                          {r.city
+                            ? <span className="inline-flex items-center gap-1 text-primary font-medium text-xs"><MapPin className="w-3 h-3" />{r.city}</span>
+                            : <span className="text-muted-foreground italic text-xs">No city</span>
                           }
                         </td>
-                        <td className="px-5 py-3 text-center">
-                          {sub.w9OnFile
-                            ? <CheckCircle2 className="w-4 h-4 text-emerald-500 mx-auto" />
-                            : <AlertCircle className="w-4 h-4 text-red-400 mx-auto" />
-                          }
+                        <td className="px-4 py-2.5 text-right">{formatCurrency(r.subtotal)}</td>
+                        <td className="px-4 py-2.5 text-right text-blue-600">{r.taxAmount > 0 ? formatCurrency(r.taxAmount) : "—"}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(r.total)}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            r.status === "paid" ? "bg-emerald-100 text-emerald-700" :
+                            r.status === "sent" ? "bg-blue-100 text-blue-700" :
+                            r.status === "overdue" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-600"
+                          }`}>{r.status}</span>
                         </td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot className="bg-muted/30 border-t-2 border-border font-semibold text-sm">
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3 text-foreground">{data.invoiceRecords.length} invoice{data.invoiceRecords.length !== 1 ? "s" : ""}</td>
+                      <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.subtotal, 0))}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.taxAmount, 0))}</td>
+                      <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.total, 0))}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
-            )}
+              <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800">
+                  <strong>KY Occupational Tax tip:</strong> Use the City column to determine which city jurisdictions you owe local occupational tax to. Download the CSV to attach to your city tax filings.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground text-center pb-2">
+        Auto-generated from your invoices, expenses, mileage logs, and subcontractor records. Always verify with your accountant before filing.
+      </p>
+    </div>
+  );
+}
+
+// ─── Schedule C + Home Office ─────────────────────────────────────────────────
+
+function loadHomeOffice(year: number) {
+  try {
+    const raw = localStorage.getItem(`home-office-${year}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveHomeOffice(year: number, data: Record<string, string>) {
+  try { localStorage.setItem(`home-office-${year}`, JSON.stringify(data)); } catch {}
+}
+
+function ScheduleCTab({ year }: { year: number }) {
+  const { data: report, isLoading: reportLoading } = useScheduleCReport(year);
+  const [showHomeOffice, setShowHomeOffice] = useState(false);
+
+  const [ho, setHo] = useState<Record<string, string>>(() => loadHomeOffice(year));
+
+  function setHoField(k: string, v: string) {
+    setHo(prev => {
+      const next = { ...prev, [k]: v };
+      saveHomeOffice(year, next);
+      return next;
+    });
+  }
+
+  const totalSqft = parseFloat(ho.totalSqft || "0");
+  const officeSqft = parseFloat(ho.officeSqft || "0");
+  const businessUsePct = totalSqft > 0 && officeSqft > 0 ? Math.min(officeSqft / totalSqft, 1) : 0;
+  const annualRentMortgage = parseFloat(ho.rentMortgage || "0");
+  const annualUtilities = parseFloat(ho.utilities || "0");
+  const annualPhone = parseFloat(ho.phone || "0");
+  const phoneBusinessPct = parseFloat(ho.phonePct || "0") / 100;
+  const homeOfficeDed = businessUsePct * (annualRentMortgage + annualUtilities) + phoneBusinessPct * annualPhone;
+
+  const scheduleCLines = report?.scheduleLines ?? [];
+  const totalDeductions = (report?.totalExpenses ?? 0) + homeOfficeDed;
+  const netProfit = (report?.grossReceipts ?? 0) - totalDeductions;
+
+  const lineMap: Record<number, { description: string; amount: number }> = {};
+  for (const l of scheduleCLines) { lineMap[l.line] = { description: l.description, amount: l.amount }; }
+
+  // Inject home office into line 30
+  if (homeOfficeDed > 0) { lineMap[30] = { description: "Expenses for business use of your home (Form 8829)", amount: homeOfficeDed }; }
+
+
+  return (
+    <div className="space-y-6">
+      {reportLoading && (
+        <div className="text-center py-20 text-muted-foreground animate-pulse">Loading Schedule C…</div>
+      )}
+
+      {report && (
+        <>
+          {/* Export actions */}
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => {
+                const csvContent = `Schedule C - Tax Year ${report.year}\n\nLine,Description,Amount\n1,Gross receipts or sales,"$${report.grossReceipts.toFixed(2)}"\n${report.scheduleLines.filter(l => l.line > 1).map(l => `${l.line},"${l.description}","$${l.amount.toFixed(2)}"`).join("\n")}${homeOfficeDed > 0 ? `\n30,"Home office deduction (Form 8829)","$${homeOfficeDed.toFixed(2)}"` : ""}\n28,Total expenses,"$${totalDeductions.toFixed(2)}"\n31,Net profit or loss,"$${netProfit.toFixed(2)}"`;
+                const blob = new Blob([csvContent], { type: "text/csv" });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url; a.download = `Schedule_C_${year}.csv`; a.click();
+                window.URL.revokeObjectURL(url);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border text-sm"
+            >
+              <Download className="w-4 h-4" /> CSV Export
+            </button>
+            <button
+              onClick={() => {
+                const printWindow = window.open("", "", "width=800,height=600");
+                if (printWindow) {
+                  printWindow.document.write(`<html><head><title>Schedule C - Tax Year ${report.year}</title><style>body{font-family:Arial,sans-serif;padding:40px;line-height:1.6}h1{text-align:center;font-size:18px;margin-bottom:5px}h2{font-size:13px;margin:20px 0 10px}.line{display:flex;justify-content:space-between;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px}.ln{font-weight:bold;width:50px;color:#666;font-size:12px}.desc{flex:1;margin:0 20px;font-size:13px}.amt{width:100px;text-align:right;font-weight:600}.total{border-top:2px solid #333;font-weight:bold;background:#f5f5f5;padding:8px 4px}</style></head><body><h1>SCHEDULE C (FORM 1040)</h1><p style="text-align:center;color:#666">Profit or Loss from Business — Tax Year ${report.year}</p><h2>PART I — INCOME</h2>${report.scheduleLines.filter(l => l.line <= 7).map(l => `<div class="line"><span class="ln">Line ${l.line}</span><span class="desc">${l.description}</span><span class="amt">$${l.amount.toFixed(2)}</span></div>`).join("")}<h2>PART II — EXPENSES</h2>${report.scheduleLines.filter(l => l.line >= 8 && l.line < 28).map(l => `<div class="line"><span class="ln">Line ${l.line}</span><span class="desc">${l.description}</span><span class="amt">$${l.amount.toFixed(2)}</span></div>`).join("")}${homeOfficeDed > 0 ? `<div class="line"><span class="ln">Line 30</span><span class="desc">Home office deduction (Form 8829)</span><span class="amt">$${homeOfficeDed.toFixed(2)}</span></div>` : ""}<div class="line total"><span class="ln">Line 28</span><span class="desc">Total expenses</span><span class="amt">$${totalDeductions.toFixed(2)}</span></div><div class="line total"><span class="ln">Line 31</span><span class="desc">Net profit or (loss)</span><span class="amt">$${netProfit.toFixed(2)}</span></div></body></html>`);
+                  printWindow.document.close();
+                  setTimeout(() => printWindow.print(), 250);
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all text-sm"
+            >
+              <FileText className="w-4 h-4" /> PDF Print
+            </button>
           </div>
 
-          {/* Tax Records Spreadsheet */}
-          <div>
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <SectionHeader title="Tax Records — All Invoices" sub={`Full ledger for ${year} — export for city occupational tax filings`} />
+          {/* Data quality warnings */}
+          {report.dataQuality.warnings.length > 0 && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-medium text-amber-900 text-sm">Data Quality Warnings</p>
+                {report.dataQuality.warnings.map((w, i) => <p key={i} className="text-sm text-amber-800">• {w}</p>)}
               </div>
-              <button
-                onClick={() => data.invoiceRecords?.length > 0 && downloadCSV(data.invoiceRecords, year)}
-                disabled={!data.invoiceRecords?.length}
-                className="flex items-center gap-2 h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow transition-colors disabled:opacity-40 flex-shrink-0"
-              >
-                <Download className="w-4 h-4" /> Download CSV
-              </button>
             </div>
-            {(!data.invoiceRecords || data.invoiceRecords.length === 0) ? (
-              <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground text-sm">
-                <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                No invoices found for {year}. Create invoices with a city to populate this report.
-              </div>
-            ) : (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                      <tr>
-                        <th className="px-4 py-3 text-left">Invoice #</th>
-                        <th className="px-4 py-3 text-left">Date</th>
-                        <th className="px-4 py-3 text-left">Client</th>
-                        <th className="px-4 py-3 text-left">City</th>
-                        <th className="px-4 py-3 text-left">State</th>
-                        <th className="px-4 py-3 text-right">Subtotal</th>
-                        <th className="px-4 py-3 text-right">Tax</th>
-                        <th className="px-4 py-3 text-right">Total</th>
-                        <th className="px-4 py-3 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {(data.invoiceRecords as any[]).map((r: any, i: number) => (
-                        <tr key={i} className="hover:bg-muted/20 transition-colors">
-                          <td className="px-4 py-2.5 font-mono text-xs text-foreground font-semibold">{r.invoiceNumber}</td>
-                          <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{r.issueDate}</td>
-                          <td className="px-4 py-2.5 font-medium text-foreground">{r.clientName || "—"}</td>
-                          <td className="px-4 py-2.5">
-                            {r.city ? (
-                              <span className="inline-flex items-center gap-1 text-primary font-medium">
-                                <MapPin className="w-3 h-3 flex-shrink-0" />{r.city}
-                              </span>
-                            ) : <span className="text-muted-foreground italic text-xs">No city</span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-muted-foreground">{r.state || "—"}</td>
-                          <td className="px-4 py-2.5 text-right">{formatCurrency(r.subtotal)}</td>
-                          <td className="px-4 py-2.5 text-right text-blue-600">{r.taxAmount > 0 ? formatCurrency(r.taxAmount) : "—"}</td>
-                          <td className="px-4 py-2.5 text-right font-semibold text-foreground">{formatCurrency(r.total)}</td>
-                          <td className="px-4 py-2.5 text-center">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              r.status === "paid" ? "bg-emerald-100 text-emerald-700" :
-                              r.status === "sent" ? "bg-blue-100 text-blue-700" :
-                              r.status === "overdue" ? "bg-red-100 text-red-700" :
-                              "bg-gray-100 text-gray-600"
-                            }`}>{r.status}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-muted/30 border-t-2 border-border font-semibold text-sm">
-                      <tr>
-                        <td colSpan={5} className="px-4 py-3 text-foreground">{data.invoiceRecords.length} invoice{data.invoiceRecords.length !== 1 ? "s" : ""}</td>
-                        <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.subtotal, 0))}</td>
-                        <td className="px-4 py-3 text-right text-blue-600">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.taxAmount, 0))}</td>
-                        <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.total, 0))}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
+          )}
+
+          {/* IRS-style Schedule C form */}
+          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+            {/* Form header */}
+            <div className="bg-muted/50 px-6 py-4 border-b border-border">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Schedule C (Form 1040)</p>
+                  <h2 className="text-base font-display font-bold text-foreground mt-0.5">Profit or Loss From Business</h2>
+                  <p className="text-xs text-muted-foreground">Sole Proprietorship / Single-Member LLC — Tax Year {year}</p>
                 </div>
-                <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-800">
-                    <strong>KY Occupational Tax tip:</strong> Use the City and Tax columns to determine which city jurisdictions you owe local occupational tax to. Download the CSV to attach to your city tax filings.
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">OMB No. 1545-0074</p>
+                  <p className="text-xs font-bold text-foreground mt-0.5">Attachment Sequence No. 09</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Part I — Income */}
+            <div className="px-6 pt-4 pb-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-foreground text-background text-[10px] font-bold px-2 py-0.5 rounded">PART I</div>
+                <span className="text-sm font-bold text-foreground uppercase tracking-wide">Income</span>
+              </div>
+              <div className="space-y-0 divide-y divide-border/30">
+                {[
+                  { line: 1, desc: 'Gross receipts or sales. See instructions for line 1 and check the box if this income was reported to you on Form W-2 and the \u201cStatutory employee\u201d box on that form was checked' },
+                  { line: 2, desc: "Returns and allowances" },
+                  { line: 3, desc: "Subtract line 2 from line 1" },
+                  { line: 4, desc: "Cost of goods sold (from Part III, line 42)" },
+                  { line: 5, desc: "Gross profit. Subtract line 4 from line 3" },
+                  { line: 6, desc: "Other income, including federal and state gasoline or fuel tax credit or refund" },
+                  { line: 7, desc: "Gross income. Add lines 5 and 6" },
+                ].map(({ line, desc }) => {
+                  const entry = lineMap[line];
+                  const amount = entry?.amount ?? 0;
+                  const isKey = [1, 5, 7].includes(line);
+                  return (
+                    <div key={line} className={`flex items-start gap-3 py-2.5 ${isKey ? "bg-muted/10" : ""}`}>
+                      <span className="text-[11px] text-muted-foreground font-mono w-8 flex-shrink-0 pt-0.5 text-right">{line}</span>
+                      <span className={`flex-1 text-xs leading-relaxed ${isKey ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{desc}</span>
+                      <span className={`font-semibold tabular-nums text-sm min-w-[80px] text-right ${isKey && amount > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                        {amount !== 0 ? formatCurrency(amount) : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border-t-4 border-border" />
+
+            {/* Part II — Expenses */}
+            <div className="px-6 pt-4 pb-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-foreground text-background text-[10px] font-bold px-2 py-0.5 rounded">PART II</div>
+                <span className="text-sm font-bold text-foreground uppercase tracking-wide">Expenses</span>
+                <span className="text-xs text-muted-foreground">Enter expenses for business use of your home only on line 30</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 divide-y divide-border/30">
+                {[
+                  { line: 8, desc: "Advertising" },
+                  { line: 9, desc: "Car and truck expenses (see instructions)" },
+                  { line: 10, desc: "Commissions and fees" },
+                  { line: 11, desc: "Contract labor (see instructions)" },
+                  { line: 12, desc: "Depletion" },
+                  { line: 13, desc: "Depreciation and section 179 expense" },
+                  { line: 14, desc: "Employee benefit programs" },
+                  { line: 15, desc: "Insurance (other than health)" },
+                  { line: 16, desc: "Interest — Mortgage (paid to banks, etc.)" },
+                  { line: 17, desc: "Legal and professional services" },
+                  { line: 18, desc: "Office expense" },
+                  { line: 19, desc: "Pension and profit-sharing plans" },
+                  { line: 20, desc: "Rent or lease (vehicles, machinery, equipment)" },
+                  { line: 21, desc: "Repairs and maintenance" },
+                  { line: 22, desc: "Supplies (not included in Part III)" },
+                  { line: 23, desc: "Taxes and licenses" },
+                  { line: 24, desc: "Travel and meals" },
+                  { line: 25, desc: "Utilities" },
+                  { line: 26, desc: "Wages (less employment credits)" },
+                  { line: 27, desc: "Other expenses (from line 48)" },
+                ].map(({ line, desc }) => {
+                  const entry = lineMap[line];
+                  const amount = entry?.amount ?? 0;
+                  return (
+                    <div key={line} className="flex items-center gap-2 py-2 px-1">
+                      <span className="text-[11px] text-muted-foreground font-mono w-7 flex-shrink-0 text-right">{line}</span>
+                      <span className="flex-1 text-xs text-muted-foreground leading-tight">{desc}</span>
+                      <span className={`font-medium tabular-nums text-sm min-w-[72px] text-right ${amount > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                        {amount > 0 ? formatCurrency(amount) : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Line 28 Total, Line 30 Home Office, Line 31 Net */}
+              <div className="mt-3 space-y-0 border-t-2 border-border divide-y divide-border/30">
+                {[
+                  { line: 28, desc: "Total expenses before expenses for business use of home. Add lines 8 through 27", amount: report.totalExpenses, key: true },
+                  { line: 30, desc: "Expenses for business use of your home. Do not report these expenses elsewhere. Attach Form 8829 unless using the simplified method", amount: homeOfficeDed, key: false },
+                  { line: 31, desc: "Net profit or (loss). Subtract line 30 from line 28. If a profit, enter on both Schedule 1 (Form 1040), line 3, and on Schedule SE, line 2.", amount: netProfit, key: true },
+                ].map(({ line, desc, amount, key }) => (
+                  <div key={line} className={`flex items-start gap-2 py-3 ${key ? "bg-muted/20 px-3 rounded" : "px-1"}`}>
+                    <span className="text-[11px] text-muted-foreground font-mono w-7 flex-shrink-0 text-right pt-0.5">{line}</span>
+                    <span className={`flex-1 text-xs leading-relaxed ${key ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{desc}</span>
+                    <span className={`font-bold tabular-nums text-sm min-w-[80px] text-right ${amount < 0 ? "text-red-500" : key && amount > 0 ? "text-primary" : "text-foreground"}`}>
+                      {formatCurrency(amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Form 8829 — Home Office Calculator */}
+          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => setShowHomeOffice(v => !v)}
+              className="w-full flex items-center justify-between px-6 py-4 bg-muted/30 hover:bg-muted/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <Home className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold text-foreground text-sm">Form 8829 — Home Office Deduction Calculator</p>
+                  <p className="text-xs text-muted-foreground">
+                    {homeOfficeDed > 0
+                      ? `Calculated deduction: ${formatCurrency(homeOfficeDed)} → flows to Schedule C line 30`
+                      : "Enter your home office details to calculate your deduction"}
                   </p>
                 </div>
               </div>
+              {showHomeOffice ? <ChevronUp className="w-5 h-5 text-muted-foreground" /> : <ChevronDown className="w-5 h-5 text-muted-foreground" />}
+            </button>
+
+            {showHomeOffice && (
+              <div className="px-6 py-5 space-y-5">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-800">
+                  <strong>Part I — Business Use of Home</strong> — Enter square footage to calculate the business-use percentage. Only expenses attributable to the office portion are deductible.
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className={cl}>Total Home Sq Ft</label>
+                    <input type="number" min="0" className={ci} placeholder="e.g. 1800"
+                      value={ho.totalSqft ?? ""} onChange={e => setHoField("totalSqft", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={cl}>Office Sq Ft</label>
+                    <input type="number" min="0" className={ci} placeholder="e.g. 180"
+                      value={ho.officeSqft ?? ""} onChange={e => setHoField("officeSqft", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={cl}>Business Use %</label>
+                    <div className="px-3 py-2 rounded-xl border border-border bg-muted/30 text-sm font-semibold text-foreground">
+                      {totalSqft > 0 ? `${(businessUsePct * 100).toFixed(1)}%` : "—"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-border/50 pt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Part II — Deductible Expenses</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={cl}>Annual Rent or Mortgage Interest ($)</label>
+                      <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 12000"
+                        value={ho.rentMortgage ?? ""} onChange={e => setHoField("rentMortgage", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={cl}>Annual Utilities — Electric, Gas, Water ($)</label>
+                      <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 2400"
+                        value={ho.utilities ?? ""} onChange={e => setHoField("utilities", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={cl}>Annual Phone / Internet ($)</label>
+                      <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 1200"
+                        value={ho.phone ?? ""} onChange={e => setHoField("phone", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={cl}>Business Use of Phone / Internet (%)</label>
+                      <input type="number" min="0" max="100" className={ci} placeholder="e.g. 80"
+                        value={ho.phonePct ?? ""} onChange={e => setHoField("phonePct", e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">Calculated Home Office Deduction (Line 30)</p>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      {businessUsePct > 0
+                        ? `${(businessUsePct * 100).toFixed(1)}% × (rent + utilities) + ${ho.phonePct || 0}% of phone`
+                        : "Enter square footage above to calculate"}
+                    </p>
+                  </div>
+                  <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(homeOfficeDed)}</p>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Values are saved automatically and persist across sessions. This calculator is for estimation only — consult a CPA and attach the actual Form 8829 when filing.
+                </p>
+              </div>
             )}
           </div>
 
-          <p className="text-xs text-muted-foreground text-center pb-4">
-            This report is auto-generated from your invoices, expenses, mileage logs, and subcontractor records. Always verify with your accountant before filing.
-          </p>
-            </>
-          )}
+          {/* Disclaimer */}
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-800">
+              <strong>Tax Disclaimer:</strong> This Schedule C summary is for informational purposes only and does not constitute tax advice.
+              Consult with a qualified CPA before filing. BuildPro is not responsible for filing accuracy or penalties.
+            </p>
+          </div>
         </>
       )}
+    </div>
+  );
+}
 
-      {/* Filing Calendar Tab */}
-      {activeTab === "filing-calendar" && (
-        <FilingCalendarTab key={year} year={year} />
+// ─── Tax Calendar & Compliance (merged) ─────────────────────────────────────
+
+function TaxCalendarTab({ year }: { year: number }) {
+  const storageKey = `ky-filing-statuses-${year}`;
+  const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
+    try { const raw = localStorage.getItem(storageKey); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  });
+  const [expandedFilings, setExpandedFilings] = useState<Record<string, boolean>>({});
+  const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "due-soon" | "filed" | "na">("all");
+
+  const { data: items = [], isLoading: loadingItems } = useComplianceItems();
+  const createItem = useCreateComplianceItem();
+  const updateItem = useUpdateComplianceItem();
+  const deleteItem = useDeleteComplianceItem();
+  const [showForm, setShowForm] = useState(false);
+  const [editTarget, setEditTarget] = useState<ComplianceItem | null>(null);
+  const saving = createItem.isPending || updateItem.isPending;
+
+  const getStatus = useCallback((id: string): FilingStatus => statuses[id] ?? "not-filed", [statuses]);
+  const cycleStatus = useCallback((id: string) => {
+    setStatuses(prev => {
+      const current = prev[id] ?? "not-filed";
+      const idx = STATUS_CYCLE.indexOf(current);
+      const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+      const updated = { ...prev, [id]: next };
+      try { localStorage.setItem(storageKey, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, [storageKey]);
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  // Compute combined stats for the summary tiles
+  let kyOverdue = 0, kyDueSoon = 0, kyFiled = 0, kyNa = 0;
+  for (const f of KY_FILINGS) {
+    const st = getStatus(f.id);
+    if (st === "filed") { kyFiled++; continue; }
+    if (st === "na") { kyNa++; continue; }
+    const due = f.dueDate(year);
+    if (!due) continue;
+    const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
+    if (dueCopy < today) kyOverdue++;
+    else { const soon = new Date(today); soon.setDate(soon.getDate() + 30); if (dueCopy <= soon) kyDueSoon++; }
+  }
+  const ciOverdue = items.filter(i => i.computedStatus === "overdue").length;
+  const ciDueSoon = items.filter(i => i.computedStatus === "due-soon").length;
+  const ciComplete = items.filter(i => i.computedStatus === "complete").length;
+
+  const totalOverdue = kyOverdue + ciOverdue;
+  const totalDueSoon = kyDueSoon + ciDueSoon;
+  const totalFiled = kyFiled + ciComplete;
+  const totalNa = kyNa;
+
+  // Filter KY filings
+  const filteredFilings = KY_FILINGS.filter(f => {
+    if (statusFilter === "all") return true;
+    const st = getStatus(f.id);
+    if (statusFilter === "filed") return st === "filed";
+    if (statusFilter === "na") return st === "na";
+    if (st === "filed" || st === "na") return false;
+    const due = f.dueDate(year);
+    if (!due) return false;
+    const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
+    const isOverdue = dueCopy < today;
+    const soon = new Date(today); soon.setDate(soon.getDate() + 30);
+    const isDueSoon = !isOverdue && dueCopy <= soon;
+    if (statusFilter === "overdue") return isOverdue;
+    if (statusFilter === "due-soon") return isDueSoon;
+    return true;
+  });
+
+  // Filter compliance items
+  const filteredItems = items.filter(i => {
+    if (statusFilter === "all") return true;
+    if (statusFilter === "filed") return i.computedStatus === "complete";
+    if (statusFilter === "na") return false;
+    if (statusFilter === "overdue") return i.computedStatus === "overdue";
+    if (statusFilter === "due-soon") return i.computedStatus === "due-soon";
+    return true;
+  });
+
+  async function handleSave(data: Partial<ComplianceItem>) {
+    if (editTarget) { await updateItem.mutateAsync({ id: editTarget.id, ...data }); setEditTarget(null); }
+    else { await createItem.mutateAsync(data); setShowForm(false); }
+  }
+  async function handleToggleComplete(item: ComplianceItem) {
+    await updateItem.mutateAsync({ ...item, status: item.status === "complete" ? "upcoming" : "complete" });
+  }
+  async function handleDelete(id: number) {
+    if (!confirm("Delete this compliance item?")) return;
+    await deleteItem.mutateAsync(id);
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Combined summary tiles */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { key: "overdue" as const, label: "Overdue", count: totalOverdue, icon: XCircle, active: "bg-red-50 border-red-200 text-red-600", inactive: "bg-card border-border text-muted-foreground" },
+          { key: "due-soon" as const, label: "Due Soon", count: totalDueSoon, icon: Clock, active: "bg-amber-50 border-amber-200 text-amber-600", inactive: "bg-card border-border text-muted-foreground" },
+          { key: "filed" as const, label: "Filed / Done", count: totalFiled, icon: CheckCircle, active: "bg-emerald-50 border-emerald-200 text-emerald-600", inactive: "bg-card border-border text-emerald-600" },
+          { key: "na" as const, label: "N/A", count: totalNa, icon: Shield, active: "bg-muted border-border text-muted-foreground", inactive: "bg-card border-border text-muted-foreground" },
+        ].map(({ key, label, count, icon: Icon, active, inactive }) => (
+          <button
+            key={key}
+            onClick={() => setStatusFilter(prev => prev === key ? "all" : key)}
+            className={`rounded-xl border p-4 flex items-center gap-3 transition-all hover:shadow-sm active:scale-95 ${statusFilter === key ? active + " ring-2 ring-offset-1 ring-gray-300" : count > 0 && (key === "overdue" || key === "due-soon") ? active : inactive}`}
+          >
+            <Icon className="w-6 h-6 flex-shrink-0" />
+            <div className="text-left">
+              <p className="text-2xl font-display font-bold">{count}</p>
+              <p className="text-xs font-medium text-muted-foreground">{label}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {statusFilter !== "all" && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Filtering by: <strong>{statusFilter === "filed" ? "Filed / Done" : statusFilter === "due-soon" ? "Due Soon" : statusFilter === "na" ? "N/A" : "Overdue"}</strong></span>
+          <button onClick={() => setStatusFilter("all")} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs hover:bg-muted/80 transition-colors">
+            <X className="w-3 h-3" /> Clear
+          </button>
+        </div>
       )}
 
-      {/* Compliance Items Tab */}
-      {activeTab === "compliance-items" && (
-        <ComplianceItemsTab />
-      )}
+      {/* KY Filing Calendar section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display font-bold text-foreground">KY & Federal Filing Deadlines</h3>
+          <span className="text-xs text-muted-foreground">{filteredFilings.length} of {KY_FILINGS.length} shown</span>
+        </div>
 
-      {/* Schedule C Tab */}
-      {activeTab === "schedule-c" && (
-        <>
-          {reportLoading && (
-            <div className="text-center py-20 text-muted-foreground animate-pulse">Loading Schedule C…</div>
-          )}
-
-          {report && (
-            <>
-              {/* Export Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    if (!report) return;
-                    const csvContent = `Schedule C - Tax Year ${report.year}\nGenerated: ${new Date().toLocaleDateString()}\n\nLine,Description,Amount\n1,Gross receipts or sales,"$${report.grossReceipts.toFixed(2)}"\n${report.scheduleLines
-                      .filter(l => l.line > 1)
-                      .map(line => `${line.line},"${line.description}","$${line.amount.toFixed(2)}"`)
-                      .join("\n")}\n\nData Quality Check\nUncategorized Expenses,${report.dataQuality.uncategorizedExpenses}\nDraft Invoices,${report.dataQuality.invoicesDraft}`;
-                    const blob = new Blob([csvContent], { type: "text/csv" });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `Schedule_C_${year}.csv`;
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                  }}
-                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border"
-                >
-                  <Download className="w-4 h-4 mr-2" /> CSV Export
-                </button>
-                <button
-                  onClick={() => {
-                    if (!report) return;
-                    let htmlContent = `
-                      <html>
-                        <head>
-                          <title>Schedule C - Tax Year ${report.year}</title>
-                          <style>
-                            body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
-                            h1 { text-align: center; font-size: 18px; margin-bottom: 30px; }
-                            .form-line { display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
-                            .line-number { font-weight: bold; width: 40px; }
-                            .line-description { flex: 1; margin: 0 20px; }
-                            .line-amount { width: 120px; text-align: right; }
-                          </style>
-                        </head>
-                        <body>
-                          <h1>SCHEDULE C (FORM 1040) - PROFIT OR LOSS FROM BUSINESS</h1>
-                          <p style="text-align: center;">Tax Year ${report.year}</p>
-                          ${report.scheduleLines
-                            .map(
-                              line => `
-                            <div class="form-line">
-                              <span class="line-number">Line ${line.line}</span>
-                              <span class="line-description">${line.description}</span>
-                              <span class="line-amount">$${line.amount.toFixed(2)}</span>
-                            </div>
-                          `
-                            )
-                            .join("")}
-                        </body>
-                      </html>
-                    `;
-                    const printWindow = window.open("", "", "width=800,height=600");
-                    if (printWindow) {
-                      printWindow.document.write(htmlContent);
-                      printWindow.document.close();
-                      setTimeout(() => printWindow.print(), 250);
-                    }
-                  }}
-                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all"
-                >
-                  <FileText className="w-4 h-4 mr-2" /> PDF Print
-                </button>
-              </div>
-
-              {/* Data Quality Warnings */}
-              {report.dataQuality.warnings.length > 0 && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                  <div className="flex gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <p className="font-medium text-amber-900">Data Quality Warnings</p>
-                      {report.dataQuality.warnings.map((warning, i) => (
-                        <p key={i} className="text-sm text-amber-800">• {warning}</p>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Schedule C Summary */}
-              <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                <div className="bg-muted/50 px-6 py-4 border-b border-border">
-                  <h2 className="text-lg font-display font-bold text-foreground">Schedule C Summary</h2>
-                </div>
-                <div className="p-6 space-y-3">
-                  {report.scheduleLines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex justify-between items-center py-2 ${
-                        [1, 28, 29].includes(line.line) ? "border-t border-border pt-3 font-semibold" : ""
-                      } ${[28, 29].includes(line.line) ? "bg-muted/30 px-3 rounded" : ""}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="text-sm text-muted-foreground w-8">Line {line.line}</span>
-                        <span className="text-foreground">{line.description}</span>
+        {filteredFilings.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm rounded-2xl border border-border border-dashed">No filings match this filter.</div>
+        ) : (
+          <div className="space-y-2">
+            {filteredFilings.map(filing => {
+              const status = getStatus(filing.id);
+              const isExpanded = expandedFilings[filing.id];
+              const badge = getFilingDueBadge(filing, year, status);
+              const rowBg = getFilingStatusColor(filing, year, status);
+              const dateStyle = getFilingDueDateStyle(filing, year, status);
+              return (
+                <div key={filing.id} className={`rounded-2xl border ${rowBg} overflow-hidden transition-colors`}>
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <button
+                        onClick={() => cycleStatus(filing.id)}
+                        className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-colors mt-0.5 ${
+                          status === "filed" ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-200" :
+                          status === "na" ? "bg-muted text-muted-foreground hover:bg-muted/80" :
+                          "bg-background border border-border text-muted-foreground hover:bg-muted/40"
+                        }`}
+                        title={`Status: ${status === "not-filed" ? "Not Filed" : status === "filed" ? "Filed" : "N/A"} — click to cycle`}
+                      >
+                        {status === "filed" ? <CheckCircle className="w-4 h-4" /> :
+                         status === "na" ? <XCircle className="w-3.5 h-3.5" /> :
+                         <Clock className="w-3.5 h-3.5" />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                          <span className={`font-semibold text-sm text-foreground ${status === "na" ? "opacity-50" : ""}`}>{filing.name}</span>
+                          {badge && <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>{badge.label}</span>}
+                          {filing.conditional && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{filing.conditional}</span>}
+                          {status === "filed" && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Filed</span>}
+                          {status === "na" && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">N/A</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-1.5">{filing.authority} · {filing.description}</p>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                          <span className={`flex items-center gap-1 ${dateStyle}`}><Calendar className="w-3.5 h-3.5" />{filing.dueDateLabel(year)}</span>
+                          {filing.fee !== "No state fee" && filing.fee !== "Pay estimated tax owed" && (
+                            <span className="flex items-center gap-1 text-muted-foreground"><DollarSign className="w-3.5 h-3.5" />{filing.fee}</span>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-lg font-semibold text-primary">{formatCurrency(line.amount)}</span>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <a href={filing.link} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors">
+                          <ExternalLink className="w-3 h-3" /><span className="hidden sm:inline">File</span>
+                        </a>
+                        <button onClick={() => setExpandedFilings(prev => ({ ...prev, [filing.id]: !prev[filing.id] }))}
+                          className="h-7 w-7 rounded-lg bg-muted/60 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground">
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                  {isExpanded && (
+                    <div className="border-t border-border/50 px-4 py-4 bg-background/50 space-y-3">
+                      <p className="text-sm text-foreground leading-relaxed">{filing.learnMore}</p>
+                      <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-xl">
+                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700"><strong>Penalty:</strong> {filing.penalty}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-              {/* Mileage Data */}
-              {report.mileageData.logCount > 0 && (
-                <div className="bg-card border border-border rounded-2xl shadow-sm p-6">
-                  <h3 className="text-lg font-semibold text-foreground mb-4">Business Mileage Deduction</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">Total Business Miles</p>
-                      <p className="text-2xl font-bold text-foreground">{report.mileageData.totalBusinessMiles.toFixed(0)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">Rate per Mile</p>
-                      <p className="text-2xl font-bold text-foreground">${report.mileageData.ratePerMile.toFixed(3)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">Deduction Amount</p>
-                      <p className="text-2xl font-bold text-primary">{formatCurrency(report.mileageData.deduction)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-muted-foreground">Logs Recorded</p>
-                      <p className="text-2xl font-bold text-foreground">{report.mileageData.logCount}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+      {/* Compliance Items section */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display font-bold text-foreground">My Compliance Items</h3>
+          <button
+            onClick={() => { setShowForm(true); setEditTarget(null); }}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Item
+          </button>
+        </div>
 
-              {/* Subcontractor Payments */}
-              {subPayments && subPayments.subcontractors.length > 0 && (
-                <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                  <div className="bg-muted/50 px-6 py-4 border-b border-border flex justify-between items-center">
-                    <h2 className="text-lg font-display font-bold text-foreground">Subcontractor Payments</h2>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                        <tr>
-                          <th className="px-6 py-3">Subcontractor</th>
-                          <th className="px-6 py-3 text-right">Total Payments</th>
-                          <th className="px-6 py-3 text-center">Payment Count</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/50">
-                        {subPayments.subcontractors.map(sub => (
-                          <tr key={sub.id} className="hover:bg-muted/30 transition-colors">
-                            <td className="px-6 py-4 font-medium text-foreground">{sub.name}</td>
-                            <td className="px-6 py-4 text-right font-semibold text-primary">{formatCurrency(sub.totalPayments)}</td>
-                            <td className="px-6 py-4 text-center text-muted-foreground">{sub.paymentCount}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+        {(showForm || editTarget) && (
+          <div className="bg-white rounded-2xl border border-amber-200 shadow-lg p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-amber-500" />
+                {editTarget ? "Edit Compliance Item" : "New Compliance Item"}
+              </h4>
+              <button onClick={() => { setShowForm(false); setEditTarget(null); }} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <ComplianceItemForm initial={editTarget ?? undefined} onSave={handleSave} onCancel={() => { setShowForm(false); setEditTarget(null); }} saving={saving} />
+          </div>
+        )}
 
-              {/* Disclaimer */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                <div className="flex gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-blue-900 mb-1">⚠️ Tax Disclaimer</p>
-                    <p className="text-sm text-blue-800">
-                      This Schedule C summary is for informational purposes only and does not constitute tax advice. 
-                      Please consult with a qualified tax professional or CPA before filing. BuildPro is not responsible 
-                      for tax filing accuracy or penalties resulting from incomplete or incorrect information.
-                    </p>
+        {!loadingItems && items.length === 0 && !showForm && (
+          <div className="flex flex-col items-center justify-center py-10 text-center gap-3 rounded-2xl border border-dashed border-border">
+            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center">
+              <Bell className="w-6 h-6 text-amber-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-700 text-sm">No compliance items yet</p>
+              <p className="text-xs text-gray-400 mt-0.5">Track license renewals, permits, insurance, and custom deadlines.</p>
+            </div>
+            <button onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm bg-amber-500 text-white hover:bg-amber-600 shadow transition-colors">
+              <Plus className="w-4 h-4" /> Add your first item
+            </button>
+          </div>
+        )}
+
+        {filteredItems.length > 0 && (
+          <div className="space-y-2">
+            {filteredItems.map(item => {
+              const s = item.computedStatus;
+              return (
+                <div key={item.id} className={`bg-white rounded-2xl border shadow-sm p-4 flex gap-4 transition-all hover:shadow-md ${
+                  s === "overdue" ? "border-red-200" : s === "due-soon" ? "border-amber-200" : s === "complete" ? "border-emerald-200 opacity-70" : "border-gray-200"
+                }`}>
+                  <div className={`flex-shrink-0 w-1 rounded-full ${s === "overdue" ? "bg-red-400" : s === "due-soon" ? "bg-amber-400" : s === "complete" ? "bg-emerald-400" : "bg-blue-400"}`} />
+                  <div className="text-xl flex-shrink-0 mt-0.5">{complianceCategoryIcon(item.category)}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className={`font-semibold text-gray-900 leading-tight text-sm ${s === "complete" ? "line-through text-gray-400" : ""}`}>{item.title}</p>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${complianceStatusBadge(s)}`}>
+                            {complianceStatusLabel(s)}
+                          </span>
+                          <span className="text-xs text-gray-400 font-medium">
+                            {s === "complete" ? "Completed" : item.daysUntilDue < 0 ? `${Math.abs(item.daysUntilDue)}d overdue` : item.daysUntilDue === 0 ? "Due today" : `${item.daysUntilDue}d away`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button onClick={() => handleToggleComplete(item)} title={s === "complete" ? "Mark upcoming" : "Mark complete"}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => { setEditTarget(item); setShowForm(false); }} title="Edit"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDelete(item.id)} title="Delete"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
+                      <span className="flex items-center gap-1"><CalendarClock className="w-3 h-3" />{formatComplianceDate(item.dueDate)}</span>
+                      {item.jurisdiction && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{item.jurisdiction}</span>}
+                      {item.recurrence !== "one-time" && (
+                        <span className="flex items-center gap-1 capitalize"><RefreshCw className="w-3 h-3" />{COMPLIANCE_RECURRENCES.find(r => r.value === item.recurrence)?.label}</span>
+                      )}
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px]">{item.category}</span>
+                    </div>
+                    {item.notes && (
+                      <p className="mt-2 text-xs text-gray-500 leading-relaxed bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">{item.notes}</p>
+                    )}
                   </div>
                 </div>
-              </div>
-            </>
-          )}
+              );
+            })}
+          </div>
+        )}
+
+        {!loadingItems && items.length > 0 && filteredItems.length === 0 && (
+          <p className="text-center text-gray-400 italic py-6 text-sm">No compliance items match this filter.</p>
+        )}
+      </div>
+
+      {/* CPA Disclaimer */}
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex gap-3">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-blue-800">
+          <strong>Informational only — consult a CPA.</strong> Filing deadlines, fees, and requirements can change.
+          Always verify with the relevant authority before filing.
+          Kentucky SBDC (<a href="https://kysbdc.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">kysbdc.com</a>) offers free small-business advising.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+type AccountingTab = "overview" | "schedule-c" | "tax-calendar";
+
+function getInitialTab(): AccountingTab {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  if (tab === "schedule-c" || tab === "tax-calendar") return tab;
+  return "overview";
+}
+
+export default function Accounting() {
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
+  const [activeTab, setActiveTab] = useState<AccountingTab>(getInitialTab);
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["accounting", year],
+    queryFn: () => fetchAccounting(year),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground">Accounting & Tax</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Financial overview, Schedule C, and filing calendar.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={(e) => setYear(parseInt(e.target.value))}
+            className="h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium hover:bg-muted/60 transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="flex gap-1 border-b border-border">
+        {[
+          { key: "overview" as const, label: "Overview", icon: BarChart3 },
+          { key: "schedule-c" as const, label: "Schedule C + Home Office", icon: FileText },
+          { key: "tax-calendar" as const, label: "Tax Calendar & Compliance", icon: Calendar },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-2 px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === key
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === "overview" && (
+        <>
+          {isLoading && <div className="text-center py-20 text-muted-foreground animate-pulse">Loading {year} report…</div>}
+          {error && <div className="text-center py-20 text-destructive">Failed to load report. Check that the API is running.</div>}
+          {data && <OverviewTab data={data} year={year} />}
         </>
       )}
+
+      {activeTab === "schedule-c" && <ScheduleCTab year={year} />}
+
+      {activeTab === "tax-calendar" && <TaxCalendarTab year={year} />}
     </div>
   );
 }
