@@ -13,15 +13,16 @@ function useComplianceSummary() {
     queryKey: ["compliance-items-summary"],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/compliance-items`);
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error("Failed to load compliance data");
       return res.json() as Promise<Array<{ computedStatus: string }>>;
     },
+    retry: 1,
   });
 }
 
 export default function Dashboard() {
   const { data: stats, isLoading } = useGetDashboardStats({ period: "month" });
-  const { data: complianceItems = [] } = useComplianceSummary();
+  const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
 
   const overdueCount = complianceItems.filter(i => i.computedStatus === "overdue").length;
   const dueSoonCount = complianceItems.filter(i => i.computedStatus === "due-soon").length;
@@ -48,47 +49,66 @@ export default function Dashboard() {
       </div>
 
       {/* Compliance Summary Widget — always visible */}
-      <Card className={`shadow-md border-border/50 ${hasComplianceIssues ? "border-l-4 border-l-amber-400" : "border-l-4 border-l-emerald-400"}`}>
+      <Card className={`shadow-md border-border/50 ${
+        complianceError ? "border-l-4 border-l-muted-foreground/40" :
+        hasComplianceIssues ? "border-l-4 border-l-amber-400" :
+        "border-l-4 border-l-emerald-400"
+      }`}>
         <CardContent className="p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl ${hasComplianceIssues ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+              <div className={`p-2.5 rounded-xl ${
+                complianceError ? "bg-muted text-muted-foreground" :
+                hasComplianceIssues ? "bg-amber-100 text-amber-700" :
+                "bg-emerald-100 text-emerald-700"
+              }`}>
                 <ShieldAlert className="w-5 h-5" />
               </div>
               <div>
                 <p className="font-semibold text-foreground text-sm">Compliance Status</p>
-                {hasComplianceIssues ? (
+                {complianceLoading ? (
+                  <p className="text-xs text-muted-foreground mt-0.5 animate-pulse">Loading…</p>
+                ) : complianceError ? (
+                  <p className="text-xs text-muted-foreground mt-0.5">Unable to load compliance data</p>
+                ) : hasComplianceIssues ? (
                   <p className="text-xs text-muted-foreground mt-0.5">Action needed — check your compliance items</p>
                 ) : (
                   <p className="text-xs text-emerald-600 font-medium mt-0.5">All clear — no issues requiring attention</p>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              {overdueCount > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 border border-red-200">
-                  <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                  <span className="text-xs font-bold text-red-700">{overdueCount} Overdue</span>
-                </div>
-              )}
-              {dueSoonCount > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-200">
-                  <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  <span className="text-xs font-bold text-amber-700">{dueSoonCount} Due Soon</span>
-                </div>
-              )}
-              {!hasComplianceIssues && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-xs font-bold text-emerald-700">
-                    {completeCount > 0 ? `${completeCount} Complete` : "No issues"}
-                  </span>
-                </div>
-              )}
-              <Link href="/compliance" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline ml-1">
+            {!complianceLoading && !complianceError && (
+              <div className="flex items-center gap-3 flex-wrap">
+                {overdueCount > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 border border-red-200">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                    <span className="text-xs font-bold text-red-700">{overdueCount} Overdue</span>
+                  </div>
+                )}
+                {dueSoonCount > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-200">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span className="text-xs font-bold text-amber-700">{dueSoonCount} Due Soon</span>
+                  </div>
+                )}
+                {!hasComplianceIssues && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-xs font-bold text-emerald-700">
+                      {completeCount > 0 ? `${completeCount} Complete` : "No issues"}
+                    </span>
+                  </div>
+                )}
+                <Link href="/compliance" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline ml-1">
+                  View All <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            )}
+            {(complianceLoading || complianceError) && (
+              <Link href="/compliance" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
                 View All <ArrowRight className="w-3.5 h-3.5" />
               </Link>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -253,7 +253,7 @@ export default function Subcontractors() {
                       </td>
                       <td className="px-4 py-4 text-center">
                         <button
-                          onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name, hasLinkedRecords: (sub.ytdPayments ?? 0) > 0 })}
+                          onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name, hasLinkedRecords: !!(sub as any).hasLinkedRecords })}
                           disabled={deletingId === sub.id}
                           className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors mx-auto disabled:opacity-40"
                           title="Delete subcontractor"

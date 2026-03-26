@@ -15,6 +15,25 @@ function format(s: any, ytdOverride?: number) {
   };
 }
 
+async function computeHasLinkedRecords(subcontractorId: number): Promise<boolean> {
+  const [expRow] = await db
+    .select({ cnt: sql<string>`COUNT(*)` })
+    .from(expensesTable)
+    .where(
+      and(
+        eq(expensesTable.subcontractorId, subcontractorId),
+        sql`LOWER(${expensesTable.category}) = 'subcontractor'`
+      )
+    );
+  if (parseInt(expRow?.cnt ?? "0") > 0) return true;
+
+  const [payRow] = await db
+    .select({ cnt: sql<string>`COUNT(*)` })
+    .from(paymentsTable)
+    .where(eq(paymentsTable.subcontractorId, subcontractorId));
+  return parseInt(payRow?.cnt ?? "0") > 0;
+}
+
 async function computeYtd(subcontractorId: number, year: number): Promise<number> {
   const yearStr = String(year);
 
@@ -79,8 +98,11 @@ router.get("/", async (req, res) => {
     const year = new Date().getFullYear();
     const subs = await db.select().from(subcontractorsTable).orderBy(subcontractorsTable.name);
     const formatted = await Promise.all(subs.map(async (s) => {
-      const ytd = await computeYtd(s.id, year);
-      return format(s, ytd);
+      const [ytd, hasLinkedRecords] = await Promise.all([
+        computeYtd(s.id, year),
+        computeHasLinkedRecords(s.id),
+      ]);
+      return { ...format(s, ytd), hasLinkedRecords };
     }));
     res.json(formatted);
   } catch (err) {
