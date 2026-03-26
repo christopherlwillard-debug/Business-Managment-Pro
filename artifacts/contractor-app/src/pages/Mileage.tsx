@@ -25,8 +25,6 @@ import {
   AlertCircle,
   CheckCircle2,
   PenLine,
-  ChevronDown,
-  ChevronUp,
   BatteryLow,
   MonitorSmartphone,
 } from "lucide-react";
@@ -508,181 +506,162 @@ export default function Mileage() {
       )}
 
       {phase === "idle" && (
-        <Card className="border-border/50 shadow-md bg-card overflow-hidden">
-          <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-600" />
-          <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-              <Navigation className="w-9 h-9 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-xl font-display font-bold text-foreground">Auto-Track a Trip</h2>
-              <p className="text-muted-foreground text-sm mt-1 max-w-xs">
-                Tap Start — your phone's GPS will measure distance while you drive. When done, choose Business or Personal.
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* GPS Tracking Card */}
+          <Card className="border-border/50 shadow-md bg-card overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-600" />
+            <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                <Navigation className="w-9 h-9 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-xl font-display font-bold text-foreground">Auto-Track a Trip</h2>
+                <p className="text-muted-foreground text-sm mt-1 max-w-xs">
+                  Tap Start — your phone's GPS will measure distance while you drive. When done, choose Business or Personal.
+                </p>
+              </div>
+              <button
+                onClick={startTracking}
+                className="flex items-center gap-2 px-8 py-3.5 rounded-2xl font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg transition-all hover:shadow-xl active:scale-95 text-base"
+              >
+                <Play className="w-5 h-5 fill-current" /> Start Tracking
+              </button>
+              <p className="text-xs text-muted-foreground">
+                Your browser will ask for location permission — tap Allow.
               </p>
-            </div>
-            <button
-              onClick={startTracking}
-              className="flex items-center gap-2 px-8 py-3.5 rounded-2xl font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg transition-all hover:shadow-xl active:scale-95 text-base"
-            >
-              <Play className="w-5 h-5 fill-current" /> Start Tracking
-            </button>
-            <p className="text-xs text-muted-foreground">
-              Your browser will ask for location permission — tap Allow.
-            </p>
-            <div className="w-full border-t border-border/50 pt-4">
-              <button
-                type="button"
-                onClick={() => setShowManualForm(v => !v)}
-                className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mx-auto"
-              >
-                <PenLine className="w-4 h-4" />
-                Log Trip Manually
-                {showManualForm ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
 
-      {/* ── Manual Entry Form ── */}
-      {showManualForm && phase === "idle" && (
-        <Card className="border-border/50 shadow-md bg-card overflow-hidden">
-          <div className="h-1 bg-gradient-to-r from-blue-400 to-blue-600" />
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center gap-2 mb-1">
-              <PenLine className="w-5 h-5 text-blue-500" />
-              <h3 className="text-base font-bold text-foreground">Log Trip Manually</h3>
-            </div>
+          {/* Manual Entry Card — always visible */}
+          <Card className="border-border/50 shadow-md bg-card overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-blue-400 to-blue-600" />
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <PenLine className="w-5 h-5 text-blue-500" />
+                <h3 className="text-base font-bold text-foreground">Log Trip Manually</h3>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-2">Enter miles you already drove — GPS not required.</p>
 
-            {manualError && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" /> {manualError}
-              </div>
-            )}
+              {manualError && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" /> {manualError}
+                </div>
+              )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Date *</label>
-                <input
-                  type="date"
-                  value={manual.date}
-                  onChange={e => setManual(m => ({ ...m, date: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Date *</label>
+                  <input
+                    type="date"
+                    value={manual.date}
+                    onChange={e => setManual(m => ({ ...m, date: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Miles *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="e.g. 12.5"
+                    value={manual.miles}
+                    onChange={e => setManual(m => ({ ...m, miles: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Start Location</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Home"
+                    value={manual.startLocation}
+                    onChange={e => setManual(m => ({ ...m, startLocation: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">End Location</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Job site"
+                    value={manual.endLocation}
+                    onChange={e => setManual(m => ({ ...m, endLocation: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
               </div>
+
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Miles *</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  placeholder="e.g. 12.5"
-                  value={manual.miles}
-                  onChange={e => setManual(m => ({ ...m, miles: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Start Location</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Home, 123 Main St"
-                  value={manual.startLocation}
-                  onChange={e => setManual(m => ({ ...m, startLocation: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">End Location</label>
+                <label className="text-sm font-medium text-foreground">Purpose</label>
                 <input
                   type="text"
-                  placeholder="e.g. Job site, Supplier"
-                  value={manual.endLocation}
-                  onChange={e => setManual(m => ({ ...m, endLocation: e.target.value }))}
+                  placeholder="e.g. Material run to Home Depot"
+                  value={manual.purpose}
+                  onChange={e => setManual(m => ({ ...m, purpose: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Purpose / Description</label>
-              <input
-                type="text"
-                placeholder="e.g. Material run to Home Depot"
-                value={manual.purpose}
-                onChange={e => setManual(m => ({ ...m, purpose: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setManual(m => ({ ...m, classification: "business" }))}
-                className={`flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 transition-all text-sm ${
-                  manual.classification === "business"
-                    ? "border-primary bg-primary/10 text-primary font-bold"
-                    : "border-border text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                <Briefcase className="w-5 h-5" />
-                Business
-              </button>
-              <button
-                type="button"
-                onClick={() => setManual(m => ({ ...m, classification: "personal" }))}
-                className={`flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 transition-all text-sm ${
-                  manual.classification === "personal"
-                    ? "border-border bg-muted text-foreground font-bold"
-                    : "border-border text-muted-foreground hover:border-border"
-                }`}
-              >
-                <User className="w-5 h-5" />
-                Personal
-              </button>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
-              <select
-                value={manual.jobId}
-                onChange={e => setManual(m => ({ ...m, jobId: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">No specific job</option>
-                {(jobs as any[]).map((j: any) => (
-                  <option key={j.id} value={j.id}>{j.title}</option>
-                ))}
-              </select>
-            </div>
-
-            {manual.classification === "business" && manual.miles && parseFloat(manual.miles) > 0 && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-                <span className="font-semibold">Auto-expense:</span> A{" "}
-                <span className="font-bold">{formatCurrency(parseFloat(manual.miles) * rate)}</span> mileage
-                expense will be added automatically to your Expenses log.
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setManual(m => ({ ...m, classification: "business" }))}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
+                    manual.classification === "business"
+                      ? "border-primary bg-primary/10 text-primary font-bold"
+                      : "border-border text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  <Briefcase className="w-5 h-5" />
+                  Business
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManual(m => ({ ...m, classification: "personal" }))}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
+                    manual.classification === "personal"
+                      ? "border-border bg-muted text-foreground font-bold"
+                      : "border-border text-muted-foreground hover:border-border"
+                  }`}
+                >
+                  <User className="w-5 h-5" />
+                  Personal
+                </button>
               </div>
-            )}
 
-            <div className="flex gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => { setShowManualForm(false); setManualError(""); }}
-                className="flex-1 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm"
-              >
-                Cancel
-              </button>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
+                <select
+                  value={manual.jobId}
+                  onChange={e => setManual(m => ({ ...m, jobId: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">No specific job</option>
+                  {(jobs as any[]).map((j: any) => (
+                    <option key={j.id} value={j.id}>{j.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              {manual.classification === "business" && manual.miles && parseFloat(manual.miles) > 0 && (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                  <span className="font-semibold">Auto-expense:</span>{" "}
+                  <span className="font-bold">{formatCurrency(parseFloat(manual.miles) * rate)}</span> mileage expense will be created automatically.
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={saveManualTrip}
                 disabled={manualSaving}
-                className="flex-1 py-2.5 rounded-xl font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
+                className="w-full py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
               >
                 {manualSaving ? "Saving..." : manual.classification === "business" ? "Save & Log Expense" : "Save Trip"}
               </button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {phase === "tracking" && (

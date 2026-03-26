@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useListSubcontractors, useCreateSubcontractor } from "@workspace/api-client-react";
+import { useListSubcontractors, useCreateSubcontractor, useDeleteSubcontractor } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import {
   HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy,
-  RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX, Lock, LockOpen,
+  RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX, Lock, LockOpen, Trash2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,7 +13,10 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Subcontractors() {
   const { data: subs, isLoading, refetch } = useListSubcontractors();
   const createMutation = useCreateSubcontractor();
+  const deleteMutation = useDeleteSubcontractor();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [inviteModal, setInviteModal] = useState<{
     name: string; token: string | null; id: number; portalApproved: boolean; portalPinSet: boolean;
   } | null>(null);
@@ -143,6 +146,19 @@ export default function Subcontractors() {
     });
   }
 
+  async function handleDelete(id: number) {
+    setDeletingId(id);
+    try {
+      await deleteMutation.mutateAsync({ id });
+      refetch();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingId(null);
+      setDeleteConfirm(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -168,14 +184,15 @@ export default function Subcontractors() {
                 <th className="px-6 py-4 text-center">W-9 Status</th>
                 <th className="px-6 py-4 text-right">YTD Payments</th>
                 <th className="px-6 py-4 text-center">Portal Access</th>
+                <th className="px-4 py-4 text-center">Remove</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground animate-pulse">Loading subs…</td></tr>
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground animate-pulse">Loading subs…</td></tr>
               ) : subs?.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                     <HardHat className="w-8 h-8 mx-auto mb-2 opacity-20" />
                     No subcontractors added
                   </td>
@@ -234,6 +251,16 @@ export default function Subcontractors() {
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-4 text-center">
+                        <button
+                          onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name })}
+                          disabled={deletingId === sub.id}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors mx-auto disabled:opacity-40"
+                          title="Delete subcontractor"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -242,6 +269,39 @@ export default function Subcontractors() {
           </table>
         </div>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirm && (
+        <Dialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+          <DialogContent className="max-w-sm bg-card border-border shadow-2xl p-6 rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-display flex items-center gap-2 text-destructive">
+                <Trash2 className="w-5 h-5" /> Delete Subcontractor
+              </DialogTitle>
+            </DialogHeader>
+            <div className="mt-3 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to delete <strong className="text-foreground">{deleteConfirm.name}</strong>? This will remove them from your subcontractor list. Any linked expenses and payments will remain in your records.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-2.5 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors text-sm border border-border"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDelete(deleteConfirm.id)}
+                  disabled={deletingId === deleteConfirm.id}
+                  className="flex-1 py-2.5 rounded-xl font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors text-sm disabled:opacity-60 shadow"
+                >
+                  {deletingId === deleteConfirm.id ? "Deleting…" : "Yes, Delete"}
+                </button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Add Subcontractor Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

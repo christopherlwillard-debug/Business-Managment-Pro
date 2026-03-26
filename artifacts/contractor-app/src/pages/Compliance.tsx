@@ -277,8 +277,8 @@ function ItemCard({
             </div>
           </div>
 
-          {/* Actions — appear on hover */}
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          {/* Actions — always visible */}
+          <div className="flex gap-1 flex-shrink-0">
             <button onClick={onToggleComplete} title={s === "complete" ? "Mark upcoming" : "Mark complete"}
               className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
               <CheckCircle2 className="w-4 h-4" />
