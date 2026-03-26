@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { expensesTable, jobsTable, subcontractorsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, isNull } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -47,14 +47,15 @@ function buildExpenseQuery() {
 router.get("/", async (req, res) => {
   try {
     const { category, jobId, startDate, endDate } = req.query;
-    const conditions: any[] = [];
+    // Always exclude subcontractor-private expenses from the main BMS view
+    const conditions: any[] = [isNull(expensesTable.subcontractorId)];
     if (category) conditions.push(eq(expensesTable.category, category as string));
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
 
     const expenses = await buildExpenseQuery()
-      .where(conditions.length ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(expensesTable.date);
 
     res.json(expenses.map(e => formatExpense(e, e.jobTitle, e.subcontractorName)));

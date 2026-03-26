@@ -31,7 +31,7 @@ export const subcontractorsTable = pgTable("subcontractors", {
   w9Signature: text("w9_signature"),
   w9SignedAt: text("w9_signed_at"),
   // Portal feature flags chosen by the sub
-  portalFeatures: jsonb("portal_features").default('["payments","jobs","expenses","mileage","w9","tax_reports","home_office"]'),
+  portalFeatures: jsonb("portal_features").default('["payments","income_report","jobs","expenses","mileage","w9","tax_reports","home_office"]'),
   // PIN security
   portalPinHash: text("portal_pin_hash"),
   portalPinAttempts: integer("portal_pin_attempts").notNull().default(0),

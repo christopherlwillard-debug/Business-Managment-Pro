@@ -312,7 +312,7 @@ tokenRouter.get("/", async (req, res) => {
 
     const features: string[] = Array.isArray(sub.portalFeatures)
       ? (sub.portalFeatures as string[])
-      : ["payments", "jobs", "expenses", "mileage", "w9", "tax_reports", "home_office"];
+      : ["payments", "income_report", "jobs", "expenses", "mileage", "w9", "tax_reports", "home_office"];
 
     res.json({
       subcontractor: {
@@ -361,6 +361,117 @@ tokenRouter.get("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load portal" });
+  }
+});
+
+// Income report for a year (payments made by contractor to this subcontractor)
+tokenRouter.get("/income-report", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    // Fetch expense-based payments (category=subcontractor) with optional jobId
+    const expensePayments = await db
+      .select({
+        id: expensesTable.id,
+        amount: expensesTable.amount,
+        date: expensesTable.date,
+        description: expensesTable.description,
+        jobId: expensesTable.jobId,
+        notes: expensesTable.notes,
+        jobTitle: jobsTable.title,
+      })
+      .from(expensesTable)
+      .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
+      .where(
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
+          gte(expensesTable.date, startDate),
+          lte(expensesTable.date, endDate),
+        )
+      )
+      .orderBy(expensesTable.date);
+
+    // Fetch direct payments from paymentsTable
+    const directPayments = await db
+      .select()
+      .from(paymentsTable)
+      .where(
+        and(
+          eq(paymentsTable.subcontractorId, sub.id),
+          eq(paymentsTable.year, year),
+        )
+      )
+      .orderBy(paymentsTable.paymentDate);
+
+    // Build unified payment entries
+    const entries: Array<{
+      id: string;
+      date: string;
+      amount: number;
+      description: string | null;
+      jobId: number | null;
+      jobTitle: string | null;
+      notes: string | null;
+      source: "payment" | "expense";
+    }> = [
+      ...expensePayments.map(e => ({
+        id: `exp-${e.id}`,
+        date: e.date,
+        amount: parseFloat(e.amount),
+        description: e.description,
+        jobId: e.jobId ?? null,
+        jobTitle: e.jobTitle ?? null,
+        notes: e.notes ?? null,
+        source: "expense" as const,
+      })),
+      ...directPayments.map(p => ({
+        id: `pay-${p.id}`,
+        date: p.paymentDate,
+        amount: parseFloat(p.amount),
+        description: p.description ?? null,
+        jobId: null,
+        jobTitle: null,
+        notes: p.notes ?? null,
+        source: "payment" as const,
+      })),
+    ].sort((a, b) => a.date.localeCompare(b.date));
+
+    const totalPaid = entries.reduce((s, e) => s + e.amount, 0);
+
+    // Per-job breakdown
+    const byJob: Record<string, { jobId: number | null; jobTitle: string; total: number; count: number }> = {};
+    for (const e of entries) {
+      const key = e.jobId != null ? String(e.jobId) : "__none__";
+      if (!byJob[key]) {
+        byJob[key] = {
+          jobId: e.jobId,
+          jobTitle: e.jobTitle ?? (e.jobId != null ? `Job #${e.jobId}` : "General / Unassigned"),
+          total: 0,
+          count: 0,
+        };
+      }
+      byJob[key].total += e.amount;
+      byJob[key].count += 1;
+    }
+
+    res.json({
+      year,
+      subName: sub.name,
+      w9LegalName: sub.w9LegalName,
+      totalPaid,
+      entries,
+      byJob: Object.values(byJob).sort((a, b) => b.total - a.total),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate income report" });
   }
 });
 

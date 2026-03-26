@@ -7,7 +7,7 @@ import {
   Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
   Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
   Lock, KeyRound, Home, Store, ChevronDown, ImageIcon, Upload,
-  MapPin, Calculator, PenLine, User, Download,
+  MapPin, Calculator, PenLine, User, Download, TrendingUp,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -37,6 +37,7 @@ const EXPENSE_CATS = ["Materials", "Fuel", "Equipment", "Insurance", "Office", "
 
 const ALL_FEATURES = [
   { key: "payments", label: "My Payments", desc: "View what your contractor pays you", icon: DollarSign },
+  { key: "income_report", label: "Income Report", desc: "Download a summary of what your contractor paid you each year", icon: TrendingUp },
   { key: "jobs", label: "My Jobs", desc: "See jobs assigned to you", icon: Briefcase },
   { key: "w9", label: "W-9 Form", desc: "Complete your W-9 for 1099 reporting", icon: FileText },
   { key: "expenses", label: "My Expenses", desc: "Track job-related expenses", icon: Receipt },
@@ -63,6 +64,7 @@ function Header({ name, trade, activeTab, setTab, features }: {
   const tabs = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ...(features.includes("payments") ? [{ key: "payments", label: "My Pay", icon: DollarSign }] : []),
+    ...(features.includes("income_report") ? [{ key: "income_report", label: "Income Report", icon: TrendingUp }] : []),
     ...(features.includes("jobs") ? [{ key: "jobs", label: "Jobs", icon: Briefcase }] : []),
     ...(features.includes("w9") ? [{ key: "w9", label: "W-9", icon: FileText }] : []),
     ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt }] : []),
@@ -987,7 +989,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
               </select>
             </Field>
             <Field label="Vendor">
-              <PortalVendorCombobox token={token} value={form.vendor} onChange={v => setF("vendor", v)} />
+              <Input value={form.vendor} onChange={e => setF("vendor", e.target.value)} placeholder="e.g. Home Depot" />
             </Field>
             {jobs.length > 0 && (
               <Field label="Job">
@@ -1635,6 +1637,161 @@ function TaxReportsTab({ token }: { token: string }) {
   );
 }
 
+// ─── Income Report Tab ────────────────────────────────────────────────────────
+function IncomeReportTab({ token, subName }: { token: string; subName: string }) {
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
+  const years = [currentYear, currentYear - 1, currentYear - 2];
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["portal-income-report", token, year],
+    queryFn: () => apiFetch(`/portal/${token}/income-report?year=${year}`),
+    staleTime: 60000,
+  });
+
+  function handlePrint() {
+    window.print();
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #income-report-print, #income-report-print * { visibility: visible; }
+          #income-report-print { position: fixed; inset: 0; padding: 2rem; font-size: 13px; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      <div className="flex items-center justify-between no-print">
+        <div>
+          <h2 className="text-lg font-display font-bold">Income Report</h2>
+          <p className="text-sm text-muted-foreground">Payments received from your contractor</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={e => setYear(parseInt(e.target.value))}
+            className="px-3 py-1.5 rounded-lg border border-border bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          {data && (
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted/60 transition-colors"
+            >
+              <Printer className="w-4 h-4" /> Print / Save PDF
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-10 text-muted-foreground animate-pulse">Loading income report…</div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">
+          Could not load income report. Please try again.
+        </div>
+      ) : data ? (
+        <div className="space-y-4" id="income-report-print">
+          {/* Report header */}
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Income Summary</p>
+                <h3 className="text-xl font-display font-bold text-foreground mt-0.5">{data.w9LegalName || data.subName}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">For use with Schedule C / 1099-NEC filing</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Tax Year</p>
+                <p className="text-2xl font-display font-bold text-primary">{data.year}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Total paid */}
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-6 text-center">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-700 mb-2">Total Received from Contractor</p>
+            <p className="text-5xl font-display font-bold text-emerald-700">{formatCurrency(data.totalPaid)}</p>
+            {data.totalPaid >= 600 && (
+              <p className="text-xs text-emerald-600 mt-3 bg-emerald-100 rounded-lg px-3 py-1.5 inline-block">
+                ⚠️ You will receive a 1099-NEC for {data.year} — income ≥ $600
+              </p>
+            )}
+          </div>
+
+          {/* Per-job breakdown */}
+          {data.byJob && data.byJob.length > 0 && (
+            <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Breakdown by Job</p>
+              {data.byJob.map((j: any) => (
+                <div key={j.jobId ?? "__none__"} className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Briefcase className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm text-foreground truncate">{j.jobTitle}</span>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">({j.count} payment{j.count !== 1 ? "s" : ""})</span>
+                  </div>
+                  <span className="font-semibold text-sm text-emerald-700 flex-shrink-0">{formatCurrency(j.total)}</span>
+                </div>
+              ))}
+              {data.byJob.length > 1 && (
+                <div className="border-t border-border pt-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">Total</span>
+                  <span className="font-bold text-emerald-700">{formatCurrency(data.totalPaid)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Individual payment entries */}
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">
+              Payment History ({data.entries?.length ?? 0} entries)
+            </p>
+            {(!data.entries || data.entries.length === 0) ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No payments recorded for {data.year}.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.entries.map((entry: any) => (
+                  <div key={entry.id} className="flex items-start gap-3 py-2 border-b border-border/40 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{entry.description || "Payment"}</p>
+                      <div className="flex flex-wrap gap-2 mt-0.5">
+                        <span className="text-xs text-muted-foreground">{entry.date}</span>
+                        {entry.jobTitle && (
+                          <span className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{entry.jobTitle}</span>
+                        )}
+                        {entry.notes && (
+                          <span className="text-xs text-muted-foreground italic">{entry.notes}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="font-semibold text-sm text-emerald-700 flex-shrink-0 pt-0.5">{formatCurrency(entry.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer note */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <p className="text-xs text-amber-800">
+              <strong>Note:</strong> This summary reflects payments recorded by your contractor. Use this document alongside your 1099-NEC for tax filing. Consult a tax professional for advice specific to your situation.
+            </p>
+          </div>
+
+          <p className="text-xs text-center text-muted-foreground pb-2">
+            Generated {new Date().toLocaleDateString()} · {data.year} Tax Year
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
 function PortalSettings({ token, features, onChange }: { token: string; features: string[]; onChange: (f: string[]) => void }) {
   const [local, setLocal] = useState<string[]>(features);
@@ -1809,6 +1966,9 @@ export default function SubcontractorPortal() {
       <div className="max-w-2xl mx-auto px-4 py-6">
         {activeTab === "dashboard" && <DashboardTab data={data} features={features} setTab={setActiveTab} />}
         {activeTab === "payments" && features.includes("payments") && <PaymentsTab data={data} />}
+        {activeTab === "income_report" && features.includes("income_report") && (
+          <IncomeReportTab token={token!} subName={subcontractor.name} />
+        )}
         {activeTab === "jobs" && features.includes("jobs") && <JobsTab jobs={jobs} />}
         {activeTab === "w9" && features.includes("w9") && (
           <W9Tab token={token!} sub={subcontractor} onSaved={() => { refetch(); qc.invalidateQueries({ queryKey: ["portal", token] }); }} />
