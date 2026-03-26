@@ -12,7 +12,6 @@ import Expenses from "./pages/Expenses";
 import Mileage from "./pages/Mileage";
 import Estimates from "./pages/Estimates";
 import Subcontractors from "./pages/Subcontractors";
-import Compliance from "./pages/Compliance";
 import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
@@ -67,7 +66,6 @@ function AdminApp() {
         <Route path="/mileage" component={Mileage} />
         <Route path="/estimates" component={Estimates} />
         <Route path="/subcontractors" component={Subcontractors} />
-        <Route path="/compliance" component={Compliance} />
         <Route path="/clients" component={Clients} />
         <Route path="/settings" component={Settings} />
         <Route path="/accounting" component={Accounting} />

@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
-  Calculator, HardHat, ShieldAlert, Users,
+  Calculator, HardHat, Users,
   Settings, Menu, X, Building2, BookOpen, LogOut, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors" },
     { name: "Clients", href: "/clients", icon: Users, feature: "clients" },
-    { name: "Compliance", href: "/compliance", icon: ShieldAlert, feature: "compliance" },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null },
     { name: "Settings", href: "/settings", icon: Settings, feature: null },
   ];
