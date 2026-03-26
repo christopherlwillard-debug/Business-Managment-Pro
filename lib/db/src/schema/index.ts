@@ -13,3 +13,4 @@ export * from "./daily-logs";
 export * from "./settings";
 export * from "./vendors";
 export * from "./compliance";
+export * from "./materials";

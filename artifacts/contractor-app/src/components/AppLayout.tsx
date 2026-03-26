@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   Calculator, HardHat, Users,
-  Settings, Menu, X, Building2, BookOpen, LogOut, FileText
+  Settings, Menu, X, Building2, BookOpen, LogOut, FileText, Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
@@ -34,6 +34,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors" },
     { name: "Clients", href: "/clients", icon: Users, feature: "clients" },
+    { name: "Materials", href: "/materials", icon: Package, feature: null },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null },
     { name: "Settings", href: "/settings", icon: Settings, feature: null },
   ];

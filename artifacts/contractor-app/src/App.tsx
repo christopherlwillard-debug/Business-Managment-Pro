@@ -16,6 +16,7 @@ import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
 import Invoices from "./pages/Invoices";
+import Materials from "./pages/Materials";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
@@ -70,6 +71,7 @@ function AdminApp() {
         <Route path="/settings" component={Settings} />
         <Route path="/accounting" component={Accounting} />
         <Route path="/invoices" component={Invoices} />
+        <Route path="/materials" component={Materials} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
