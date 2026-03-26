@@ -19,6 +19,14 @@ interface ItemInput {
   qty: number;
 }
 
+interface LineItem {
+  id: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
 function fmtItem(row: typeof materialListItemsTable.$inferSelect) {
   return {
     ...row,
@@ -237,7 +245,7 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       return s + item.unitCostSnapshot * item.qty * markupMult;
     }, 0);
 
-    const description = `Materials – ${list.name}`;
+    const description = "Materials";
 
     const [existingInvoice] = await db
       .select()
@@ -245,7 +253,7 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       .where(and(eq(invoicesTable.jobId, list.jobId), eq(invoicesTable.status, "draft")))
       .limit(1);
 
-    const lineItemEntry = {
+    const lineItemEntry: Omit<LineItem, "id"> = {
       description,
       quantity: 1,
       unitPrice: parseFloat(totalCost.toFixed(2)),
@@ -253,17 +261,18 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
     };
 
     if (existingInvoice) {
-      const lineItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems as any[] : [];
-      const matIdx = lineItems.findIndex((li: any) => li.description?.startsWith("Materials – "));
-      const newLineItem = {
+      const rawItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems : [];
+      const lineItems = rawItems as LineItem[];
+      const matIdx = lineItems.findIndex((li) => li.description === "Materials");
+      const newLineItem: LineItem = {
         id: matIdx >= 0 ? lineItems[matIdx].id : (lineItems.length + 1),
         ...lineItemEntry,
       };
-      const newItems = matIdx >= 0
-        ? lineItems.map((li: any, i: number) => i === matIdx ? newLineItem : li)
+      const newItems: LineItem[] = matIdx >= 0
+        ? lineItems.map((li, i) => i === matIdx ? newLineItem : li)
         : [...lineItems, newLineItem];
 
-      const subtotal = newItems.reduce((s: number, li: any) => s + (li.quantity * li.unitPrice), 0);
+      const subtotal = newItems.reduce((s, li) => s + (li.quantity * li.unitPrice), 0);
       const taxRate = existingInvoice.taxRate ? parseFloat(existingInvoice.taxRate) : 0;
       const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
 
