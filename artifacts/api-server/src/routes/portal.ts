@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, expensesTable, mileageLogsTable, settingsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 
@@ -248,9 +248,31 @@ tokenRouter.get("/", async (req, res) => {
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved", pendingApproval: true });
 
+    // Get all job IDs where the sub appears in the junction table
+    const junctionRows = await db
+      .select({ jobId: jobSubcontractorsTable.jobId })
+      .from(jobSubcontractorsTable)
+      .where(eq(jobSubcontractorsTable.subcontractorId, sub.id));
+    const junctionJobIds = junctionRows.map(r => r.jobId);
+
+    // Jobs: primary subcontractor OR via junction table (deduplicated by ID set)
+    const allJobIds = new Set(junctionJobIds);
+    const jobsQuery = allJobIds.size > 0
+      ? db.select().from(jobsTable).where(
+          or(eq(jobsTable.subcontractorId, sub.id), inArray(jobsTable.id, [...allJobIds]))
+        )
+      : db.select().from(jobsTable).where(eq(jobsTable.subcontractorId, sub.id));
+
     const [jobs, expenses, mileage] = await Promise.all([
-      db.select().from(jobsTable).where(eq(jobsTable.subcontractorId, sub.id)),
-      db.select().from(expensesTable).where(eq(expensesTable.subcontractorId, sub.id)),
+      jobsQuery,
+      // Exclude contractor-logged subcontractor payments (category='subcontractor');
+      // those already count toward ytdPayments and should not appear as the sub's own expenses
+      db.select().from(expensesTable).where(
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          sql`LOWER(${expensesTable.category}) != 'subcontractor'`
+        )
+      ),
       db.select().from(mileageLogsTable).where(eq(mileageLogsTable.subcontractorId, sub.id)),
     ]);
 
@@ -326,7 +348,12 @@ tokenRouter.get("/tax-report", async (req, res) => {
 
     const [expenses, mileage] = await Promise.all([
       db.select().from(expensesTable).where(
-        and(eq(expensesTable.subcontractorId, sub.id), gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          gte(expensesTable.date, startDate),
+          lte(expensesTable.date, endDate),
+          sql`LOWER(${expensesTable.category}) != 'subcontractor'`
+        )
       ),
       db.select().from(mileageLogsTable).where(
         and(eq(mileageLogsTable.subcontractorId, sub.id), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
@@ -413,7 +440,12 @@ tokenRouter.get("/expenses", async (req, res) => {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const expenses = await db.select().from(expensesTable)
-      .where(eq(expensesTable.subcontractorId, sub.id)).orderBy(expensesTable.date);
+      .where(
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          sql`LOWER(${expensesTable.category}) != 'subcontractor'`
+        )
+      ).orderBy(expensesTable.date);
     res.json(expenses.map(e => ({ ...e, amount: parseFloat(e.amount) })));
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch expenses" });
