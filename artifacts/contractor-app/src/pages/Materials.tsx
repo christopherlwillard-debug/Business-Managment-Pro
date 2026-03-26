@@ -80,7 +80,7 @@ export default function Materials() {
   const updateMaterial = useUpdateMaterial();
   const deleteMaterial = useDeleteMaterial();
 
-  const categories = Array.from(new Set(materials.map(m => m.category).filter(Boolean) as string[])).sort();
+  const categories = Array.from(new Set(allActiveMaterials.map(m => m.category).filter(Boolean) as string[])).sort();
 
   function openCreate() {
     setEditing(null);
