@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -389,6 +389,31 @@ tokenRouter.get("/tax-report", async (req, res) => {
       ),
     ]);
 
+    const yearStr = String(year);
+
+    // Compute qualifying income (cash/check/ACH only) for 1099 threshold display
+    const [qualifyingPayRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
+      .from(paymentsTable)
+      .where(
+        and(
+          eq(paymentsTable.subcontractorId, sub.id),
+          eq(paymentsTable.year, year),
+          sql`(${paymentsTable.paymentMethod} IS NULL OR ${paymentsTable.paymentMethod} IN ('cash','check','ach'))`
+        )
+      );
+    const [qualifyingExpRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${expensesTable.amount}), 0)` })
+      .from(expensesTable)
+      .where(
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
+          sql`${expensesTable.date} LIKE ${yearStr + "-%"}`
+        )
+      );
+    const qualifyingIncome = parseFloat(qualifyingPayRow?.total ?? "0") + parseFloat(qualifyingExpRow?.total ?? "0");
+
     const [rate, grossIncome] = await Promise.all([getRate(), computeYtd(sub.id, year)]);
 
     const expensesByCategory: Record<string, number> = {};
@@ -409,7 +434,7 @@ tokenRouter.get("/tax-report", async (req, res) => {
     const federalTaxableIncome = Math.max(0, netIncome - seDeduction);
 
     res.json({
-      year, grossIncome,
+      year, grossIncome, qualifyingIncome,
       expenses: { total: totalExpenses, byCategory: expensesByCategory, count: expenses.length },
       mileage: { totalMiles: totalBusinessMiles, ratePerMile: rate, deduction: mileageDeduction, count: businessMiles.length },
       totalDeductions, netIncome, seTaxEstimate, seDeduction, federalTaxableIncome,

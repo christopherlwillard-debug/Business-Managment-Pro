@@ -67,7 +67,7 @@ export default function Subcontractors() {
           state: sub.w9State,
           zip: sub.w9Zip,
           tinType: sub.w9TaxIdType,
-          tinLastFour: sub.w9TaxId ? sub.w9TaxId.slice(-4) : null,
+          tinLastFour: sub.w9TaxIdLastFour ?? null,
         },
         nonemployeeCompensation: sub.totalQualifying,
       });
@@ -99,11 +99,32 @@ export default function Subcontractors() {
     }
   }
 
-  function downloadExisting1099(sub: any) {
+  async function downloadExisting1099(sub: any) {
     const rec = sub.existingRecord;
     if (!rec) return;
-    // Re-generate from stored data for download
-    generate1099Pdf(sub);
+    setGenerating1099(sub.subcontractorId);
+    try {
+      const res = await fetch(`${BASE}/api/1099s/download/${rec.id}`);
+      if (!res.ok) throw new Error("Failed to fetch stored 1099");
+      const data = await res.json();
+      if (!data.pdfData) {
+        // No stored PDF — fall back to re-generating
+        await generate1099Pdf(sub);
+        return;
+      }
+      const bytes = Uint8Array.from(atob(data.pdfData), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `1099-NEC-${sub.w9LegalName || sub.name}-${data.taxYear}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGenerating1099(null);
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -693,6 +714,16 @@ export default function Subcontractors() {
                           </div>
 
                           <div className="flex items-center gap-2 flex-shrink-0">
+                            {sub.status === "generated" && sub.existingRecord && (
+                              <button
+                                onClick={() => downloadExisting1099(sub)}
+                                disabled={isGenerating}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
+                              >
+                                {isGenerating ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                                Download
+                              </button>
+                            )}
                             {sub.requires1099 && (
                               <button
                                 onClick={() => generate1099Pdf(sub)}
@@ -702,7 +733,7 @@ export default function Subcontractors() {
                                 {isGenerating ? (
                                   <RefreshCw className="w-3 h-3 animate-spin" />
                                 ) : (
-                                  <Download className="w-3 h-3" />
+                                  <RefreshCw className="w-3 h-3" />
                                 )}
                                 {sub.status === "generated" ? "Re-generate" : "Generate PDF"}
                               </button>
@@ -726,8 +757,8 @@ export default function Subcontractors() {
                               <div>
                                 <p className="text-muted-foreground font-semibold">TIN</p>
                                 <p className="text-foreground">
-                                  {sub.w9TaxId
-                                    ? `${sub.w9TaxIdType || "SSN"}: ***-**-${sub.w9TaxId.slice(-4)}`
+                                  {sub.w9TaxIdLastFour
+                                    ? `${sub.w9TaxIdType || "SSN"}: ***-**-${sub.w9TaxIdLastFour}`
                                     : <span className="text-red-600">Not on file</span>}
                                 </p>
                               </div>

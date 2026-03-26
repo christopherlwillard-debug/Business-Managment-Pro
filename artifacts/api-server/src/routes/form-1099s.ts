@@ -8,7 +8,6 @@ import {
   expensesTable,
 } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
-import { computeYtd } from "./subcontractors";
 
 const router = Router();
 
@@ -82,7 +81,7 @@ router.get("/report", async (req, res) => {
               totalPaid: parseFloat(existingRecord.totalPaid as any),
             }
           : null,
-        // W-9 fields for PDF generation
+        // W-9 fields for PDF generation (TIN masked for PII protection)
         w9LegalName: s.w9LegalName,
         w9BusinessName: s.w9BusinessName,
         w9Address: s.w9Address,
@@ -90,7 +89,7 @@ router.get("/report", async (req, res) => {
         w9State: s.w9State,
         w9Zip: s.w9Zip,
         w9TaxIdType: s.w9TaxIdType,
-        w9TaxId: s.w9TaxId,
+        w9TaxIdLastFour: s.w9TaxId ? s.w9TaxId.slice(-4) : null,
       };
     }));
 
@@ -193,19 +192,17 @@ router.get("/download/:id", async (req, res) => {
   }
 });
 
-// GET /api/1099s/portal/:subcontractorId?year=YYYY
-// Portal-facing: list generated 1099s for a subcontractor (called from portal route after PIN auth)
+// GET /api/1099s/portal/:subcontractorId
+// Portal-facing: list all generated 1099s for a subcontractor (called from portal route after PIN auth)
 router.get("/portal/:subcontractorId", async (req, res) => {
   try {
     const subcontractorId = parseInt(req.params.subcontractorId);
-    const year = req.query.year ? parseInt(req.query.year as string) : null;
 
-    let q = db
+    const records = await db
       .select()
       .from(generated1099sTable)
-      .where(eq(generated1099sTable.subcontractorId, subcontractorId));
-
-    const records = await q.orderBy(generated1099sTable.taxYear);
+      .where(eq(generated1099sTable.subcontractorId, subcontractorId))
+      .orderBy(generated1099sTable.taxYear);
 
     res.json(
       records.map(r => ({

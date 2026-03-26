@@ -561,14 +561,14 @@ function PaymentsTab({ data }: { data: any }) {
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Year-to-Date Payments</p>
         <p className="text-5xl font-display font-bold text-emerald-600 mt-2">{formatCurrency(s.ytdPayments)}</p>
         <p className="text-sm text-muted-foreground mt-2">
-          {s.ytdPayments >= 600
-            ? "⚠️ You will receive a 1099-NEC for this tax year."
-            : `You need ${formatCurrency(600 - s.ytdPayments)} more before a 1099-NEC is required.`}
+          {s.ytdPayments >= 2000
+            ? "⚠️ You may receive a 1099-NEC for this tax year."
+            : `You need ${formatCurrency(2000 - s.ytdPayments)} more before a 1099-NEC is required.`}
         </p>
       </div>
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
         <p className="text-xs text-amber-800">
-          <strong>IRS Rule:</strong> If you receive $600 or more from a single contractor in a tax year, they are required to file a 1099-NEC reporting your income to the IRS.
+          <strong>2026 Rule (OBBBA):</strong> If you receive $2,000 or more in qualifying payments (cash, check, or ACH) from a single contractor in a tax year, they are required to file a 1099-NEC. Credit card and third-party app payments do not count toward this threshold.
         </p>
       </div>
     </div>
@@ -1444,11 +1444,17 @@ function TaxReportsTab({ token }: { token: string }) {
               <p className="text-sm text-emerald-700">Payments from contractor</p>
               <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(data.grossIncome)}</p>
             </div>
-            {data.grossIncome >= 600 && (
-              <p className="text-xs text-emerald-600 mt-2 bg-emerald-100 rounded-lg px-3 py-1.5">
-                ⚠️ You will receive a 1099-NEC for {data.year} — income ≥ $600
-              </p>
-            )}
+            {data.qualifyingIncome != null ? (
+              data.qualifyingIncome >= 2000 ? (
+                <p className="text-xs text-amber-700 mt-2 bg-amber-100 rounded-lg px-3 py-1.5">
+                  ⚠️ You may receive a 1099-NEC for {data.year} — qualifying payments ≥ $2,000
+                </p>
+              ) : data.qualifyingIncome >= 1500 ? (
+                <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                  Approaching threshold: {formatCurrency(data.qualifyingIncome)} of $2,000 in qualifying payments
+                </p>
+              ) : null
+            ) : null}
           </div>
 
           {/* Deductions */}
