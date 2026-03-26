@@ -1,22 +1,34 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { registeredAgentsTable, registeredAgentTasksTable } from "@workspace/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 
 const router = Router();
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-async function getOrCreateAgent() {
-  const rows = await db.select().from(registeredAgentsTable).limit(1);
+function userId(req: Request): string {
+  return (req.user as any)?.id as string;
+}
+
+// ── GET or auto-create the single agent record for this user ──────────────────
+async function getOrCreateAgentForUser(uid: string) {
+  const rows = await db
+    .select()
+    .from(registeredAgentsTable)
+    .where(eq(registeredAgentsTable.userId, uid))
+    .limit(1);
   if (rows.length > 0) return rows[0];
-  const [created] = await db.insert(registeredAgentsTable).values({}).returning();
+  const [created] = await db
+    .insert(registeredAgentsTable)
+    .values({ userId: uid })
+    .returning();
   return created;
 }
 
 // ── GET /api/registered-agent ─────────────────────────────────────────────────
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const agent = await getOrCreateAgent();
+    const uid = userId(req);
+    const agent = await getOrCreateAgentForUser(uid);
     const tasks = await db
       .select()
       .from(registeredAgentTasksTable)
@@ -32,8 +44,14 @@ router.get("/", async (_req, res) => {
 // ── PUT /api/registered-agent ─────────────────────────────────────────────────
 router.put("/", async (req, res) => {
   try {
+    const uid = userId(req);
     const { agentName, companyName, address, phone, email, state, notes } = req.body;
-    const existing = await db.select().from(registeredAgentsTable).limit(1);
+
+    const existing = await db
+      .select()
+      .from(registeredAgentsTable)
+      .where(eq(registeredAgentsTable.userId, uid))
+      .limit(1);
 
     let agent;
     if (existing.length > 0) {
@@ -55,7 +73,7 @@ router.put("/", async (req, res) => {
     } else {
       const [created] = await db
         .insert(registeredAgentsTable)
-        .values({ agentName, companyName, address, phone, email, state, notes })
+        .values({ userId: uid, agentName, companyName, address, phone, email, state, notes })
         .returning();
       agent = created;
     }
@@ -74,9 +92,10 @@ router.put("/", async (req, res) => {
 });
 
 // ── GET /api/registered-agent/tasks ──────────────────────────────────────────
-router.get("/tasks", async (_req, res) => {
+router.get("/tasks", async (req, res) => {
   try {
-    const agent = await getOrCreateAgent();
+    const uid = userId(req);
+    const agent = await getOrCreateAgentForUser(uid);
     const tasks = await db
       .select()
       .from(registeredAgentTasksTable)
@@ -92,9 +111,10 @@ router.get("/tasks", async (_req, res) => {
 // ── POST /api/registered-agent/tasks ─────────────────────────────────────────
 router.post("/tasks", async (req, res) => {
   try {
+    const uid = userId(req);
     const { title, recurrence, notes } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: "Title is required" });
-    const agent = await getOrCreateAgent();
+    const agent = await getOrCreateAgentForUser(uid);
     const [task] = await db
       .insert(registeredAgentTasksTable)
       .values({
@@ -114,15 +134,35 @@ router.post("/tasks", async (req, res) => {
 // ── PUT /api/registered-agent/tasks/:id ──────────────────────────────────────
 router.put("/tasks/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const uid = userId(req);
+    const taskId = parseInt(req.params.id);
     const { title, recurrence, notes } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: "Title is required" });
+
+    // Verify ownership: task must belong to this user's agent
+    const [existingTask] = await db
+      .select({ id: registeredAgentTasksTable.id, agentUserId: registeredAgentsTable.userId })
+      .from(registeredAgentTasksTable)
+      .innerJoin(
+        registeredAgentsTable,
+        eq(registeredAgentTasksTable.registeredAgentId, registeredAgentsTable.id),
+      )
+      .where(
+        and(
+          eq(registeredAgentTasksTable.id, taskId),
+          eq(registeredAgentsTable.userId, uid),
+        ),
+      )
+      .limit(1);
+
+    if (!existingTask) return res.status(404).json({ error: "Task not found" });
+
     const [task] = await db
       .update(registeredAgentTasksTable)
       .set({ title: title.trim(), recurrence, notes: notes ?? null })
-      .where(eq(registeredAgentTasksTable.id, id))
+      .where(eq(registeredAgentTasksTable.id, taskId))
       .returning();
-    if (!task) return res.status(404).json({ error: "Task not found" });
+
     res.json(task);
   } catch (err) {
     console.error(err);
@@ -133,9 +173,31 @@ router.put("/tasks/:id", async (req, res) => {
 // ── DELETE /api/registered-agent/tasks/:id ───────────────────────────────────
 router.delete("/tasks/:id", async (req, res) => {
   try {
+    const uid = userId(req);
+    const taskId = parseInt(req.params.id);
+
+    // Verify ownership before deleting
+    const [existingTask] = await db
+      .select({ id: registeredAgentTasksTable.id })
+      .from(registeredAgentTasksTable)
+      .innerJoin(
+        registeredAgentsTable,
+        eq(registeredAgentTasksTable.registeredAgentId, registeredAgentsTable.id),
+      )
+      .where(
+        and(
+          eq(registeredAgentTasksTable.id, taskId),
+          eq(registeredAgentsTable.userId, uid),
+        ),
+      )
+      .limit(1);
+
+    if (!existingTask) return res.status(404).json({ error: "Task not found" });
+
     await db
       .delete(registeredAgentTasksTable)
-      .where(eq(registeredAgentTasksTable.id, parseInt(req.params.id)));
+      .where(eq(registeredAgentTasksTable.id, taskId));
+
     res.status(204).send();
   } catch (err) {
     console.error(err);
