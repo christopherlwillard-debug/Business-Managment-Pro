@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -828,6 +828,8 @@ function ScheduleCTab({ year }: { year: number }) {
 
   const [ho, setHo] = useState<Record<string, string>>(() => loadHomeOffice(year));
 
+  useEffect(() => { setHo(loadHomeOffice(year)); }, [year]);
+
   function setHoField(k: string, v: string) {
     setHo(prev => {
       const next = { ...prev, [k]: v };
@@ -1124,14 +1126,51 @@ function ScheduleCTab({ year }: { year: number }) {
   );
 }
 
-// ─── Tax Calendar & Compliance (merged) ─────────────────────────────────────
+// ─── Tax Calendar & Compliance — unified sorted list ────────────────────────
+
+type UnifiedStatus = "overdue" | "due-soon" | "upcoming" | "filed" | "na" | "no-date";
+
+interface UnifiedEntry {
+  id: string;
+  kind: "ky" | "ci";
+  title: string;
+  authority: string;
+  dueDateObj: Date | null;
+  dueDateLabel: string;
+  unifiedStatus: UnifiedStatus;
+  // ky-specific
+  filing?: Filing;
+  filingStatus?: FilingStatus;
+  // ci-specific
+  item?: ComplianceItem;
+}
+
+function computeUnifiedStatus(
+  dueDate: Date | null,
+  isFiledOrComplete: boolean,
+  isNa: boolean,
+  today: Date,
+): UnifiedStatus {
+  if (isNa) return "na";
+  if (isFiledOrComplete) return "filed";
+  if (!dueDate) return "no-date";
+  const d = new Date(dueDate); d.setHours(0, 0, 0, 0);
+  if (d < today) return "overdue";
+  const soon = new Date(today); soon.setDate(soon.getDate() + 30);
+  if (d <= soon) return "due-soon";
+  return "upcoming";
+}
+
+const STATUS_SORT_ORDER: Record<UnifiedStatus, number> = {
+  overdue: 0, "due-soon": 1, upcoming: 2, filed: 3, na: 4, "no-date": 5,
+};
 
 function TaxCalendarTab({ year }: { year: number }) {
   const storageKey = `ky-filing-statuses-${year}`;
   const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
     try { const raw = localStorage.getItem(storageKey); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
   });
-  const [expandedFilings, setExpandedFilings] = useState<Record<string, boolean>>({});
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "due-soon" | "filed" | "na">("all");
 
   const { data: items = [], isLoading: loadingItems } = useComplianceItems();
@@ -1142,8 +1181,8 @@ function TaxCalendarTab({ year }: { year: number }) {
   const [editTarget, setEditTarget] = useState<ComplianceItem | null>(null);
   const saving = createItem.isPending || updateItem.isPending;
 
-  const getStatus = useCallback((id: string): FilingStatus => statuses[id] ?? "not-filed", [statuses]);
-  const cycleStatus = useCallback((id: string) => {
+  const getFilingStatus = useCallback((id: string): FilingStatus => statuses[id] ?? "not-filed", [statuses]);
+  const cycleFilingStatus = useCallback((id: string) => {
     setStatuses(prev => {
       const current = prev[id] ?? "not-filed";
       const idx = STATUS_CYCLE.indexOf(current);
@@ -1156,52 +1195,56 @@ function TaxCalendarTab({ year }: { year: number }) {
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  // Compute combined stats for the summary tiles
-  let kyOverdue = 0, kyDueSoon = 0, kyFiled = 0, kyNa = 0;
-  for (const f of KY_FILINGS) {
-    const st = getStatus(f.id);
-    if (st === "filed") { kyFiled++; continue; }
-    if (st === "na") { kyNa++; continue; }
-    const due = f.dueDate(year);
-    if (!due) continue;
-    const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
-    if (dueCopy < today) kyOverdue++;
-    else { const soon = new Date(today); soon.setDate(soon.getDate() + 30); if (dueCopy <= soon) kyDueSoon++; }
-  }
-  const ciOverdue = items.filter(i => i.computedStatus === "overdue").length;
-  const ciDueSoon = items.filter(i => i.computedStatus === "due-soon").length;
-  const ciComplete = items.filter(i => i.computedStatus === "complete").length;
-
-  const totalOverdue = kyOverdue + ciOverdue;
-  const totalDueSoon = kyDueSoon + ciDueSoon;
-  const totalFiled = kyFiled + ciComplete;
-  const totalNa = kyNa;
-
-  // Filter KY filings
-  const filteredFilings = KY_FILINGS.filter(f => {
-    if (statusFilter === "all") return true;
-    const st = getStatus(f.id);
-    if (statusFilter === "filed") return st === "filed";
-    if (statusFilter === "na") return st === "na";
-    if (st === "filed" || st === "na") return false;
-    const due = f.dueDate(year);
-    if (!due) return false;
-    const dueCopy = new Date(due); dueCopy.setHours(0, 0, 0, 0);
-    const isOverdue = dueCopy < today;
-    const soon = new Date(today); soon.setDate(soon.getDate() + 30);
-    const isDueSoon = !isOverdue && dueCopy <= soon;
-    if (statusFilter === "overdue") return isOverdue;
-    if (statusFilter === "due-soon") return isDueSoon;
-    return true;
+  // Build unified list from both KY filings and compliance items
+  const kyEntries: UnifiedEntry[] = KY_FILINGS.map(f => {
+    const fs = getFilingStatus(f.id);
+    const dueDate = f.dueDate(year);
+    const us = computeUnifiedStatus(dueDate, fs === "filed", fs === "na", today);
+    return {
+      id: `ky-${f.id}`, kind: "ky", title: f.name, authority: f.authority,
+      dueDateObj: dueDate, dueDateLabel: f.dueDateLabel(year),
+      unifiedStatus: us, filing: f, filingStatus: fs,
+    };
   });
 
-  // Filter compliance items
-  const filteredItems = items.filter(i => {
+  const ciEntries: UnifiedEntry[] = items.map(i => {
+    const [y, m, d] = i.dueDate.split("-").map(Number);
+    const dueDate = new Date(y, m - 1, d);
+    const us = computeUnifiedStatus(
+      dueDate,
+      i.computedStatus === "complete",
+      false,
+      today,
+    );
+    return {
+      id: `ci-${i.id}`, kind: "ci", title: i.title, authority: i.category,
+      dueDateObj: dueDate, dueDateLabel: formatComplianceDate(i.dueDate),
+      unifiedStatus: us, item: i,
+    };
+  });
+
+  const allEntries: UnifiedEntry[] = [...kyEntries, ...ciEntries].sort((a, b) => {
+    const so = STATUS_SORT_ORDER[a.unifiedStatus] - STATUS_SORT_ORDER[b.unifiedStatus];
+    if (so !== 0) return so;
+    if (!a.dueDateObj && !b.dueDateObj) return 0;
+    if (!a.dueDateObj) return 1;
+    if (!b.dueDateObj) return -1;
+    return a.dueDateObj.getTime() - b.dueDateObj.getTime();
+  });
+
+  // Summary tile counts
+  const totalOverdue = allEntries.filter(e => e.unifiedStatus === "overdue").length;
+  const totalDueSoon = allEntries.filter(e => e.unifiedStatus === "due-soon").length;
+  const totalFiled = allEntries.filter(e => e.unifiedStatus === "filed").length;
+  const totalNa = allEntries.filter(e => e.unifiedStatus === "na").length;
+
+  // Filtered list
+  const filteredEntries = allEntries.filter(e => {
     if (statusFilter === "all") return true;
-    if (statusFilter === "filed") return i.computedStatus === "complete";
-    if (statusFilter === "na") return false;
-    if (statusFilter === "overdue") return i.computedStatus === "overdue";
-    if (statusFilter === "due-soon") return i.computedStatus === "due-soon";
+    if (statusFilter === "filed") return e.unifiedStatus === "filed";
+    if (statusFilter === "na") return e.unifiedStatus === "na";
+    if (statusFilter === "overdue") return e.unifiedStatus === "overdue";
+    if (statusFilter === "due-soon") return e.unifiedStatus === "due-soon";
     return true;
   });
 
@@ -1217,8 +1260,47 @@ function TaxCalendarTab({ year }: { year: number }) {
     await deleteItem.mutateAsync(id);
   }
 
+  function statusRowBg(us: UnifiedStatus): string {
+    if (us === "overdue") return "bg-red-50 border-red-200";
+    if (us === "due-soon") return "bg-amber-50 border-amber-200";
+    if (us === "filed") return "bg-emerald-50 border-emerald-200";
+    if (us === "na") return "bg-muted/30 border-border";
+    return "bg-card border-border";
+  }
+
+  function entryBadge(entry: UnifiedEntry): { label: string; cls: string } | null {
+    const us = entry.unifiedStatus;
+    if (us === "filed") return { label: entry.kind === "ky" ? "Filed" : "Complete", cls: "bg-emerald-100 text-emerald-700" };
+    if (us === "na") return { label: "N/A", cls: "bg-muted text-muted-foreground" };
+    if (us === "overdue") return { label: "Overdue", cls: "bg-red-100 text-red-700" };
+    if (us === "due-soon") {
+      if (entry.dueDateObj) {
+        const days = Math.ceil((entry.dueDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return { label: days <= 0 ? "Due today" : `Due in ${days}d`, cls: "bg-amber-100 text-amber-700" };
+      }
+      return { label: "Due Soon", cls: "bg-amber-100 text-amber-700" };
+    }
+    return null;
+  }
+
   return (
     <div className="space-y-6">
+      {/* Add Item form */}
+      {(showForm || editTarget) && (
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-bold text-gray-900 text-base flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-amber-500" />
+              {editTarget ? "Edit Compliance Item" : "New Compliance Item"}
+            </h4>
+            <button onClick={() => { setShowForm(false); setEditTarget(null); }} className="text-gray-400 hover:text-gray-600 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <ComplianceItemForm initial={editTarget ?? undefined} onSave={handleSave} onCancel={() => { setShowForm(false); setEditTarget(null); }} saving={saving} />
+        </div>
+      )}
+
       {/* Combined summary tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -1241,56 +1323,73 @@ function TaxCalendarTab({ year }: { year: number }) {
         ))}
       </div>
 
-      {statusFilter !== "all" && (
+      {/* Toolbar */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Filtering by: <strong>{statusFilter === "filed" ? "Filed / Done" : statusFilter === "due-soon" ? "Due Soon" : statusFilter === "na" ? "N/A" : "Overdue"}</strong></span>
-          <button onClick={() => setStatusFilter("all")} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs hover:bg-muted/80 transition-colors">
-            <X className="w-3 h-3" /> Clear
-          </button>
+          {statusFilter !== "all" && (
+            <>
+              <span className="text-sm text-muted-foreground">Filtering: <strong>{statusFilter === "filed" ? "Filed / Done" : statusFilter === "due-soon" ? "Due Soon" : statusFilter === "na" ? "N/A" : "Overdue"}</strong></span>
+              <button onClick={() => setStatusFilter("all")} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs hover:bg-muted/80 transition-colors">
+                <X className="w-3 h-3" /> Clear
+              </button>
+            </>
+          )}
+          {statusFilter === "all" && (
+            <span className="text-xs text-muted-foreground">{allEntries.length} total items, sorted by due date</span>
+          )}
         </div>
-      )}
+        <button
+          onClick={() => { setShowForm(true); setEditTarget(null); }}
+          className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add Item
+        </button>
+      </div>
 
-      {/* KY Filing Calendar section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display font-bold text-foreground">KY & Federal Filing Deadlines</h3>
-          <span className="text-xs text-muted-foreground">{filteredFilings.length} of {KY_FILINGS.length} shown</span>
+      {/* Unified sorted list */}
+      {loadingItems && items.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground text-sm animate-pulse">Loading…</div>
+      ) : filteredEntries.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground text-sm rounded-2xl border border-dashed border-border">
+          {statusFilter === "all" ? "No items to show." : "No items match this filter."}
         </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredEntries.map(entry => {
+            const isExpanded = expandedIds[entry.id];
+            const badge = entryBadge(entry);
+            const rowBg = statusRowBg(entry.unifiedStatus);
 
-        {filteredFilings.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-sm rounded-2xl border border-border border-dashed">No filings match this filter.</div>
-        ) : (
-          <div className="space-y-2">
-            {filteredFilings.map(filing => {
-              const status = getStatus(filing.id);
-              const isExpanded = expandedFilings[filing.id];
-              const badge = getFilingDueBadge(filing, year, status);
-              const rowBg = getFilingStatusColor(filing, year, status);
-              const dateStyle = getFilingDueDateStyle(filing, year, status);
+            if (entry.kind === "ky" && entry.filing && entry.filingStatus !== undefined) {
+              const filing = entry.filing;
+              const filingStatus = entry.filingStatus;
+              const dateStyle = entry.unifiedStatus === "overdue" ? "text-red-600 font-semibold"
+                : entry.unifiedStatus === "due-soon" ? "text-amber-600 font-semibold"
+                : "text-muted-foreground";
+
               return (
-                <div key={filing.id} className={`rounded-2xl border ${rowBg} overflow-hidden transition-colors`}>
+                <div key={entry.id} className={`rounded-2xl border ${rowBg} overflow-hidden transition-colors`}>
                   <div className="p-4">
                     <div className="flex items-start gap-3">
                       <button
-                        onClick={() => cycleStatus(filing.id)}
+                        onClick={() => cycleFilingStatus(filing.id)}
                         className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-colors mt-0.5 ${
-                          status === "filed" ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-200" :
-                          status === "na" ? "bg-muted text-muted-foreground hover:bg-muted/80" :
+                          filingStatus === "filed" ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-200" :
+                          filingStatus === "na" ? "bg-muted text-muted-foreground hover:bg-muted/80" :
                           "bg-background border border-border text-muted-foreground hover:bg-muted/40"
                         }`}
-                        title={`Status: ${status === "not-filed" ? "Not Filed" : status === "filed" ? "Filed" : "N/A"} — click to cycle`}
+                        title={`Status: ${filingStatus === "not-filed" ? "Not Filed" : filingStatus === "filed" ? "Filed" : "N/A"} — click to cycle`}
                       >
-                        {status === "filed" ? <CheckCircle className="w-4 h-4" /> :
-                         status === "na" ? <XCircle className="w-3.5 h-3.5" /> :
+                        {filingStatus === "filed" ? <CheckCircle className="w-4 h-4" /> :
+                         filingStatus === "na" ? <XCircle className="w-3.5 h-3.5" /> :
                          <Clock className="w-3.5 h-3.5" />}
                       </button>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                          <span className={`font-semibold text-sm text-foreground ${status === "na" ? "opacity-50" : ""}`}>{filing.name}</span>
+                          <span className={`font-semibold text-sm text-foreground ${filingStatus === "na" ? "opacity-50" : ""}`}>{filing.name}</span>
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 uppercase tracking-wide">KY / Federal</span>
                           {badge && <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>{badge.label}</span>}
-                          {filing.conditional && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{filing.conditional}</span>}
-                          {status === "filed" && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Filed</span>}
-                          {status === "na" && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">N/A</span>}
+                          {filing.conditional && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">{filing.conditional}</span>}
                         </div>
                         <p className="text-xs text-muted-foreground mb-1.5">{filing.authority} · {filing.description}</p>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -1305,7 +1404,7 @@ function TaxCalendarTab({ year }: { year: number }) {
                           className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors">
                           <ExternalLink className="w-3 h-3" /><span className="hidden sm:inline">File</span>
                         </a>
-                        <button onClick={() => setExpandedFilings(prev => ({ ...prev, [filing.id]: !prev[filing.id] }))}
+                        <button onClick={() => setExpandedIds(prev => ({ ...prev, [entry.id]: !prev[entry.id] }))}
                           className="h-7 w-7 rounded-lg bg-muted/60 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground">
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
@@ -1323,114 +1422,71 @@ function TaxCalendarTab({ year }: { year: number }) {
                   )}
                 </div>
               );
-            })}
-          </div>
-        )}
-      </div>
+            }
 
-      {/* Compliance Items section */}
-      <div className="space-y-3 pt-2">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display font-bold text-foreground">My Compliance Items</h3>
-          <button
-            onClick={() => { setShowForm(true); setEditTarget(null); }}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add Item
-          </button>
-        </div>
+            if (entry.kind === "ci" && entry.item) {
+              const item = entry.item;
+              const s = entry.unifiedStatus;
+              const borderCls = s === "overdue" ? "border-red-200"
+                : s === "due-soon" ? "border-amber-200"
+                : s === "filed" ? "border-emerald-200"
+                : "border-border";
+              const barCls = s === "overdue" ? "bg-red-400"
+                : s === "due-soon" ? "bg-amber-400"
+                : s === "filed" ? "bg-emerald-400"
+                : "bg-blue-400";
 
-        {(showForm || editTarget) && (
-          <div className="bg-white rounded-2xl border border-amber-200 shadow-lg p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-amber-500" />
-                {editTarget ? "Edit Compliance Item" : "New Compliance Item"}
-              </h4>
-              <button onClick={() => { setShowForm(false); setEditTarget(null); }} className="text-gray-400 hover:text-gray-600 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <ComplianceItemForm initial={editTarget ?? undefined} onSave={handleSave} onCancel={() => { setShowForm(false); setEditTarget(null); }} saving={saving} />
-          </div>
-        )}
-
-        {!loadingItems && items.length === 0 && !showForm && (
-          <div className="flex flex-col items-center justify-center py-10 text-center gap-3 rounded-2xl border border-dashed border-border">
-            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center">
-              <Bell className="w-6 h-6 text-amber-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-gray-700 text-sm">No compliance items yet</p>
-              <p className="text-xs text-gray-400 mt-0.5">Track license renewals, permits, insurance, and custom deadlines.</p>
-            </div>
-            <button onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm bg-amber-500 text-white hover:bg-amber-600 shadow transition-colors">
-              <Plus className="w-4 h-4" /> Add your first item
-            </button>
-          </div>
-        )}
-
-        {filteredItems.length > 0 && (
-          <div className="space-y-2">
-            {filteredItems.map(item => {
-              const s = item.computedStatus;
               return (
-                <div key={item.id} className={`bg-white rounded-2xl border shadow-sm p-4 flex gap-4 transition-all hover:shadow-md ${
-                  s === "overdue" ? "border-red-200" : s === "due-soon" ? "border-amber-200" : s === "complete" ? "border-emerald-200 opacity-70" : "border-gray-200"
-                }`}>
-                  <div className={`flex-shrink-0 w-1 rounded-full ${s === "overdue" ? "bg-red-400" : s === "due-soon" ? "bg-amber-400" : s === "complete" ? "bg-emerald-400" : "bg-blue-400"}`} />
+                <div key={entry.id} className={`bg-card rounded-2xl border shadow-sm p-4 flex gap-4 transition-all hover:shadow-md ${borderCls} ${s === "filed" ? "opacity-70" : ""}`}>
+                  <div className={`flex-shrink-0 w-1 rounded-full ${barCls}`} />
                   <div className="text-xl flex-shrink-0 mt-0.5">{complianceCategoryIcon(item.category)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className={`font-semibold text-gray-900 leading-tight text-sm ${s === "complete" ? "line-through text-gray-400" : ""}`}>{item.title}</p>
-                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${complianceStatusBadge(s)}`}>
-                            {complianceStatusLabel(s)}
-                          </span>
-                          <span className="text-xs text-gray-400 font-medium">
-                            {s === "complete" ? "Completed" : item.daysUntilDue < 0 ? `${Math.abs(item.daysUntilDue)}d overdue` : item.daysUntilDue === 0 ? "Due today" : `${item.daysUntilDue}d away`}
-                          </span>
+                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                          <span className={`font-semibold text-foreground leading-tight text-sm ${s === "filed" ? "line-through opacity-60" : ""}`}>{item.title}</span>
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 uppercase tracking-wide">My Item</span>
+                          {badge && <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>{badge.label}</span>}
                         </div>
+                        <p className="text-xs text-muted-foreground">
+                          {s === "filed" ? "Completed" : item.daysUntilDue < 0 ? `${Math.abs(item.daysUntilDue)}d overdue` : item.daysUntilDue === 0 ? "Due today" : `${item.daysUntilDue}d away`}
+                        </p>
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
-                        <button onClick={() => handleToggleComplete(item)} title={s === "complete" ? "Mark upcoming" : "Mark complete"}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                        <button onClick={() => handleToggleComplete(item)} title={s === "filed" ? "Mark upcoming" : "Mark complete"}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
                           <CheckCircle2 className="w-4 h-4" />
                         </button>
                         <button onClick={() => { setEditTarget(item); setShowForm(false); }} title="Edit"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={() => handleDelete(item.id)} title="Delete"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1"><CalendarClock className="w-3 h-3" />{formatComplianceDate(item.dueDate)}</span>
                       {item.jurisdiction && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{item.jurisdiction}</span>}
                       {item.recurrence !== "one-time" && (
                         <span className="flex items-center gap-1 capitalize"><RefreshCw className="w-3 h-3" />{COMPLIANCE_RECURRENCES.find(r => r.value === item.recurrence)?.label}</span>
                       )}
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px]">{item.category}</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px]">{item.category}</span>
                     </div>
                     {item.notes && (
-                      <p className="mt-2 text-xs text-gray-500 leading-relaxed bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">{item.notes}</p>
+                      <p className="mt-2 text-xs text-muted-foreground leading-relaxed bg-muted/30 rounded-lg px-2.5 py-1.5 border border-border">{item.notes}</p>
                     )}
                   </div>
                 </div>
               );
-            })}
-          </div>
-        )}
+            }
 
-        {!loadingItems && items.length > 0 && filteredItems.length === 0 && (
-          <p className="text-center text-gray-400 italic py-6 text-sm">No compliance items match this filter.</p>
-        )}
-      </div>
+            return null;
+          })}
+        </div>
+      )}
 
       {/* CPA Disclaimer */}
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex gap-3">
