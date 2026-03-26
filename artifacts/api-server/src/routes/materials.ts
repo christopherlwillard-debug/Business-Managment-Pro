@@ -81,10 +81,12 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid material ID" });
     const [row] = await db
       .select()
       .from(materialsTable)
-      .where(eq(materialsTable.id, parseInt(req.params.id)));
+      .where(eq(materialsTable.id, id));
     if (!row) return res.status(404).json({ error: "Material not found" });
     res.json(fmt(row));
   } catch (err) {
@@ -96,6 +98,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid material ID" });
     const { name, description, unit, unitCost, category, isActive } = req.body as {
       name: string;
       description?: string;
@@ -129,7 +132,9 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(materialsTable).where(eq(materialsTable.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid material ID" });
+    await db.delete(materialsTable).where(eq(materialsTable.id, id));
     res.status(204).send();
   } catch (err) {
     console.error(err);

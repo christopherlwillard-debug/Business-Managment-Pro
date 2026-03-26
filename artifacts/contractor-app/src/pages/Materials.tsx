@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   useListMaterials,
   useCreateMaterial,
@@ -67,6 +67,14 @@ export default function Materials() {
   const { data: allActiveMaterials = [] } = useListMaterials({ includeInactive: false });
   const { data: settings } = useGetSettings();
   const s = (settings ?? {}) as AppSettings;
+
+  const taxInitialized = useRef(false);
+  useEffect(() => {
+    if (!taxInitialized.current && s.defaultTaxRate != null) {
+      taxInitialized.current = true;
+      setQuoteInfo(prev => ({ ...prev, taxRate: s.defaultTaxRate as number }));
+    }
+  }, [s.defaultTaxRate]);
 
   const createMaterial = useCreateMaterial();
   const updateMaterial = useUpdateMaterial();
@@ -449,11 +457,13 @@ export default function Materials() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => addToQuote(m)}
-                          title="Add to quote"
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
-                          <ShoppingCart className="w-4 h-4" />
-                        </button>
+                        {m.isActive && (
+                          <button onClick={() => addToQuote(m)}
+                            title="Add to quote"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                            <ShoppingCart className="w-4 h-4" />
+                          </button>
+                        )}
                         <button onClick={() => openEdit(m)}
                           title="Edit"
                           className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
