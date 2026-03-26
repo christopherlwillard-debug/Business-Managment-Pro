@@ -284,12 +284,14 @@ router.get("/:id/related-counts", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.delete(dailyLogsTable).where(eq(dailyLogsTable.jobId, id));
-    await db.delete(mileageLogsTable).where(eq(mileageLogsTable.jobId, id));
-    await db.delete(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id));
-    await db.delete(expensesTable).where(eq(expensesTable.jobId, id));
-    await db.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id));
-    await db.delete(jobsTable).where(eq(jobsTable.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(dailyLogsTable).where(eq(dailyLogsTable.jobId, id));
+      await tx.delete(mileageLogsTable).where(eq(mileageLogsTable.jobId, id));
+      await tx.delete(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id));
+      await tx.delete(expensesTable).where(eq(expensesTable.jobId, id));
+      await tx.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id));
+      await tx.delete(jobsTable).where(eq(jobsTable.id, id));
+    });
     res.status(204).send();
   } catch (err) {
     console.error(err);
