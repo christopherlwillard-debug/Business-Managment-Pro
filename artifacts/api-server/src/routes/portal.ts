@@ -12,6 +12,10 @@ import { computeYtd } from "./subcontractors";
 const portalUploadsDir = path.resolve("uploads");
 if (!fs.existsSync(portalUploadsDir)) fs.mkdirSync(portalUploadsDir, { recursive: true });
 
+const ALLOWED_RECEIPT_MIMETYPES = new Set([
+  "image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf",
+]);
+
 const portalUpload = multer({
   storage: multer.diskStorage({
     destination: portalUploadsDir,
@@ -21,6 +25,13 @@ const portalUpload = multer({
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_RECEIPT_MIMETYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only images (JPEG, PNG, GIF, WebP) and PDF files are allowed"));
+    }
+  },
 });
 
 const router = Router();
