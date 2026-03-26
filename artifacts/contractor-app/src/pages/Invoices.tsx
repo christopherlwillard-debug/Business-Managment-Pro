@@ -53,11 +53,11 @@ function InvoiceBuilder({
   const [uploadingFile, setUploadingFile] = useState(false);
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
-    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     setUploadingFile(true);
     try {
       const results: InvoiceAttachment[] = [];
@@ -89,7 +89,6 @@ function InvoiceBuilder({
   const logoSize: string        = s.invoiceLogoSize     ?? "medium";
   const logoPos: string         = s.invoiceLogoPosition ?? "top-left";
   const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const subtotal  = lineItems.reduce((a, l) => a + l.quantity * l.unitPrice, 0);
   const taxRate   = parseFloat(form.taxRate) || 0;
@@ -511,7 +510,7 @@ function InvoiceBuilder({
                     <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 max-w-[200px]">
                       <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
                       <span className="truncate flex-1 print-hide">{att.name}</span>
-                      <a href={att.url} target="_blank" rel="noopener noreferrer"
+                      <a href={`${base}${att.url}`} target="_blank" rel="noopener noreferrer"
                         className="print-value items-center gap-1 text-amber-700 underline truncate flex-1">
                         {att.name}
                       </a>
