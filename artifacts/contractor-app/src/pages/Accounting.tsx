@@ -939,7 +939,7 @@ export default function Accounting() {
 
       {/* Filing Calendar Tab */}
       {activeTab === "filing-calendar" && (
-        <FilingCalendarTab year={year} />
+        <FilingCalendarTab key={year} year={year} />
       )}
 
       {/* Schedule C Tab */}
