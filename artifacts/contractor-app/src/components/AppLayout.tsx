@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   Calculator, HardHat, Users,
-  Settings, Menu, X, Building2, BookOpen, LogOut, Package
+  Settings, Menu, X, BookOpen, LogOut, Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
@@ -82,14 +82,15 @@ export function AppLayout({ children }: AppLayoutProps) {
         mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-6 bg-primary border-b border-primary-foreground/10 flex-shrink-0">
-          <Link href="/" className="flex items-center gap-2 text-xl font-display font-bold tracking-wider" onClick={() => setMobileMenuOpen(false)}>
+        <div className="flex items-center justify-between h-16 px-4 bg-primary border-b border-primary-foreground/10 flex-shrink-0">
+          <Link href="/" className="flex items-center" onClick={() => setMobileMenuOpen(false)}>
             {logoUrl ? (
-              <img src={`${base}${logoUrl}`} className="w-8 h-8 rounded object-contain bg-white/10" alt="Logo" />
+              <img src={`${base}${logoUrl}`} className="w-12 h-12 rounded-lg object-contain bg-white/10" alt="Logo" />
             ) : (
-              <Building2 className="w-6 h-6 text-accent" />
+              <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-accent-foreground font-display font-bold text-xl select-none">
+                {initials}
+              </div>
             )}
-            <span className="truncate">{companyName}</span>
           </Link>
           <button className="lg:hidden text-primary-foreground/70 hover:text-white p-1" onClick={() => setMobileMenuOpen(false)}>
             <X className="w-6 h-6" />
@@ -148,8 +149,16 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Menu className="w-6 h-6" />
           </button>
 
-          {/* Mobile: show current page company name centered */}
-          <span className="lg:hidden text-sm font-semibold text-foreground absolute left-1/2 -translate-x-1/2">{companyName}</span>
+          {/* Mobile: show logo mark centered */}
+          <div className="lg:hidden absolute left-1/2 -translate-x-1/2">
+            {logoUrl ? (
+              <img src={`${base}${logoUrl}`} className="w-8 h-8 rounded object-contain" alt="Logo" />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-display font-bold text-sm select-none">
+                {initials}
+              </div>
+            )}
+          </div>
 
           <div className="flex-1 hidden lg:block" />
 
