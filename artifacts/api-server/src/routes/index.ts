@@ -56,6 +56,7 @@ router.use("/daily-logs", dailyLogsRouter);
 router.use("/settings", settingsRouter);
 router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);
+router.use("/vendors", vendorsRouter);
 router.use("/compliance-items", complianceItemsRouter);
 router.use("/expense-import", expenseImportRouter);
 router.use("/payments", paymentsRouter);
