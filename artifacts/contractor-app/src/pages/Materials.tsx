@@ -15,6 +15,7 @@ import {
   type MaterialListItemInput,
   useListJobs,
   type Job,
+  useGetSettings,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
@@ -319,6 +320,7 @@ function MaterialListCard({
   const [attaching, setAttaching] = useState(false);
   const [attachMsg, setAttachMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const attachMutation = useAttachMaterialListToInvoice();
+  const { data: settings } = useGetSettings();
 
   const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * (list.markup / 100 + 1), 0);
 
@@ -333,7 +335,7 @@ function MaterialListCard({
       let attachmentSize: number | undefined;
 
       try {
-        const pdfBlob = generateMaterialListPdf(list);
+        const pdfBlob = generateMaterialListPdf(list, undefined, settings?.companyName ?? undefined);
         const fd = new FormData();
         const filename = `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
         fd.append("file", pdfBlob, filename);

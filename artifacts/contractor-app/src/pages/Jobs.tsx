@@ -107,6 +107,7 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
   const qc = useQueryClient();
   const { data: lists = [], isLoading } = useListMaterialLists({ jobId: job.id });
   const { data: allMaterials = [] } = useListMaterials({ includeInactive: false });
+  const { data: settings } = useGetSettings();
   const createList = useCreateMaterialList();
   const deleteList = useDeleteMaterialList();
   const attachToInvoice = useAttachMaterialListToInvoice();
@@ -197,7 +198,7 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
     let attachmentSize: number | undefined;
 
     try {
-      const pdfBlob = generateMaterialListPdf(list, job.title);
+      const pdfBlob = generateMaterialListPdf(list, job.title, settings?.companyName ?? undefined);
       const fd = new FormData();
       const filename = `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
       fd.append("file", pdfBlob, filename);
@@ -508,6 +509,7 @@ function JobDailyLogPanel({
   const queryClient = useQueryClient();
   const { data: logs = [], isLoading } = useListDailyLogs({ jobId: job.id });
   const { data: materialLists = [] } = useListMaterialLists({ jobId: job.id });
+  const { data: settings } = useGetSettings();
   const createLog  = useCreateDailyLog();
   const deleteLog  = useDeleteDailyLog();
   const attachToInvoice = useAttachMaterialListToInvoice();
@@ -577,7 +579,7 @@ function JobDailyLogPanel({
     let attachmentName: string | undefined;
     let attachmentSize: number | undefined;
     try {
-      const pdfBlob = generateMaterialListPdf(list, job.title);
+      const pdfBlob = generateMaterialListPdf(list, job.title, settings?.companyName ?? undefined);
       const fd = new FormData();
       fd.append("file", pdfBlob, `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`);
       const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
