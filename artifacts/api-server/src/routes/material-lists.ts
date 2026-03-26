@@ -7,7 +7,7 @@ import {
   invoicesTable,
   settingsTable,
 } from "@workspace/db/schema";
-import { eq, and, SQL } from "drizzle-orm";
+import { eq, and, inArray, SQL } from "drizzle-orm";
 
 const router = Router();
 
@@ -96,10 +96,13 @@ router.get("/", async (req, res) => {
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(materialListsTable.createdAt);
 
-    const allItems = await db.select().from(materialListItemsTable);
+    const listIds = lists.map(l => l.id);
+    const scopedItems = listIds.length > 0
+      ? await db.select().from(materialListItemsTable).where(inArray(materialListItemsTable.listId, listIds))
+      : [];
 
     const itemsByList: Record<number, ReturnType<typeof fmtItem>[]> = {};
-    for (const item of allItems) {
+    for (const item of scopedItems) {
       if (!itemsByList[item.listId]) itemsByList[item.listId] = [];
       itemsByList[item.listId].push(fmtItem(item));
     }

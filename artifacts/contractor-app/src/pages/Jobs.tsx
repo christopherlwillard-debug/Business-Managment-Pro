@@ -196,6 +196,7 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
     let attachmentUrl: string | undefined;
     let attachmentName: string | undefined;
     let attachmentSize: number | undefined;
+    let pdfUploadFailed = false;
 
     try {
       const pdfBlob = generateMaterialListPdf(list, job.title, settings?.companyName ?? undefined);
@@ -208,8 +209,11 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
         attachmentUrl = uploaded.url;
         attachmentName = `Material List – ${list.name}.pdf`;
         attachmentSize = uploaded.size;
+      } else {
+        pdfUploadFailed = true;
       }
     } catch {
+      pdfUploadFailed = true;
     }
 
     try {
@@ -219,13 +223,14 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
         attachmentName,
         attachmentSize,
       });
+      const baseMsg = res.created
+        ? "Created a new draft invoice with these materials."
+        : "Added to existing draft invoice.";
       setAttachMsg(prev => ({
         ...prev,
         [list.id]: {
           ok: true,
-          text: res.created
-            ? "Created a new draft invoice with these materials."
-            : "Added to existing draft invoice.",
+          text: pdfUploadFailed ? `${baseMsg} (PDF attachment could not be uploaded.)` : baseMsg,
         },
       }));
       qc.invalidateQueries({ queryKey: ["/api/invoices"] });
@@ -578,6 +583,7 @@ function JobDailyLogPanel({
     let attachmentUrl: string | undefined;
     let attachmentName: string | undefined;
     let attachmentSize: number | undefined;
+    let pdfUploadFailed = false;
     try {
       const pdfBlob = generateMaterialListPdf(list, job.title, settings?.companyName ?? undefined);
       const fd = new FormData();
@@ -588,11 +594,14 @@ function JobDailyLogPanel({
         attachmentUrl = up.url;
         attachmentName = `Material List – ${list.name}.pdf`;
         attachmentSize = up.size;
+      } else {
+        pdfUploadFailed = true;
       }
-    } catch { }
+    } catch { pdfUploadFailed = true; }
     try {
       await attachToInvoice.mutateAsync({ id: list.id, attachmentUrl, attachmentName, attachmentSize });
-      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: true, text: "Pushed to invoice." } }));
+      const pushMsg = pdfUploadFailed ? "Pushed to invoice. (PDF attachment could not be uploaded.)" : "Pushed to invoice.";
+      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: true, text: pushMsg } }));
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
     } catch {
       setAttachMsg(prev => ({ ...prev, [log.id]: { ok: false, text: "Failed to push to invoice." } }));

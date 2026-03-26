@@ -334,6 +334,7 @@ function MaterialListCard({
       let attachmentName: string | undefined;
       let attachmentSize: number | undefined;
 
+      let pdfUploadFailed = false;
       try {
         const pdfBlob = generateMaterialListPdf(list, undefined, settings?.companyName ?? undefined);
         const fd = new FormData();
@@ -345,12 +346,15 @@ function MaterialListCard({
           attachmentUrl = uploaded.url;
           attachmentName = `Material List – ${list.name}.pdf`;
           attachmentSize = uploaded.size;
+        } else {
+          pdfUploadFailed = true;
         }
-      } catch { /* attachment upload is best-effort */ }
+      } catch { pdfUploadFailed = true; }
 
       const res = await attachMutation.mutateAsync({ id: list.id, attachmentUrl, attachmentName, attachmentSize });
       if (res.invoiceId) {
-        setAttachMsg({ ok: true, text: `Added to invoice draft for ${list.jobTitle || "job"}.` });
+        const successMsg = `Added to invoice draft for ${list.jobTitle || "job"}.`;
+        setAttachMsg({ ok: true, text: pdfUploadFailed ? `${successMsg} (PDF attachment could not be uploaded.)` : successMsg });
       } else {
         setAttachMsg({ ok: false, text: "No draft invoice found for this job. Create one first." });
       }
