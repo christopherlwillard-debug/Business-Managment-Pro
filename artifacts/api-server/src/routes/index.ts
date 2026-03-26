@@ -23,6 +23,7 @@ import recurringExpensesRouter from "./recurring-expenses";
 import materialsRouter from "./materials";
 import materialListsRouter from "./material-lists";
 import registeredAgentRouter from "./registered-agent";
+import form1099sRouter from "./form-1099s";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -66,5 +67,6 @@ router.use("/recurring-expenses", recurringExpensesRouter);
 router.use("/materials", materialsRouter);
 router.use("/material-lists", materialListsRouter);
 router.use("/registered-agent", registeredAgentRouter);
+router.use("/1099s", form1099sRouter);
 
 export default router;

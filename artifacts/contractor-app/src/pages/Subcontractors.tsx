@@ -1,12 +1,15 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useListSubcontractors, useCreateSubcontractor, useDeleteSubcontractor } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import {
   HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy,
   RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX, Lock, LockOpen, Trash2,
+  FileText, Download, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck, Ban,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { generate1099NecPdf } from "@/lib/generate1099NecPdf";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -26,6 +29,82 @@ export default function Subcontractors() {
   const [portalError, setPortalError] = useState<string | null>(null);
   const [resettingPin, setResettingPin] = useState(false);
   const [pinResetDone, setPinResetDone] = useState<Record<number, boolean>>({});
+  const [show1099Modal, setShow1099Modal] = useState(false);
+  const [report1099Year, setReport1099Year] = useState(new Date().getFullYear());
+  const [generating1099, setGenerating1099] = useState<number | null>(null);
+  const [expanded1099, setExpanded1099] = useState<number | null>(null);
+
+  const { data: report1099Data, isLoading: report1099Loading, refetch: refetch1099 } = useQuery({
+    queryKey: ["1099-report", report1099Year],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/1099s/report?year=${report1099Year}`);
+      if (!res.ok) throw new Error("Failed to load 1099 report");
+      return res.json();
+    },
+    enabled: show1099Modal,
+    staleTime: 30000,
+  });
+
+  async function generate1099Pdf(sub: any) {
+    setGenerating1099(sub.subcontractorId);
+    try {
+      const payer = report1099Data?.payerSettings ?? {};
+      const blob = generate1099NecPdf({
+        taxYear: report1099Year,
+        payer: {
+          name: payer.companyName || "Contractor",
+          address: payer.companyAddress,
+          city: payer.companyCity,
+          state: payer.companyState,
+          zip: payer.companyZip,
+          phone: payer.companyPhone,
+          ein: payer.ein,
+        },
+        payee: {
+          name: sub.w9LegalName || sub.name,
+          address: sub.w9Address,
+          city: sub.w9City,
+          state: sub.w9State,
+          zip: sub.w9Zip,
+          tinType: sub.w9TaxIdType,
+          tinLastFour: sub.w9TaxId ? sub.w9TaxId.slice(-4) : null,
+        },
+        nonemployeeCompensation: sub.totalQualifying,
+      });
+
+      // Convert blob to base64 for storage
+      const arrayBuffer = await blob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      // Save to backend
+      await fetch(`${BASE}/api/1099s/generate/${sub.subcontractorId}?year=${report1099Year}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totalPaid: sub.totalQualifying, pdfData: base64 }),
+      });
+
+      // Download the PDF immediately
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `1099-NEC-${sub.w9LegalName || sub.name}-${report1099Year}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      refetch1099();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGenerating1099(null);
+    }
+  }
+
+  function downloadExisting1099(sub: any) {
+    const rec = sub.existingRecord;
+    if (!rec) return;
+    // Re-generate from stored data for download
+    generate1099Pdf(sub);
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -166,12 +245,20 @@ export default function Subcontractors() {
           <h1 className="text-3xl font-display font-bold text-foreground">Subcontractors</h1>
           <p className="text-muted-foreground mt-1">Manage subs, W-9s, 1099 compliance, and portal access.</p>
         </div>
-        <button
-          onClick={() => setIsDialogOpen(true)}
-          className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
-        >
-          <Plus className="w-5 h-5 mr-2" /> Add Subcontractor
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShow1099Modal(true)}
+            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-amber-600 text-white hover:bg-amber-700 shadow-md transition-all hover:shadow-lg active:scale-95"
+          >
+            <FileText className="w-4 h-4 mr-2" /> 1099 Report
+          </button>
+          <button
+            onClick={() => setIsDialogOpen(true)}
+            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
+          >
+            <Plus className="w-5 h-5 mr-2" /> Add Subcontractor
+          </button>
+        </div>
       </div>
 
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
@@ -507,6 +594,188 @@ export default function Subcontractors() {
                   </p>
                 </div>
               )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* 1099 Report Modal */}
+      {show1099Modal && (
+        <Dialog open={show1099Modal} onOpenChange={(o) => { if (!o) setShow1099Modal(false); }}>
+          <DialogContent className="max-w-2xl bg-card border-border shadow-2xl p-0 rounded-2xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-border bg-amber-50">
+              <DialogTitle className="text-xl font-display flex items-center gap-2 text-amber-900">
+                <FileText className="w-5 h-5 text-amber-600" /> Year-End 1099-NEC Report
+              </DialogTitle>
+              <div className="flex items-center gap-3 mt-3">
+                <label className="text-sm font-medium text-amber-800">Tax Year:</label>
+                <select
+                  value={report1099Year}
+                  onChange={e => setReport1099Year(parseInt(e.target.value))}
+                  className="px-3 py-1.5 rounded-lg border border-amber-200 bg-white text-sm font-semibold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-amber-700 ml-2">Threshold: $2,000 (qualifying cash/check/ACH payments)</p>
+              </div>
+            </div>
+
+            <div className="p-5 max-h-[60vh] overflow-y-auto space-y-3">
+              {report1099Loading ? (
+                <div className="text-center py-8 text-muted-foreground animate-pulse">Loading 1099 data…</div>
+              ) : !report1099Data?.subcontractors?.length ? (
+                <div className="text-center py-8">
+                  <HardHat className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                  <p className="text-sm text-muted-foreground">No subcontractors to report.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3 pb-2">
+                    {[
+                      {
+                        label: "1099 Required",
+                        count: report1099Data.subcontractors.filter((s: any) => s.requires1099).length,
+                        color: "text-amber-700 bg-amber-50 border-amber-200",
+                      },
+                      {
+                        label: "W-9 Complete",
+                        count: report1099Data.subcontractors.filter((s: any) => s.w9Complete).length,
+                        color: "text-emerald-700 bg-emerald-50 border-emerald-200",
+                      },
+                      {
+                        label: "1099s Generated",
+                        count: report1099Data.subcontractors.filter((s: any) => s.status === "generated").length,
+                        color: "text-blue-700 bg-blue-50 border-blue-200",
+                      },
+                    ].map(stat => (
+                      <div key={stat.label} className={`rounded-xl border px-3 py-2.5 text-center ${stat.color}`}>
+                        <p className="text-2xl font-display font-bold">{stat.count}</p>
+                        <p className="text-xs font-semibold">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {report1099Data.subcontractors.map((sub: any) => {
+                    const isExpanded = expanded1099 === sub.subcontractorId;
+                    const isGenerating = generating1099 === sub.subcontractorId;
+
+                    const statusBadge = sub.status === "generated"
+                      ? { cls: "bg-blue-100 text-blue-700", icon: <BadgeCheck className="w-3 h-3" />, label: "Generated" }
+                      : sub.requires1099
+                      ? { cls: "bg-amber-100 text-amber-700", icon: <AlertTriangle className="w-3 h-3" />, label: "Required" }
+                      : { cls: "bg-muted text-muted-foreground", icon: <Ban className="w-3 h-3" />, label: "Below Threshold" };
+
+                    return (
+                      <div key={sub.subcontractorId} className={`rounded-2xl border transition-all ${
+                        sub.requires1099 ? "border-amber-200 bg-amber-50/40" : "border-border bg-card"
+                      }`}>
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-sm text-foreground">{sub.name}</p>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge.cls}`}>
+                                {statusBadge.icon} {statusBadge.label}
+                              </span>
+                              {!sub.w9Complete && sub.requires1099 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                                  <AlertCircle className="w-3 h-3" /> W-9 Incomplete
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {sub.requires1099
+                                ? <span className="font-semibold text-amber-700">{formatCurrency(sub.totalQualifying)} qualifying payments</span>
+                                : <span>{formatCurrency(sub.totalQualifying)} — below $2,000 threshold</span>
+                              }
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {sub.requires1099 && (
+                              <button
+                                onClick={() => generate1099Pdf(sub)}
+                                disabled={isGenerating}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50 shadow-sm"
+                              >
+                                {isGenerating ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Download className="w-3 h-3" />
+                                )}
+                                {sub.status === "generated" ? "Re-generate" : "Generate PDF"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setExpanded1099(isExpanded ? null : sub.subcontractorId)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+                            >
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-4 border-t border-border/50 mt-0 pt-3 space-y-2">
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <p className="text-muted-foreground font-semibold">Legal Name</p>
+                                <p className="text-foreground">{sub.w9LegalName || sub.name}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground font-semibold">TIN</p>
+                                <p className="text-foreground">
+                                  {sub.w9TaxId
+                                    ? `${sub.w9TaxIdType || "SSN"}: ***-**-${sub.w9TaxId.slice(-4)}`
+                                    : <span className="text-red-600">Not on file</span>}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground font-semibold">Address</p>
+                                <p className="text-foreground">
+                                  {[sub.w9Address, sub.w9City, sub.w9State, sub.w9Zip].filter(Boolean).join(", ") || "—"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground font-semibold">W-9 Status</p>
+                                <p className={sub.w9Complete ? "text-emerald-600 font-semibold" : "text-red-600"}>
+                                  {sub.w9Complete ? "Complete" : "Incomplete — portal W-9 needed"}
+                                </p>
+                              </div>
+                              {sub.status === "generated" && sub.existingRecord && (
+                                <div className="col-span-2">
+                                  <p className="text-muted-foreground font-semibold">Last Generated</p>
+                                  <p className="text-blue-700">
+                                    {new Date(sub.existingRecord.generatedAt).toLocaleDateString()} · {formatCurrency(sub.existingRecord.totalPaid)} filed
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            {!sub.w9Complete && (
+                              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                Ask {sub.name} to complete their W-9 in the subcontractor portal before generating the 1099-NEC.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-border bg-muted/30 flex justify-between items-center">
+              <p className="text-xs text-muted-foreground">
+                Generated PDFs are available for subcontractors to download from their portal. Qualifying payments exclude credit card and third-party app payments.
+              </p>
+              <button
+                onClick={() => setShow1099Modal(false)}
+                className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors text-sm flex-shrink-0 ml-3"
+              >
+                Close
+              </button>
             </div>
           </DialogContent>
         </Dialog>

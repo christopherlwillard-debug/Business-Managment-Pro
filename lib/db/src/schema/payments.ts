@@ -12,6 +12,7 @@ export const paymentsTable = pgTable("payments", {
   description: text("description"),
   invoiceNumber: text("invoice_number"),
   notes: text("notes"),
+  paymentMethod: text("payment_method"), // cash | check | ach | credit_card | third_party_app
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

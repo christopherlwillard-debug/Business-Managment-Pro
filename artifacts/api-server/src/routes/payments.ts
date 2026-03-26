@@ -21,6 +21,7 @@ router.get("/", async (req, res) => {
         description: paymentsTable.description,
         invoiceNumber: paymentsTable.invoiceNumber,
         notes: paymentsTable.notes,
+        paymentMethod: paymentsTable.paymentMethod,
         createdAt: paymentsTable.createdAt,
       })
       .from(paymentsTable)
@@ -50,6 +51,7 @@ router.get("/", async (req, res) => {
       description: p.description,
       invoiceNumber: p.invoiceNumber,
       notes: p.notes,
+      paymentMethod: p.paymentMethod ?? null,
       createdAt: p.createdAt,
     })));
   } catch (err) {
@@ -80,6 +82,7 @@ router.get("/:id", async (req, res) => {
       description: payment.description,
       invoiceNumber: payment.invoiceNumber,
       notes: payment.notes,
+      paymentMethod: payment.paymentMethod ?? null,
       createdAt: payment.createdAt,
     });
   } catch (err) {
@@ -91,7 +94,7 @@ router.get("/:id", async (req, res) => {
 // POST /api/payments - create payment
 router.post("/", async (req, res) => {
   try {
-    const { subcontractorId, amount, paymentDate, year, description, invoiceNumber, notes } = req.body;
+    const { subcontractorId, amount, paymentDate, year, description, invoiceNumber, notes, paymentMethod } = req.body;
 
     if (!subcontractorId || !amount || !paymentDate || !year) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -107,6 +110,7 @@ router.post("/", async (req, res) => {
         description: description || null,
         invoiceNumber: invoiceNumber || null,
         notes: notes || null,
+        paymentMethod: paymentMethod || null,
       })
       .returning();
 
@@ -119,6 +123,7 @@ router.post("/", async (req, res) => {
       description: payment.description,
       invoiceNumber: payment.invoiceNumber,
       notes: payment.notes,
+      paymentMethod: payment.paymentMethod ?? null,
       createdAt: payment.createdAt,
     });
   } catch (err) {
@@ -131,7 +136,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { amount, paymentDate, year, description, invoiceNumber, notes } = req.body;
+    const { amount, paymentDate, year, description, invoiceNumber, notes, paymentMethod } = req.body;
 
     const [payment] = await db
       .update(paymentsTable)
@@ -142,6 +147,7 @@ router.put("/:id", async (req, res) => {
         ...(description !== undefined && { description: description || null }),
         ...(invoiceNumber !== undefined && { invoiceNumber: invoiceNumber || null }),
         ...(notes !== undefined && { notes: notes || null }),
+        ...(paymentMethod !== undefined && { paymentMethod: paymentMethod || null }),
       })
       .where(eq(paymentsTable.id, id))
       .returning();
@@ -159,6 +165,7 @@ router.put("/:id", async (req, res) => {
       description: payment.description,
       invoiceNumber: payment.invoiceNumber,
       notes: payment.notes,
+      paymentMethod: payment.paymentMethod ?? null,
       createdAt: payment.createdAt,
     });
   } catch (err) {

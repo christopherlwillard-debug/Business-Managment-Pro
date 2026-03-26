@@ -7,7 +7,7 @@ import {
   Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
   Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
   Lock, KeyRound, Home, Store, ChevronDown, ImageIcon, Upload,
-  MapPin, Calculator, PenLine, User,
+  MapPin, Calculator, PenLine, User, Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -1365,9 +1365,31 @@ function TaxReportsTab({ token }: { token: string }) {
     staleTime: 60000,
   });
 
+  const { data: docs1099 } = useQuery({
+    queryKey: ["portal-1099s", token],
+    queryFn: () => apiFetch(`/portal/${token}/1099s`),
+    staleTime: 60000,
+  });
+
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
   function handlePrint() { window.print(); }
+
+  function download1099(doc: any) {
+    apiFetch(`/portal/${token}/1099s/${doc.id}/pdf`)
+      .then((resp: any) => {
+        if (!resp?.pdfData) return;
+        const bytes = Uint8Array.from(atob(resp.pdfData), c => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `1099-NEC-${resp.taxYear}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch(() => {});
+  }
 
   return (
     <div className="space-y-5">
@@ -1538,6 +1560,67 @@ function TaxReportsTab({ token }: { token: string }) {
           </p>
         </div>
       ) : null}
+
+      {/* ─── Tax Documents (1099-NEC) section ─────────────────────────────── */}
+      {data && (
+        <div className="space-y-3">
+          <div className="border-t border-border/60 pt-4">
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-600" /> Tax Documents
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">1099-NEC forms issued by your contractor</p>
+          </div>
+
+          {/* Approach notice */}
+          {data.grossIncome >= 1500 && data.grossIncome < 2000 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Approaching 1099-NEC threshold</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  You've received {formatCurrency(data.grossIncome)} for {data.year}.
+                  At $2,000 your contractor is required to issue a 1099-NEC.
+                  Please ensure your W-9 info is complete in the W-9 tab.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!docs1099 || (docs1099 as any[]).length === 0 ? (
+            <div className="bg-muted/40 border border-border rounded-xl px-4 py-5 text-center">
+              <FileText className="w-7 h-7 mx-auto mb-2 opacity-20" />
+              <p className="text-sm text-muted-foreground">No 1099 forms have been issued yet.</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Your contractor generates these when you reach the reporting threshold.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(docs1099 as any[]).map((doc: any) => (
+                <div key={doc.id} className="bg-card border border-blue-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Form 1099-NEC — {doc.taxYear}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatCurrency(doc.totalPaid)} nonemployee compensation · Issued {new Date(doc.generatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  {doc.hasPdf && (
+                    <button
+                      onClick={() => download1099(doc)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors flex-shrink-0"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download PDF
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -619,6 +619,56 @@ tokenRouter.delete("/mileage/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: "Failed to delete mileage log" });
+  }
+});
+
+// GET /portal/:token/1099s — list generated 1099s for this subcontractor
+tokenRouter.get("/1099s", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+
+    const records = await db
+      .select()
+      .from(generated1099sTable)
+      .where(eq(generated1099sTable.subcontractorId, sub.id));
+
+    res.json(
+      records.map(r => ({
+        id: r.id,
+        taxYear: r.taxYear,
+        totalPaid: parseFloat(r.totalPaid as any),
+        generatedAt: r.generatedAt,
+        hasPdf: !!r.pdfData,
+      }))
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch 1099s" });
+  }
+});
+
+// GET /portal/:token/1099s/:id/pdf — download a specific 1099 PDF (base64)
+tokenRouter.get("/1099s/:id/pdf", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+
+    const [record] = await db
+      .select()
+      .from(generated1099sTable)
+      .where(
+        and(
+          eq(generated1099sTable.id, parseInt(req.params.id)),
+          eq(generated1099sTable.subcontractorId, sub.id)
+        )
+      );
+    if (!record) return res.status(404).json({ error: "Not found" });
+
+    res.json({ pdfData: record.pdfData, taxYear: record.taxYear });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch 1099 PDF" });
   }
 });
 
