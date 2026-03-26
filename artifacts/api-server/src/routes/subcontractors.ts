@@ -34,7 +34,7 @@ async function computeHasLinkedRecords(subcontractorId: number): Promise<boolean
   return parseInt(payRow?.cnt ?? "0") > 0;
 }
 
-async function computeYtd(subcontractorId: number, year: number): Promise<number> {
+export async function computeYtd(subcontractorId: number, year: number): Promise<number> {
   const yearStr = String(year);
 
   const [expRow] = await db

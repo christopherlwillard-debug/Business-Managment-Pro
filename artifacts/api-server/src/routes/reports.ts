@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { computeYtd } from "./subcontractors";
 
 const router = Router();
 
@@ -95,10 +96,15 @@ router.get("/compliance", async (_req, res) => {
       db.select().from(mileageLogsTable).where(eq(mileageLogsTable.classification, "business")),
     ]);
 
-    const subcontractor1099Alerts = subs
-      .filter(s => parseFloat(s.ytdPayments ?? "0") >= threshold * 0.8)
+    const currentYear = new Date().getFullYear();
+    const subsWithYtd = await Promise.all(subs.map(async s => ({
+      ...s,
+      _ytd: await computeYtd(s.id, currentYear),
+    })));
+    const subcontractor1099Alerts = subsWithYtd
+      .filter(s => s._ytd >= threshold * 0.8)
       .map(s => {
-        const ytd = parseFloat(s.ytdPayments ?? "0");
+        const ytd = s._ytd;
         let alert = "";
         if (ytd >= threshold) {
           alert = `${s.name} has reached the $${threshold} 1099 threshold ($${ytd.toFixed(2)} YTD)`;
@@ -181,7 +187,11 @@ router.get("/accounting", async (req, res) => {
     const totalMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
 
-    const totalSubPayments = subs.reduce((s, sub) => s + parseFloat(sub.ytdPayments ?? "0"), 0);
+    const subsWithYtdAcc = await Promise.all(subs.map(async s => ({
+      ...s,
+      _ytd: await computeYtd(s.id, year),
+    })));
+    const totalSubPayments = subsWithYtdAcc.reduce((acc, s) => acc + s._ytd, 0);
     const netProfit = paidRevenue - totalExpenses - mileageDeduction;
 
     // Income by city
@@ -239,12 +249,12 @@ router.get("/accounting", async (req, res) => {
     }
 
     const threshold = parseFloat(settings[0]?.thresholdAmount1099 ?? "600");
-    const subcontractor1099 = subs.map(s => ({
+    const subcontractor1099 = subsWithYtdAcc.map(s => ({
       id: s.id,
       name: s.name,
-      ytdPayments: parseFloat(s.ytdPayments ?? "0"),
+      ytdPayments: s._ytd,
       threshold,
-      requires1099: parseFloat(s.ytdPayments ?? "0") >= threshold,
+      requires1099: s._ytd >= threshold,
       w9OnFile: s.w9OnFile,
     }));
 

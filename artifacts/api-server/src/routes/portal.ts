@@ -4,6 +4,7 @@ import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, 
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import { computeYtd } from "./subcontractors";
 
 const router = Router();
 
@@ -279,7 +280,7 @@ tokenRouter.get("/", async (req, res) => {
     const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
     const businessMileage = mileage.filter(m => m.classification === "business");
     const totalMiles = businessMileage.reduce((s, m) => s + parseFloat(m.miles), 0);
-    const rate = await getRate();
+    const [rate, ytdPayments] = await Promise.all([getRate(), computeYtd(sub.id, new Date().getFullYear())]);
 
     const features: string[] = Array.isArray(sub.portalFeatures)
       ? (sub.portalFeatures as string[])
@@ -292,7 +293,7 @@ tokenRouter.get("/", async (req, res) => {
         email: sub.email,
         phone: sub.phone,
         trade: sub.trade,
-        ytdPayments: parseFloat(sub.ytdPayments ?? "0"),
+        ytdPayments,
         w9OnFile: sub.w9OnFile,
         w9LegalName: sub.w9LegalName,
         w9BusinessName: sub.w9BusinessName,
@@ -319,7 +320,7 @@ tokenRouter.get("/", async (req, res) => {
         description: j.description,
       })),
       stats: {
-        ytdPayments: parseFloat(sub.ytdPayments ?? "0"),
+        ytdPayments,
         totalExpenses,
         totalMiles,
         mileageDeduction: totalMiles * rate,
