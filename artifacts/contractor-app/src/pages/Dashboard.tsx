@@ -99,13 +99,13 @@ export default function Dashboard() {
                     </span>
                   </div>
                 )}
-                <Link href="/accounting" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline ml-1">
+                <Link href="/accounting?tab=compliance-items" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline ml-1">
                   View All <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
             )}
             {(complianceLoading || complianceError) && (
-              <Link href="/accounting" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+              <Link href="/accounting?tab=compliance-items" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
                 View All <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             )}

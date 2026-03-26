@@ -677,11 +677,9 @@ function ComplianceItemForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({
-      ...form,
-      jurisdiction: form.jurisdiction.trim() || undefined,
-      notes: form.notes.trim() || undefined,
-    } as any);
+    const jurisdiction = form.jurisdiction.trim() || null;
+    const notes = form.notes.trim() || null;
+    onSave({ ...form, jurisdiction, notes });
   }
 
   return (
@@ -1037,18 +1035,18 @@ function ComplianceItemsTab() {
             <Card className="border-border/50 shadow-sm">
               <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
                 <CardTitle className="font-display flex items-center text-base">
-                  <ShieldAlert className={`w-4 h-4 mr-2 ${(autoReport as any).subcontractor1099Alerts?.length > 0 ? "text-accent" : "text-muted-foreground"}`} />
+                  <ShieldAlert className={`w-4 h-4 mr-2 ${autoReport.subcontractor1099Alerts.length > 0 ? "text-accent" : "text-muted-foreground"}`} />
                   1099 Subcontractor Alerts
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                {(autoReport as any).subcontractor1099Alerts?.length === 0 ? (
+                {autoReport.subcontractor1099Alerts.length === 0 ? (
                   <div className="p-5 text-sm text-muted-foreground flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500" /> No W-9 issues found.
                   </div>
                 ) : (
                   <div className="divide-y divide-border/50">
-                    {(autoReport as any).subcontractor1099Alerts?.map((alert: any, i: number) => (
+                    {autoReport.subcontractor1099Alerts.map((alert, i) => (
                       <div key={i} className="p-4 bg-accent/5">
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-bold text-foreground">{alert.name}</span>
@@ -1071,13 +1069,13 @@ function ComplianceItemsTab() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-5">
-                {(autoReport as any).uncategorizedMileageCount === 0 ? (
+                {autoReport.uncategorizedMileageCount === 0 ? (
                   <div className="text-sm text-muted-foreground flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500" /> All trips categorized.
                   </div>
                 ) : (
                   <div className="text-center py-2">
-                    <div className="text-4xl font-display font-bold text-primary mb-2">{(autoReport as any).uncategorizedMileageCount}</div>
+                    <div className="text-4xl font-display font-bold text-primary mb-2">{autoReport.uncategorizedMileageCount}</div>
                     <p className="text-sm text-muted-foreground mb-4">Trips missing classification.</p>
                     <button className="text-sm font-medium bg-primary/10 text-primary px-4 py-2 rounded-lg hover:bg-primary/20 transition-colors">
                       Review Trips
@@ -1095,10 +1093,19 @@ function ComplianceItemsTab() {
 
 // ───────────────────────────────────────────────────────────────────────────
 
+type AccountingTab = "accounting" | "schedule-c" | "filing-calendar" | "compliance-items";
+
+function getInitialTab(): AccountingTab {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  if (tab === "compliance-items" || tab === "schedule-c" || tab === "filing-calendar") return tab;
+  return "accounting";
+}
+
 export default function Accounting() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
-  const [activeTab, setActiveTab] = useState<"accounting" | "schedule-c" | "filing-calendar" | "compliance-items">("accounting");
+  const [activeTab, setActiveTab] = useState<AccountingTab>(getInitialTab);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
@@ -1183,7 +1190,7 @@ export default function Accounting() {
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          <ShieldAlert className="w-4 h-4 inline mr-2" /> Compliance
+          <ShieldAlert className="w-4 h-4 inline mr-2" /> Compliance Items
         </button>
       </div>
 
