@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 
 const router = Router();
 
@@ -263,17 +263,18 @@ router.put("/:id", async (req, res) => {
 router.get("/:id/related-counts", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const [dailyLogs, expenses, mileageLogs, recurringExpenses] = await Promise.all([
-      db.select().from(dailyLogsTable).where(eq(dailyLogsTable.jobId, id)),
-      db.select().from(expensesTable).where(eq(expensesTable.jobId, id)),
-      db.select().from(mileageLogsTable).where(eq(mileageLogsTable.jobId, id)),
-      db.select().from(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id)),
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const [[dl], [ex], [ml], [re]] = await Promise.all([
+      db.select({ n: count() }).from(dailyLogsTable).where(eq(dailyLogsTable.jobId, id)),
+      db.select({ n: count() }).from(expensesTable).where(eq(expensesTable.jobId, id)),
+      db.select({ n: count() }).from(mileageLogsTable).where(eq(mileageLogsTable.jobId, id)),
+      db.select({ n: count() }).from(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id)),
     ]);
     res.json({
-      dailyLogs: dailyLogs.length,
-      expenses: expenses.length,
-      mileageLogs: mileageLogs.length,
-      recurringExpenses: recurringExpenses.length,
+      dailyLogs: dl.n,
+      expenses: ex.n,
+      mileageLogs: ml.n,
+      recurringExpenses: re.n,
     });
   } catch (err) {
     console.error(err);
@@ -284,6 +285,7 @@ router.get("/:id/related-counts", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
     await db.transaction(async (tx) => {
       await tx.delete(dailyLogsTable).where(eq(dailyLogsTable.jobId, id));
       await tx.delete(mileageLogsTable).where(eq(mileageLogsTable.jobId, id));
