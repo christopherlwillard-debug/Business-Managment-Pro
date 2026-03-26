@@ -502,15 +502,14 @@ tokenRouter.get("/tax-report", async (req, res) => {
 
     const yearStr = String(year);
 
-    // Compute qualifying income (cash/check/ACH only) for 1099 threshold display
+    // Qualifying income = all payments + subcontractor-category expenses for the year
     const [qualifyingPayRow] = await db
       .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
       .from(paymentsTable)
       .where(
         and(
           eq(paymentsTable.subcontractorId, sub.id),
-          eq(paymentsTable.year, year),
-          sql`(${paymentsTable.paymentMethod} IS NULL OR ${paymentsTable.paymentMethod} IN ('cash','check','ach'))`
+          eq(paymentsTable.year, year)
         )
       );
     const [qualifyingExpRow] = await db
@@ -773,7 +772,7 @@ tokenRouter.get("/1099s", async (req, res) => {
       records.map(r => ({
         id: r.id,
         taxYear: r.taxYear,
-        totalPaid: parseFloat(r.totalPaid as any),
+        totalPaid: parseFloat(String(r.totalPaid)),
         generatedAt: r.generatedAt,
         hasPdf: !!r.pdfData,
       }))

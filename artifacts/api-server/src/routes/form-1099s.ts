@@ -36,16 +36,14 @@ router.get("/report", async (req, res) => {
     const existingBySubId = new Map(existing.map(e => [e.subcontractorId, e]));
 
     const results = await Promise.all(subs.map(async (s) => {
-      // Sum qualifying (reportable) payments: cash, check, ach, or null/unset
+      // Sum all payments to this sub for the year
       const [payRow] = await db
         .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
         .from(paymentsTable)
         .where(
           and(
             eq(paymentsTable.subcontractorId, s.id),
-            eq(paymentsTable.year, year),
-            sql`(${paymentsTable.paymentMethod} IS NULL
-               OR ${paymentsTable.paymentMethod} IN ('cash','check','ach'))`
+            eq(paymentsTable.year, year)
           )
         );
 
@@ -189,33 +187,6 @@ router.get("/download/:id", async (req, res) => {
   } catch (err) {
     console.error("1099 download error:", err);
     res.status(500).json({ error: "Failed to fetch 1099" });
-  }
-});
-
-// GET /api/1099s/portal/:subcontractorId
-// Portal-facing: list all generated 1099s for a subcontractor (called from portal route after PIN auth)
-router.get("/portal/:subcontractorId", async (req, res) => {
-  try {
-    const subcontractorId = parseInt(req.params.subcontractorId);
-
-    const records = await db
-      .select()
-      .from(generated1099sTable)
-      .where(eq(generated1099sTable.subcontractorId, subcontractorId))
-      .orderBy(generated1099sTable.taxYear);
-
-    res.json(
-      records.map(r => ({
-        id: r.id,
-        taxYear: r.taxYear,
-        totalPaid: parseFloat(String(r.totalPaid)),
-        generatedAt: r.generatedAt,
-        hasPdf: !!r.pdfData,
-      }))
-    );
-  } catch (err) {
-    console.error("1099 portal list error:", err);
-    res.status(500).json({ error: "Failed to fetch 1099 records" });
   }
 });
 

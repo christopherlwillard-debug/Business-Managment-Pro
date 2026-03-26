@@ -33,7 +33,7 @@ export default function Subcontractors() {
   const [report1099Year, setReport1099Year] = useState(new Date().getFullYear());
   const [generating1099, setGenerating1099] = useState<number | null>(null);
   const [expanded1099, setExpanded1099] = useState<number | null>(null);
-  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [issuingAll, setIssuingAll] = useState(false);
 
   const { data: report1099Data, isLoading: report1099Loading, refetch: refetch1099 } = useQuery({
     queryKey: ["1099-report", report1099Year],
@@ -128,32 +128,49 @@ export default function Subcontractors() {
     }
   }
 
-  async function downloadAll1099s() {
+  async function issueAll1099s() {
     if (!report1099Data?.subcontractors) return;
-    const generated = report1099Data.subcontractors.filter((s: any) => s.status === "generated" && s.existingRecord);
-    if (generated.length === 0) return;
-    setDownloadingAll(true);
+    const pending = report1099Data.subcontractors.filter((s: any) => s.requires1099 && s.status !== "generated");
+    if (pending.length === 0) return;
+    setIssuingAll(true);
     try {
-      for (const sub of generated) {
-        const rec = sub.existingRecord;
-        const res = await fetch(`${BASE}/api/1099s/download/${rec.id}`);
-        if (!res.ok) continue;
-        const data = await res.json();
-        if (!data.pdfData) continue;
-        const bytes = Uint8Array.from(atob(data.pdfData), (c: string) => c.charCodeAt(0));
-        const blob = new Blob([bytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `1099-NEC-${sub.w9LegalName || sub.name}-${data.taxYear}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-        await new Promise<void>(resolve => setTimeout(resolve, 300));
+      for (const sub of pending) {
+        const payer = report1099Data.payerSettings ?? {};
+        const blob = generate1099NecPdf({
+          taxYear: report1099Year,
+          payer: {
+            name: payer.companyName || "Contractor",
+            address: payer.companyAddress,
+            city: payer.companyCity,
+            state: payer.companyState,
+            zip: payer.companyZip,
+            phone: payer.companyPhone,
+            ein: payer.ein,
+          },
+          payee: {
+            name: sub.w9LegalName || sub.name,
+            address: sub.w9Address,
+            city: sub.w9City,
+            state: sub.w9State,
+            zip: sub.w9Zip,
+            tinType: sub.w9TaxIdType,
+            tinLastFour: sub.w9TaxIdLastFour ?? null,
+          },
+          nonemployeeCompensation: sub.totalQualifying,
+        });
+        const arrayBuffer = await blob.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        await fetch(`${BASE}/api/1099s/generate/${sub.subcontractorId}?year=${report1099Year}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ totalPaid: sub.totalQualifying, pdfData: base64 }),
+        });
       }
+      refetch1099();
     } catch (err) {
       console.error(err);
     } finally {
-      setDownloadingAll(false);
+      setIssuingAll(false);
     }
   }
 
@@ -829,17 +846,17 @@ export default function Subcontractors() {
 
             <div className="px-6 py-4 border-t border-border bg-muted/30 flex justify-between items-center gap-3">
               <p className="text-xs text-muted-foreground flex-1">
-                Generated PDFs are available for subcontractors to download from their portal. Qualifying payments exclude credit card and third-party app payments.
+                Generated PDFs are available for subcontractors to download from their portal. All subcontractor payments count toward the $2,000 OBBBA 2026 reporting threshold.
               </p>
               <div className="flex items-center gap-2 flex-shrink-0">
-                {report1099Data?.subcontractors?.some((s: any) => s.status === "generated") && (
+                {report1099Data?.subcontractors?.some((s: any) => s.requires1099 && s.status !== "generated") && (
                   <button
-                    onClick={downloadAll1099s}
-                    disabled={downloadingAll}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    onClick={issueAll1099s}
+                    disabled={issuingAll}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
                   >
-                    {downloadingAll ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                    Download All
+                    {issuingAll ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCheck className="w-3 h-3" />}
+                    Issue All
                   </button>
                 )}
                 <button
