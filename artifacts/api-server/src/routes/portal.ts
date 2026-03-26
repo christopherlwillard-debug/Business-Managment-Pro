@@ -503,9 +503,22 @@ tokenRouter.post("/upload", portalUpload.single("file"), async (req, res) => {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    res.json({ url: `/api/uploads/${req.file.filename}` });
+    // Return a portal-scoped URL so receipts are served through PIN-authenticated route
+    res.json({ url: `/api/portal/${req.params.token}/uploads/${req.file.filename}` });
   } catch (err) {
     res.status(500).json({ error: "Failed to upload file" });
+  }
+});
+
+// Serve portal receipt files — gated by requirePinSession (applied to all tokenRouter routes)
+tokenRouter.get("/uploads/:filename", async (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename); // prevent path traversal
+    const filePath = path.join(portalUploadsDir, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File not found" });
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to serve file" });
   }
 });
 

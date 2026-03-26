@@ -39,11 +39,11 @@ router.use(authRouter);
 // Portal routes are public — token-based auth is handled inside the router
 router.use("/portal", portalRouter);
 
-// Serve uploaded files (receipts, logos, etc.) — publicly accessible by URL (no directory listing, random filenames)
-router.use("/uploads", express.static(path.resolve("uploads")));
-
 // All other routes require a valid session
 router.use(requireAuth);
+
+// Serve uploaded files (receipts, logos, etc.) — behind auth
+router.use("/uploads", express.static(path.resolve("uploads")));
 
 router.use("/clients", clientsRouter);
 router.use("/jobs", jobsRouter);
