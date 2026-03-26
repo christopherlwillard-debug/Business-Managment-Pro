@@ -361,8 +361,7 @@ tokenRouter.get("/tax-report", async (req, res) => {
       ),
     ]);
 
-    const rate = await getRate();
-    const grossIncome = parseFloat(sub.ytdPayments ?? "0");
+    const [rate, grossIncome] = await Promise.all([getRate(), computeYtd(sub.id, year)]);
 
     const expensesByCategory: Record<string, number> = {};
     let totalExpenses = 0;
