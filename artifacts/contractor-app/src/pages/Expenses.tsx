@@ -1208,13 +1208,17 @@ export default function Expenses() {
                               className="w-full pl-5 pr-2 py-1 text-xs text-right rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-center">
+                        <td className="px-3 py-2 space-y-1">
                           {exp.receiptUrl ? (
                             <a href={exp.receiptUrl} target="_blank" rel="noreferrer"
                               className="text-xs text-primary hover:underline flex items-center gap-1 justify-center">
                               <ExternalLink className="w-3 h-3" />View
                             </a>
                           ) : <span className="text-xs text-muted-foreground italic">No receipt</span>}
+                          <input type="text" value={editingRow.notes}
+                            onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
+                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
+                            placeholder="Notes" />
                         </td>
                         <td className="px-3 py-2 text-center">
                           <div className="flex items-center justify-center gap-1.5">

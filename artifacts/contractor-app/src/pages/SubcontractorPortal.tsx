@@ -828,10 +828,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // ─── Portal Vendor Combobox ───────────────────────────────────────────────────
-function PortalVendorCombobox({ token: _token, value, onChange }: { token: string; value: string; onChange: (v: string) => void }) {
+function PortalVendorCombobox({ token, value, onChange }: { token: string; value: string; onChange: (v: string) => void }) {
   const { data: vendors = [] } = useQuery<any[]>({
-    queryKey: ["vendors"],
-    queryFn: () => apiFetch("/vendors"),
+    queryKey: ["portal-vendors", token],
+    queryFn: () => apiFetch(`/portal/${token}/vendors`),
     staleTime: 60_000,
   });
   const [open, setOpen] = useState(false);
