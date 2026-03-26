@@ -5,8 +5,17 @@ import { eq, and, asc } from "drizzle-orm";
 
 const router = Router();
 
+const VALID_RECURRENCES = ["one-time", "monthly", "quarterly", "annual"] as const;
+
 function userId(req: Request): string {
   return (req.user as any)?.id as string;
+}
+
+function validateRecurrence(val: unknown): string {
+  if (typeof val === "string" && (VALID_RECURRENCES as readonly string[]).includes(val)) {
+    return val;
+  }
+  return "annual";
 }
 
 // ── GET or auto-create the single agent record for this user ──────────────────
@@ -120,7 +129,7 @@ router.post("/tasks", async (req, res) => {
       .values({
         registeredAgentId: agent.id,
         title: title.trim(),
-        recurrence: recurrence ?? "annual",
+        recurrence: validateRecurrence(recurrence),
         notes: notes ?? null,
       })
       .returning();
@@ -159,7 +168,7 @@ router.put("/tasks/:id", async (req, res) => {
 
     const [task] = await db
       .update(registeredAgentTasksTable)
-      .set({ title: title.trim(), recurrence, notes: notes ?? null })
+      .set({ title: title.trim(), recurrence: validateRecurrence(recurrence), notes: notes ?? null })
       .where(eq(registeredAgentTasksTable.id, taskId))
       .returning();
 
