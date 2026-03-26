@@ -1,10 +1,27 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { computeYtd } from "./subcontractors";
+
+const portalUploadsDir = path.resolve("uploads");
+if (!fs.existsSync(portalUploadsDir)) fs.mkdirSync(portalUploadsDir, { recursive: true });
+
+const portalUpload = multer({
+  storage: multer.diskStorage({
+    destination: portalUploadsDir,
+    filename: (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${unique}${path.extname(file.originalname)}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 const router = Router();
 
@@ -456,16 +473,39 @@ tokenRouter.post("/expenses", async (req, res) => {
   try {
     const sub = await getSubByToken(req.params.token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
-    const { description, amount, category, date, vendor, jobId, notes } = req.body;
+    const { description, amount, category, date, vendor, jobId, notes, receiptUrl } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
     const [expense] = await db.insert(expensesTable).values({
       description, amount: amount.toString(), category, date, vendor, jobId: jobId || null, notes,
+      receiptUrl: receiptUrl || null,
       subcontractorId: sub.id,
     }).returning();
     res.status(201).json({ ...expense, amount: parseFloat(expense.amount) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create expense" });
+  }
+});
+
+tokenRouter.get("/vendors", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    const vendors = await db.select().from(vendorsTable).orderBy(vendorsTable.name);
+    res.json(vendors);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch vendors" });
+  }
+});
+
+tokenRouter.post("/upload", portalUpload.single("file"), async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    res.json({ url: `/api/uploads/${req.file.filename}` });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to upload file" });
   }
 });
 

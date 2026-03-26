@@ -1018,16 +1018,18 @@ function JobFormDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
-      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
-        <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400" />
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
+      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0 rounded-t-2xl" />
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex items-center justify-between px-6 pt-5 pb-4 flex-shrink-0">
             <h2 className="text-lg font-bold text-foreground">{editJob ? "Edit Job" : "New Job"}</h2>
             <button type="button" onClick={() => onOpenChange(false)}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
+
+          <div className="flex-1 overflow-y-auto px-6 space-y-4 pb-2">
 
           {error && (
             <div className="px-4 py-2.5 bg-destructive/10 border border-destructive/20 rounded-xl text-sm text-destructive flex items-center gap-2">
@@ -1106,13 +1108,14 @@ function JobFormDialog({
             <SubcontractorPicker subcontractors={subcontractors} selected={subIds} onChange={setSubIds} />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Est. Amount</label>
-              <input type="number" min="0" step="0.01"
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                value={form.estimatedAmount} onChange={e => setField("estimatedAmount", e.target.value)} />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Est. Amount</label>
+            <input type="number" min="0" step="0.01"
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={form.estimatedAmount} onChange={e => setField("estimatedAmount", e.target.value)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Start Date</label>
               <input type="date"
@@ -1120,7 +1123,9 @@ function JobFormDialog({
                 value={form.startDate} onChange={e => setField("startDate", e.target.value)} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">End Date</label>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                End Date <span className="text-[10px] font-normal text-muted-foreground">(optional)</span>
+              </label>
               <input type="date"
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                 value={form.endDate} onChange={e => setField("endDate", e.target.value)} />
@@ -1134,7 +1139,9 @@ function JobFormDialog({
               value={form.notes} onChange={e => setField("notes", e.target.value)} />
           </div>
 
-          <div className="flex gap-3 pt-2">
+          </div>
+
+          <div className="flex gap-3 px-6 py-4 border-t border-border/50 flex-shrink-0">
             <button type="button" onClick={() => onOpenChange(false)}
               className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
               Cancel

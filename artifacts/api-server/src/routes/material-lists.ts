@@ -7,7 +7,7 @@ import {
   invoicesTable,
   settingsTable,
 } from "@workspace/db/schema";
-import { eq, and, inArray, SQL } from "drizzle-orm";
+import { eq, and, inArray, desc, SQL } from "drizzle-orm";
 
 const router = Router();
 
@@ -294,7 +294,8 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
     const [existingInvoice] = await db
       .select()
       .from(invoicesTable)
-      .where(and(eq(invoicesTable.jobId, list.jobId), eq(invoicesTable.status, "draft")))
+      .where(eq(invoicesTable.jobId, list.jobId))
+      .orderBy(desc(invoicesTable.id))
       .limit(1);
 
     const lineItemEntry: Omit<LineItem, "id"> = {

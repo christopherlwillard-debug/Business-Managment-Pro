@@ -10,7 +10,7 @@ import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
-  RotateCcw, Pause, Play, ChevronUp,
+  RotateCcw, Pause, Play, ChevronUp, Pencil,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
@@ -131,6 +131,22 @@ function useDeleteExpense() {
     mutationFn: async (id: number) => {
       const res = await fetch(`${API}/expenses/${id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) throw new Error("Failed to delete expense");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/expenses"] }),
+  });
+}
+
+function useUpdateExpense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+      const res = await fetch(`${API}/expenses/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update expense");
+      return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/expenses"] }),
   });
@@ -336,6 +352,131 @@ function ExpenseDeleteConfirm({
             className="px-5 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
             <Trash2 className="w-3.5 h-3.5" />
             {deleting ? "Deleting…" : "Yes, Delete Permanently"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Expense Edit Dialog ──────────────────────────────────────────────────────
+function ExpenseEditDialog({
+  expense, jobs, onClose,
+}: {
+  expense: any; jobs: any[]; onClose: () => void;
+}) {
+  const updateExpense = useUpdateExpense();
+  const saveVendor    = useSaveVendor();
+  const [vendor, setVendor] = useState(expense.vendor ?? "");
+  const [category, setCategory] = useState(expense.category ?? CATEGORIES[0]);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    const fd = new FormData(e.currentTarget);
+    try {
+      await updateExpense.mutateAsync({
+        id: expense.id,
+        data: {
+          description: fd.get("description") as string,
+          amount:      parseFloat(fd.get("amount") as string),
+          date:        fd.get("date") as string,
+          category,
+          vendor:      vendor.trim() || undefined,
+          notes:       (fd.get("notes") as string) || undefined,
+          jobId:       fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
+          receiptUrl:  expense.receiptUrl,
+        },
+      });
+      if (vendor.trim()) {
+        await saveVendor.mutateAsync(vendor.trim()).catch(() => {});
+      }
+      onClose();
+    } catch {
+      setError("Failed to save. Please try again.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0 rounded-t-2xl" />
+        <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 border-b border-border/50">
+          <div className="flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-amber-500" />
+            <span className="font-bold text-foreground">Edit Expense</span>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <form id="edit-expense-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Amount *</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
+                <input name="amount" type="number" step="0.01" required min="0"
+                  defaultValue={expense.amount}
+                  className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Date *</label>
+              <input name="date" type="date" required defaultValue={expense.date}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Description *</label>
+            <input name="description" required defaultValue={expense.description}
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Vendor</label>
+              <VendorCombobox value={vendor} onChange={setVendor} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Category *</label>
+              <select value={category} onChange={e => setCategory(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Allocate to Job <span className="font-normal text-muted-foreground">(Optional)</span></label>
+            <select name="jobId" defaultValue={expense.jobId ?? ""}
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
+              <option value="">— None (Overhead) —</option>
+              {jobs?.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Notes</label>
+            <input name="notes" defaultValue={expense.notes ?? ""}
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="Optional notes" />
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </form>
+        <div className="px-5 py-4 border-t border-border/50 flex justify-end gap-3 flex-shrink-0">
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">
+            Cancel
+          </button>
+          <button type="submit" form="edit-expense-form" disabled={updateExpense.isPending}
+            className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md flex items-center gap-2">
+            <Pencil className="w-3.5 h-3.5" />
+            {updateExpense.isPending ? "Saving…" : "Save Changes"}
           </button>
         </div>
       </div>
@@ -910,6 +1051,7 @@ export default function Expenses() {
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
   const [viewExpense,  setViewExpense]                = useState<any | null>(null);
+  const [editTarget,   setEditTarget]                 = useState<any | null>(null);
   const [deleteTarget, setDeleteTarget]               = useState<any | null>(null);
   const [deleting,     setDeleting]                   = useState(false);
   const [highlightedTemplateId, setHighlightedTemplateId] = useState<number | null>(null);
@@ -1082,6 +1224,10 @@ export default function Expenses() {
                           className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
                           <Eye className="w-4 h-4" />
                         </button>
+                        <button onClick={() => setEditTarget(exp)}
+                          className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
+                          <Pencil className="w-4 h-4" />
+                        </button>
                         <button onClick={() => setDeleteTarget(exp)}
                           className="text-muted-foreground hover:text-destructive transition-colors" title="Delete expense">
                           <Trash2 className="w-4 h-4" />
@@ -1226,6 +1372,15 @@ export default function Expenses() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Expense Edit Dialog */}
+      {editTarget && (
+        <ExpenseEditDialog
+          expense={editTarget}
+          jobs={jobs ?? []}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
 
       {/* Expense View Modal */}
       {viewExpense && (

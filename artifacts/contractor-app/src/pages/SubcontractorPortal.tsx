@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -6,7 +6,7 @@ import {
   HardHat, Briefcase, Receipt, Navigation, DollarSign, Settings,
   Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
   Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
-  Lock, KeyRound, Home,
+  Lock, KeyRound, Home, Store, ChevronDown, ImageIcon, Upload,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -827,6 +827,72 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// ─── Portal Vendor Combobox ───────────────────────────────────────────────────
+function PortalVendorCombobox({ token, value, onChange }: { token: string; value: string; onChange: (v: string) => void }) {
+  const { data: vendors = [] } = useQuery<any[]>({
+    queryKey: ["portal-vendors", token],
+    queryFn: () => apiFetch(`/portal/${token}/vendors`),
+    staleTime: 60_000,
+  });
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropRef  = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setInput(value); }, [value]);
+
+  const suggestions = input.trim()
+    ? vendors.filter((v: any) => v.name.toLowerCase().includes(input.toLowerCase()))
+    : vendors;
+
+  const isNew = input.trim() !== "" && !vendors.some((v: any) => v.name.toLowerCase() === input.trim().toLowerCase());
+
+  function select(name: string) { setInput(name); onChange(name); setOpen(false); }
+  function handleBlur(e: React.FocusEvent) {
+    if (dropRef.current?.contains(e.relatedTarget as Node)) return;
+    setOpen(false); onChange(input);
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        <input ref={inputRef} type="text" autoComplete="off"
+          className="w-full h-10 pl-8 pr-8 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          placeholder="e.g. Home Depot"
+          value={input}
+          onChange={e => { setInput(e.target.value); setOpen(true); onChange(e.target.value); }}
+          onFocus={() => setOpen(true)}
+          onBlur={handleBlur}
+        />
+        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground cursor-pointer"
+          onClick={() => { setOpen(o => !o); inputRef.current?.focus(); }} />
+      </div>
+      {open && (
+        <div ref={dropRef} className="absolute z-50 top-full mt-1 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden" style={{ maxHeight: 180, overflowY: "auto" }}>
+          {vendors.length === 0 && !input.trim() && (
+            <p className="px-3 py-2.5 text-xs text-muted-foreground italic">No saved vendors yet — type to add one</p>
+          )}
+          {suggestions.map((v: any) => (
+            <button key={v.id} type="button" onMouseDown={() => select(v.name)}
+              className="w-full text-left px-3 py-2.5 text-sm hover:bg-muted/60 flex items-center gap-2 border-b border-border/40 last:border-0">
+              <Store className="w-3.5 h-3.5 text-primary/50 flex-shrink-0" />
+              <span>{v.name}</span>
+            </button>
+          ))}
+          {isNew && (
+            <button type="button" onMouseDown={() => select(input.trim())}
+              className="w-full text-left px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary/5 flex items-center gap-2 border-t border-border/60">
+              <Plus className="w-3.5 h-3.5" />
+              Add "{input.trim()}" as new vendor
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Expenses Tab ─────────────────────────────────────────────────────────────
 function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   const qc = useQueryClient();
@@ -837,19 +903,49 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
 
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", jobId: "" });
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
   const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  const handleReceiptFile = useCallback((f: File) => {
+    setReceiptFile(f);
+    if (f.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = e => setReceiptPreview(e.target?.result as string);
+      reader.readAsDataURL(f);
+    } else {
+      setReceiptPreview(null);
+    }
+  }, []);
+
+  function resetForm() {
+    setForm({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", jobId: "" });
+    setReceiptFile(null);
+    setReceiptPreview(null);
+    if (receiptInputRef.current) receiptInputRef.current.value = "";
+  }
+
   const addMut = useMutation({
-    mutationFn: () => apiFetch(`/portal/${token}/expenses`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, amount: parseFloat(form.amount), jobId: form.jobId ? parseInt(form.jobId) : undefined }),
-    }),
+    mutationFn: async () => {
+      let receiptUrl: string | undefined;
+      if (receiptFile) {
+        const fd = new FormData();
+        fd.append("file", receiptFile);
+        const uploadRes = await apiFetch(`/portal/${token}/upload`, { method: "POST", body: fd });
+        receiptUrl = uploadRes?.url;
+      }
+      return apiFetch(`/portal/${token}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, amount: parseFloat(form.amount), jobId: form.jobId ? parseInt(form.jobId) : undefined, receiptUrl }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["portal-expenses", token] });
       qc.invalidateQueries({ queryKey: ["portal", token] });
       setFormOpen(false);
-      setForm({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", jobId: "" });
+      resetForm();
     },
   });
 
@@ -871,7 +967,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
           <p className="text-sm text-muted-foreground">Total: <strong className="text-foreground">{formatCurrency(total)}</strong></p>
         </div>
         <button
-          onClick={() => setFormOpen(!formOpen)}
+          onClick={() => { setFormOpen(!formOpen); if (formOpen) resetForm(); }}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-4 h-4" /> Add
@@ -880,7 +976,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
 
       {formOpen && (
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Description *"><Input value={form.description} onChange={e => setF("description", e.target.value)} placeholder="What was it for?" /></Field>
             <Field label="Amount *"><Input type="number" min="0" step="0.01" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="0.00" /></Field>
             <Field label="Date *"><Input type="date" value={form.date} onChange={e => setF("date", e.target.value)} /></Field>
@@ -889,7 +985,9 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
                 {EXPENSE_CATS.map(c => <option key={c}>{c}</option>)}
               </select>
             </Field>
-            <Field label="Vendor"><Input value={form.vendor} onChange={e => setF("vendor", e.target.value)} placeholder="Store/supplier" /></Field>
+            <Field label="Vendor">
+              <PortalVendorCombobox token={token} value={form.vendor} onChange={v => setF("vendor", v)} />
+            </Field>
             {jobs.length > 0 && (
               <Field label="Job">
                 <select value={form.jobId} onChange={e => setF("jobId", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
@@ -899,6 +997,34 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
               </Field>
             )}
           </div>
+
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Receipt <span className="font-normal">(optional)</span></p>
+            {receiptFile ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                {receiptPreview
+                  ? <img src={receiptPreview} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-emerald-200" />
+                  : <FileText className="w-8 h-8 text-emerald-600 flex-shrink-0" />
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-emerald-800 truncate">{receiptFile.name}</p>
+                  <p className="text-[10px] text-emerald-600">Ready to upload</p>
+                </div>
+                <button type="button" onClick={() => { setReceiptFile(null); setReceiptPreview(null); if (receiptInputRef.current) receiptInputRef.current.value = ""; }}
+                  className="p-1 rounded-full hover:bg-emerald-200 transition-colors">
+                  <X className="w-3.5 h-3.5 text-emerald-700" />
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => receiptInputRef.current?.click()}
+                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors">
+                <Upload className="w-4 h-4" /> Tap to attach receipt photo or PDF
+              </button>
+            )}
+            <input ref={receiptInputRef} type="file" accept="image/*,.pdf" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptFile(f); }} />
+          </div>
+
           <div className="flex gap-2 pt-1">
             <button
               onClick={() => addMut.mutate()}
@@ -907,7 +1033,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
             >
               {addMut.isPending ? "Saving…" : "Save Expense"}
             </button>
-            <button onClick={() => setFormOpen(false)} className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted"><X className="w-4 h-4" /></button>
+            <button onClick={() => { setFormOpen(false); resetForm(); }} className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted"><X className="w-4 h-4" /></button>
           </div>
         </div>
       )}
@@ -920,7 +1046,15 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
       ) : (
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm divide-y divide-border/50">
           {(expenses as any[]).map(e => (
-            <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+            <div key={e.id} className="flex items-start gap-3 px-4 py-3">
+              {e.receiptUrl && (
+                <a href={e.receiptUrl.startsWith("http") ? e.receiptUrl : `${BASE}${e.receiptUrl}`} target="_blank" rel="noreferrer" className="flex-shrink-0">
+                  {/\.(jpg|jpeg|png|gif|webp)/i.test(e.receiptUrl)
+                    ? <img src={e.receiptUrl.startsWith("http") ? e.receiptUrl : `${BASE}${e.receiptUrl}`} alt="Receipt" className="w-10 h-10 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity" />
+                    : <div className="w-10 h-10 rounded-lg border border-border bg-muted flex items-center justify-center"><FileText className="w-4 h-4 text-muted-foreground" /></div>
+                  }
+                </a>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{e.description}</p>
                 <p className="text-xs text-muted-foreground">{e.date} · {e.category}{e.vendor ? ` · ${e.vendor}` : ""}</p>
