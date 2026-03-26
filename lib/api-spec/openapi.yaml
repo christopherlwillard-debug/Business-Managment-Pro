@@ -1746,9 +1746,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/InvoiceLineItem"
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceAttachment"
+          nullable: true
         createdAt:
           type: string
       required: [id, invoiceNumber, status, issueDate, subtotal, total, createdAt]
+
+    InvoiceAttachment:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        size:
+          type: number
+          nullable: true
+      required: [name, url]
 
     InvoiceLineItem:
       type: object
@@ -1812,6 +1829,11 @@ components:
               unitPrice:
                 type: number
             required: [description, quantity, unitPrice]
+        attachments:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/InvoiceAttachment"
       required: [issueDate, status]
 
     TaxReportRow:
