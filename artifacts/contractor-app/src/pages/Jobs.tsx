@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, ReactNode } from "react";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, useListInvoices,
@@ -156,7 +156,7 @@ function JobDailyLogPanel({
       });
       setForm({ date: today, notes: "", workCompleted: "" });
       setPendingPhotos([]);
-      queryClient.invalidateQueries({ queryKey: ["listDailyLogs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-logs"] });
     } finally {
       setSubmitting(false);
     }
@@ -166,7 +166,7 @@ function JobDailyLogPanel({
     setDeletingId(id);
     try {
       await deleteLog.mutateAsync({ id });
-      queryClient.invalidateQueries({ queryKey: ["listDailyLogs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-logs"] });
     } finally {
       setDeletingId(null);
     }
@@ -650,9 +650,10 @@ function JobFormDialog({
 
 // ─── Delete Confirmation ───────────────────────────────────────────────────────
 function DeleteConfirm({
-  label, onConfirm, onCancel, deleting,
+  label, onConfirm, onCancel, deleting, details,
 }: {
   label: string; onConfirm: () => void; onCancel: () => void; deleting: boolean;
+  details?: ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -664,6 +665,11 @@ function DeleteConfirm({
         <div>
           <h3 className="font-bold text-foreground">Delete {label}?</h3>
           <p className="text-sm text-muted-foreground mt-1">This action cannot be undone.</p>
+          {details && (
+            <div className="mt-2 px-3 py-2 bg-destructive/5 border border-destructive/15 rounded-lg text-xs text-muted-foreground text-left">
+              {details}
+            </div>
+          )}
         </div>
         <div className="flex gap-3">
           <button onClick={onCancel}
@@ -835,6 +841,7 @@ export default function Jobs() {
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const [deleting, setDeleting]         = useState(false);
+  const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number } | null>(null);
 
   const [invoiceEditorOpen, setInvoiceEditorOpen] = useState(false);
   const [invoiceDraftData, setInvoiceDraftData]   = useState<InvoiceDraft | null>(null);
@@ -851,13 +858,22 @@ export default function Jobs() {
   function openNewJob() { setEditJob(null); setJobFormOpen(true); }
   function openEditJob(job: Job) { setEditJob(job); setJobFormOpen(true); }
 
+  async function openDeleteTarget(job: Job) {
+    setDeleteTarget(job);
+    setRelatedCounts(null);
+    try {
+      const res = await fetch(`${BASE}/api/jobs/${job.id}/related-counts`);
+      if (res.ok) setRelatedCounts(await res.json());
+    } catch { /* ignore */ }
+  }
+
   async function handleDeleteConfirmed() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
       await deleteJobMutation.mutateAsync({ id: deleteTarget.id });
       queryClient.invalidateQueries();
-    } finally { setDeleting(false); setDeleteTarget(null); }
+    } finally { setDeleting(false); setDeleteTarget(null); setRelatedCounts(null); }
   }
 
   async function handleMarkCompleted(job: Job) {
@@ -948,7 +964,7 @@ export default function Jobs() {
                   const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
                   return (
                     <JobCard key={job.id} job={job} onEdit={openEditJob}
-                      onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
+                      onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                       onMarkCompleted={handleMarkCompleted}
                       logCount={jobLogs.length} lastLogDate={lastLog?.date} />
                   );
@@ -972,7 +988,7 @@ export default function Jobs() {
                   const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
                   return (
                     <JobCard key={job.id} job={job} onEdit={openEditJob}
-                      onDelete={j => setDeleteTarget(j)} onReviewInvoice={handleReviewInvoice}
+                      onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                       onMarkCompleted={handleMarkCompleted}
                       logCount={jobLogs.length} lastLogDate={lastLog?.date} />
                   );
@@ -1026,8 +1042,20 @@ export default function Jobs() {
         <DeleteConfirm
           label={`job "${deleteTarget.title}"`}
           onConfirm={handleDeleteConfirmed}
-          onCancel={() => setDeleteTarget(null)}
+          onCancel={() => { setDeleteTarget(null); setRelatedCounts(null); }}
           deleting={deleting}
+          details={relatedCounts ? (
+            (() => {
+              const parts: string[] = [];
+              if (relatedCounts.dailyLogs > 0) parts.push(`${relatedCounts.dailyLogs} daily log${relatedCounts.dailyLogs !== 1 ? "s" : ""}`);
+              if (relatedCounts.expenses > 0) parts.push(`${relatedCounts.expenses} expense${relatedCounts.expenses !== 1 ? "s" : ""}`);
+              if (relatedCounts.mileageLogs > 0) parts.push(`${relatedCounts.mileageLogs} mileage entr${relatedCounts.mileageLogs !== 1 ? "ies" : "y"}`);
+              if (relatedCounts.recurringExpenses > 0) parts.push(`${relatedCounts.recurringExpenses} recurring expense${relatedCounts.recurringExpenses !== 1 ? "s" : ""}`);
+              return parts.length > 0
+                ? `This will also permanently delete ${parts.join(", ")} linked to this job.`
+                : "No additional records are linked to this job.";
+            })()
+          ) : undefined}
         />
       )}
     </div>

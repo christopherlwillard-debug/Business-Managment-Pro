@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
@@ -260,9 +260,35 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+router.get("/:id/related-counts", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [dailyLogs, expenses, mileageLogs, recurringExpenses] = await Promise.all([
+      db.select().from(dailyLogsTable).where(eq(dailyLogsTable.jobId, id)),
+      db.select().from(expensesTable).where(eq(expensesTable.jobId, id)),
+      db.select().from(mileageLogsTable).where(eq(mileageLogsTable.jobId, id)),
+      db.select().from(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id)),
+    ]);
+    res.json({
+      dailyLogs: dailyLogs.length,
+      expenses: expenses.length,
+      mileageLogs: mileageLogs.length,
+      recurringExpenses: recurringExpenses.length,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch related counts" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    await db.delete(dailyLogsTable).where(eq(dailyLogsTable.jobId, id));
+    await db.delete(mileageLogsTable).where(eq(mileageLogsTable.jobId, id));
+    await db.delete(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id));
+    await db.delete(expensesTable).where(eq(expensesTable.jobId, id));
+    await db.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id));
     await db.delete(jobsTable).where(eq(jobsTable.id, id));
     res.status(204).send();
   } catch (err) {
