@@ -1224,12 +1224,19 @@ function TaxCalendarTab({ year }: { year: number }) {
   });
 
   const allEntries: UnifiedEntry[] = [...kyEntries, ...ciEntries].sort((a, b) => {
-    const so = STATUS_SORT_ORDER[a.unifiedStatus] - STATUS_SORT_ORDER[b.unifiedStatus];
-    if (so !== 0) return so;
-    if (!a.dueDateObj && !b.dueDateObj) return 0;
-    if (!a.dueDateObj) return 1;
-    if (!b.dueDateObj) return -1;
-    return a.dueDateObj.getTime() - b.dueDateObj.getTime();
+    // Primary: due date ascending (null/no-date entries pushed to end)
+    const aHasDate = a.dueDateObj !== null;
+    const bHasDate = b.dueDateObj !== null;
+    if (aHasDate && bHasDate) {
+      const dateDiff = a.dueDateObj!.getTime() - b.dueDateObj!.getTime();
+      if (dateDiff !== 0) return dateDiff;
+    } else if (aHasDate && !bHasDate) {
+      return -1;
+    } else if (!aHasDate && bHasDate) {
+      return 1;
+    }
+    // Secondary tiebreaker: status order (overdue before due-soon before upcoming, etc.)
+    return STATUS_SORT_ORDER[a.unifiedStatus] - STATUS_SORT_ORDER[b.unifiedStatus];
   });
 
   // Summary tile counts
