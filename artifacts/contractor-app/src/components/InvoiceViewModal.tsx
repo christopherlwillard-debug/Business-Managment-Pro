@@ -282,7 +282,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                         rel="noopener noreferrer"
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 hover:bg-amber-100 transition-colors max-w-[200px]"
                       >
-                        <Paperclip className="w-3 h-3 flex-shrink-0" />
+                        <Paperclip className="w-3 h-3 flex-shrink-0 print-hide" />
                         <span className="truncate">{att.name}</span>
                       </a>
                     ))}

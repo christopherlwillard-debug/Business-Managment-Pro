@@ -172,7 +172,16 @@
   .invoice-print-area p.print-value { display: block !important; }
   .invoice-print-area a.print-value { display: inline-flex !important; }
   .invoice-print-area .print-hide { display: none !important; }
-  @page { size: letter portrait; margin: 0.5in; }
+  /* Attachment links: show full filename without truncation */
+  .invoice-print-area a[href] {
+    max-width: none !important;
+  }
+  .invoice-print-area a[href] span {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+  }
+  @page { size: letter portrait; margin: 0.6in; }
 }
 
 /* Custom Scrollbar for a premium feel */
