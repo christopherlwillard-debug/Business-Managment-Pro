@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import {
   useListMaterials,
   useCreateMaterial,
@@ -6,11 +6,12 @@ import {
   useDeleteMaterial,
   type Material,
   useGetSettings,
+  type AppSettings,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import {
   Package, Plus, Search, Pencil, Trash2, X, Check,
-  ChevronRight, ShoppingCart, Printer, Filter,
+  ShoppingCart, Printer, Filter,
   AlertTriangle, ArrowLeft,
 } from "lucide-react";
 
@@ -64,6 +65,7 @@ export default function Materials() {
     includeInactive: showInactive,
   });
   const { data: settings } = useGetSettings();
+  const s = (settings ?? {}) as AppSettings;
 
   const createMaterial = useCreateMaterial();
   const updateMaterial = useUpdateMaterial();
@@ -137,7 +139,6 @@ export default function Materials() {
     !quoteSearch || m.name.toLowerCase().includes(quoteSearch.toLowerCase())
   );
 
-  const s = (settings as any) ?? {};
   const companyName = s.companyName || "BuildPro";
   const companyAddress = [s.companyAddress, s.companyCity, s.companyState, s.companyZip].filter(Boolean).join(", ");
   const companyPhone = s.companyPhone || "";

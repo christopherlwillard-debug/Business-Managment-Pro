@@ -1,29 +1,37 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { materialsTable } from "@workspace/db/schema";
-import { eq, ilike, and, or } from "drizzle-orm";
+import { materialsTable, type Material } from "@workspace/db/schema";
+import { eq, ilike, and, or, type SQL } from "drizzle-orm";
 
 const router = Router();
+
+function fmt(row: Material) {
+  return {
+    ...row,
+    unitCost: parseFloat(row.unitCost ?? "0"),
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+  };
+}
 
 router.get("/", async (req, res) => {
   try {
     const { search, category, includeInactive } = req.query;
-    const conditions: any[] = [];
+    const conditions: SQL<unknown>[] = [];
 
     if (includeInactive !== "true") {
       conditions.push(eq(materialsTable.isActive, true));
     }
-    if (category) {
-      conditions.push(eq(materialsTable.category, category as string));
+    if (category && typeof category === "string") {
+      conditions.push(eq(materialsTable.category, category));
     }
-    if (search) {
+    if (search && typeof search === "string") {
       const term = `%${search}%`;
       conditions.push(
         or(
           ilike(materialsTable.name, term),
           ilike(materialsTable.description, term),
           ilike(materialsTable.category, term)
-        )
+        ) as SQL<unknown>
       );
     }
 
@@ -42,7 +50,14 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, description, unit, unitCost, category, isActive } = req.body;
+    const { name, description, unit, unitCost, category, isActive } = req.body as {
+      name: string;
+      description?: string;
+      unit?: string;
+      unitCost?: string | number;
+      category?: string;
+      isActive?: boolean;
+    };
     if (!name) return res.status(400).json({ error: "Name is required" });
 
     const [row] = await db
@@ -51,7 +66,7 @@ router.post("/", async (req, res) => {
         name,
         description: description || null,
         unit: unit || "ea",
-        unitCost: (parseFloat(unitCost) || 0).toString(),
+        unitCost: (parseFloat(String(unitCost ?? 0)) || 0).toString(),
         category: category || null,
         isActive: isActive !== false,
       })
@@ -81,7 +96,14 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, description, unit, unitCost, category, isActive } = req.body;
+    const { name, description, unit, unitCost, category, isActive } = req.body as {
+      name: string;
+      description?: string;
+      unit?: string;
+      unitCost?: string | number;
+      category?: string;
+      isActive?: boolean;
+    };
     if (!name) return res.status(400).json({ error: "Name is required" });
 
     await db
@@ -90,7 +112,7 @@ router.put("/:id", async (req, res) => {
         name,
         description: description || null,
         unit: unit || "ea",
-        unitCost: (parseFloat(unitCost) || 0).toString(),
+        unitCost: (parseFloat(String(unitCost ?? 0)) || 0).toString(),
         category: category || null,
         isActive: isActive !== false,
       })
@@ -114,13 +136,5 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete material" });
   }
 });
-
-function fmt(row: any) {
-  return {
-    ...row,
-    unitCost: parseFloat(row.unitCost ?? "0"),
-    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
-  };
-}
 
 export default router;
