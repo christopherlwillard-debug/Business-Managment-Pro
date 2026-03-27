@@ -6,7 +6,7 @@ import { subcontractorsTable } from "./subcontractors";
 export const generated1099sTable = pgTable("generated_1099s", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
-  subcontractorId: integer("subcontractor_id").notNull().references(() => subcontractorsTable.id),
+  subcontractorId: integer("subcontractor_id").references(() => subcontractorsTable.id),
   taxYear: integer("tax_year").notNull(),
   totalPaid: numeric("total_paid", { precision: 12, scale: 2 }).notNull(),
   pdfData: text("pdf_data"), // base64-encoded PDF blob
