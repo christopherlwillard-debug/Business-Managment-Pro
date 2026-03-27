@@ -1,30 +1,35 @@
-const SHELL_CACHE = 'buildpro-shell-v1';
-const ASSET_CACHE = 'buildpro-assets-v1';
+// Derive base path from the registered scope so the SW works at any base URL.
+// e.g. scope "https://example.com/" → base "/"
+//      scope "https://example.com/contractor/" → base "/contractor/"
+const base = new URL(self.registration.scope).pathname; // ends with "/"
+
+const SHELL_CACHE  = 'buildpro-shell-v1';
+const ASSET_CACHE  = 'buildpro-assets-v1';
 
 // Static file extensions to cache at runtime (cache-first)
 const CACHEABLE_EXT = /\.(js|css|svg|png|jpg|jpeg|webp|woff2?|ico)(\?.*)?$/;
 
-// ── Install: pre-cache the app shell (HTML entry point only) ──────────────
+// ── Install: pre-cache the app shell entry point ───────────────────────────
 self.addEventListener('install', event => {
   self.skipWaiting();
-  // Skip aggressive caching on localhost so HMR keeps working
+  // Skip caching on localhost/dev hosts to avoid breaking HMR
   const isDev =
     self.location.hostname === 'localhost' ||
     self.location.hostname.endsWith('.replit.dev');
   if (isDev) return;
   event.waitUntil(
     caches.open(SHELL_CACHE)
-      .then(cache => cache.addAll(['/']))
+      .then(cache => cache.addAll([base]))
       .catch(() => {})
   );
 });
 
 // ── Activate: clean up old caches ─────────────────────────────────────────
 self.addEventListener('activate', event => {
-  const currentCaches = [SHELL_CACHE, ASSET_CACHE];
+  const current = [SHELL_CACHE, ASSET_CACHE];
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => !currentCaches.includes(k)).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => !current.includes(k)).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -36,10 +41,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
   // Skip API calls — always network
-  if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith(base + 'api/')) return;
 
-  // Hashed JS/CSS/image assets → cache-first (safe because filename hash changes on rebuild)
-  if (CACHEABLE_EXT.test(url.pathname) || url.pathname.startsWith('/assets/')) {
+  // Hashed JS/CSS/image assets → cache-first
+  // (safe because Vite content-hashes filenames, so stale entries are harmless)
+  if (
+    CACHEABLE_EXT.test(url.pathname) ||
+    url.pathname.startsWith(base + 'assets/')
+  ) {
     event.respondWith(
       caches.open(ASSET_CACHE).then(cache =>
         cache.match(event.request).then(cached => {
@@ -54,11 +63,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // HTML navigation → network-first with shell fallback for offline
+  // HTML navigation requests → network-first with cached shell fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request).catch(() =>
-        caches.match('/').then(r => r || Response.error())
+        caches.match(base).then(r => r || Response.error())
       )
     );
   }
@@ -68,11 +77,12 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push', event => {
   let data = { title: 'BuildPro', body: 'You have a new notification.' };
   try { data = event.data?.json() ?? data; } catch (_) {}
+  const iconUrl = self.location.origin + base + 'favicon.svg';
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: '/favicon.svg',
-      badge: '/favicon.svg',
+      icon: iconUrl,
+      badge: iconUrl,
       tag: data.tag ?? 'buildpro-push',
     })
   );
@@ -81,12 +91,13 @@ self.addEventListener('push', event => {
 // ── Notification click: focus or open the app ─────────────────────────────
 self.addEventListener('notificationclick', event => {
   event.notification.close();
+  const appUrl = self.location.origin + base;
   event.waitUntil(
     clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then(wins => {
-        const open = wins.find(w => w.url.startsWith(self.location.origin) && 'focus' in w);
-        return open ? open.focus() : clients.openWindow('/');
+        const open = wins.find(w => w.url.startsWith(appUrl) && 'focus' in w);
+        return open ? open.focus() : clients.openWindow(appUrl);
       })
   );
 });
