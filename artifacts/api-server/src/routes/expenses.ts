@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { expensesTable, jobsTable, subcontractorsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, isNull, or, sql } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -47,22 +47,15 @@ function buildExpenseQuery() {
 router.get("/", async (req, res) => {
   try {
     const { category, jobId, startDate, endDate } = req.query;
-    // Show contractor's own expenses AND sub-entered portal expenses (category != 'subcontractor').
-    // Exclude contractor->sub payment records (subcontractorId set + category='subcontractor')
-    // since those are already tracked via the 1099/payments flow.
-    const conditions: any[] = [
-      or(
-        isNull(expensesTable.subcontractorId),
-        sql`LOWER(${expensesTable.category}) != 'subcontractor'`
-      )!,
-    ];
+    // Show ALL expenses including subcontractor payment records so users can see and delete them.
+    const conditions: any[] = [];
     if (category) conditions.push(eq(expensesTable.category, category as string));
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
 
     const expenses = await buildExpenseQuery()
-      .where(and(...conditions))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(expensesTable.date);
 
     res.json(expenses.map(e => formatExpense(e, e.jobTitle, e.subcontractorName)));

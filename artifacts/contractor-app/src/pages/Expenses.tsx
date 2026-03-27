@@ -132,7 +132,10 @@ function useDeleteExpense() {
       const res = await fetch(`${API}/expenses/${id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) throw new Error("Failed to delete expense");
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/expenses"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+      qc.invalidateQueries({ queryKey: ["/api/subcontractors"] });
+    },
   });
 }
 
@@ -326,6 +329,7 @@ function ExpenseDeleteConfirm({
 }: {
   expense: any; onConfirm: () => void; onCancel: () => void; deleting: boolean;
 }) {
+  const isSubPayment = expense?.category?.toLowerCase() === "subcontractor" && expense?.subcontractorName;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
@@ -341,6 +345,11 @@ function ExpenseDeleteConfirm({
               {expense.vendor ? ` · ${expense.vendor}` : ""} will be{" "}
               <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
             </p>
+            {isSubPayment && (
+              <p className="text-xs text-indigo-600 mt-2 bg-indigo-50 rounded-lg px-2.5 py-1.5 border border-indigo-100">
+                This is a subcontractor payment for <strong>{expense.subcontractorName}</strong>. Deleting it will reduce their YTD total by <strong>${parseFloat(expense.amount ?? "0").toFixed(2)}</strong>.
+              </p>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
@@ -1146,6 +1155,11 @@ export default function Expenses() {
                           >
                             <RotateCcw className="w-2.5 h-2.5" /> Recurring ↓
                           </button>
+                        )}
+                        {(exp as any).subcontractorName && exp.category?.toLowerCase() === "subcontractor" && (
+                          <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-100 flex-shrink-0">
+                            <HardHat className="w-2.5 h-2.5" /> Sub Payment
+                          </span>
                         )}
                       </div>
                       {exp.vendor && (
