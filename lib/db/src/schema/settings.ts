@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, numeric, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -32,8 +32,8 @@ export const settingsTable = pgTable("settings", {
   smtpPass: text("smtp_pass"),
   smtpSecure: integer("smtp_secure").default(0),
   // Mileage tracking settings
-  mileageAutoTrack: boolean("mileage_auto_track").default(false),
-  mileageBatterySaving: boolean("mileage_battery_saving").default(false),
+  mileageAutoTrack: integer("mileage_auto_track").default(0),
+  mileageBatterySaving: integer("mileage_battery_saving").default(0),
   mileageDefaultClassification: text("mileage_default_classification").default("business"),
   mileageUnits: text("mileage_units").default("miles"),
   mileageAutoPauseMinutes: integer("mileage_auto_pause_minutes").default(5),

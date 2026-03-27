@@ -2,34 +2,33 @@
 set -e
 pnpm install --frozen-lockfile
 
-# Pre-push: idempotently align DB constraint names so drizzle-kit finds no diff
-# (renames users_email_key → users_email_unique if old name still exists)
+# Targeted pre-push fix: DB has mileage columns as boolean but schema expects integer.
+# Cast them to integer so drizzle-kit push-force does not fail on type mismatch.
 (cd lib/db && node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 pool.query(\`
-  DO \\\$\\\$
-  DECLARE
-    r RECORD;
-    new_name TEXT;
-  BEGIN
-    FOR r IN
-      SELECT conname, conrelid::regclass AS tablename
-      FROM pg_constraint
-      WHERE contype = 'u'
-        AND conname LIKE '%_key'
-        AND conrelid::regclass::text NOT LIKE 'pg\\_%'
-    LOOP
-      new_name := regexp_replace(r.conname, '_key\\\$', '_unique');
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = new_name) THEN
-        EXECUTE format(
-          'ALTER TABLE %s RENAME CONSTRAINT %I TO %I',
-          r.tablename, r.conname, new_name
-        );
-      END IF;
-    END LOOP;
+  DO \\\$\\\$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'settings'
+        AND column_name = 'mileage_auto_track'
+        AND data_type = 'boolean'
+    ) THEN
+      ALTER TABLE settings
+        ALTER COLUMN mileage_auto_track DROP DEFAULT,
+        ALTER COLUMN mileage_battery_saving DROP DEFAULT;
+      ALTER TABLE settings
+        ALTER COLUMN mileage_auto_track TYPE integer
+          USING (CASE WHEN mileage_auto_track THEN 1 ELSE 0 END),
+        ALTER COLUMN mileage_battery_saving TYPE integer
+          USING (CASE WHEN mileage_battery_saving THEN 1 ELSE 0 END);
+      ALTER TABLE settings
+        ALTER COLUMN mileage_auto_track SET DEFAULT 0,
+        ALTER COLUMN mileage_battery_saving SET DEFAULT 0;
+    END IF;
   END \\\$\\\$
-\`).then(() => { console.log('Constraint names aligned'); pool.end(); }).catch(e => { console.error('Pre-push error:', e.message); pool.end(); process.exit(1); });
+\`).then(() => { console.log('Mileage column types aligned'); pool.end(); }).catch(e => { console.error('Column align error:', e.message); pool.end(); process.exit(1); });
 ")
 
 pnpm --filter db push-force
@@ -45,7 +44,7 @@ pool.query('ALTER TABLE daily_logs ADD COLUMN IF NOT EXISTS author_name TEXT')
 ")
 
 # Idempotent backfill: migrate legacy jobs.subcontractor_id → job_subcontractors
-# This inserts any (job_id, subcontractor_id) pairs that don't already exist.
+# Uses WHERE NOT EXISTS instead of ON CONFLICT to avoid needing a PK constraint.
 (cd lib/db && node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
