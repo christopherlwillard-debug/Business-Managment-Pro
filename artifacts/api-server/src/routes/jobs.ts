@@ -194,9 +194,12 @@ router.get("/:id/invoice-draft", async (req, res) => {
       ? (await db.select().from(clientsTable).where(eq(clientsTable.id, job.clientId)))[0] ?? null
       : null;
 
+    const locationParts = [job.locationName, job.address, job.city, job.state].filter(Boolean);
+    const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
+    const lineItemDesc = `${job.title}${locationSuffix}`;
     const lineItems = job.estimatedAmount
-      ? [{ description: job.title, quantity: 1, unitPrice: job.estimatedAmount }]
-      : [{ description: job.title, quantity: 1, unitPrice: 0 }];
+      ? [{ description: lineItemDesc, quantity: 1, unitPrice: job.estimatedAmount }]
+      : [{ description: lineItemDesc, quantity: 1, unitPrice: 0 }];
 
     const draft = {
       clientId: job.clientId ?? null,

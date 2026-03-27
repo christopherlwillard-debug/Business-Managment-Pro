@@ -3,6 +3,16 @@ set -e
 pnpm install --frozen-lockfile
 pnpm --filter db push-force
 
+# Idempotent hotfix: ensure daily_logs.author_name column exists (added in Task #35,
+# migration failed on original post-merge run)
+node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE daily_logs ADD COLUMN IF NOT EXISTS author_name TEXT')
+  .then(() => { console.log('daily_logs.author_name ensured'); pool.end(); })
+  .catch(e => { console.error('author_name hotfix error:', e.message); pool.end(); });
+"
+
 # Idempotent backfill: migrate legacy jobs.subcontractor_id → job_subcontractors
 # This inserts any (job_id, subcontractor_id) pairs that don't already exist.
 node -e "
