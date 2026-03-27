@@ -560,6 +560,7 @@ export interface DailyLog {
   notes?: string | null;
   photoUrls: string[];
   materialListId?: number | null;
+  authorName?: string | null;
   createdAt: string;
 }
 

@@ -41,7 +41,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { jobId, date, weather, crewCount, workCompleted, issues, materialsUsed, hoursWorked, notes, photoUrls, materialListId } = req.body;
+    const { jobId, date, weather, crewCount, workCompleted, issues, materialsUsed, hoursWorked, notes, photoUrls, materialListId, authorName } = req.body;
     if (!date) return res.status(400).json({ error: "Date is required" });
 
     const [log] = await db.insert(dailyLogsTable).values({
@@ -52,6 +52,7 @@ router.post("/", async (req, res) => {
       notes,
       photoUrls: photoUrls ?? [],
       materialListId: materialListId || null,
+      authorName: authorName || null,
     }).returning();
 
     let jobTitle: string | null = null;

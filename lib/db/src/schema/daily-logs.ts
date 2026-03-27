@@ -17,6 +17,7 @@ export const dailyLogsTable = pgTable("daily_logs", {
   notes: text("notes"),
   photoUrls: jsonb("photo_urls").default("[]"),
   materialListId: integer("material_list_id").references(() => materialListsTable.id, { onDelete: "set null" }),
+  authorName: text("author_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

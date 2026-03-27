@@ -745,9 +745,16 @@ function JobDailyLogPanel({
               </div>
             ) : (
               sortedLogs.map((log: DailyLog) => (
-                <div key={log.id} className="rounded-xl border border-border/50 bg-background p-4 space-y-2.5">
+                <div key={log.id} className={`rounded-xl border p-4 space-y-2.5 ${log.authorName ? "border-amber-200 bg-amber-50/40" : "border-border/50 bg-background"}`}>
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-sm text-foreground">{formatDate(log.date)}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-semibold text-sm text-foreground">{formatDate(log.date)}</span>
+                      {log.authorName && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 uppercase tracking-wide">
+                          <HardHat className="w-2.5 h-2.5" /> {log.authorName}
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={() => handleDeleteLog(log.id)}
                       disabled={deletingId === log.id}

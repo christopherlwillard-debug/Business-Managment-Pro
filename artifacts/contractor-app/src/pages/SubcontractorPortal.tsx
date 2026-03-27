@@ -577,8 +577,204 @@ function PaymentsTab({ data }: { data: any }) {
   );
 }
 
+// ─── Portal Job Card ────────────────────────────────────────────────────────────
+function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; onCompleted: () => void }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
+
+  const [expanded, setExpanded] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const [materialListId, setMaterialListId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [done, setDone] = useState(job.status === "completed");
+
+  const { data: materialLists = [] } = useQuery<any[]>({
+    queryKey: ["portal-job-material-lists", token, job.id],
+    queryFn: () => apiFetch(`/portal/${token}/jobs/${job.id}/material-lists`),
+    enabled: expanded && !done,
+  });
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setPhotoError("Only image files are allowed."); return; }
+    setUploadingPhoto(true);
+    setPhotoError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json();
+      setPhotos(p => [...p, url]);
+    } catch {
+      setPhotoError("Photo upload failed. Please try again.");
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleComplete() {
+    if (!notes.trim()) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await apiFetch(`/portal/${token}/jobs/${job.id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notes: notes.trim(),
+          photoUrls: photos,
+          materialListId: materialListId ? parseInt(materialListId) : null,
+        }),
+      });
+      setDone(true);
+      qc.invalidateQueries({ queryKey: ["portal", token] });
+      onCompleted();
+    } catch (err: any) {
+      setSubmitError(err.message || "Failed to complete job.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const isCompleted = done || job.status === "completed";
+
+  return (
+    <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+      {/* Job header */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-foreground">{job.title}</p>
+            {(job.city || job.state) && <p className="text-xs text-muted-foreground mt-0.5">{[job.city, job.state].filter(Boolean).join(", ")}</p>}
+            {job.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{job.description}</p>}
+            {(job.startDate || job.endDate) && (
+              <p className="text-xs text-muted-foreground mt-1">{job.startDate}{job.endDate ? ` → ${job.endDate}` : ""}</p>
+            )}
+          </div>
+          <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex-shrink-0 ${
+            isCompleted ? "bg-blue-100 text-blue-700" :
+            job.status === "active" || job.status === "in_progress" ? "bg-emerald-100 text-emerald-700" :
+            "bg-muted text-muted-foreground"
+          }`}>{isCompleted ? "completed" : job.status?.replace("_", " ")}</span>
+        </div>
+
+        {/* Expand/collapse field notes section */}
+        {!isCompleted && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-amber-300 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors"
+          >
+            <PenLine className="w-3.5 h-3.5" />
+            <span className="flex-1 text-left">{expanded ? "Hide Field Notes" : "Add Field Notes & Complete"}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
+        )}
+
+        {isCompleted && (
+          <div className="mt-3 flex items-center gap-2 text-xs text-blue-700 font-semibold bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>Job completed — notes submitted to contractor</span>
+          </div>
+        )}
+      </div>
+
+      {/* Expandable field notes form */}
+      {expanded && !isCompleted && (
+        <div className="border-t border-border/50 bg-muted/20 p-4 space-y-4">
+          {/* Field notes textarea */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-muted-foreground">Field Notes <span className="text-destructive">*</span></label>
+            <textarea
+              rows={4}
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+              placeholder="Describe what was done at this job site…"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+            />
+          </div>
+
+          {/* Material list picker */}
+          {materialLists.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-muted-foreground">Select Material List (optional)</label>
+              <select
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                value={materialListId}
+                onChange={e => setMaterialListId(e.target.value)}
+              >
+                <option value="">None</option>
+                {materialLists.map((l: any) => (
+                  <option key={l.id} value={String(l.id)}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Photo upload */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-muted-foreground">Photos (optional)</label>
+            <div className="flex flex-wrap gap-2">
+              {photos.map((url, i) => (
+                <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border group">
+                  <img src={url.startsWith("/api") ? `${BASE}${url}` : url} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                    onClick={() => setPhotos(p => p.filter((_, j) => j !== i))}
+                  >
+                    <X className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingPhoto}
+                className="w-16 h-16 rounded-lg border-2 border-dashed border-border hover:border-amber-400 hover:bg-amber-50 transition-colors flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-amber-600 disabled:opacity-50"
+              >
+                {uploadingPhoto
+                  ? <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                  : <><Upload className="w-3.5 h-3.5" /><span className="text-[10px] font-medium">Add</span></>
+                }
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+            </div>
+            {photoError && <p className="text-xs text-destructive">{photoError}</p>}
+          </div>
+
+          {submitError && (
+            <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-xl">{submitError}</p>
+          )}
+
+          {/* Complete Job button */}
+          <button
+            onClick={handleComplete}
+            disabled={!notes.trim() || submitting}
+            className="w-full py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {submitting
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</>
+              : <><CheckCircle2 className="w-4 h-4" /> Complete Job</>
+            }
+          </button>
+          <p className="text-[10px] text-muted-foreground text-center">
+            Notes and photos will be sent to your contractor. This action cannot be undone.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Jobs Tab ─────────────────────────────────────────────────────────────────
-function JobsTab({ jobs }: { jobs: any[] }) {
+function JobsTab({ jobs, token, onJobCompleted }: { jobs: any[]; token: string; onJobCompleted: () => void }) {
   return (
     <div className="space-y-4">
       <div>
@@ -593,23 +789,7 @@ function JobsTab({ jobs }: { jobs: any[] }) {
       ) : (
         <div className="space-y-3">
           {jobs.map(job => (
-            <div key={job.id} className="bg-card border border-border rounded-2xl p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-foreground">{job.title}</p>
-                  {(job.city || job.state) && <p className="text-xs text-muted-foreground mt-0.5">{[job.city, job.state].filter(Boolean).join(", ")}</p>}
-                  {job.description && <p className="text-sm text-muted-foreground mt-1">{job.description}</p>}
-                  {(job.startDate || job.endDate) && (
-                    <p className="text-xs text-muted-foreground mt-1">{job.startDate} {job.endDate ? `→ ${job.endDate}` : ""}</p>
-                  )}
-                </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex-shrink-0 ${
-                  job.status === "active" || job.status === "in_progress" ? "bg-emerald-100 text-emerald-700" :
-                  job.status === "completed" ? "bg-blue-100 text-blue-700" :
-                  "bg-muted text-muted-foreground"
-                }`}>{job.status?.replace("_", " ")}</span>
-              </div>
-            </div>
+            <PortalJobCard key={job.id} job={job} token={token} onCompleted={onJobCompleted} />
           ))}
         </div>
       )}
@@ -1969,7 +2149,7 @@ export default function SubcontractorPortal() {
         {activeTab === "income_report" && features.includes("income_report") && (
           <IncomeReportTab token={token!} subName={subcontractor.name} />
         )}
-        {activeTab === "jobs" && features.includes("jobs") && <JobsTab jobs={jobs} />}
+        {activeTab === "jobs" && features.includes("jobs") && <JobsTab jobs={jobs} token={token!} onJobCompleted={() => { refetch(); qc.invalidateQueries({ queryKey: ["portal", token] }); }} />}
         {activeTab === "w9" && features.includes("w9") && (
           <W9Tab token={token!} sub={subcontractor} onSaved={() => { refetch(); qc.invalidateQueries({ queryKey: ["portal", token] }); }} />
         )}

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -804,6 +804,92 @@ tokenRouter.get("/1099s/:id/pdf", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch 1099 PDF" });
+  }
+});
+
+// Get material lists for a job (portal use: sub can view and select)
+tokenRouter.get("/jobs/:jobId/material-lists", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job ID" });
+
+    // Verify subcontractor is assigned to this job
+    const [junctionRow] = await db
+      .select()
+      .from(jobSubcontractorsTable)
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, sub.id)))
+      .limit(1);
+    const primaryJob = await db.select().from(jobsTable)
+      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.subcontractorId, sub.id))).limit(1);
+    if (!junctionRow && primaryJob.length === 0) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const lists = await db
+      .select()
+      .from(materialListsTable)
+      .where(eq(materialListsTable.jobId, jobId));
+
+    res.json(lists);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch material lists" });
+  }
+});
+
+// Complete a job from the portal — writes a daily log entry on the BMS job
+tokenRouter.post("/jobs/:jobId/complete", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job ID" });
+
+    // Verify this sub is assigned to the job
+    const [junctionRow] = await db
+      .select()
+      .from(jobSubcontractorsTable)
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, sub.id)))
+      .limit(1);
+    const primaryJobRows = await db.select().from(jobsTable)
+      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.subcontractorId, sub.id))).limit(1);
+    if (!junctionRow && primaryJobRows.length === 0) {
+      return res.status(403).json({ error: "You are not assigned to this job" });
+    }
+
+    const { notes, photoUrls, materialListId } = req.body;
+    if (!notes || !notes.trim()) {
+      return res.status(400).json({ error: "Field notes are required" });
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+
+    // Insert daily log attributed to this subcontractor
+    const [log] = await db.insert(dailyLogsTable).values({
+      jobId,
+      date: today,
+      workCompleted: notes.trim(),
+      notes: null,
+      photoUrls: Array.isArray(photoUrls) ? photoUrls : [],
+      materialListId: materialListId ? parseInt(materialListId) : null,
+      authorName: sub.name,
+    }).returning();
+
+    // Mark job as completed
+    await db.update(jobsTable)
+      .set({ status: "completed" })
+      .where(eq(jobsTable.id, jobId));
+
+    res.status(201).json({ success: true, logId: log.id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to complete job" });
   }
 });
 
