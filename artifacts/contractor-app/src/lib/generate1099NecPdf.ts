@@ -78,7 +78,7 @@ export function generate1099NecPdf(data: Form1099NecData): Blob {
   ].filter(Boolean).join("\n");
 
   doc.setDrawColor(100);
-  doc.rect(col1, y, col1w, 28);
+  doc.rect(col1, y, col1w, 42);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
   doc.setTextColor(80);
@@ -141,7 +141,7 @@ export function generate1099NecPdf(data: Form1099NecData): Blob {
   recipLines.forEach((line, i) => doc.text(line, col2 + 1.5, y + 8 + i * 4.5));
 
   // ── Boxes row ─────────────────────────────────────────────────────────────
-  y = 26 + 28;
+  y = 26 + 42;
 
   const boxH = 16;
   const boxW = formW / 4;

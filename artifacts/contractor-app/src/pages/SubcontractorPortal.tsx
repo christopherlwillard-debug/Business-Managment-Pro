@@ -570,7 +570,7 @@ function PaymentsTab({ data }: { data: any }) {
       </div>
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
         <p className="text-xs text-amber-800">
-          <strong>2026 Rule (OBBBA):</strong> If you receive $2,000 or more in qualifying payments (cash, check, or ACH) from a single contractor in a tax year, they are required to file a 1099-NEC. Credit card and third-party app payments do not count toward this threshold.
+          <strong>2026 Rule (OBBBA):</strong> If you receive $2,000 or more in total payments from a single contractor in a tax year, they are required to file a 1099-NEC. All payment types count toward this threshold.
         </p>
       </div>
     </div>
