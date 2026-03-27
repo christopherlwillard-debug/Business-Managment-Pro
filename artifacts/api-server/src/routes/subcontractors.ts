@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, settingsTable, expensesTable, paymentsTable } from "@workspace/db/schema";
+import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 const router = Router();
@@ -153,7 +153,12 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(subcontractorsTable).where(eq(subcontractorsTable.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id);
+    await db.update(expensesTable).set({ subcontractorId: null }).where(eq(expensesTable.subcontractorId, id));
+    await db.update(paymentsTable).set({ subcontractorId: null }).where(eq(paymentsTable.subcontractorId, id));
+    await db.update(mileageLogsTable).set({ subcontractorId: null }).where(eq(mileageLogsTable.subcontractorId, id));
+    await db.delete(generated1099sTable).where(eq(generated1099sTable.subcontractorId, id));
+    await db.delete(subcontractorsTable).where(eq(subcontractorsTable.id, id));
     res.status(204).send();
   } catch (err) {
     console.error(err);

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useListSubcontractors, useCreateSubcontractor, useDeleteSubcontractor } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import {
   HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy,
@@ -17,6 +18,7 @@ export default function Subcontractors() {
   const { data: subs, isLoading, refetch } = useListSubcontractors();
   const createMutation = useCreateSubcontractor();
   const deleteMutation = useDeleteSubcontractor();
+  const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string; hasLinkedRecords: boolean } | null>(null);
@@ -322,6 +324,7 @@ export default function Subcontractors() {
       refetch();
     } catch (err) {
       console.error(err);
+      toast({ title: "Delete failed", description: "Could not delete this subcontractor. Please try again.", variant: "destructive" });
     } finally {
       setDeletingId(null);
       setDeleteConfirm(null);
