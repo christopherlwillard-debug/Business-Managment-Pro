@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { expensesTable, jobsTable, subcontractorsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, isNull, or, ne } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, or, sql } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -53,7 +53,7 @@ router.get("/", async (req, res) => {
     const conditions: any[] = [
       or(
         isNull(expensesTable.subcontractorId),
-        ne(expensesTable.category, "subcontractor")
+        sql`LOWER(${expensesTable.category}) != 'subcontractor'`
       )!,
     ];
     if (category) conditions.push(eq(expensesTable.category, category as string));
