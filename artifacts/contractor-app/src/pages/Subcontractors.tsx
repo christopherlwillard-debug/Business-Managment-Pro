@@ -847,7 +847,7 @@ export default function Subcontractors() {
                                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50"
                                 title="Revoke / Delete this 1099"
                               >
-                                <Trash2 className="w-3 h-3" /> Revoke
+                                <Trash2 className="w-3 h-3" /> Revoke / Delete
                               </button>
                             )}
                             {sub.requires1099 && (
