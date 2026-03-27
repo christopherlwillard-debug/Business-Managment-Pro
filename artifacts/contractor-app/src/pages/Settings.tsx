@@ -805,46 +805,50 @@ export default function Settings() {
                 </div>
 
                 {/* Push Notification Permission */}
-                {notifPermission !== "unsupported" && (
-                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border px-5 py-4 bg-muted/20">
-                    <div className="flex items-start gap-3">
-                      <Bell className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Push Notifications</p>
-                        {notifPermission === "granted" ? (
-                          <p className="text-xs text-muted-foreground mt-0.5">Notifications are enabled. The app can alert you about trips with missing details even when you're on another tab.</p>
-                        ) : notifPermission === "denied" ? (
-                          <p className="text-xs text-muted-foreground mt-0.5">Notifications are blocked. To enable them, open your browser settings and allow notifications for this site.</p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground mt-0.5">Allow push notifications so the app can remind you about incomplete trips even when you've navigated away.</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      {notifPermission === "granted" ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-100 border border-green-200 px-3 py-1.5 rounded-lg">
-                          <Check className="w-3.5 h-3.5" /> Enabled
-                        </span>
+                <div className="flex items-start justify-between gap-4 rounded-xl border border-border px-5 py-4 bg-muted/20">
+                  <div className="flex items-start gap-3">
+                    <Bell className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Push Notifications</p>
+                      {notifPermission === "unsupported" ? (
+                        <p className="text-xs text-muted-foreground mt-0.5">Push notifications are not supported by your current browser. Try Chrome, Edge, or Safari on iOS 16.4+ for notification support.</p>
+                      ) : notifPermission === "granted" ? (
+                        <p className="text-xs text-muted-foreground mt-0.5">Notifications are enabled. The app can alert you about trips with missing details even when you're on another tab.</p>
                       ) : notifPermission === "denied" ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg">
-                          Blocked
-                        </span>
+                        <p className="text-xs text-muted-foreground mt-0.5">Notifications are blocked. To enable them, open your browser settings and allow notifications for this site.</p>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (typeof Notification === "undefined") return;
-                            const perm = await Notification.requestPermission();
-                            setNotifPermission(perm);
-                          }}
-                          className="text-sm font-semibold text-primary border border-primary/40 px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors"
-                        >
-                          Enable
-                        </button>
+                        <p className="text-xs text-muted-foreground mt-0.5">Allow push notifications so the app can remind you about incomplete trips even when you've navigated away.</p>
                       )}
                     </div>
                   </div>
-                )}
+                  <div className="flex-shrink-0">
+                    {notifPermission === "unsupported" ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground bg-muted border border-border px-3 py-1.5 rounded-lg">
+                        Unavailable
+                      </span>
+                    ) : notifPermission === "granted" ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-100 border border-green-200 px-3 py-1.5 rounded-lg">
+                        <Check className="w-3.5 h-3.5" /> Enabled
+                      </span>
+                    ) : notifPermission === "denied" ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg">
+                        Blocked
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (typeof Notification === "undefined") return;
+                          const perm = await Notification.requestPermission();
+                          setNotifPermission(perm);
+                        }}
+                        className="text-sm font-semibold text-primary border border-primary/40 px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors"
+                      >
+                        Enable
+                      </button>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>
