@@ -1859,8 +1859,8 @@ function TaxReportsTab({ token }: { token: string }) {
   const { data: docs1099 } = useQuery({
     queryKey: ["portal-1099s", token],
     queryFn: () => apiFetch(`/portal/${token}/1099s`),
-    staleTime: 30000,
-    refetchInterval: 60000,
+    staleTime: 20000,
+    refetchInterval: 30000,
   });
 
   const years = [currentYear, currentYear - 1, currentYear - 2];

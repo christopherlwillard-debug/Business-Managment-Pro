@@ -164,6 +164,7 @@ router.post("/generate/:subcontractorId", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
     const userId = (req as any).user?.id as string;
 
     const deleted = await db
