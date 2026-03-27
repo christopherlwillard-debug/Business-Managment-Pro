@@ -10,7 +10,7 @@ const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 pool.query('ALTER TABLE daily_logs ADD COLUMN IF NOT EXISTS author_name TEXT')
   .then(() => { console.log('daily_logs.author_name ensured'); pool.end(); })
-  .catch(e => { console.error('author_name hotfix error:', e.message); pool.end(); });
+  .catch(e => { console.error('author_name hotfix error:', e.message); pool.end(); process.exit(1); });
 "
 
 # Idempotent backfill: migrate legacy jobs.subcontractor_id → job_subcontractors
