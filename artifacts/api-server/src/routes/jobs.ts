@@ -194,6 +194,10 @@ router.get("/:id/invoice-draft", async (req, res) => {
       ? (await db.select().from(clientsTable).where(eq(clientsTable.id, job.clientId)))[0] ?? null
       : null;
 
+    const lineItems = job.estimatedAmount
+      ? [{ description: job.title, quantity: 1, unitPrice: job.estimatedAmount }]
+      : [{ description: job.title, quantity: 1, unitPrice: 0 }];
+
     const draft = {
       clientId: job.clientId ?? null,
       clientName: job.clientName ?? null,
@@ -208,9 +212,7 @@ router.get("/:id/invoice-draft", async (req, res) => {
       locationName: job.locationName ?? null,
       city: job.city ?? null,
       state: job.state ?? null,
-      lineItems: job.estimatedAmount
-        ? [{ description: job.title, quantity: 1, unitPrice: job.estimatedAmount }]
-        : [],
+      lineItems,
     };
 
     res.json(draft);

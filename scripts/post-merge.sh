@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 pnpm install --frozen-lockfile
-pnpm --filter db push
+pnpm --filter db push-force
 
 # Idempotent backfill: migrate legacy jobs.subcontractor_id → job_subcontractors
 # This inserts any (job_id, subcontractor_id) pairs that don't already exist.
