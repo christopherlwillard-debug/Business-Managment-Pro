@@ -32,11 +32,8 @@ export const settingsTable = pgTable("settings", {
   smtpPass: text("smtp_pass"),
   smtpSecure: integer("smtp_secure").default(0),
   // Mileage tracking settings
-  mileageAutoTrack: integer("mileage_auto_track").default(0),
-  mileageBatterySaving: integer("mileage_battery_saving").default(0),
   mileageDefaultClassification: text("mileage_default_classification").default("business"),
   mileageUnits: text("mileage_units").default("miles"),
-  mileageAutoPauseMinutes: integer("mileage_auto_pause_minutes").default(5),
   mileageReminderFrequency: text("mileage_reminder_frequency").default("daily"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

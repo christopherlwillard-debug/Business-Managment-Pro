@@ -1254,31 +1254,6 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   );
 }
 
-// ─── Mileage GPS helpers ──────────────────────────────────────────────────────
-interface GpsWaypoint { lat: number; lng: number; ts: number; }
-
-function haversineMeters(a: GpsWaypoint, b: GpsWaypoint) {
-  const R = 6371000;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((a.lat * Math.PI) / 180) *
-      Math.cos((b.lat * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
-}
-function metersToMilesGps(m: number) { return m / 1609.344; }
-function fmtDurationGps(ms: number) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${sec}s`;
-  return `${sec}s`;
-}
-
 // ─── Mileage Tab ─────────────────────────────────────────────────────────────
 function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; ratePerMile: number }) {
   const qc = useQueryClient();
@@ -1300,98 +1275,6 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
     setFormError("");
   };
 
-  // ── GPS tracking state ────────────────────────────────────────────────────
-  type GpsPhase = "idle" | "tracking" | "classify";
-  const [gpsPhase, setGpsPhase] = useState<GpsPhase>("idle");
-  const [liveMiles, setLiveMiles] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-  const [geoError, setGeoError] = useState("");
-  const [tripClassification, setTripClassification] = useState<"business" | "personal">("business");
-  const [tripPurpose, setTripPurpose] = useState("");
-  const [tripJobId, setTripJobId] = useState("");
-  const [interruptionWarning, setInterruptionWarning] = useState(false);
-  const watchId = useRef<number | null>(null);
-  const waypoints = useRef<GpsWaypoint[]>([]);
-  const distMeters = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const wasHiddenWhileTracking = useRef(false);
-
-  // Detect tab leave/return while GPS tracking
-  useEffect(() => {
-    const handle = () => {
-      if (document.hidden) {
-        if (watchId.current !== null) wasHiddenWhileTracking.current = true;
-      } else {
-        if (wasHiddenWhileTracking.current && watchId.current !== null) {
-          wasHiddenWhileTracking.current = false;
-          setInterruptionWarning(true);
-        }
-      }
-    };
-    document.addEventListener("visibilitychange", handle);
-    return () => document.removeEventListener("visibilitychange", handle);
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  const stopTracking = useCallback(() => {
-    if (watchId.current !== null) {
-      navigator.geolocation.clearWatch(watchId.current);
-      watchId.current = null;
-    }
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setGpsPhase("classify");
-  }, []);
-
-  const startTracking = useCallback(() => {
-    if (!navigator.geolocation) {
-      setGeoError("Geolocation is not supported by your browser.");
-      return;
-    }
-    setGeoError("");
-    setLiveMiles(0);
-    distMeters.current = 0;
-    waypoints.current = [];
-    wasHiddenWhileTracking.current = false;
-    setInterruptionWarning(false);
-    const now = Date.now();
-    setElapsed(0);
-    timerRef.current = setInterval(() => setElapsed(Date.now() - now), 1000);
-    setGpsPhase("tracking");
-    watchId.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const wp: GpsWaypoint = { lat: pos.coords.latitude, lng: pos.coords.longitude, ts: pos.timestamp };
-        if (waypoints.current.length > 0) {
-          const prev = waypoints.current[waypoints.current.length - 1];
-          const d = haversineMeters(prev, wp);
-          if (d > 5) {
-            distMeters.current += d;
-            setLiveMiles(metersToMilesGps(distMeters.current));
-          }
-        }
-        waypoints.current.push(wp);
-      },
-      (err) => { setGeoError(`GPS error: ${err.message}`); stopTracking(); },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
-    );
-  }, [stopTracking]);
-
-  const discardGpsTrip = useCallback(() => {
-    setGpsPhase("idle");
-    setLiveMiles(0);
-    setTripPurpose("");
-    setTripJobId("");
-    setTripClassification("business");
-    distMeters.current = 0;
-    waypoints.current = [];
-  }, []);
-
   const addMut = useMutation({
     mutationFn: (payload: Record<string, unknown>) => {
       return apiFetch(`/portal/${token}/mileage`, {
@@ -1400,23 +1283,14 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
       qc.invalidateQueries({ queryKey: ["portal", token] });
-      if ((variables as any).source === "gps") {
-        discardGpsTrip();
-      } else {
-        setFormOpen(false);
-        resetForm();
-      }
+      setFormOpen(false);
+      resetForm();
     },
-    onError: (err: any, variables) => {
-      const msg = err.message || "Failed to save.";
-      if ((variables as any).source === "gps") {
-        setGeoError(msg);
-      } else {
-        setFormError(msg);
-      }
+    onError: (err: any) => {
+      setFormError(err.message || "Failed to save.");
     },
   });
 
@@ -1426,31 +1300,6 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
       return;
     }
     addMut.mutate({ ...form, miles: parseFloat(form.miles), jobId: form.jobId ? parseInt(form.jobId) : undefined });
-  };
-
-  const saveGpsTrip = () => {
-    const miles = parseFloat(metersToMilesGps(distMeters.current).toFixed(2));
-    if (miles < 0.01) {
-      setGeoError("No distance recorded — make sure GPS is enabled and you moved.");
-      setGpsPhase("idle");
-      return;
-    }
-    const tripDate = new Date().toISOString().slice(0, 10);
-    const startWp = waypoints.current[0];
-    const endWp = waypoints.current[waypoints.current.length - 1];
-    const startLabel = startWp ? `${startWp.lat.toFixed(4)}, ${startWp.lng.toFixed(4)}` : "GPS Start";
-    const endLabel = endWp ? `${endWp.lat.toFixed(4)}, ${endWp.lng.toFixed(4)}` : "GPS End";
-    addMut.mutate({
-      date: tripDate,
-      miles,
-      classification: tripClassification,
-      startLocation: startLabel,
-      endLocation: endLabel,
-      purpose: tripPurpose || (tripClassification === "business" ? "Business trip" : "Personal trip"),
-      jobId: tripJobId ? parseInt(tripJobId) : undefined,
-      notes: `GPS tracked · ${fmtDurationGps(elapsed)}`,
-      source: "gps",
-    });
   };
 
   const delMut = useMutation({
@@ -1476,166 +1325,15 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-display font-bold">Mileage Tracker</h2>
-          <p className="text-sm text-muted-foreground">GPS auto-tracking or manual entry</p>
+          <p className="text-sm text-muted-foreground">Manual mileage entry</p>
         </div>
-        {gpsPhase === "idle" && (
-          <button
-            onClick={() => { setFormOpen(!formOpen); if (formOpen) resetForm(); }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:bg-muted transition-colors"
-          >
-            <PenLine className="w-4 h-4" /> Log Manually
-          </button>
-        )}
+        <button
+          onClick={() => { setFormOpen(!formOpen); if (formOpen) resetForm(); }}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:bg-muted transition-colors"
+        >
+          <PenLine className="w-4 h-4" /> Log Manually
+        </button>
       </div>
-
-      {/* GPS error */}
-      {geoError && (
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span className="flex-1">{geoError}</span>
-          <button onClick={() => setGeoError("")} className="text-red-400 hover:text-red-700"><X className="w-3.5 h-3.5" /></button>
-        </div>
-      )}
-
-      {/* Interruption warning */}
-      {interruptionWarning && gpsPhase === "tracking" && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-orange-50 border-2 border-orange-300 text-orange-900">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-orange-500" />
-          <div className="flex-1 text-sm">
-            <p className="font-bold mb-1">Tracking may have paused.</p>
-            <p className="mb-2">You left this tab while tracking — GPS may have paused. Check your distance carefully.</p>
-            <button onClick={() => setInterruptionWarning(false)}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-500 text-white hover:bg-orange-600">
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* GPS: idle — Start button */}
-      {gpsPhase === "idle" && (
-        <div className="bg-card border-2 border-emerald-200 rounded-2xl overflow-hidden shadow-sm">
-          <div className="h-1 bg-gradient-to-r from-emerald-400 to-green-500" />
-          <div className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-              <Navigation className="w-6 h-6 text-emerald-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-foreground">GPS Trip Tracking</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Measures distance automatically as you drive.</p>
-            </div>
-            <button
-              onClick={startTracking}
-              className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 shadow transition-colors"
-            >
-              <Navigation className="w-4 h-4" /> Start GPS Trip
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* GPS: tracking — live counter */}
-      {gpsPhase === "tracking" && (
-        <div className="bg-card border-2 border-emerald-400 rounded-2xl overflow-hidden shadow-lg">
-          <div className="h-1.5 bg-gradient-to-r from-emerald-400 via-green-400 to-emerald-400 animate-pulse" />
-          <div className="p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
-                </span>
-                <span className="text-sm font-semibold text-emerald-700">Tracking...</span>
-              </div>
-              <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                <Clock className="w-3.5 h-3.5" /> {fmtDurationGps(elapsed)}
-              </span>
-            </div>
-            <div className="text-center py-2">
-              <p className="text-5xl font-display font-extrabold text-foreground tracking-tight">{liveMiles.toFixed(2)}</p>
-              <p className="text-muted-foreground text-sm font-medium mt-1">miles</p>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800">
-              Keep this page open while driving — GPS pauses if you leave.
-            </div>
-            <button
-              onClick={stopTracking}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold bg-red-600 text-white hover:bg-red-700 shadow transition-colors"
-            >
-              <X className="w-4 h-4" /> Stop & Classify Trip
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* GPS: classify — business/personal, save */}
-      {gpsPhase === "classify" && (
-        <div className="bg-card border-2 border-blue-200 rounded-2xl overflow-hidden shadow-md">
-          <div className="h-1 bg-gradient-to-r from-blue-400 to-primary" />
-          <div className="p-5 space-y-4">
-            <div className="text-center">
-              <p className="text-4xl font-display font-extrabold text-foreground">{liveMiles.toFixed(2)} mi</p>
-              <p className="text-muted-foreground text-sm mt-1">{fmtDurationGps(elapsed)} · Est. {formatCurrency(liveMiles * ratePerMile)} deduction if business</p>
-            </div>
-
-            <div>
-              <p className="text-sm font-semibold mb-2">Was this a business or personal trip?</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setTripClassification("business")}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all text-sm font-medium ${
-                    tripClassification === "business"
-                      ? "border-primary bg-primary/10 text-primary font-bold"
-                      : "border-border text-muted-foreground hover:border-primary/40"
-                  }`}>
-                  <Briefcase className="w-4 h-4" /> Business
-                </button>
-                <button type="button" onClick={() => setTripClassification("personal")}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all text-sm font-medium ${
-                    tripClassification === "personal"
-                      ? "border-border bg-muted text-foreground font-bold"
-                      : "border-border text-muted-foreground hover:border-border"
-                  }`}>
-                  <User className="w-4 h-4" /> Personal
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Purpose / Notes (optional)</label>
-              <input className={inp2} placeholder="e.g. Material run to Home Depot"
-                value={tripPurpose} onChange={e => setTripPurpose(e.target.value)} />
-            </div>
-
-            {jobs.length > 0 && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Link to Job (optional)</label>
-                <select value={tripJobId} onChange={e => setTripJobId(e.target.value)} className={inp2}>
-                  <option value="">No specific job</option>
-                  {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
-                </select>
-              </div>
-            )}
-
-            {tripClassification === "business" && liveMiles > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm text-amber-800">
-                <span className="font-semibold">Auto-expense:</span>{" "}
-                <span className="font-bold">{formatCurrency(liveMiles * ratePerMile)}</span> mileage expense will be created.
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <button onClick={discardGpsTrip}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border hover:bg-muted transition-colors">
-                Discard
-              </button>
-              <button onClick={saveGpsTrip} disabled={addMut.isPending}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow transition-colors disabled:opacity-50">
-                {addMut.isPending ? "Saving…" : tripClassification === "business" ? "Save & Log Expense" : "Save Trip"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Summary bar */}
       <div className="grid grid-cols-3 gap-3">
