@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useGetSettings, useUpdateSettings } from "@workspace/api-client-react";
+import { RegisteredAgentSection } from "@/components/RegisteredAgentSection";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -450,6 +451,13 @@ export default function Settings() {
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Registered Agent */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardContent className="p-6">
+                <RegisteredAgentSection className="space-y-4" />
               </CardContent>
             </Card>
           </>
