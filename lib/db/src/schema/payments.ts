@@ -5,7 +5,7 @@ import { subcontractorsTable } from "./subcontractors";
 
 export const paymentsTable = pgTable("payments", {
   id: serial("id").primaryKey(),
-  subcontractorId: integer("subcontractor_id").notNull().references(() => subcontractorsTable.id),
+  subcontractorId: integer("subcontractor_id").references(() => subcontractorsTable.id),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   paymentDate: text("payment_date").notNull(), // YYYY-MM-DD
   year: integer("year").notNull(), // Tax year
