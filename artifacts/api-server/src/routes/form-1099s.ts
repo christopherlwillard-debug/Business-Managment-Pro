@@ -159,6 +159,31 @@ router.post("/generate/:subcontractorId", async (req, res) => {
   }
 });
 
+// DELETE /api/1099s/:id
+// Permanently deletes a generated 1099 record (ownership verified)
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const userId = (req as any).user?.id as string;
+
+    const deleted = await db
+      .delete(generated1099sTable)
+      .where(
+        and(
+          eq(generated1099sTable.id, id),
+          eq(generated1099sTable.userId, userId)
+        )
+      )
+      .returning({ id: generated1099sTable.id });
+
+    if (!deleted.length) return res.status(404).json({ error: "Not found" });
+    res.status(204).end();
+  } catch (err) {
+    console.error("1099 delete error:", err);
+    res.status(500).json({ error: "Failed to delete 1099 record" });
+  }
+});
+
 // GET /api/1099s/download/:id
 // Returns the PDF data (base64) for a generated 1099
 router.get("/download/:id", async (req, res) => {

@@ -34,6 +34,8 @@ export default function Subcontractors() {
   const [generating1099, setGenerating1099] = useState<number | null>(null);
   const [expanded1099, setExpanded1099] = useState<number | null>(null);
   const [issuingAll, setIssuingAll] = useState(false);
+  const [revoke1099Confirm, setRevoke1099Confirm] = useState<{ id: number; subName: string } | null>(null);
+  const [revoking1099Id, setRevoking1099Id] = useState<number | null>(null);
 
   const { data: report1099Data, isLoading: report1099Loading, refetch: refetch1099 } = useQuery({
     queryKey: ["1099-report", report1099Year],
@@ -171,6 +173,20 @@ export default function Subcontractors() {
       console.error(err);
     } finally {
       setIssuingAll(false);
+    }
+  }
+
+  async function handleRevoke1099(recordId: number) {
+    setRevoking1099Id(recordId);
+    try {
+      const res = await fetch(`${BASE}/api/1099s/${recordId}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to revoke 1099");
+      refetch1099();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRevoking1099Id(null);
+      setRevoke1099Confirm(null);
     }
   }
 
@@ -667,6 +683,47 @@ export default function Subcontractors() {
         </Dialog>
       )}
 
+      {/* 1099 Revoke Confirmation Dialog */}
+      {revoke1099Confirm && (
+        <Dialog open={!!revoke1099Confirm} onOpenChange={() => setRevoke1099Confirm(null)}>
+          <DialogContent className="max-w-sm bg-card border-border shadow-2xl p-6 rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-display flex items-center gap-2 text-destructive">
+                <Trash2 className="w-5 h-5" /> Revoke 1099?
+              </DialogTitle>
+            </DialogHeader>
+            <div className="mt-3 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                This will permanently delete the 1099-NEC for{" "}
+                <strong className="text-foreground">{revoke1099Confirm.subName}</strong>.
+              </p>
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
+                <span>
+                  <strong>{revoke1099Confirm.subName}</strong> will immediately lose access to this tax document in their portal. This cannot be undone — you can re-generate a new 1099 at any time.
+                </span>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setRevoke1099Confirm(null)}
+                  disabled={revoking1099Id === revoke1099Confirm.id}
+                  className="flex-1 py-2.5 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors text-sm border border-border disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleRevoke1099(revoke1099Confirm.id)}
+                  disabled={revoking1099Id === revoke1099Confirm.id}
+                  className="flex-1 py-2.5 rounded-xl font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors text-sm disabled:opacity-60 shadow"
+                >
+                  {revoking1099Id === revoke1099Confirm.id ? "Revoking…" : "Yes, Revoke"}
+                </button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* 1099 Report Modal */}
       {show1099Modal && (
         <Dialog open={show1099Modal} onOpenChange={(o) => { if (!o) setShow1099Modal(false); }}>
@@ -769,6 +826,16 @@ export default function Subcontractors() {
                               >
                                 {isGenerating ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                                 Download
+                              </button>
+                            )}
+                            {sub.status === "generated" && sub.existingRecord && (
+                              <button
+                                onClick={() => setRevoke1099Confirm({ id: sub.existingRecord.id, subName: sub.name })}
+                                disabled={isGenerating || revoking1099Id === sub.existingRecord.id}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50"
+                                title="Revoke / Delete this 1099"
+                              >
+                                <Trash2 className="w-3 h-3" /> Revoke
                               </button>
                             )}
                             {sub.requires1099 && (
