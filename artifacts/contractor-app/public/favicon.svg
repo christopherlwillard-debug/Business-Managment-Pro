@@ -1,4 +1,10 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="180" height="180" rx="36" fill="#CC1B2B"/>
-  <text x="90" y="128" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="110" fill="white" text-anchor="middle">W</text>
+<svg width="180" height="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="round"><rect width="180" height="180" rx="36"/></clipPath>
+  </defs>
+  <g clip-path="url(#round)">
+    <rect width="180" height="180" fill="#CC1B2B"/>
+    <rect y="130" width="180" height="50" fill="#1B4AAF"/>
+    <text x="90" y="118" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="108" fill="white" text-anchor="middle">W</text>
+  </g>
 </svg>
