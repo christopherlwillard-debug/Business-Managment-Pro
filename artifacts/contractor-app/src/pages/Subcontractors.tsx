@@ -36,6 +36,7 @@ export default function Subcontractors() {
   const [issuingAll, setIssuingAll] = useState(false);
   const [revoke1099Confirm, setRevoke1099Confirm] = useState<{ id: number; subName: string } | null>(null);
   const [revoking1099Id, setRevoking1099Id] = useState<number | null>(null);
+  const [revoke1099Error, setRevoke1099Error] = useState<string | null>(null);
 
   const { data: report1099Data, isLoading: report1099Loading, refetch: refetch1099 } = useQuery({
     queryKey: ["1099-report", report1099Year],
@@ -178,15 +179,20 @@ export default function Subcontractors() {
 
   async function handleRevoke1099(recordId: number) {
     setRevoking1099Id(recordId);
+    setRevoke1099Error(null);
     try {
       const res = await fetch(`${BASE}/api/1099s/${recordId}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 204) throw new Error("Failed to revoke 1099");
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to revoke 1099");
+      }
+      setRevoke1099Confirm(null);
       refetch1099();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setRevoke1099Error(err.message || "Failed to revoke the 1099. Please try again.");
     } finally {
       setRevoking1099Id(null);
-      setRevoke1099Confirm(null);
     }
   }
 
@@ -685,7 +691,7 @@ export default function Subcontractors() {
 
       {/* 1099 Revoke Confirmation Dialog */}
       {revoke1099Confirm && (
-        <Dialog open={!!revoke1099Confirm} onOpenChange={() => setRevoke1099Confirm(null)}>
+        <Dialog open={!!revoke1099Confirm} onOpenChange={() => { setRevoke1099Confirm(null); setRevoke1099Error(null); }}>
           <DialogContent className="max-w-sm bg-card border-border shadow-2xl p-6 rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-display flex items-center gap-2 text-destructive">
@@ -703,9 +709,15 @@ export default function Subcontractors() {
                   <strong>{revoke1099Confirm.subName}</strong> will immediately lose access to this tax document in their portal. This cannot be undone — you can re-generate a new 1099 at any time.
                 </span>
               </div>
+              {revoke1099Error && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-600" />
+                  <span>{revoke1099Error}</span>
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => setRevoke1099Confirm(null)}
+                  onClick={() => { setRevoke1099Confirm(null); setRevoke1099Error(null); }}
                   disabled={revoking1099Id === revoke1099Confirm.id}
                   className="flex-1 py-2.5 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors text-sm border border-border disabled:opacity-50"
                 >
