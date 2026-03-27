@@ -258,6 +258,7 @@ export default function Settings() {
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [mileageAutoTrack, setMileageAutoTrack] = useState(false);
   const [mileageBatterySaving, setMileageBatterySaving] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [success, setSuccess] = useState(false);
@@ -305,6 +306,12 @@ export default function Settings() {
       setSeeded(true);
     }
   }, [settings, seeded]);
+
+  // Initialize browser notification permission state
+  useEffect(() => {
+    if (typeof Notification === "undefined") return;
+    setNotifPermission(Notification.permission);
+  }, []);
 
   const setF = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
 
@@ -649,6 +656,7 @@ export default function Settings() {
                     <div>
                       <p className="text-sm font-semibold text-foreground">Auto-Track Trips</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Highlight GPS tracking as the primary way to log trips on the Mileage page.</p>
+                      <p className="text-xs text-amber-600 mt-1">⚠ GPS only runs while this tab is open and active — switching tabs or locking your screen will pause tracking.</p>
                     </div>
                   </div>
                   <button
@@ -670,7 +678,7 @@ export default function Settings() {
                     <Battery className="w-5 h-5 text-green-500 flex-shrink-0" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">Battery Saving Mode</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Uses lower GPS accuracy to reduce battery drain during long trips.</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Uses lower GPS accuracy to reduce battery drain during long trips. Location is sampled every ~30 seconds instead of continuously.</p>
                     </div>
                   </div>
                   <button
@@ -795,6 +803,48 @@ export default function Settings() {
                     ))}
                   </div>
                 </div>
+
+                {/* Push Notification Permission */}
+                {notifPermission !== "unsupported" && (
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border px-5 py-4 bg-muted/20">
+                    <div className="flex items-start gap-3">
+                      <Bell className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Push Notifications</p>
+                        {notifPermission === "granted" ? (
+                          <p className="text-xs text-muted-foreground mt-0.5">Notifications are enabled. The app can alert you about trips with missing details even when you're on another tab.</p>
+                        ) : notifPermission === "denied" ? (
+                          <p className="text-xs text-muted-foreground mt-0.5">Notifications are blocked. To enable them, open your browser settings and allow notifications for this site.</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-0.5">Allow push notifications so the app can remind you about incomplete trips even when you've navigated away.</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      {notifPermission === "granted" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-100 border border-green-200 px-3 py-1.5 rounded-lg">
+                          <Check className="w-3.5 h-3.5" /> Enabled
+                        </span>
+                      ) : notifPermission === "denied" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg">
+                          Blocked
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (typeof Notification === "undefined") return;
+                            const perm = await Notification.requestPermission();
+                            setNotifPermission(perm);
+                          }}
+                          className="text-sm font-semibold text-primary border border-primary/40 px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors"
+                        >
+                          Enable
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

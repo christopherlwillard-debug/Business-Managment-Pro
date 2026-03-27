@@ -140,6 +140,38 @@ export default function Mileage() {
   const mileageAutoPauseMinutes: number = parseInt((settings as any)?.mileageAutoPauseMinutes ?? "5") || 0;
   const mileageReminderFrequency: string = (settings as any)?.mileageReminderFrequency ?? "daily";
 
+  // Compute incomplete trips outside JSX so the notification effect can consume them
+  const incompleteReminderTrips = (() => {
+    if (mileageReminderFrequency === "never" || phase !== "idle") return [];
+    const cutoffDays = mileageReminderFrequency === "weekly" ? 7 : 1;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - cutoffDays);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return (logs as any[])?.filter(
+      (l: any) => l.date >= cutoffStr && l.classification === "business" && !l.purpose
+    ) ?? [];
+  })();
+
+  // Fire a push notification via the service worker when incomplete trips are detected
+  const notifSentRef = useRef(false);
+  useEffect(() => {
+    if (notifSentRef.current) return;
+    if (incompleteReminderTrips.length === 0) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (!("serviceWorker" in navigator)) return;
+    notifSentRef.current = true;
+    const count = incompleteReminderTrips.length;
+    navigator.serviceWorker.ready
+      .then(reg => reg.showNotification("BuildPro — Mileage Reminder", {
+        body: `${count} business trip${count > 1 ? "s are" : " is"} missing a purpose. Tap to add details and strengthen your IRS records.`,
+        icon: "/favicon.svg",
+        badge: "/favicon.svg",
+        tag: "mileage-reminder",
+      }))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incompleteReminderTrips.length]);
+
   useEffect(() => {
     if (settings) {
       setTripClassification(mileageDefaultClassification);
@@ -415,25 +447,17 @@ export default function Mileage() {
         </div>
       )}
 
-      {!reminderDismissed && mileageReminderFrequency !== "never" && phase === "idle" && (() => {
-        const cutoffDays = mileageReminderFrequency === "weekly" ? 7 : 1;
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - cutoffDays);
-        const cutoffStr = cutoff.toISOString().slice(0, 10);
-        const incomplete = (logs as any[])?.filter(
-          (l: any) => l.date >= cutoffStr && l.classification === "business" && !l.purpose
-        ) ?? [];
-        if (!incomplete.length) return null;
-        return (
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 text-blue-500" />
-            <span className="text-sm">
-              <span className="font-semibold">{incomplete.length} business trip{incomplete.length > 1 ? "s" : ""}</span> from the past {cutoffDays === 1 ? "day" : "week"} {incomplete.length > 1 ? "are" : "is"} missing a purpose — add details to strengthen your IRS records.
-            </span>
-            <button onClick={() => setReminderDismissed(true)} className="ml-auto text-blue-400 hover:text-blue-700">✕</button>
-          </div>
-        );
-      })()}
+      {!reminderDismissed && incompleteReminderTrips.length > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 text-blue-500" />
+          <span className="text-sm">
+            <span className="font-semibold">{incompleteReminderTrips.length} business trip{incompleteReminderTrips.length > 1 ? "s" : ""}</span>{" "}
+            from the past {mileageReminderFrequency === "weekly" ? "week" : "day"}{" "}
+            {incompleteReminderTrips.length > 1 ? "are" : "is"} missing a purpose — add details to strengthen your IRS records.
+          </span>
+          <button onClick={() => setReminderDismissed(true)} className="ml-auto text-blue-400 hover:text-blue-700">✕</button>
+        </div>
+      )}
 
       {/* ── Return-from-interruption prompt ── */}
       {interruptionPrompt && phase === "tracking" && (

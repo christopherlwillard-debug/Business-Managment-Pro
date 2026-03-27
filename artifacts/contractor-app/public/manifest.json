@@ -1,0 +1,19 @@
+{
+  "name": "BuildPro",
+  "short_name": "BuildPro",
+  "description": "Contractor business management — invoices, mileage, expenses, and more.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#6366f1",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
