@@ -1309,7 +1309,6 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
   const [tripClassification, setTripClassification] = useState<"business" | "personal">("business");
   const [tripPurpose, setTripPurpose] = useState("");
   const [tripJobId, setTripJobId] = useState("");
-  const [gpsSaving, setGpsSaving] = useState(false);
   const [interruptionWarning, setInterruptionWarning] = useState(false);
   const watchId = useRef<number | null>(null);
   const waypoints = useRef<GpsWaypoint[]>([]);
@@ -1359,6 +1358,8 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
     setLiveMiles(0);
     distMeters.current = 0;
     waypoints.current = [];
+    wasHiddenWhileTracking.current = false;
+    setInterruptionWarning(false);
     const now = Date.now();
     setElapsed(0);
     timerRef.current = setInterval(() => setElapsed(Date.now() - now), 1000);
@@ -1399,13 +1400,24 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
       qc.invalidateQueries({ queryKey: ["portal", token] });
-      setFormOpen(false);
-      resetForm();
+      if ((variables as any).source === "gps") {
+        discardGpsTrip();
+      } else {
+        setFormOpen(false);
+        resetForm();
+      }
     },
-    onError: (err: any) => setFormError(err.message || "Failed to save."),
+    onError: (err: any, variables) => {
+      const msg = err.message || "Failed to save.";
+      if ((variables as any).source === "gps") {
+        setGeoError(msg);
+      } else {
+        setFormError(msg);
+      }
+    },
   });
 
   const saveManual = () => {
@@ -1416,43 +1428,29 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
     addMut.mutate({ ...form, miles: parseFloat(form.miles), jobId: form.jobId ? parseInt(form.jobId) : undefined });
   };
 
-  const saveGpsTrip = async () => {
+  const saveGpsTrip = () => {
     const miles = parseFloat(metersToMilesGps(distMeters.current).toFixed(2));
     if (miles < 0.01) {
       setGeoError("No distance recorded — make sure GPS is enabled and you moved.");
       setGpsPhase("idle");
       return;
     }
-    setGpsSaving(true);
     const tripDate = new Date().toISOString().slice(0, 10);
     const startWp = waypoints.current[0];
     const endWp = waypoints.current[waypoints.current.length - 1];
     const startLabel = startWp ? `${startWp.lat.toFixed(4)}, ${startWp.lng.toFixed(4)}` : "GPS Start";
     const endLabel = endWp ? `${endWp.lat.toFixed(4)}, ${endWp.lng.toFixed(4)}` : "GPS End";
-    try {
-      await apiFetch(`/portal/${token}/mileage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: tripDate,
-          miles,
-          classification: tripClassification,
-          startLocation: startLabel,
-          endLocation: endLabel,
-          purpose: tripPurpose || (tripClassification === "business" ? "Business trip" : "Personal trip"),
-          jobId: tripJobId ? parseInt(tripJobId) : undefined,
-          notes: `GPS tracked · ${fmtDurationGps(elapsed)}`,
-          source: "gps",
-        }),
-      });
-      qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
-      qc.invalidateQueries({ queryKey: ["portal", token] });
-      discardGpsTrip();
-    } catch (err: any) {
-      setGeoError(err.message || "Failed to save trip.");
-    } finally {
-      setGpsSaving(false);
-    }
+    addMut.mutate({
+      date: tripDate,
+      miles,
+      classification: tripClassification,
+      startLocation: startLabel,
+      endLocation: endLabel,
+      purpose: tripPurpose || (tripClassification === "business" ? "Business trip" : "Personal trip"),
+      jobId: tripJobId ? parseInt(tripJobId) : undefined,
+      notes: `GPS tracked · ${fmtDurationGps(elapsed)}`,
+      source: "gps",
+    });
   };
 
   const delMut = useMutation({
@@ -1630,9 +1628,9 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border hover:bg-muted transition-colors">
                 Discard
               </button>
-              <button onClick={saveGpsTrip} disabled={gpsSaving}
+              <button onClick={saveGpsTrip} disabled={addMut.isPending}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow transition-colors disabled:opacity-50">
-                {gpsSaving ? "Saving…" : tripClassification === "business" ? "Save & Log Expense" : "Save Trip"}
+                {addMut.isPending ? "Saving…" : tripClassification === "business" ? "Save & Log Expense" : "Save Trip"}
               </button>
             </div>
           </div>
