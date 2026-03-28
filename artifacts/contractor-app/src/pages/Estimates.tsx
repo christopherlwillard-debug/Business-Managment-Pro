@@ -2,10 +2,12 @@ import { useListEstimates } from "@workspace/api-client-react";
 import { Calculator, FileText, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 
 // Implementing simplified read-only view for estimates to fit constraints
 // A full estimator module is incredibly complex (line items, markup math)
 export default function Estimates() {
+  const { canEdit } = useUserPermissions();
   const { data: estimates, isLoading } = useListEstimates();
 
   return (
@@ -15,12 +17,14 @@ export default function Estimates() {
           <h1 className="text-3xl font-display font-bold text-foreground">Estimates & Bidding</h1>
           <p className="text-muted-foreground mt-1">Manage proposals and project bids.</p>
         </div>
-        <button 
-          className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
-          onClick={() => alert("Estimator module builder would open here in full version.")}
-        >
-          <Calculator className="w-5 h-5 mr-2" /> Build Estimate
-        </button>
+        {canEdit("estimates") && (
+          <button 
+            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
+            onClick={() => alert("Estimator module builder would open here in full version.")}
+          >
+            <Calculator className="w-5 h-5 mr-2" /> Build Estimate
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">

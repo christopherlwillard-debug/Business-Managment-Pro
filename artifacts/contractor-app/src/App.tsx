@@ -33,19 +33,25 @@ const queryClient = new QueryClient({
 });
 
 function AccessPendingScreen() {
-  const { companyName: ctxCompany } = useUserPermissions();
+  const { companyName: ctxCompany, userName, profileImageUrl } = useUserPermissions();
   const companyName = ctxCompany || "the company";
   const { logout } = useAuth();
+  const initials = userName
+    ? userName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()
+    : "?";
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-6 bg-background px-4">
       <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center space-y-4 shadow-lg">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto">
-          <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
+        {profileImageUrl ? (
+          <img src={profileImageUrl} alt={userName ?? "User"} className="w-16 h-16 rounded-full mx-auto object-cover" />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto text-amber-700 font-bold text-xl">
+            {initials}
+          </div>
+        )}
         <h1 className="text-xl font-bold text-foreground">Access Requested</h1>
+        {userName && <p className="text-sm text-muted-foreground">Signed in as <span className="font-medium text-foreground">{userName}</span></p>}
         <p className="text-muted-foreground text-sm leading-relaxed">
           Your request to access <span className="font-semibold text-foreground">{companyName}</span> has been submitted.
           The owner will review and approve your access soon.

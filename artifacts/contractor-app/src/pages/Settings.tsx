@@ -152,7 +152,7 @@ function TeamSection() {
   const [pendingPerms, setPendingPerms] = useState<Permissions>(defaultPerms());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editPerms, setEditPerms] = useState<Record<string, Permissions>>({});
-  const { refresh: refreshPermissions } = useUserPermissions();
+  const { refresh: refreshPermissions, userName: ownerName, profileImageUrl: ownerAvatar } = useUserPermissions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -239,11 +239,15 @@ function TeamSection() {
         </CardHeader>
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
-              You
-            </div>
+            {ownerAvatar ? (
+              <img src={ownerAvatar} alt={ownerName ?? "Owner"} className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-primary/20" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
+                {ownerName ? ownerName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase() : "?"}
+              </div>
+            )}
             <div>
-              <p className="text-sm font-semibold text-foreground">Account Owner</p>
+              <p className="text-sm font-semibold text-foreground">{ownerName ?? "Account Owner"}</p>
               <p className="text-xs text-muted-foreground">Full access to everything</p>
             </div>
             <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full">
