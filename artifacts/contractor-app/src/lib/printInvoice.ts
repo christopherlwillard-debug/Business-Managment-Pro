@@ -45,8 +45,13 @@ export interface PrintableSettings {
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "";
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  }
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return iso;
+  return dt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
 function fmtCurrency(n: number | null | undefined): string {
