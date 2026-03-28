@@ -4,7 +4,7 @@ import {
 } from "@workspace/api-client-react";
 import type { RecurringExpense, RecurringExpenseFrequency } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
@@ -643,7 +643,7 @@ function RecurringModal({
             <div>
               <label className="block text-sm font-medium mb-1">Start Date *</label>
               <input
-                name="startDate" type="date" required defaultValue={new Date().toISOString().split("T")[0]}
+                name="startDate" type="date" required defaultValue={localDateString()}
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
@@ -1258,7 +1258,7 @@ export default function Expenses() {
               <div>
                 <label className="block text-sm font-medium mb-1">Date *</label>
                 <input
-                  name="date" type="date" required defaultValue={new Date().toISOString().split("T")[0]}
+                  name="date" type="date" required defaultValue={localDateString()}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                 />
               </div>

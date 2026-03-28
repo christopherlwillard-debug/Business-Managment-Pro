@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
@@ -519,7 +519,7 @@ function JobDailyLogPanel({
   const deleteLog  = useDeleteDailyLog();
   const attachToInvoice = useAttachMaterialListToInvoice();
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateString();
   const [form, setForm] = useState({ date: today, notes: "", workCompleted: "", materialListId: "" });
   const [submitting, setSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);

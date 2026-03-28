@@ -17,10 +17,18 @@ export function formatCurrency(amount: number | null | undefined): string {
 export function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "N/A";
   try {
-    return format(new Date(dateString), "MMM d, yyyy");
+    const [y, m, d] = dateString.split("-").map(Number);
+    return format(new Date(y, m - 1, d), "MMM d, yyyy");
   } catch (e) {
     return dateString;
   }
+}
+
+export function localDateString(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 export const APP_FEATURES = [
