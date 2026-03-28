@@ -11,6 +11,7 @@ import {
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus
 } from "lucide-react";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
+import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -153,6 +154,7 @@ function TeamSection() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editPerms, setEditPerms] = useState<Record<string, Permissions>>({});
   const { refresh: refreshPermissions, userName: ownerName, profileImageUrl: ownerAvatar } = useUserPermissions();
+  const { toast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,49 +180,86 @@ function TeamSection() {
   useEffect(() => { load(); }, [load]);
 
   async function handleApprove(req: AccessRecord) {
-    const [res] = await Promise.all([
-      fetch(`${BASE}/api/team/requests/${req.id}/approve`, {
+    try {
+      const res = await fetch(`${BASE}/api/team/requests/${req.id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ permissions: pendingPerms }),
-      }),
-    ]);
-    if (res.ok) {
-      setApprovingId(null);
-      setPendingPerms(defaultPerms());
-      load();
+      });
+      if (res.ok) {
+        setApprovingId(null);
+        setPendingPerms(defaultPerms());
+        load();
+        toast({ title: "Access approved", description: `${req.userName || "Team member"} has been approved.` });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Failed to approve", description: err?.error ?? "An error occurred.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to approve", description: "Network error. Please try again.", variant: "destructive" });
     }
   }
 
   async function handleReject(req: AccessRecord) {
-    await fetch(`${BASE}/api/team/requests/${req.id}/reject`, {
-      method: "POST",
-      credentials: "include",
-    });
-    load();
+    try {
+      const res = await fetch(`${BASE}/api/team/requests/${req.id}/reject`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        load();
+        toast({ title: "Access denied", description: `${req.userName || "Request"} has been rejected.` });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Failed to reject", description: err?.error ?? "An error occurred.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to reject", description: "Network error. Please try again.", variant: "destructive" });
+    }
   }
 
   async function handleSavePerms(userId: string) {
     setSavingId(userId);
-    await fetch(`${BASE}/api/team/members/${userId}/permissions`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ permissions: editPerms[userId] }),
-    });
-    setSavingId(null);
-    refreshPermissions();
+    try {
+      const res = await fetch(`${BASE}/api/team/members/${userId}/permissions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ permissions: editPerms[userId] }),
+      });
+      if (res.ok) {
+        refreshPermissions();
+        toast({ title: "Permissions saved" });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Failed to save permissions", description: err?.error ?? "An error occurred.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to save permissions", description: "Network error. Please try again.", variant: "destructive" });
+    } finally {
+      setSavingId(null);
+    }
   }
 
   async function handleRemove(userId: string) {
     if (!confirm("Remove this team member? Their access will be revoked immediately.")) return;
-    await fetch(`${BASE}/api/team/members/${userId}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    load();
-    refreshPermissions();
+    try {
+      const res = await fetch(`${BASE}/api/team/members/${userId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        load();
+        refreshPermissions();
+        toast({ title: "Member removed", description: "Their access has been revoked." });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Failed to remove member", description: err?.error ?? "An error occurred.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to remove member", description: "Network error. Please try again.", variant: "destructive" });
+    }
   }
 
   if (loading) {
