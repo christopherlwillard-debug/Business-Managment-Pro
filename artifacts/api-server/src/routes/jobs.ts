@@ -242,15 +242,25 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes } = req.body;
 
-    const [job] = await db.update(jobsTable).set({
-      title, description,
-      clientId: clientId || null,
-      status, jobType, address, city, state, locationName,
-      startDate, endDate,
-      estimatedAmount: estimatedAmount?.toString(),
-      actualAmount: actualAmount?.toString(),
-      notes,
-    }).where(eq(jobsTable.id, id)).returning();
+    // Only include fields that were explicitly sent in the request body
+    // to avoid wiping existing values (e.g. clientId when only status changes)
+    const updates: Record<string, unknown> = {};
+    if (title !== undefined) updates.title = title;
+    if (description !== undefined) updates.description = description;
+    if ("clientId" in req.body) updates.clientId = clientId || null;
+    if (status !== undefined) updates.status = status;
+    if (jobType !== undefined) updates.jobType = jobType;
+    if (address !== undefined) updates.address = address;
+    if (city !== undefined) updates.city = city;
+    if (state !== undefined) updates.state = state;
+    if (locationName !== undefined) updates.locationName = locationName;
+    if (startDate !== undefined) updates.startDate = startDate;
+    if (endDate !== undefined) updates.endDate = endDate;
+    if (estimatedAmount !== undefined) updates.estimatedAmount = estimatedAmount?.toString();
+    if (actualAmount !== undefined) updates.actualAmount = actualAmount?.toString();
+    if (notes !== undefined) updates.notes = notes;
+
+    const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });
 
     if (Array.isArray(subcontractorIds)) {
