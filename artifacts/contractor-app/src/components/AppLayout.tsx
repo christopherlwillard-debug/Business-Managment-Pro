@@ -22,7 +22,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const { data: settings } = useGetSettings();
   const { logout } = useAuth();
-  const { canView, isOwner } = useUserPermissions();
+  const { canView, isOwner, companyName: ctxCompanyName, logoUrl: ctxLogoUrl } = useUserPermissions();
 
   const enabledFeatures: string[] = settings?.enabledFeatures ?? [
     "invoices", "expenses", "mileage",
@@ -63,8 +63,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     return true;
   });
 
-  const companyName = settings?.companyName || "BuildPro";
-  const logoUrl = settings?.logoUrl ?? null;
+  const companyName = (isOwner ? settings?.companyName : ctxCompanyName) || ctxCompanyName || "BuildPro";
+  const logoUrl = (isOwner ? settings?.logoUrl : ctxLogoUrl) ?? ctxLogoUrl ?? null;
   const initials = companyName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 

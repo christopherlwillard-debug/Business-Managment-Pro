@@ -114,6 +114,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       db.select({
         ownerUserId: settingsTable.ownerUserId,
         companyName: settingsTable.companyName,
+        logoUrl: settingsTable.logoUrl,
       }).from(settingsTable).limit(1),
       db.select({
         firstName: usersTable.firstName,
@@ -124,11 +125,12 @@ router.get("/auth/me", async (req: Request, res: Response) => {
     ]);
     const isOwner = settings?.ownerUserId === userId;
     const companyName = settings?.companyName ?? null;
+    const logoUrl = settings?.logoUrl ?? null;
     const userName = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(" ") || null;
     const profileImageUrl = currentUser?.profileImageUrl ?? null;
 
     if (isOwner) {
-      res.json({ isOwner: true, accessStatus: "owner", permissions: null, companyName, userName, profileImageUrl });
+      res.json({ isOwner: true, accessStatus: "owner", permissions: null, companyName, logoUrl, userName, profileImageUrl });
       return;
     }
 
@@ -146,7 +148,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
         profileImageUrl: currentUser?.profileImageUrl ?? null,
         status: "pending",
       }).onConflictDoNothing();
-      res.json({ isOwner: false, accessStatus: "pending", permissions: null, companyName, userName, profileImageUrl });
+      res.json({ isOwner: false, accessStatus: "pending", permissions: null, companyName, logoUrl, userName, profileImageUrl });
       return;
     }
 
@@ -167,6 +169,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       accessStatus,
       permissions: record.status === "approved" ? (record.permissions ?? null) : null,
       companyName,
+      logoUrl,
       userName,
       profileImageUrl,
     });
