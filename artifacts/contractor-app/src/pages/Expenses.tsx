@@ -140,7 +140,6 @@ function useDeleteExpense() {
 }
 
 function useUpdateExpense() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
       const res = await fetch(`${API}/expenses/${id}`, {
@@ -151,7 +150,6 @@ function useUpdateExpense() {
       if (!res.ok) throw new Error("Failed to update expense");
       return res.json();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/expenses"] }),
   });
 }
 
@@ -965,6 +963,7 @@ export default function Expenses() {
   const { data: expenses, isLoading, refetch } = useListExpenses();
   const { data: jobs }    = useListJobs();
   const { data: subs }    = useListSubcontractors();
+  const qc                = useQueryClient();
   const createMutation    = useCreateExpense();
   const uploadMutation    = useUploadExpenseReceipt();
   const saveVendor        = useSaveVendor();
@@ -1195,6 +1194,7 @@ export default function Expenses() {
                                 if (editReceiptFile) {
                                   await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
                                 }
+                                await qc.invalidateQueries({ queryKey: ["/api/expenses"] });
                                 if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
                                 setEditReceiptFile(null);
                                 setEditingRow(null);
