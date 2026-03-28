@@ -148,7 +148,7 @@ function AdminApp() {
   const { isLoading, isAuthenticated, login } = useAuth();
   const { accessStatus } = useUserPermissions();
 
-  if (isLoading || accessStatus === "loading") {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -169,6 +169,14 @@ function AdminApp() {
         >
           Log in
         </button>
+      </div>
+    );
+  }
+
+  if (accessStatus === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }

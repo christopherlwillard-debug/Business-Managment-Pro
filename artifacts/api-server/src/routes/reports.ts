@@ -3,10 +3,11 @@ import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
+import { sectionGuard } from "./guards";
 
 const router = Router();
 
-router.get("/dashboard", async (req, res) => {
+router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   try {
     const { period = "month" } = req.query;
 
@@ -86,7 +87,7 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
-router.get("/compliance", async (_req, res) => {
+router.get("/compliance", sectionGuard("compliance"), async (_req, res) => {
   try {
     const [settings] = await db.select().from(settingsTable).limit(1);
     const threshold = parseFloat(settings?.thresholdAmount1099 ?? "600");
@@ -144,7 +145,7 @@ router.get("/compliance", async (_req, res) => {
   }
 });
 
-router.get("/accounting", async (req, res) => {
+router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
   try {
     const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
     const startDate = `${year}-01-01`;

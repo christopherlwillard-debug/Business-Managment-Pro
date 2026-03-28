@@ -1,10 +1,18 @@
 import express, { Router, type IRouter, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import path from "path";
-import { db, settingsTable, accessRequestsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, accessRequestsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import healthRouter from "./health";
 import authRouter from "./auth";
-import { getOwnerCache, setOwnerCache, invalidateOwnerCache } from "./owner-cache";
+import { invalidateOwnerCache } from "./owner-cache";
+import {
+  sectionGuard,
+  getOwnerId,
+  getRequestUserId,
+  getRequestUser,
+  wrapAsync,
+  WRITE_METHODS,
+} from "./guards";
 import clientsRouter from "./clients";
 import jobsRouter from "./jobs";
 import invoicesRouter from "./invoices";
@@ -29,52 +37,8 @@ import registeredAgentRouter from "./registered-agent";
 import form1099sRouter from "./form-1099s";
 import teamRouter from "./team";
 
-export type SectionKey =
-  | "expenses"
-  | "jobs"
-  | "invoices"
-  | "clients"
-  | "mileage"
-  | "subcontractors"
-  | "daily_logs"
-  | "estimates"
-  | "compliance";
-
-export type SectionPermission = { view: boolean; edit: boolean };
-export type Permissions = Record<SectionKey, SectionPermission>;
-
-const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-async function getOwnerId(): Promise<string | null> {
-  const cached = getOwnerCache();
-  if (cached !== undefined) return cached;
-  const [settings] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
-  const id = settings?.ownerUserId ?? null;
-  setOwnerCache(id);
-  return id;
-}
-
+export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
-
-interface RequestUser {
-  id?: string;
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  profileImageUrl?: string;
-}
-
-function getRequestUserId(req: Request): string | undefined {
-  return (req.user as RequestUser | undefined)?.id;
-}
-
-function getRequestUser(req: Request): RequestUser | undefined {
-  return req.user as RequestUser | undefined;
-}
-
-function wrapAsync(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>): RequestHandler {
-  return (req, res, next) => { fn(req, res, next).catch(next); };
-}
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -136,34 +100,6 @@ const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
   res.status(403).json({ error: "ACCESS_PENDING" });
 });
 
-function sectionGuard(section: SectionKey): RequestHandler {
-  return wrapAsync(async (req, res, next) => {
-    const userId = getRequestUserId(req);
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-    const ownerId = await getOwnerId();
-    if (ownerId === userId) { next(); return; }
-
-    const [record] = await db
-      .select({ permissions: accessRequestsTable.permissions })
-      .from(accessRequestsTable)
-      .where(and(eq(accessRequestsTable.userId, userId), eq(accessRequestsTable.status, "approved")));
-
-    if (!record) { res.status(403).json({ error: "Forbidden" }); return; }
-
-    const perms = record.permissions as Permissions | null;
-    const sectionPerms = perms?.[section];
-
-    if (!sectionPerms) { res.status(403).json({ error: "Forbidden" }); return; }
-
-    const isWrite = WRITE_METHODS.has(req.method.toUpperCase());
-    const allowed = isWrite ? sectionPerms.edit : sectionPerms.view;
-
-    if (!allowed) { res.status(403).json({ error: "Forbidden" }); return; }
-    next();
-  });
-}
-
 const router: IRouter = Router();
 
 router.use(healthRouter);
@@ -187,7 +123,7 @@ router.use("/daily-logs", sectionGuard("daily_logs"), dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance"), complianceItemsRouter);
 
 router.use("/settings", requireOwnerForWrites, settingsRouter);
-router.use("/reports", sectionGuard("invoices"), reportsRouter);
+router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/vendors", requireOwner, vendorsRouter);
 router.use("/expense-import", sectionGuard("expenses"), expenseImportRouter);
