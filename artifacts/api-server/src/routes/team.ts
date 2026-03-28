@@ -59,7 +59,8 @@ router.get("/requests", async (_req: Request, res: Response) => {
 
 router.post("/requests/:id/approve", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid request id" }); return; }
     const { permissions } = req.body;
     if (!permissions) { res.status(400).json({ error: "permissions required" }); return; }
 
@@ -80,7 +81,8 @@ router.post("/requests/:id/approve", async (req: Request, res: Response) => {
 
 router.post("/requests/:id/reject", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid request id" }); return; }
     const [updated] = await db
       .update(accessRequestsTable)
       .set({ status: "rejected", resolvedAt: new Date() })
