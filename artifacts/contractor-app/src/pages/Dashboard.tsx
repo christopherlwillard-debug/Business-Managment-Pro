@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -21,13 +22,17 @@ function useComplianceSummary() {
 }
 
 export default function Dashboard() {
-  const { data: stats, isLoading } = useGetDashboardStats({ period: "month" });
+  const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
+  const { data: stats, isLoading } = useGetDashboardStats({ period });
   const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
 
   const overdueCount = complianceItems.filter(i => i.computedStatus === "overdue").length;
   const dueSoonCount = complianceItems.filter(i => i.computedStatus === "due-soon").length;
   const completeCount = complianceItems.filter(i => i.computedStatus === "complete").length;
   const hasComplianceIssues = overdueCount > 0 || dueSoonCount > 0;
+
+  const periodLabels = { week: "WTD", month: "MTD", quarter: "QTD", year: "YTD" };
+  const periodLabel = periodLabels[period];
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
@@ -39,11 +44,26 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-3xl font-display font-bold text-foreground">Business Overview</h1>
+        <div className="flex gap-2 bg-muted/40 rounded-lg p-1">
+          {(["week", "month", "quarter", "year"] as const).map(p => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                period === p
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {periodLabels[p]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Total Revenue (MTD)" value={formatCurrency(stats.totalRevenue)} icon={DollarSign} trend="+12.5%" />
-        <MetricCard title="Total Expenses (MTD)" value={formatCurrency(stats.totalExpenses)} icon={Receipt} trend="-2.4%" />
+        <MetricCard title={`Total Revenue (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} trend="+12.5%" />
+        <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} trend="-2.4%" />
         <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} trend="+2" />
         <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} />
       </div>
