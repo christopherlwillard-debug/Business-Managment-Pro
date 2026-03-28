@@ -1,4 +1,5 @@
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { printInvoiceWindow } from "@/lib/printInvoice";
 import {
   FileText, Trash2, X,
   Building2, MapPin, Printer, Mail, Phone,
@@ -44,7 +45,47 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
 
   const workLocation = invoice.locationName || invoice.city || invoice.state;
 
-  function handlePrint() { window.print(); }
+  function handlePrint() {
+    const absoluteLogoUrl = logoUrl ? `${window.location.origin}${base}${logoUrl}` : null;
+    printInvoiceWindow(
+      {
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        terms: invoice.terms,
+        clientName: invoice.clientName,
+        clientEmail: invoice.clientEmail,
+        clientPhone: invoice.clientPhone,
+        clientAddress: invoice.clientAddress,
+        clientCity: invoice.clientCity,
+        clientState: invoice.clientState,
+        clientZip: invoice.clientZip,
+        clientNotes: invoice.clientNotes,
+        jobTitle: invoice.jobTitle,
+        locationName: invoice.locationName,
+        city: invoice.city,
+        state: invoice.state,
+        lineItems,
+        subtotal,
+        taxRate,
+        taxAmount,
+        total,
+        notes: invoice.notes,
+      },
+      {
+        companyName,
+        companyEmail,
+        companyPhone,
+        companyAddress,
+        companyCity,
+        companyState,
+        companyZip,
+        logoAbsoluteUrl: absoluteLogoUrl,
+        logoSize,
+        logoPosition: logoPos,
+      }
+    );
+  }
 
   // Show contact block if any company info exists (name, address, phone, or email)
   const hasContact = !!(companyName || companyAddress || companyCity || companyState || companyZip || companyPhone || companyEmail);

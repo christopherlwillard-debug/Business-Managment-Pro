@@ -6,6 +6,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
+import { printInvoiceWindow } from "@/lib/printInvoice";
 import {
   Building2, MapPin, Check, X, Plus, Trash2, Lock, Printer, Paperclip, Upload,
 } from "lucide-react";
@@ -198,7 +199,45 @@ export function InvoiceEditorDialog({
   const selectedClient = clients.find(c => String(c.id) === form.clientId);
 
   function handlePrint() {
-    window.print();
+    const absoluteLogoUrl = logoUrl ? `${window.location.origin}${base}${logoUrl}` : null;
+    const taxRateNum = parseFloat(form.taxRate) || 0;
+    printInvoiceWindow(
+      {
+        invoiceNumber: previewNumber,
+        issueDate: form.issueDate,
+        dueDate: form.dueDate || null,
+        terms: form.terms || null,
+        clientName: clientInput || null,
+        clientEmail: form.clientEmail || null,
+        clientPhone: form.clientPhone || null,
+        clientAddress: form.clientAddress || null,
+        clientCity: form.clientCity || null,
+        clientState: form.clientState || null,
+        clientZip: form.clientZip || null,
+        clientNotes: form.clientNotes || null,
+        locationName: form.locationName || null,
+        city: form.city || null,
+        state: form.state || null,
+        lineItems: lineItems.filter(l => l.description.trim()),
+        subtotal,
+        taxRate: taxRateNum || null,
+        taxAmount: taxRateNum ? taxAmount : null,
+        total,
+        notes: form.notes || null,
+      },
+      {
+        companyName,
+        companyEmail,
+        companyPhone,
+        companyAddress,
+        companyCity,
+        companyState,
+        companyZip,
+        logoAbsoluteUrl: absoluteLogoUrl,
+        logoSize,
+        logoPosition: logoPos,
+      }
+    );
   }
 
   function fmtDate(iso: string): string {
