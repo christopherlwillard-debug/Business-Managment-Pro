@@ -18,6 +18,8 @@ import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
 import Materials from "./pages/Materials";
+import DailyLogs from "./pages/DailyLogs";
+import Compliance from "./pages/Compliance";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
@@ -154,6 +156,12 @@ function AdminApp() {
           <PermissionGuard section="invoices"><Accounting /></PermissionGuard>
         </Route>
         <Route path="/materials" component={Materials} />
+        <Route path="/daily-logs">
+          <PermissionGuard section="daily_logs"><DailyLogs /></PermissionGuard>
+        </Route>
+        <Route path="/compliance">
+          <PermissionGuard section="compliance"><Compliance /></PermissionGuard>
+        </Route>
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

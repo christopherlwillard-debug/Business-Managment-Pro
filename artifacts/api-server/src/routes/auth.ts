@@ -86,7 +86,7 @@ async function upsertUser(claims: Record<string, unknown>) {
 async function ensureOwner(userId: string): Promise<void> {
   const [settings] = await db.select({ id: settingsTable.id, ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
   if (!settings) {
-    await db.insert(settingsTable).values({ ownerUserId: userId } as any).onConflictDoNothing();
+    await db.insert(settingsTable).values({ ownerUserId: userId }).onConflictDoNothing();
   } else if (!settings.ownerUserId) {
     await db.update(settingsTable)
       .set({ ownerUserId: userId })
@@ -127,9 +127,12 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       return;
     }
 
+    const accessStatus =
+      record.status === "approved" ? "admin"
+      : (record.status as "pending" | "rejected");
     res.json({
       isOwner: false,
-      accessStatus: record.status as "pending" | "approved" | "rejected",
+      accessStatus,
       permissions: record.status === "approved" ? (record.permissions ?? null) : null,
     });
   } catch (err) {

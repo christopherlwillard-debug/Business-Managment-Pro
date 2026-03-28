@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useGetComplianceReport } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -237,12 +238,13 @@ function ItemForm({
 
 // ─── Compliance Item Card ─────────────────────────────────────────────────────
 function ItemCard({
-  item, onEdit, onDelete, onToggleComplete,
+  item, onEdit, onDelete, onToggleComplete, canEditCompliance,
 }: {
   item: ComplianceItem;
   onEdit: () => void;
   onDelete: () => void;
   onToggleComplete: () => void;
+  canEditCompliance: boolean;
 }) {
   const s = item.computedStatus;
   return (
@@ -278,21 +280,23 @@ function ItemCard({
             </div>
           </div>
 
-          {/* Actions — always visible */}
-          <div className="flex gap-1 flex-shrink-0">
-            <button onClick={onToggleComplete} title={s === "complete" ? "Mark upcoming" : "Mark complete"}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
-              <CheckCircle2 className="w-4 h-4" />
-            </button>
-            <button onClick={onEdit} title="Edit"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={onDelete} title="Delete"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {/* Actions — shown to editors only */}
+          {canEditCompliance && (
+            <div className="flex gap-1 flex-shrink-0">
+              <button onClick={onToggleComplete} title={s === "complete" ? "Mark upcoming" : "Mark complete"}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                <CheckCircle2 className="w-4 h-4" />
+              </button>
+              <button onClick={onEdit} title="Edit"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={onDelete} title="Delete"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
@@ -329,6 +333,7 @@ function ItemCard({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Compliance() {
+  const { canEdit } = useUserPermissions();
   const { data: autoReport, isLoading: loadingAuto } = useGetComplianceReport();
   const { data: items = [], isLoading: loadingItems } = useComplianceItems();
   const createItem   = useCreateComplianceItem();
@@ -388,12 +393,14 @@ export default function Compliance() {
           <h1 className="text-3xl font-display font-bold text-foreground">Compliance Center</h1>
           <p className="text-muted-foreground mt-1">Track license renewals, tax deadlines, permits, and filings.</p>
         </div>
-        <button
-          onClick={() => { setShowForm(true); setEditTarget(null); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all active:scale-95"
-        >
-          <Plus className="w-5 h-5" /> Add Compliance Item
-        </button>
+        {canEdit("compliance") && (
+          <button
+            onClick={() => { setShowForm(true); setEditTarget(null); }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all active:scale-95"
+          >
+            <Plus className="w-5 h-5" /> Add Compliance Item
+          </button>
+        )}
       </div>
 
       {/* ── Registered Agent Section ── */}
@@ -526,6 +533,7 @@ export default function Compliance() {
                   onEdit={() => { setEditTarget(item); setShowForm(false); }}
                   onDelete={() => handleDelete(item.id)}
                   onToggleComplete={() => handleToggleComplete(item)}
+                  canEditCompliance={canEdit("compliance")}
                 />
               ))}
             </div>

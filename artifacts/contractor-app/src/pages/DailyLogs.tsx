@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListDailyLogs,
   useCreateDailyLog,
@@ -31,6 +32,7 @@ type FormState = {
 };
 
 export default function DailyLogs() {
+  const { canEdit } = useUserPermissions();
   const { data: logs = [], isLoading } = useListDailyLogs();
   const { data: materialLists = [] } = useListMaterialLists();
   const { data: jobs = [] } = useListJobs();
@@ -122,12 +124,14 @@ export default function DailyLogs() {
           <h1 className="text-3xl font-display font-bold text-foreground">Daily Field Logs</h1>
           <p className="text-muted-foreground mt-1">Documentation of site conditions and progress.</p>
         </div>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors">
-          {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-          {showForm ? "Cancel" : "New Log"}
-        </button>
+        {canEdit("daily_logs") && (
+          <button
+            onClick={() => setShowForm(v => !v)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors">
+            {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showForm ? "Cancel" : "New Log"}
+          </button>
+        )}
       </div>
 
       {showForm && (
@@ -231,12 +235,14 @@ export default function DailyLogs() {
                         <div>{log.weather || 'Unknown weather'}</div>
                         <div>Crew: {log.crewCount || 0}</div>
                       </div>
-                      <button
-                        onClick={() => handleDelete(log.id)}
-                        disabled={deletingId === log.id}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canEdit("daily_logs") && (
+                        <button
+                          onClick={() => handleDelete(log.id)}
+                          disabled={deletingId === log.id}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 

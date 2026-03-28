@@ -75,6 +75,14 @@ async function requireOwnerForWrites(req: Request, res: Response, next: NextFunc
   res.status(403).json({ error: "Owner access required" });
 }
 
+async function requireOwner(req: Request, res: Response, next: NextFunction) {
+  const userId = (req as any).user?.id as string;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const ownerId = await getOwnerId();
+  if (ownerId === userId) { next(); return; }
+  res.status(403).json({ error: "Owner access required" });
+}
+
 async function requireAccess(req: Request, res: Response, next: NextFunction) {
   const userId = (req as any).user?.id as string;
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -160,17 +168,17 @@ router.use("/daily-logs", sectionGuard("daily_logs") as any, dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance") as any, complianceItemsRouter);
 
 router.use("/settings", requireOwnerForWrites as any, settingsRouter);
-router.use("/reports", reportsRouter);
+router.use("/reports", requireOwner as any, reportsRouter);
 router.use("/uploads", uploadsRouter);
-router.use("/vendors", vendorsRouter);
-router.use("/expense-import", expenseImportRouter);
-router.use("/payments", paymentsRouter);
-router.use("/tax-reports", taxReportsRouter);
-router.use("/recurring-expenses", recurringExpensesRouter);
-router.use("/materials", materialsRouter);
-router.use("/material-lists", materialListsRouter);
-router.use("/registered-agent", registeredAgentRouter);
-router.use("/1099s", form1099sRouter);
+router.use("/vendors", requireOwnerForWrites as any, vendorsRouter);
+router.use("/expense-import", requireOwnerForWrites as any, expenseImportRouter);
+router.use("/payments", requireOwner as any, paymentsRouter);
+router.use("/tax-reports", requireOwner as any, taxReportsRouter);
+router.use("/recurring-expenses", requireOwnerForWrites as any, recurringExpensesRouter);
+router.use("/materials", requireOwner as any, materialsRouter);
+router.use("/material-lists", requireOwnerForWrites as any, materialListsRouter);
+router.use("/registered-agent", requireOwner as any, registeredAgentRouter);
+router.use("/1099s", requireOwnerForWrites as any, form1099sRouter);
 router.use("/team", teamRouter);
 
 export default router;

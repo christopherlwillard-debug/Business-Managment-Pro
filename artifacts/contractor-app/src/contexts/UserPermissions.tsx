@@ -14,7 +14,7 @@ export type SectionKey =
 export type SectionPermission = { view: boolean; edit: boolean };
 export type Permissions = Record<SectionKey, SectionPermission>;
 
-export type AccessStatus = "owner" | "approved" | "pending" | "rejected" | "loading";
+export type AccessStatus = "owner" | "admin" | "pending" | "rejected" | "loading";
 
 interface UserPermissionsState {
   accessStatus: AccessStatus;
