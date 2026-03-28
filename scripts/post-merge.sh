@@ -26,6 +26,26 @@ pool.query(\`
 \`).then(() => pool.end()).catch(e => { console.error('Backfill error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Idempotent migration: create other_income table (Task #55)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS \"other_income\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"business_id\" text,
+    \"amount\" numeric(12, 2) NOT NULL,
+    \"date\" text NOT NULL,
+    \"description\" text NOT NULL,
+    \"source\" text,
+    \"payment_method\" text NOT NULL DEFAULT 'other',
+    \"notes\" text,
+    \"created_at\" timestamp DEFAULT now() NOT NULL
+  )
+\`).then(() => { console.log('other_income table ensured'); pool.end(); })
+  .catch(e => { console.error('other_income migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Idempotent migration: add 'invited' to access_requests status check constraint (Task #54)
 (cd lib/db && node -e "
 const { Pool } = require('pg');
