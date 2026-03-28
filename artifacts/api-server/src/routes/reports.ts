@@ -28,10 +28,13 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     }
     const endDate = now.toISOString().split("T")[0];
 
+    // Mileage deduction is always shown YTD regardless of the period selector
+    const ytdStart = `${now.getFullYear()}-01-01`;
+
     const [allInvoices, allExpenses, allMileage, allOtherIncome, activeJobsRows, recentJobsRows, recentInvoicesRows] = await Promise.all([
       db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
-      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
+      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
       db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
       db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
       db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, estimatedAmount: jobsTable.estimatedAmount, actualAmount: jobsTable.actualAmount, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
@@ -43,7 +46,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = allInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const overdueInvoices = allInvoices.filter(i => i.status === "overdue").length;
-    const totalExpenses = allExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Exclude auto-created mileage expense entries — mileage deduction is tracked
+    // separately via mileageLogsTable to avoid double-counting in net profit.
+    const totalExpenses = allExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const mileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
 
     // Monthly revenue for last 6 months
@@ -62,7 +67,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       monthlyRevenue.push({
         month: monthStr,
         revenue: invRevenue + othRevenue,
-        expenses: monthlyExp.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+        expenses: monthlyExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
       });
     }
 
@@ -192,7 +197,10 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const grossRevenue = invoiceGrossRevenue + otherIncomeSum;
     const paidRevenue = invoicePaidRevenue + otherIncomeSum;
 
-    const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Exclude mileage category — it's tracked separately via mileageDeduction from
+    // mileage_logs to prevent double-counting in the net profit calculation.
+    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
+    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
     const businessMiles = mileageLogs.filter(m => m.classification === "business");
     const totalMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
@@ -250,9 +258,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }));
     const allRecords = [...invoiceRecords, ...otherIncomeRecords].sort((a, b) => a.issueDate.localeCompare(b.issueDate));
 
-    // Expenses by category
+    // Expenses by category (mileage excluded — shown separately as mileageDeduction)
     const catMap = new Map<string, { category: string; amount: number; count: number }>();
-    for (const e of expenses) {
+    for (const e of nonMileageExpenses) {
       const cat = e.category || "Uncategorized";
       const existing = catMap.get(cat) ?? { category: cat, amount: 0, count: 0 };
       existing.amount += parseFloat(e.amount ?? "0");
@@ -266,7 +274,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     for (let m = 1; m <= 12; m++) {
       const ms = `${year}-${String(m).padStart(2, "0")}`;
       const monthInvs = invoices.filter(i => i.issueDate.startsWith(ms));
-      const monthExp = expenses.filter(e => e.date.startsWith(ms));
+      const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms));
       const monthOther = otherIncomeRows.filter(o => o.date.startsWith(ms));
       const invGross = monthInvs.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othGross = monthOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
