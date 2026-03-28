@@ -64,9 +64,9 @@ const PERMISSION_SECTIONS: { key: SectionKey; label: string }[] = [
 ];
 
 function defaultPerms(): Permissions {
-  const p: any = {};
-  PERMISSION_SECTIONS.forEach(s => { p[s.key] = { view: false, edit: false }; });
-  return p;
+  const result = {} as Permissions;
+  PERMISSION_SECTIONS.forEach(s => { result[s.key as SectionKey] = { view: false, edit: false }; });
+  return result;
 }
 
 interface AccessRecord {

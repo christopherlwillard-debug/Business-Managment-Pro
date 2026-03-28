@@ -1,9 +1,10 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@workspace/replit-auth-web";
-import { UserPermissionsProvider, useUserPermissions } from "@/contexts/UserPermissions";
+import { UserPermissionsProvider, useUserPermissions, type SectionKey } from "@/contexts/UserPermissions";
 import { PermissionGuard } from "./components/PermissionGuard";
 
 import { AppLayout } from "./components/AppLayout";
@@ -102,6 +103,37 @@ function AccessRejectedScreen() {
   );
 }
 
+const SECTION_ROUTES: { section: SectionKey; href: string }[] = [
+  { section: "jobs", href: "/jobs" },
+  { section: "estimates", href: "/estimates" },
+  { section: "expenses", href: "/expenses" },
+  { section: "mileage", href: "/mileage" },
+  { section: "clients", href: "/clients" },
+  { section: "subcontractors", href: "/subcontractors" },
+  { section: "daily_logs", href: "/daily-logs" },
+  { section: "compliance", href: "/compliance" },
+  { section: "invoices", href: "/accounting" },
+];
+
+function HomeRoute() {
+  const { isOwner, permissions } = useUserPermissions();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isOwner && permissions) {
+      const first = SECTION_ROUTES.find(r => permissions[r.section]?.view);
+      if (first) setLocation(first.href);
+    }
+  }, [isOwner, permissions, setLocation]);
+
+  if (isOwner) return <Dashboard />;
+  return (
+    <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+      Redirecting…
+    </div>
+  );
+}
+
 function AdminApp() {
   const { isLoading, isAuthenticated, login } = useAuth();
   const { accessStatus } = useUserPermissions();
@@ -137,7 +169,7 @@ function AdminApp() {
   return (
     <AppLayout>
       <Switch>
-        <Route path="/" component={Dashboard} />
+        <Route path="/" component={HomeRoute} />
         <Route path="/jobs">
           <PermissionGuard section="jobs"><Jobs /></PermissionGuard>
         </Route>

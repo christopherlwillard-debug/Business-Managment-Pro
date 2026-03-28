@@ -11,13 +11,15 @@ const SECTION_KEYS: SectionKey[] = [
   "subcontractors", "daily_logs", "estimates", "compliance",
 ];
 
+type RawSectionPerm = { view?: unknown; edit?: unknown };
+
 function normalizePermissions(raw: unknown): Record<SectionKey, { view: boolean; edit: boolean }> {
-  const input = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  const input = (raw && typeof raw === "object" ? raw : {}) as Record<string, RawSectionPerm | undefined>;
   const result = {} as Record<SectionKey, { view: boolean; edit: boolean }>;
   for (const key of SECTION_KEYS) {
-    const p = input[key] ?? {};
-    const edit = !!(p.edit);
-    const view = !!(p.view) || edit;
+    const p: RawSectionPerm = input[key] ?? {};
+    const edit = !!p.edit;
+    const view = !!p.view || edit;
     result[key] = { view, edit };
   }
   return result;

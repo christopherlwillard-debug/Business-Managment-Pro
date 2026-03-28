@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   Calculator, HardHat, Users,
-  Settings, Menu, X, BookOpen, LogOut, Package, ClipboardList, ShieldCheck
+  Settings, Menu, X, BookOpen, LogOut, Package, ClipboardList, ShieldCheck,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
@@ -28,8 +29,17 @@ export function AppLayout({ children }: AppLayoutProps) {
     "estimates", "subcontractors", "compliance", "clients",
   ];
 
-  const allNavItems: { name: string; href: string; icon: any; feature: string | null; section: SectionKey | null; ownerOnly?: boolean }[] = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null, section: null },
+  interface NavItem {
+    name: string;
+    href: string;
+    icon: LucideIcon;
+    feature: string | null;
+    section: SectionKey | null;
+    ownerOnly?: boolean;
+  }
+
+  const allNavItems: NavItem[] = [
+    { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null, section: null, ownerOnly: true },
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs" },
     { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates", section: "estimates" },
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses" },
@@ -40,7 +50,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Compliance", href: "/compliance", icon: ShieldCheck, feature: "compliance", section: "compliance" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices" },
-    { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null },
+    { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
   ];
 
   const navigation = allNavItems.filter((item) => {
@@ -62,7 +72,15 @@ export function AppLayout({ children }: AppLayoutProps) {
     transition: { duration: 0.18 },
   };
 
-  const allBottomNavItems: { name: string; href: string; icon: any; action?: () => void; section: SectionKey | null }[] = [
+  interface BottomNavItem {
+    name: string;
+    href: string;
+    icon: LucideIcon;
+    action?: () => void;
+    section: SectionKey | null;
+  }
+
+  const allBottomNavItems: BottomNavItem[] = [
     { name: "Home", href: "/", icon: LayoutDashboard, section: null },
     { name: "Jobs", href: "/jobs", icon: Briefcase, section: "jobs" },
     { name: "Clients", href: "/clients", icon: Users, section: "clients" },
@@ -192,7 +210,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Mobile bottom navigation bar */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border flex items-stretch shadow-lg">
-        {bottomNavItems.map((item: any) => {
+        {bottomNavItems.map((item) => {
           const isActive = item.href !== "#" && (location === item.href || (item.href !== "/" && location.startsWith(item.href)));
           const Element = item.action ? "button" : Link;
 

@@ -562,7 +562,7 @@ export default function Compliance() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border/50">
-                    {autoReport.subcontractor1099Alerts.map((alert: any, i: number) => (
+                    {autoReport.subcontractor1099Alerts.map((alert, i) => (
                       <div key={i} className="p-4 bg-accent/5">
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-bold text-foreground">{alert.name}</span>
