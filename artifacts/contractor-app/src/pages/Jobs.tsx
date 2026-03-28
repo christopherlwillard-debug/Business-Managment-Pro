@@ -1403,7 +1403,7 @@ function SavedInvoicesSection() {
 
 // ─── Main Jobs Page ────────────────────────────────────────────────────────────
 export default function Jobs() {
-  const { canEdit } = useUserPermissions();
+  const { canEdit, canView } = useUserPermissions();
   const canEditJobs = canEdit("jobs");
   const queryClient = useQueryClient();
   const { data: jobs = [],    isLoading } = useListJobs();
@@ -1603,8 +1603,8 @@ export default function Jobs() {
         </>
       )}
 
-      {/* Saved Invoices section */}
-      <SavedInvoicesSection />
+      {/* Saved Invoices section — only shown when user has invoices view access */}
+      {canView("invoices") && <SavedInvoicesSection />}
 
       {/* Dialogs */}
       {jobFormOpen && (

@@ -20,6 +20,7 @@ interface UserPermissionsState {
   accessStatus: AccessStatus;
   isOwner: boolean;
   permissions: Permissions | null;
+  companyName: string | null;
   canView: (section: SectionKey) => boolean;
   canEdit: (section: SectionKey) => boolean;
   refresh: () => void;
@@ -29,6 +30,7 @@ const defaultPermissions: UserPermissionsState = {
   accessStatus: "loading",
   isOwner: false,
   permissions: null,
+  companyName: null,
   canView: () => false,
   canEdit: () => false,
   refresh: () => {},
@@ -40,6 +42,7 @@ export function UserPermissionsProvider({ children }: { children: ReactNode }) {
   const [accessStatus, setAccessStatus] = useState<AccessStatus>("loading");
   const [isOwner, setIsOwner] = useState(false);
   const [permissions, setPermissions] = useState<Permissions | null>(null);
+  const [companyName, setCompanyName] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -57,6 +60,7 @@ export function UserPermissionsProvider({ children }: { children: ReactNode }) {
         setIsOwner(data.isOwner ?? false);
         setAccessStatus(data.accessStatus ?? "pending");
         setPermissions(data.permissions ?? null);
+        setCompanyName(data.companyName ?? null);
       })
       .catch(() => {
         setAccessStatus("pending");
@@ -76,7 +80,7 @@ export function UserPermissionsProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <UserPermissionsContext.Provider value={{ accessStatus, isOwner, permissions, canView, canEdit, refresh }}>
+    <UserPermissionsContext.Provider value={{ accessStatus, isOwner, permissions, companyName, canView, canEdit, refresh }}>
       {children}
     </UserPermissionsContext.Provider>
   );

@@ -109,11 +109,15 @@ router.get("/auth/me", async (req: Request, res: Response) => {
   }
   const userId = (req.user as any)?.id as string;
   try {
-    const [settings] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
+    const [settings] = await db.select({
+      ownerUserId: settingsTable.ownerUserId,
+      companyName: settingsTable.companyName,
+    }).from(settingsTable).limit(1);
     const isOwner = settings?.ownerUserId === userId;
+    const companyName = settings?.companyName ?? null;
 
     if (isOwner) {
-      res.json({ isOwner: true, accessStatus: "owner", permissions: null });
+      res.json({ isOwner: true, accessStatus: "owner", permissions: null, companyName });
       return;
     }
 
@@ -123,7 +127,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       .where(eq(accessRequestsTable.userId, userId));
 
     if (!record) {
-      res.json({ isOwner: false, accessStatus: "pending", permissions: null });
+      res.json({ isOwner: false, accessStatus: "pending", permissions: null, companyName });
       return;
     }
 
@@ -134,6 +138,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       isOwner: false,
       accessStatus,
       permissions: record.status === "approved" ? (record.permissions ?? null) : null,
+      companyName,
     });
   } catch (err) {
     console.error("auth/me error", err);

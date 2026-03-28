@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@workspace/replit-auth-web";
-import { useGetSettings } from "@workspace/api-client-react";
 import { UserPermissionsProvider, useUserPermissions } from "@/contexts/UserPermissions";
 import { PermissionGuard } from "./components/PermissionGuard";
 
@@ -34,8 +33,8 @@ const queryClient = new QueryClient({
 });
 
 function AccessPendingScreen() {
-  const { data: settings } = useGetSettings();
-  const companyName = (settings as any)?.companyName || "BuildPro";
+  const { companyName: ctxCompany } = useUserPermissions();
+  const companyName = ctxCompany || "the company";
   const { logout } = useAuth();
 
   return (
