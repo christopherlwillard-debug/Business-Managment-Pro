@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction, type RequestHandler } from "express";
-import { db, settingsTable, accessRequestsTable, sessionsTable } from "@workspace/db";
+import { db, accessRequestsTable, sessionsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import { getOwnerId } from "./guards";
 
 type SectionKey =
   | "expenses" | "jobs" | "invoices" | "clients" | "mileage"
@@ -27,16 +28,11 @@ function normalizePermissions(raw: unknown): Record<SectionKey, { view: boolean;
 
 const router = Router();
 
-async function isOwner(userId: string): Promise<boolean> {
-  const [settings] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
-  return settings?.ownerUserId === userId;
-}
-
 const requireOwner: RequestHandler = (req, res, next) => {
   const userId = (req.user as { id?: string } | undefined)?.id;
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-  isOwner(userId).then(ok => {
-    if (ok) next();
+  getOwnerId().then(ownerId => {
+    if (ownerId === userId) next();
     else res.status(403).json({ error: "Owner access required" });
   }).catch(next);
 };
@@ -144,8 +140,8 @@ router.delete("/members/:userId", async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
 
-    const [settings] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
-    if (settings?.ownerUserId === userId) {
+    const ownerId = await getOwnerId();
+    if (ownerId === userId) {
       res.status(400).json({ error: "Cannot remove the owner" });
       return;
     }
