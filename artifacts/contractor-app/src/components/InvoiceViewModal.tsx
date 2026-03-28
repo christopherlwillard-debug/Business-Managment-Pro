@@ -173,7 +173,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
               {headerRow}
 
               {/* Bill To + Location */}
-              <div className={workLocation ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+              <div className={workLocation ? "grid grid-cols-2 gap-4 items-stretch" : "grid grid-cols-1 gap-4"}>
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-3">Bill To</p>
                   {invoice.clientName
