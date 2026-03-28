@@ -404,7 +404,7 @@ export default function Compliance() {
       </div>
 
       {/* ── Registered Agent Section ── */}
-      <RegisteredAgentSection />
+      <RegisteredAgentSection canEdit={canEdit("compliance")} />
 
       {/* Summary ribbon */}
       {!loadingItems && items.length > 0 && (

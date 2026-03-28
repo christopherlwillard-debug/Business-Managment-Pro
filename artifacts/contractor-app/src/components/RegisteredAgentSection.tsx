@@ -163,7 +163,7 @@ function AgentTaskForm({
   );
 }
 
-export function RegisteredAgentSection({ className }: { className?: string } = {}) {
+export function RegisteredAgentSection({ className, canEdit = true }: { className?: string; canEdit?: boolean } = {}) {
   const { data: agent, isLoading } = useRegisteredAgent();
   const updateAgent = useUpdateAgent();
   const createTask  = useCreateAgentTask();
@@ -214,7 +214,7 @@ export function RegisteredAgentSection({ className }: { className?: string } = {
           <Building2 className="w-5 h-5 text-indigo-500" />
           Registered Agent
         </h2>
-        {!editing && (
+        {!editing && canEdit && (
           <button onClick={openEdit}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors">
             <Pencil className="w-3.5 h-3.5" />
@@ -332,10 +332,12 @@ export function RegisteredAgentSection({ className }: { className?: string } = {
           <Building2 className="w-8 h-8 text-indigo-300 mx-auto mb-2" />
           <p className="text-sm font-medium text-gray-600">No registered agent on file</p>
           <p className="text-xs text-gray-400 mt-1">Add your registered agent's contact details and the compliance tasks they handle.</p>
-          <button onClick={openEdit}
-            className="mt-3 px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow">
-            Add Registered Agent
-          </button>
+          {canEdit && (
+            <button onClick={openEdit}
+              className="mt-3 px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow">
+              Add Registered Agent
+            </button>
+          )}
         </div>
       )}
 
@@ -346,7 +348,7 @@ export function RegisteredAgentSection({ className }: { className?: string } = {
               <FileCheck className="w-4 h-4 text-indigo-400" />
               Tasks Handled by Agent
             </h3>
-            {!showAddTask && !editingTask && (
+            {!showAddTask && !editingTask && canEdit && (
               <button onClick={() => setShowAddTask(true)}
                 className="flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors">
                 <Plus className="w-3.5 h-3.5" /> Add Task
@@ -395,19 +397,21 @@ export function RegisteredAgentSection({ className }: { className?: string } = {
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => { setEditingTask(task); setShowAddTask(false); }}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={async () => {
-                        if (!confirm("Delete this task?")) return;
-                        await deleteTask.mutateAsync(task.id);
-                      }}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => { setEditingTask(task); setShowAddTask(false); }}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm("Delete this task?")) return;
+                          await deleteTask.mutateAsync(task.id);
+                        }}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               ))}

@@ -187,17 +187,17 @@ router.use("/daily-logs", sectionGuard("daily_logs"), dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance"), complianceItemsRouter);
 
 router.use("/settings", requireOwner, settingsRouter);
-router.use("/reports", requireOwnerForWrites, reportsRouter);
+router.use("/reports", requireOwner, reportsRouter);
 router.use("/uploads", uploadsRouter);
-router.use("/vendors", requireOwnerForWrites, vendorsRouter);
-router.use("/expense-import", requireOwnerForWrites, expenseImportRouter);
-router.use("/payments", requireOwnerForWrites, paymentsRouter);
+router.use("/vendors", requireOwner, vendorsRouter);
+router.use("/expense-import", requireOwner, expenseImportRouter);
+router.use("/payments", requireOwner, paymentsRouter);
 router.use("/tax-reports", requireOwner, taxReportsRouter);
 router.use("/recurring-expenses", sectionGuard("expenses"), recurringExpensesRouter);
 router.use("/materials", requireOwner, materialsRouter);
-router.use("/material-lists", requireOwnerForWrites, materialListsRouter);
-router.use("/registered-agent", requireOwnerForWrites, registeredAgentRouter);
-router.use("/1099s", requireOwnerForWrites, form1099sRouter);
+router.use("/material-lists", requireOwner, materialListsRouter);
+router.use("/registered-agent", sectionGuard("compliance"), registeredAgentRouter);
+router.use("/1099s", requireOwner, form1099sRouter);
 router.use("/team", teamRouter);
 
 export default router;
