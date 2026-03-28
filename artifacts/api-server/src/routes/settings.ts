@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { settingsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -41,7 +42,7 @@ router.post("/logo", logoUpload.single("logo"), async (req, res) => {
         const old = path.resolve(s.logoUrl.replace("/api/uploads/", "uploads/"));
         if (fs.existsSync(old)) fs.unlinkSync(old);
       }
-      [s] = await db.update(settingsTable).set({ logoUrl, updatedAt: new Date() }).returning();
+      [s] = await db.update(settingsTable).set({ logoUrl, updatedAt: new Date() }).where(eq(settingsTable.id, s.id)).returning();
     }
     res.json({ logoUrl });
   } catch (err) {
