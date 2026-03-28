@@ -16,7 +16,7 @@ export const accessRequestsTable = pgTable(
   },
   (table) => [
     unique("access_requests_user_id_unique").on(table.userId),
-    check("access_requests_status_check", sql`${table.status} IN ('pending', 'approved', 'rejected')`),
+    check("access_requests_status_check", sql`${table.status} IN ('pending', 'approved', 'rejected', 'invited')`),
   ],
 );
 

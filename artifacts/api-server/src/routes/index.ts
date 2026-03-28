@@ -1,7 +1,7 @@
 import express, { Router, type IRouter, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import path from "path";
 import { db, accessRequestsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import { invalidateOwnerCache } from "./owner-cache";
@@ -83,14 +83,40 @@ const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
   if (record?.status === "pending") { res.status(403).json({ error: "ACCESS_PENDING" }); return; }
 
   const user = getRequestUser(req);
+  const userEmail = user?.email ?? null;
   const userName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || userId;
+
+  if (userEmail) {
+    const [inviteRecord] = await db
+      .select({ id: accessRequestsTable.id })
+      .from(accessRequestsTable)
+      .where(and(
+        eq(accessRequestsTable.userEmail, userEmail.toLowerCase()),
+        eq(accessRequestsTable.status, "invited"),
+      ));
+
+    if (inviteRecord) {
+      await db
+        .update(accessRequestsTable)
+        .set({
+          userId,
+          userName,
+          profileImageUrl: user?.profileImageUrl ?? null,
+          status: "approved",
+          resolvedAt: new Date(),
+        })
+        .where(eq(accessRequestsTable.id, inviteRecord.id));
+      next();
+      return;
+    }
+  }
 
   await db
     .insert(accessRequestsTable)
     .values({
       userId,
       userName,
-      userEmail: user?.email ?? null,
+      userEmail,
       profileImageUrl: user?.profileImageUrl ?? null,
       status: "pending",
       requestedAt: new Date(),
@@ -99,7 +125,7 @@ const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
       target: accessRequestsTable.userId,
       set: {
         userName,
-        userEmail: user?.email ?? null,
+        userEmail,
         profileImageUrl: user?.profileImageUrl ?? null,
       },
     });

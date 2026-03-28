@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import { db, accessRequestsTable, sessionsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { getOwnerId } from "./guards";
 
 type SectionKey =
@@ -24,9 +24,6 @@ function validatePermissionsPayload(value: unknown): string | null {
     if (section === null || typeof section !== "object" || Array.isArray(section)) {
       return `${key}: section permissions must be an object`;
     }
-    const s = section as Record<string, unknown>;
-    if ("view" in s && typeof s.view !== "boolean") return `${key}.view must be a boolean`;
-    if ("edit" in s && typeof s.edit !== "boolean") return `${key}.edit must be a boolean`;
   }
   return null;
 }
@@ -124,12 +121,68 @@ router.get("/members", async (_req: Request, res: Response) => {
     const members = await db
       .select()
       .from(accessRequestsTable)
-      .where(eq(accessRequestsTable.status, "approved"))
+      .where(or(
+        eq(accessRequestsTable.status, "approved"),
+        eq(accessRequestsTable.status, "invited"),
+      ))
       .orderBy(accessRequestsTable.resolvedAt);
     res.json(members);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch members" });
+  }
+});
+
+router.post("/members/invite", async (req: Request, res: Response) => {
+  try {
+    const { email, permissions } = req.body;
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      res.status(400).json({ error: "Valid email address required" });
+      return;
+    }
+
+    const permError = validatePermissionsPayload(permissions);
+    if (permError) { res.status(400).json({ error: permError }); return; }
+
+    const normalized = normalizePermissions(permissions ?? {});
+
+    const trimmedEmail = email.trim().toLowerCase();
+
+    const [existing] = await db
+      .select({ id: accessRequestsTable.id, status: accessRequestsTable.status })
+      .from(accessRequestsTable)
+      .where(eq(accessRequestsTable.userEmail, trimmedEmail));
+
+    if (existing) {
+      if (existing.status === "approved") {
+        res.status(409).json({ error: "A team member with this email is already active." });
+      } else if (existing.status === "invited") {
+        res.status(409).json({ error: "This email has already been invited." });
+      } else if (existing.status === "pending") {
+        res.status(409).json({ error: "This person has already requested access. Approve them from the pending requests list." });
+      } else {
+        res.status(409).json({ error: "A record already exists for this email." });
+      }
+      return;
+    }
+
+    const placeholderUserId = `invite:${trimmedEmail}`;
+    const [created] = await db
+      .insert(accessRequestsTable)
+      .values({
+        userId: placeholderUserId,
+        userName: trimmedEmail,
+        userEmail: trimmedEmail,
+        status: "invited",
+        permissions: normalized,
+        resolvedAt: new Date(),
+      })
+      .returning();
+
+    res.status(201).json(created);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create invite" });
   }
 });
 
@@ -145,7 +198,10 @@ router.put("/members/:userId/permissions", async (req: Request, res: Response) =
     const [updated] = await db
       .update(accessRequestsTable)
       .set({ permissions: normalized })
-      .where(and(eq(accessRequestsTable.userId, userId), eq(accessRequestsTable.status, "approved")))
+      .where(and(
+        eq(accessRequestsTable.userId, userId),
+        or(eq(accessRequestsTable.status, "approved"), eq(accessRequestsTable.status, "invited")),
+      ))
       .returning();
     if (!updated) { res.status(404).json({ error: "Member not found" }); return; }
     res.json(updated);
@@ -167,8 +223,10 @@ router.delete("/members/:userId", async (req: Request, res: Response) => {
 
     await db.delete(accessRequestsTable).where(eq(accessRequestsTable.userId, userId));
 
-    await db.delete(sessionsTable)
-      .where(sql`${sessionsTable.sess}->'user'->>'id' = ${userId}`);
+    if (!userId.startsWith("invite:")) {
+      await db.delete(sessionsTable)
+        .where(sql`${sessionsTable.sess}->'user'->>'id' = ${userId}`);
+    }
 
     res.status(204).send();
   } catch (err) {

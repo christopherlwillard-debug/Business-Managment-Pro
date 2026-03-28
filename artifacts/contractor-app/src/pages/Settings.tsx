@@ -8,7 +8,7 @@ import {
   Building2, Settings2, Receipt, Check, AlertCircle, Upload,
   X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
-  Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus
+  Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail
 } from "lucide-react";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
 import { useToast } from "@/hooks/use-toast";
@@ -153,6 +153,10 @@ function TeamSection() {
   const [pendingPerms, setPendingPerms] = useState<Permissions>(defaultPerms());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editPerms, setEditPerms] = useState<Record<string, Permissions>>({});
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePerms, setInvitePerms] = useState<Permissions>(defaultPerms());
+  const [inviting, setInviting] = useState(false);
   const { refresh: refreshPermissions, userName: ownerName, profileImageUrl: ownerAvatar } = useUserPermissions();
   const { toast } = useToast();
 
@@ -222,7 +226,7 @@ function TeamSection() {
   async function handleSavePerms(userId: string) {
     setSavingId(userId);
     try {
-      const res = await fetch(`${BASE}/api/team/members/${userId}/permissions`, {
+      const res = await fetch(`${BASE}/api/team/members/${encodeURIComponent(userId)}/permissions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -243,28 +247,64 @@ function TeamSection() {
   }
 
   async function handleRemove(userId: string) {
-    if (!confirm("Remove this team member? Their access will be revoked immediately.")) return;
+    const isInvite = userId.startsWith("invite:");
+    const label = isInvite ? "Cancel this invite?" : "Remove this team member? Their access will be revoked immediately.";
+    if (!confirm(label)) return;
     try {
-      const res = await fetch(`${BASE}/api/team/members/${userId}`, {
+      const res = await fetch(`${BASE}/api/team/members/${encodeURIComponent(userId)}`, {
         method: "DELETE",
         credentials: "include",
       });
       if (res.ok) {
         load();
-        refreshPermissions();
-        toast({ title: "Member removed", description: "Their access has been revoked." });
+        if (!isInvite) refreshPermissions();
+        toast({ title: isInvite ? "Invite cancelled" : "Member removed", description: isInvite ? "The invite has been removed." : "Their access has been revoked." });
       } else {
         const err = await res.json().catch(() => ({}));
-        toast({ title: "Failed to remove member", description: err?.error ?? "An error occurred.", variant: "destructive" });
+        toast({ title: "Failed to remove", description: err?.error ?? "An error occurred.", variant: "destructive" });
       }
     } catch {
-      toast({ title: "Failed to remove member", description: "Network error. Please try again.", variant: "destructive" });
+      toast({ title: "Failed to remove", description: "Network error. Please try again.", variant: "destructive" });
+    }
+  }
+
+  async function handleInvite() {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      toast({ title: "Invalid email", description: "Please enter a valid email address.", variant: "destructive" });
+      return;
+    }
+    setInviting(true);
+    try {
+      const res = await fetch(`${BASE}/api/team/members/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, permissions: invitePerms }),
+      });
+      if (res.ok) {
+        setShowInvite(false);
+        setInviteEmail("");
+        setInvitePerms(defaultPerms());
+        load();
+        toast({ title: "Invite sent", description: `${email} will have access when they log in.` });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Failed to invite", description: err?.error ?? "An error occurred.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to invite", description: "Network error. Please try again.", variant: "destructive" });
+    } finally {
+      setInviting(false);
     }
   }
 
   if (loading) {
     return <div className="space-y-3">{[1,2].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>;
   }
+
+  const activeMembers = members.filter(m => m.status === "approved");
+  const invitedMembers = members.filter(m => m.status === "invited");
 
   return (
     <div className="space-y-6">
@@ -375,20 +415,119 @@ function TeamSection() {
         </CardContent>
       </Card>
 
-      {/* Approved members */}
+      {/* Team members (approved + invited) */}
       <Card className="border-border/50 shadow-md bg-card">
         <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-          <CardTitle className="font-display flex items-center gap-2">
-            <Users2 className="w-5 h-5 text-primary" /> Team Members
-          </CardTitle>
-          <CardDescription>Approved members and their current permissions. Changes apply immediately.</CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="font-display flex items-center gap-2">
+                <Users2 className="w-5 h-5 text-primary" /> Team Members
+              </CardTitle>
+              <CardDescription className="mt-1">Manage member access and permissions. Add someone before they log in by entering their email.</CardDescription>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setShowInvite(v => !v); setInviteEmail(""); setInvitePerms(defaultPerms()); }}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
+            >
+              <UserPlus className="w-4 h-4" /> Add Member
+            </button>
+          </div>
         </CardHeader>
-        <CardContent className="p-4">
-          {members.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No team members yet. Approve a request above to add someone.</p>
-          ) : (
-            <div className="space-y-6">
-              {members.map(m => (
+        <CardContent className="p-4 space-y-6">
+
+          {/* Invite form */}
+          {showInvite && (
+            <div className="border-2 border-primary/20 bg-primary/5 rounded-xl p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-primary" />
+                <p className="text-sm font-semibold text-foreground">Invite a team member by email</p>
+              </div>
+              <p className="text-xs text-muted-foreground">Enter their email address. When they log in with a matching Replit account, they'll get instant access with the permissions you set below.</p>
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder="teammate@example.com"
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                onKeyDown={e => { if (e.key === "Enter") handleInvite(); }}
+              />
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-foreground">Permissions</p>
+                <PermissionsGrid perms={invitePerms} onChange={setInvitePerms} />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleInvite}
+                  disabled={inviting}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  <UserPlus className="w-4 h-4" /> {inviting ? "Adding…" : "Add Team Member"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowInvite(false); setInviteEmail(""); setInvitePerms(defaultPerms()); }}
+                  className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Invited members awaiting login */}
+          {invitedMembers.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Invited — Awaiting Login</p>
+              {invitedMembers.map(m => (
+                <div key={m.userId} className="border border-dashed border-border rounded-xl p-4 space-y-3 bg-muted/20">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center flex-shrink-0">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{m.userEmail ?? m.userName}</p>
+                      <p className="text-xs text-muted-foreground">Invite pending — access granted on first login</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(m.userId)}
+                      className="ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-destructive/30 text-destructive rounded-lg text-xs font-semibold hover:bg-destructive/5 transition-colors"
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> Cancel
+                    </button>
+                  </div>
+                  {editPerms[m.userId] && (
+                    <>
+                      <PermissionsGrid
+                        perms={editPerms[m.userId]}
+                        onChange={p => setEditPerms(prev => ({ ...prev, [m.userId]: p }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSavePerms(m.userId)}
+                        disabled={savingId === m.userId}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                      >
+                        {savingId === m.userId ? "Saving…" : "Save Permissions"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Active members */}
+          {activeMembers.length === 0 && invitedMembers.length === 0 && !showInvite ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No team members yet. Use "Add Member" to invite someone, or approve a request above.</p>
+          ) : activeMembers.length > 0 ? (
+            <div className="space-y-3">
+              {invitedMembers.length > 0 && (
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Active Members</p>
+              )}
+              {activeMembers.map(m => (
                 <div key={m.userId} className="border border-border rounded-xl p-4 space-y-3">
                   <div className="flex items-center gap-3">
                     {m.profileImageUrl ? (
@@ -429,7 +568,7 @@ function TeamSection() {
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
     </div>
