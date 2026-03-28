@@ -95,7 +95,14 @@ const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
       status: "pending",
       requestedAt: new Date(),
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: accessRequestsTable.userId,
+      set: {
+        userName,
+        userEmail: user?.email ?? null,
+        profileImageUrl: user?.profileImageUrl ?? null,
+      },
+    });
 
   res.status(403).json({ error: "ACCESS_PENDING" });
 });

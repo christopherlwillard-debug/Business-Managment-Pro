@@ -148,13 +148,8 @@ router.delete("/members/:userId", async (req: Request, res: Response) => {
 
     await db.delete(accessRequestsTable).where(eq(accessRequestsTable.userId, userId));
 
-    const allSessions = await db.select({ sid: sessionsTable.sid, sess: sessionsTable.sess }).from(sessionsTable);
-    for (const s of allSessions) {
-      const sess = s.sess as { user?: { id?: string } } | null;
-      if (sess?.user?.id === userId) {
-        await db.delete(sessionsTable).where(eq(sessionsTable.sid, s.sid));
-      }
-    }
+    await db.delete(sessionsTable)
+      .where(sql`${sessionsTable.sess}->'user'->>'id' = ${userId}`);
 
     res.status(204).send();
   } catch (err) {
