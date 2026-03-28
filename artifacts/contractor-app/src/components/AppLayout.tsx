@@ -22,7 +22,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const { logout } = useAuth();
   const { canView, isOwner, companyName: ctxCompanyName, logoUrl: ctxLogoUrl } = useUserPermissions();
-  const { data: settings } = useGetSettings({ query: { enabled: isOwner } });
+  const { data: settings } = useGetSettings();
 
   const enabledFeatures: string[] = settings?.enabledFeatures ?? [
     "invoices", "expenses", "mileage",

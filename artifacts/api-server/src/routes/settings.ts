@@ -120,13 +120,22 @@ function format(s: any) {
   };
 }
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
     let [settings] = await db.select().from(settingsTable).limit(1);
     if (!settings) {
       [settings] = await db.insert(settingsTable).values(DEFAULT_SETTINGS as any).returning();
     }
-    res.json(format(settings));
+    const userId = (req.user as { id?: string } | undefined)?.id;
+    const isOwner = settings.ownerUserId === userId;
+    const formatted = format(settings);
+    if (!isOwner) {
+      // Non-owners receive display/invoice settings only — SMTP details and EIN are owner-only
+      const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, ...safe } = formatted;
+      res.json(safe);
+      return;
+    }
+    res.json(formatted);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch settings" });
