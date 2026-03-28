@@ -25,3 +25,15 @@ pool.query(\`
   ON CONFLICT (job_id, subcontractor_id) DO NOTHING
 \`).then(() => pool.end()).catch(e => { console.error('Backfill error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Idempotent migration: add 'invited' to access_requests status check constraint (Task #54)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  ALTER TABLE access_requests DROP CONSTRAINT IF EXISTS access_requests_status_check;
+  ALTER TABLE access_requests ADD CONSTRAINT access_requests_status_check
+    CHECK (status IN ('pending', 'approved', 'rejected', 'invited'));
+\`).then(() => { console.log('access_requests_status_check updated'); pool.end(); })
+  .catch(e => { console.error('Status constraint migration error:', e.message); pool.end(); process.exit(1); });
+")
