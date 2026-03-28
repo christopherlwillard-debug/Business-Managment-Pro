@@ -172,12 +172,12 @@ router.use("/reports", requireOwner as any, reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/vendors", requireOwnerForWrites as any, vendorsRouter);
 router.use("/expense-import", requireOwnerForWrites as any, expenseImportRouter);
-router.use("/payments", requireOwner as any, paymentsRouter);
+router.use("/payments", requireOwnerForWrites as any, paymentsRouter);
 router.use("/tax-reports", requireOwner as any, taxReportsRouter);
 router.use("/recurring-expenses", requireOwnerForWrites as any, recurringExpensesRouter);
 router.use("/materials", requireOwner as any, materialsRouter);
 router.use("/material-lists", requireOwnerForWrites as any, materialListsRouter);
-router.use("/registered-agent", requireOwner as any, registeredAgentRouter);
+router.use("/registered-agent", requireOwnerForWrites as any, registeredAgentRouter);
 router.use("/1099s", requireOwnerForWrites as any, form1099sRouter);
 router.use("/team", teamRouter);
 

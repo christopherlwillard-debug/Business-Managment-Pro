@@ -136,6 +136,14 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       .where(eq(accessRequestsTable.userId, userId));
 
     if (!record) {
+      // Auto-create a pending access request so the owner can see and approve it
+      await db.insert(accessRequestsTable).values({
+        userId,
+        userName: userName ?? "",
+        userEmail: null,
+        profileImageUrl: currentUser?.profileImageUrl ?? null,
+        status: "pending",
+      }).onConflictDoNothing();
       res.json({ isOwner: false, accessStatus: "pending", permissions: null, companyName, userName, profileImageUrl });
       return;
     }
