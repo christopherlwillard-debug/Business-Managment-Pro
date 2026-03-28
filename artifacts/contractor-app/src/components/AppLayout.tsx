@@ -20,9 +20,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const { data: settings } = useGetSettings();
   const { logout } = useAuth();
   const { canView, isOwner, companyName: ctxCompanyName, logoUrl: ctxLogoUrl } = useUserPermissions();
+  const { data: settings } = useGetSettings({ query: { enabled: isOwner } });
 
   const enabledFeatures: string[] = settings?.enabledFeatures ?? [
     "invoices", "expenses", "mileage",
