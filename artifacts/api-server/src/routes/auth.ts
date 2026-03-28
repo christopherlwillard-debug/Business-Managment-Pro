@@ -107,7 +107,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const userId = (req.user as any)?.id as string;
+  const userId = (req.user as { id?: string } | undefined)?.id ?? "";
   try {
     const [[settings], [currentUser]] = await Promise.all([
       db.select({

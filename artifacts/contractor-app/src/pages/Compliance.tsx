@@ -166,7 +166,7 @@ function ItemForm({
       ...form,
       jurisdiction: form.jurisdiction.trim() || undefined,
       notes: form.notes.trim() || undefined,
-    } as any);
+    } as Partial<ComplianceItem>);
   }
 
   return (

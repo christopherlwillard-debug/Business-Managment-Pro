@@ -23,7 +23,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { logout } = useAuth();
   const { canView, isOwner } = useUserPermissions();
 
-  const enabledFeatures: string[] = (settings as any)?.enabledFeatures ?? [
+  const enabledFeatures: string[] = settings?.enabledFeatures ?? [
     "invoices", "expenses", "mileage",
     "estimates", "subcontractors", "compliance", "clients",
   ];
@@ -50,8 +50,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     return true;
   });
 
-  const companyName = (settings as any)?.companyName || "BuildPro";
-  const logoUrl = (settings as any)?.logoUrl ?? null;
+  const companyName = settings?.companyName || "BuildPro";
+  const logoUrl = settings?.logoUrl ?? null;
   const initials = companyName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 

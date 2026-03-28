@@ -57,8 +57,20 @@ export function invalidateOwnerCache() {
   cachedOwnerId = undefined;
 }
 
+interface RequestUser {
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImageUrl?: string;
+}
+
 function getRequestUserId(req: Request): string | undefined {
-  return (req.user as { id?: string } | undefined)?.id;
+  return (req.user as RequestUser | undefined)?.id;
+}
+
+function getRequestUser(req: Request): RequestUser | undefined {
+  return req.user as RequestUser | undefined;
 }
 
 function wrapAsync(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>): RequestHandler {
@@ -91,8 +103,8 @@ const requireOwner: RequestHandler = wrapAsync(async (req, res, next) => {
   res.status(403).json({ error: "Owner access required" });
 });
 
-async function requireAccess(req: Request, res: Response, next: NextFunction) {
-  const userId = (req as any).user?.id as string;
+const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
+  const userId = getRequestUserId(req);
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const ownerId = await getOwnerId();
@@ -107,7 +119,7 @@ async function requireAccess(req: Request, res: Response, next: NextFunction) {
   if (record?.status === "rejected") { res.status(403).json({ error: "ACCESS_REJECTED" }); return; }
   if (record?.status === "pending") { res.status(403).json({ error: "ACCESS_PENDING" }); return; }
 
-  const user = (req as any).user as any;
+  const user = getRequestUser(req);
   const userName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || userId;
 
   await db
@@ -123,11 +135,11 @@ async function requireAccess(req: Request, res: Response, next: NextFunction) {
     .onConflictDoNothing();
 
   res.status(403).json({ error: "ACCESS_PENDING" });
-}
+});
 
-function sectionGuard(section: SectionKey) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as any).user?.id as string;
+function sectionGuard(section: SectionKey): RequestHandler {
+  return wrapAsync(async (req, res, next) => {
+    const userId = getRequestUserId(req);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const ownerId = await getOwnerId();
@@ -150,7 +162,7 @@ function sectionGuard(section: SectionKey) {
 
     if (!allowed) { res.status(403).json({ error: "Forbidden" }); return; }
     next();
-  };
+  });
 }
 
 const router: IRouter = Router();
@@ -161,19 +173,19 @@ router.use(authRouter);
 router.use("/portal", portalRouter);
 
 router.use(requireAuth);
-router.use(requireAccess as any);
+router.use(requireAccess);
 
 router.use("/uploads", express.static(path.resolve("uploads")));
 
-router.use("/clients", sectionGuard("clients") as any, clientsRouter);
-router.use("/jobs", sectionGuard("jobs") as any, jobsRouter);
-router.use("/invoices", sectionGuard("invoices") as any, invoicesRouter);
-router.use("/expenses", sectionGuard("expenses") as any, expensesRouter);
-router.use("/mileage", sectionGuard("mileage") as any, mileageRouter);
-router.use("/subcontractors", sectionGuard("subcontractors") as any, subcontractorsRouter);
-router.use("/estimates", sectionGuard("estimates") as any, estimatesRouter);
-router.use("/daily-logs", sectionGuard("daily_logs") as any, dailyLogsRouter);
-router.use("/compliance-items", sectionGuard("compliance") as any, complianceItemsRouter);
+router.use("/clients", sectionGuard("clients"), clientsRouter);
+router.use("/jobs", sectionGuard("jobs"), jobsRouter);
+router.use("/invoices", sectionGuard("invoices"), invoicesRouter);
+router.use("/expenses", sectionGuard("expenses"), expensesRouter);
+router.use("/mileage", sectionGuard("mileage"), mileageRouter);
+router.use("/subcontractors", sectionGuard("subcontractors"), subcontractorsRouter);
+router.use("/estimates", sectionGuard("estimates"), estimatesRouter);
+router.use("/daily-logs", sectionGuard("daily_logs"), dailyLogsRouter);
+router.use("/compliance-items", sectionGuard("compliance"), complianceItemsRouter);
 
 router.use("/settings", requireOwnerForWrites, settingsRouter);
 router.use("/reports", requireOwnerForWrites, reportsRouter);

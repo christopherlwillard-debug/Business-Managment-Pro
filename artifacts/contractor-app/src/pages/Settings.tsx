@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useGetSettings, useUpdateSettings } from "@workspace/api-client-react";
+import { useGetSettings, useUpdateSettings, type AppSettings } from "@workspace/api-client-react";
 import { RegisteredAgentSection } from "@/components/RegisteredAgentSection";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -613,14 +613,14 @@ export default function Settings() {
 
   useEffect(() => {
     if (settings && !seeded) {
-      const s = settings as any;
+      const s = settings as AppSettings & Record<string, unknown>;
       setForm({
         companyName: s.companyName ?? "",
-        entityType: s.entityType ?? "",
-        ein: s.ein ?? "",
+        entityType: (s.entityType as string | undefined) ?? "",
+        ein: (s.ein as string | undefined) ?? "",
         companyEmail: s.companyEmail ?? "",
         companyPhone: s.companyPhone ?? "",
-        companyAddress: s.companyAddress ?? "",
+        companyAddress: (s.companyAddress as string | undefined) ?? "",
         companyCity: s.companyCity ?? "",
         companyState: s.companyState ?? "KY",
         companyZip: s.companyZip ?? "",
@@ -686,7 +686,7 @@ export default function Settings() {
           mileageUnits: form.mileageUnits,
           mileageReminderFrequency: form.mileageReminderFrequency,
           enabledFeatures: FEATURE_OPTIONS.filter(f => features[f.key]).map(f => f.key),
-        } as any,
+        } as Partial<AppSettings>,
       });
       queryClient.invalidateQueries();
       setSuccess(true);
