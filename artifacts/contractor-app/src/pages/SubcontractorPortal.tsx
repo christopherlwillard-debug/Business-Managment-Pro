@@ -1204,7 +1204,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
                 <Upload className="w-4 h-4" /> Tap to attach receipt photo or PDF
               </button>
             )}
-            <input ref={receiptInputRef} type="file" accept="image/*,.pdf" className="hidden"
+            <input ref={receiptInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptFile(f); }} />
           </div>
 

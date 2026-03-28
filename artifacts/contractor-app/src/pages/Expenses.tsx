@@ -10,7 +10,7 @@ import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
-  RotateCcw, Pause, Play, ChevronUp, Pencil,
+  RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
@@ -316,8 +316,8 @@ function ReceiptDropZone({ file, onFile, onClear }: {
         <Upload className="w-4 h-4 text-primary" />
       </div>
       <p className="text-sm font-medium text-foreground">Drop receipt here or click to browse</p>
-      <p className="text-xs text-muted-foreground">JPG, PNG, PDF up to 10 MB</p>
-      <input ref={inputRef} type="file" accept="image/*,.pdf" className="hidden"
+      <p className="text-xs text-muted-foreground">Any photo or PDF up to 10 MB</p>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
     </div>
   );
@@ -388,7 +388,8 @@ function ExpenseViewModal({
   const receiptUrl = expense.receiptUrl
     ? (expense.receiptUrl.startsWith("http") ? expense.receiptUrl : `${base}${expense.receiptUrl}`)
     : null;
-  const isImage = receiptUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(receiptUrl);
+  const isImage = receiptUrl && /\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(receiptUrl);
+  const [lightbox, setLightbox] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -502,18 +503,23 @@ function ExpenseViewModal({
                 <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-gray-400">
                   <ImageIcon className="w-3 h-3" /> Receipt
                 </div>
-                <a href={receiptUrl} target="_blank" rel="noreferrer"
+                <button type="button" onClick={() => setLightbox(true)}
                   className="inline-flex items-center gap-1 text-xs text-primary font-semibold hover:underline">
-                  <ExternalLink className="w-3 h-3" /> Open
-                </a>
+                  <Maximize2 className="w-3 h-3" /> Expand
+                </button>
               </div>
               {isImage ? (
-                <img src={receiptUrl} alt="Receipt" className="w-full max-h-52 object-contain bg-gray-100" />
+                <img
+                  src={receiptUrl} alt="Receipt"
+                  className="w-full max-h-52 object-contain bg-gray-100 cursor-zoom-in"
+                  onClick={() => setLightbox(true)}
+                />
               ) : (
-                <div className="flex items-center gap-3 px-4 py-3">
+                <button type="button" onClick={() => setLightbox(true)}
+                  className="flex items-center gap-3 px-4 py-3 w-full hover:bg-gray-50 transition-colors">
                   <FileText className="w-8 h-8 text-primary flex-shrink-0" />
-                  <p className="text-sm text-gray-600">PDF receipt attached</p>
-                </div>
+                  <p className="text-sm text-gray-600">PDF receipt — tap to view</p>
+                </button>
               )}
             </div>
           ) : (
@@ -522,6 +528,43 @@ function ExpenseViewModal({
         </div>
         <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-500" />
       </div>
+
+      {/* Full-screen receipt lightbox */}
+      {lightbox && receiptUrl && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+          onClick={() => setLightbox(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(false)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10"
+            aria-label="Close"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+          {isImage ? (
+            <img
+              src={receiptUrl}
+              alt="Receipt full view"
+              className="max-w-full max-h-full object-contain select-none"
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+              <FileText className="w-16 h-16 text-white/60" />
+              <p className="text-white font-semibold text-lg">PDF Receipt</p>
+              <a
+                href={receiptUrl}
+                download
+                className="inline-flex items-center gap-2 px-5 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors"
+              >
+                <Download className="w-4 h-4" /> Download PDF
+              </a>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
