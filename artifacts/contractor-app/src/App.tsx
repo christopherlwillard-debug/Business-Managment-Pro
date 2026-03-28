@@ -212,7 +212,9 @@ function AdminApp() {
         <Route path="/accounting">
           <PermissionGuard section="invoices"><Accounting /></PermissionGuard>
         </Route>
-        <Route path="/materials" component={Materials} />
+        <Route path="/materials">
+          <PermissionGuard ownerOnly><Materials /></PermissionGuard>
+        </Route>
         <Route path="/daily-logs">
           <PermissionGuard section="daily_logs"><DailyLogs /></PermissionGuard>
         </Route>
