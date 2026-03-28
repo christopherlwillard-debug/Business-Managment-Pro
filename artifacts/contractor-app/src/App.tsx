@@ -127,6 +127,16 @@ function HomeRoute() {
   }, [isOwner, permissions, setLocation]);
 
   if (isOwner) return <Dashboard />;
+
+  if (permissions && !SECTION_ROUTES.some(r => permissions[r.section]?.view)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-2 text-muted-foreground">
+        <p className="text-sm font-medium">No sections assigned</p>
+        <p className="text-xs">Ask the owner to grant you access to at least one section.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
       Redirecting…

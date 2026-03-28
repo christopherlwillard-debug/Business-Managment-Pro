@@ -141,13 +141,22 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       await db.insert(accessRequestsTable).values({
         userId,
         userName: userName ?? "",
-        userEmail: null,
+        userEmail: currentUser?.email ?? null,
         profileImageUrl: currentUser?.profileImageUrl ?? null,
         status: "pending",
       }).onConflictDoNothing();
       res.json({ isOwner: false, accessStatus: "pending", permissions: null, companyName, userName, profileImageUrl });
       return;
     }
+
+    // Refresh profile fields on the existing record so owner sees up-to-date info
+    await db.update(accessRequestsTable)
+      .set({
+        userName: userName ?? record.userName,
+        userEmail: currentUser?.email ?? record.userEmail,
+        profileImageUrl: currentUser?.profileImageUrl ?? record.profileImageUrl,
+      })
+      .where(eq(accessRequestsTable.userId, userId));
 
     const accessStatus =
       record.status === "approved" ? "admin"
