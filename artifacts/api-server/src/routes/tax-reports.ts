@@ -4,7 +4,7 @@ import {
   invoicesTable, expensesTable, mileageLogsTable,
   paymentsTable, subcontractorsTable, clientsTable
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, desc, count } from "drizzle-orm";
+import { eq, and, gte, lte, sum, desc, count, ne } from "drizzle-orm";
 
 const router = Router();
 
@@ -100,7 +100,7 @@ router.get("/schedule-c", async (req, res) => {
 
     const grossReceipts = grossResult?.total ? parseFloat(grossResult.total as any) : 0;
 
-    // 2. Expenses by category
+    // 2. Expenses by category (exclude mileage — it's calculated separately)
     const expensesData = await db
       .select({
         category: expensesTable.category,
@@ -111,7 +111,8 @@ router.get("/schedule-c", async (req, res) => {
       .where(
         and(
           gte(expensesTable.date, startDate),
-          lte(expensesTable.date, endDate)
+          lte(expensesTable.date, endDate),
+          ne(expensesTable.category, "mileage")
         )
       )
       .groupBy(expensesTable.category);
