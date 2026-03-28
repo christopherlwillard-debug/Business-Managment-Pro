@@ -980,6 +980,9 @@ export default function Expenses() {
   const [subcontractorId, setSubcontractorId]         = useState("");
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
   const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string} | null>(null);
+  const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
+  const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
+  const editReceiptInputRef                           = useRef<HTMLInputElement>(null);
   const [deleteTarget,  setDeleteTarget]              = useState<any | null>(null);
   const [deleting,     setDeleting]                   = useState(false);
   const [highlightedTemplateId, setHighlightedTemplateId] = useState<number | null>(null);
@@ -1136,12 +1139,37 @@ export default function Expenses() {
                           </div>
                         </td>
                         <td className="px-3 py-2 space-y-1">
-                          {exp.receiptUrl ? (
-                            <a href={exp.receiptUrl} target="_blank" rel="noreferrer"
-                              className="text-xs text-primary hover:underline flex items-center gap-1 justify-center">
-                              <ExternalLink className="w-3 h-3" />View
-                            </a>
-                          ) : <span className="text-xs text-muted-foreground italic">No receipt</span>}
+                          {/* Receipt: new file staged? / existing? / empty */}
+                          {editReceiptFile ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-emerald-600 font-medium truncate max-w-[80px]" title={editReceiptFile.name}>{editReceiptFile.name}</span>
+                              <button type="button" onClick={() => { setEditReceiptFile(null); if (editReceiptInputRef.current) editReceiptInputRef.current.value = ""; }}
+                                className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>
+                            </div>
+                          ) : exp.receiptUrl ? (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button type="button" onClick={() => {
+                                const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                                const url = exp.receiptUrl.startsWith("http") ? exp.receiptUrl : `${base}${exp.receiptUrl}`;
+                                setEditLightboxUrl(url);
+                              }} className="text-xs text-primary hover:underline flex items-center gap-1">
+                                <ImageIcon className="w-3 h-3" />View
+                              </button>
+                              <button type="button" onClick={() => editReceiptInputRef.current?.click()}
+                                className="text-xs text-muted-foreground hover:text-amber-500 flex items-center gap-1">
+                                <Upload className="w-3 h-3" />Replace
+                              </button>
+                            </div>
+                          ) : (
+                            <button type="button" onClick={() => editReceiptInputRef.current?.click()}
+                              className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+                              <Upload className="w-3 h-3" />Add Receipt
+                            </button>
+                          )}
+                          <input ref={editReceiptInputRef} type="file" className="hidden"
+                            accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) setEditReceiptFile(f); }} />
+                          {/* Notes */}
                           <input type="text" value={editingRow.notes}
                             onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
                             className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
@@ -1164,15 +1192,19 @@ export default function Expenses() {
                                     receiptUrl: exp.receiptUrl,
                                   },
                                 });
+                                if (editReceiptFile) {
+                                  await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
+                                }
                                 if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
+                                setEditReceiptFile(null);
                                 setEditingRow(null);
                               }}
-                              disabled={updateExpense.isPending}
+                              disabled={updateExpense.isPending || uploadMutation.isPending}
                               className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors">
-                              {updateExpense.isPending ? "…" : "Save"}
+                              {updateExpense.isPending || uploadMutation.isPending ? "…" : "Save"}
                             </button>
                             <button
-                              onClick={() => setEditingRow(null)}
+                              onClick={() => { setEditReceiptFile(null); setEditingRow(null); }}
                               className="w-6 h-6 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
                               <X className="w-3 h-3" />
                             </button>
@@ -1243,16 +1275,16 @@ export default function Expenses() {
                           className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button onClick={() => setEditingRow({
+                        <button onClick={() => { setEditReceiptFile(null); setEditingRow({
                             id: exp.id,
                             description: exp.description ?? "",
                             amount: String(exp.amount ?? ""),
-                            date: exp.date ?? "",
+                            date: (exp.date ?? "").slice(0, 10),
                             category: exp.category ?? CATEGORIES[0],
                             vendor: exp.vendor ?? "",
                             jobId: exp.jobId ? String(exp.jobId) : "",
                             notes: exp.notes ?? "",
-                          })}
+                          }); }}
                           className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
                           <Pencil className="w-4 h-4" />
                         </button>
@@ -1431,6 +1463,43 @@ export default function Expenses() {
         onClose={() => setImportOpen(false)}
         onImported={() => { setImportOpen(false); refetch(); }}
       />
+
+      {/* Edit-row receipt lightbox */}
+      {editLightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+          onClick={() => setEditLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setEditLightboxUrl(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10"
+            aria-label="Close"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+          {/\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(editLightboxUrl) ? (
+            <img
+              src={editLightboxUrl}
+              alt="Receipt"
+              className="max-w-full max-h-full object-contain select-none"
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+              <FileText className="w-16 h-16 text-white/60" />
+              <p className="text-white font-semibold text-lg">PDF Receipt</p>
+              <a
+                href={editLightboxUrl}
+                download
+                className="inline-flex items-center gap-2 px-5 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors"
+              >
+                <Download className="w-4 h-4" /> Download PDF
+              </a>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
