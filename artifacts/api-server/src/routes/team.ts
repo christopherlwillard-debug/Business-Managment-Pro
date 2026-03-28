@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import { db, settingsTable, accessRequestsTable, sessionsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 
@@ -30,14 +30,16 @@ async function isOwner(userId: string): Promise<boolean> {
   return settings?.ownerUserId === userId;
 }
 
-async function requireOwner(req: Request, res: Response, next: Function) {
-  const userId = (req as any).user?.id as string;
+const requireOwner: RequestHandler = (req, res, next) => {
+  const userId = (req.user as { id?: string } | undefined)?.id;
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-  if (!(await isOwner(userId))) { res.status(403).json({ error: "Owner access required" }); return; }
-  next();
-}
+  isOwner(userId).then(ok => {
+    if (ok) next();
+    else res.status(403).json({ error: "Owner access required" });
+  }).catch(next);
+};
 
-router.use(requireOwner as any);
+router.use(requireOwner);
 
 router.get("/requests", async (_req: Request, res: Response) => {
   try {
@@ -139,7 +141,7 @@ router.delete("/members/:userId", async (req: Request, res: Response) => {
 
     const allSessions = await db.select({ sid: sessionsTable.sid, sess: sessionsTable.sess }).from(sessionsTable);
     for (const s of allSessions) {
-      const sess = s.sess as any;
+      const sess = s.sess as { user?: { id?: string } } | null;
       if (sess?.user?.id === userId) {
         await db.delete(sessionsTable).where(eq(sessionsTable.sid, s.sid));
       }

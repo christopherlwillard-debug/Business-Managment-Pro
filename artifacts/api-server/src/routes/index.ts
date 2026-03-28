@@ -1,4 +1,4 @@
-import express, { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import express, { Router, type IRouter, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import path from "path";
 import { db, settingsTable, accessRequestsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -57,6 +57,14 @@ export function invalidateOwnerCache() {
   cachedOwnerId = undefined;
 }
 
+function getRequestUserId(req: Request): string | undefined {
+  return (req.user as { id?: string } | undefined)?.id;
+}
+
+function wrapAsync(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>): RequestHandler {
+  return (req, res, next) => { fn(req, res, next).catch(next); };
+}
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -65,23 +73,23 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-async function requireOwnerForWrites(req: Request, res: Response, next: NextFunction) {
+const requireOwnerForWrites: RequestHandler = wrapAsync(async (req, res, next) => {
   const isWrite = WRITE_METHODS.has(req.method.toUpperCase());
   if (!isWrite) { next(); return; }
-  const userId = (req as any).user?.id as string;
+  const userId = getRequestUserId(req);
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const ownerId = await getOwnerId();
   if (ownerId === userId) { next(); return; }
   res.status(403).json({ error: "Owner access required" });
-}
+});
 
-async function requireOwner(req: Request, res: Response, next: NextFunction) {
-  const userId = (req as any).user?.id as string;
+const requireOwner: RequestHandler = wrapAsync(async (req, res, next) => {
+  const userId = getRequestUserId(req);
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   const ownerId = await getOwnerId();
   if (ownerId === userId) { next(); return; }
   res.status(403).json({ error: "Owner access required" });
-}
+});
 
 async function requireAccess(req: Request, res: Response, next: NextFunction) {
   const userId = (req as any).user?.id as string;
@@ -167,18 +175,18 @@ router.use("/estimates", sectionGuard("estimates") as any, estimatesRouter);
 router.use("/daily-logs", sectionGuard("daily_logs") as any, dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance") as any, complianceItemsRouter);
 
-router.use("/settings", requireOwnerForWrites as any, settingsRouter);
-router.use("/reports", requireOwner as any, reportsRouter);
+router.use("/settings", requireOwnerForWrites, settingsRouter);
+router.use("/reports", requireOwnerForWrites, reportsRouter);
 router.use("/uploads", uploadsRouter);
-router.use("/vendors", requireOwnerForWrites as any, vendorsRouter);
-router.use("/expense-import", requireOwnerForWrites as any, expenseImportRouter);
-router.use("/payments", requireOwnerForWrites as any, paymentsRouter);
-router.use("/tax-reports", requireOwner as any, taxReportsRouter);
-router.use("/recurring-expenses", requireOwnerForWrites as any, recurringExpensesRouter);
-router.use("/materials", requireOwner as any, materialsRouter);
-router.use("/material-lists", requireOwnerForWrites as any, materialListsRouter);
-router.use("/registered-agent", requireOwnerForWrites as any, registeredAgentRouter);
-router.use("/1099s", requireOwnerForWrites as any, form1099sRouter);
+router.use("/vendors", requireOwnerForWrites, vendorsRouter);
+router.use("/expense-import", requireOwnerForWrites, expenseImportRouter);
+router.use("/payments", requireOwnerForWrites, paymentsRouter);
+router.use("/tax-reports", requireOwner, taxReportsRouter);
+router.use("/recurring-expenses", requireOwnerForWrites, recurringExpensesRouter);
+router.use("/materials", requireOwner, materialsRouter);
+router.use("/material-lists", requireOwnerForWrites, materialListsRouter);
+router.use("/registered-agent", requireOwnerForWrites, registeredAgentRouter);
+router.use("/1099s", requireOwnerForWrites, form1099sRouter);
 router.use("/team", teamRouter);
 
 export default router;
