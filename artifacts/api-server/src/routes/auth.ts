@@ -134,17 +134,54 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       return;
     }
 
+    const normalizedEmail = currentUser?.email ? currentUser.email.trim().toLowerCase() : null;
+
     const [record] = await db
       .select()
       .from(accessRequestsTable)
       .where(eq(accessRequestsTable.userId, userId));
 
     if (!record) {
-      // Auto-create a pending access request so the owner can see and approve it
+      // Before creating a pending request, check for an email-based invite
+      if (normalizedEmail) {
+        const [inviteRecord] = await db
+          .select()
+          .from(accessRequestsTable)
+          .where(and(
+            eq(accessRequestsTable.userEmail, normalizedEmail),
+            eq(accessRequestsTable.status, "invited"),
+          ));
+
+        if (inviteRecord) {
+          const [linked] = await db
+            .update(accessRequestsTable)
+            .set({
+              userId,
+              userName: userName ?? "",
+              profileImageUrl: currentUser?.profileImageUrl ?? null,
+              status: "approved",
+              resolvedAt: new Date(),
+            })
+            .where(eq(accessRequestsTable.id, inviteRecord.id))
+            .returning();
+          res.json({
+            isOwner: false,
+            accessStatus: "admin",
+            permissions: linked?.permissions ?? null,
+            companyName,
+            logoUrl,
+            userName,
+            profileImageUrl,
+          });
+          return;
+        }
+      }
+
+      // No invite found — auto-create a pending access request
       await db.insert(accessRequestsTable).values({
         userId,
         userName: userName ?? "",
-        userEmail: currentUser?.email ?? null,
+        userEmail: normalizedEmail,
         profileImageUrl: currentUser?.profileImageUrl ?? null,
         status: "pending",
       }).onConflictDoNothing();
@@ -156,7 +193,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
     await db.update(accessRequestsTable)
       .set({
         userName: userName ?? record.userName,
-        userEmail: currentUser?.email ?? record.userEmail,
+        userEmail: normalizedEmail ?? record.userEmail,
         profileImageUrl: currentUser?.profileImageUrl ?? record.profileImageUrl,
       })
       .where(eq(accessRequestsTable.userId, userId));
