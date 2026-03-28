@@ -46,7 +46,28 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
 
   function handlePrint() { window.print(); }
 
-  const hasAnyContact = companyAddress || companyCity || companyState || companyZip || companyPhone || companyEmail;
+  // Show contact block if any company info exists (name, address, phone, or email)
+  const hasContact = !!(companyName || companyAddress || companyCity || companyState || companyZip || companyPhone || companyEmail);
+
+  // Shared contact info block — shown below logo in all position variants
+  function ContactInfo({ align = "left" }: { align?: "left" | "center" | "right" }) {
+    if (!hasContact) return null;
+    const textAlign = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left";
+    return (
+      <div className={`text-xs text-gray-500 space-y-0.5 mt-2 ${textAlign}`} style={{ textDecoration: "none", fontStyle: "normal" }}>
+        {/* Show company name as text only when no logo is present */}
+        {!logoUrl && companyName && (
+          <p className="font-bold text-gray-800 text-sm mb-1" style={{ textDecoration: "none" }}>{companyName}</p>
+        )}
+        {companyAddress && <p style={{ textDecoration: "none" }}>{companyAddress}</p>}
+        {(companyCity || companyState || companyZip) && (
+          <p style={{ textDecoration: "none" }}>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
+        )}
+        {companyPhone && <p style={{ textDecoration: "none" }}>{companyPhone}</p>}
+        {companyEmail && <p style={{ textDecoration: "none" }}>{companyEmail}</p>}
+      </div>
+    );
+  }
 
   const logoEl = logoUrl ? (
     <img src={`${base}${logoUrl}`} alt="Logo" className="flex-shrink-0"
@@ -55,20 +76,6 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     <div className="rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0"
       style={{ width: 48, height: 48 }}>
       <Building2 className="w-6 h-6 text-amber-500" />
-    </div>
-  );
-
-  const contactEl = (
-    <div className="text-xs text-gray-500 space-y-0.5 mt-2" style={{ fontStyle: "normal", textDecoration: "none" }}>
-      {!logoUrl && companyName && (
-        <p className="font-bold text-gray-800 text-sm mb-1">{companyName}</p>
-      )}
-      {companyAddress && <p style={{ textDecoration: "none" }}>{companyAddress}</p>}
-      {(companyCity || companyState || companyZip) && (
-        <p style={{ textDecoration: "none" }}>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
-      )}
-      {companyPhone && <p style={{ textDecoration: "none" }}>{companyPhone}</p>}
-      {companyEmail && <p style={{ textDecoration: "none" }}>{companyEmail}</p>}
     </div>
   );
 
@@ -97,65 +104,29 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     </div>
   );
 
-  const companyLeftBlock = (
-    <div className="flex flex-col">
-      {logoEl}
-      {hasAnyContact && contactEl}
-    </div>
-  );
-
-  const companyRightBlock = (
-    <div className="flex flex-col items-end">
-      {logoEl}
-      {hasAnyContact && (
-        <div className="text-xs text-gray-500 space-y-0.5 mt-2 text-right" style={{ fontStyle: "normal", textDecoration: "none" }}>
-          {!logoUrl && companyName && (
-            <p className="font-bold text-gray-800 text-sm mb-1">{companyName}</p>
-          )}
-          {companyAddress && <p style={{ textDecoration: "none" }}>{companyAddress}</p>}
-          {(companyCity || companyState || companyZip) && (
-            <p style={{ textDecoration: "none" }}>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
-          )}
-          {companyPhone && <p style={{ textDecoration: "none" }}>{companyPhone}</p>}
-          {companyEmail && <p style={{ textDecoration: "none" }}>{companyEmail}</p>}
-        </div>
-      )}
-    </div>
-  );
-
-  const companyCenterBlock = (
-    <div className="flex flex-col items-center text-center">
-      {logoEl}
-      {hasAnyContact && (
-        <div className="text-xs text-gray-500 space-y-0.5 mt-2" style={{ fontStyle: "normal", textDecoration: "none" }}>
-          {!logoUrl && companyName && (
-            <p className="font-bold text-gray-800 text-sm mb-1">{companyName}</p>
-          )}
-          {companyAddress && <p style={{ textDecoration: "none" }}>{companyAddress}</p>}
-          {(companyCity || companyState || companyZip) && (
-            <p style={{ textDecoration: "none" }}>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
-          )}
-          {companyPhone && <p style={{ textDecoration: "none" }}>{companyPhone}</p>}
-          {companyEmail && <p style={{ textDecoration: "none" }}>{companyEmail}</p>}
-        </div>
-      )}
-    </div>
-  );
-
   const headerRow = logoPos === "top-center" ? (
     <div className="flex justify-between items-start gap-4">
-      <div className="w-16" />
-      {companyCenterBlock}
+      <div className="w-16 flex-shrink-0" />
+      <div className="flex flex-col items-center">
+        {logoEl}
+        <ContactInfo align="center" />
+      </div>
       {invoiceDetailsEl}
     </div>
   ) : logoPos === "top-right" ? (
     <div className="flex justify-between items-start gap-4">
       {invoiceDetailsEl}
-      {companyRightBlock}
+      <div className="flex flex-col items-end">
+        {logoEl}
+        <ContactInfo align="right" />
+      </div>
     </div>
   ) : (
     <div className="flex justify-between items-start gap-4">
-      {companyLeftBlock}
+      <div className="flex flex-col">
+        {logoEl}
+        <ContactInfo align="left" />
+      </div>
       {invoiceDetailsEl}
     </div>
   );
