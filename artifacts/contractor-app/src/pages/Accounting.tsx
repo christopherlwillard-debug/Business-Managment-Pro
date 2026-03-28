@@ -10,6 +10,7 @@ import {
   FileCheck, X, ChevronRight, Home,
 } from "lucide-react";
 import { useScheduleCReport } from "@workspace/api-client-react";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1166,6 +1167,7 @@ const STATUS_SORT_ORDER: Record<UnifiedStatus, number> = {
 };
 
 function TaxCalendarTab({ year }: { year: number }) {
+  const { canEdit } = useUserPermissions();
   const storageKey = `ky-filing-statuses-${year}`;
   const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
     try { const raw = localStorage.getItem(storageKey); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
@@ -1345,12 +1347,14 @@ function TaxCalendarTab({ year }: { year: number }) {
             <span className="text-xs text-muted-foreground">{allEntries.length} total items, sorted by due date</span>
           )}
         </div>
-        <button
-          onClick={() => { setShowForm(true); setEditTarget(null); }}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
-        >
-          <Plus className="w-3.5 h-3.5" /> Add Item
-        </button>
+        {canEdit("invoices") && (
+          <button
+            onClick={() => { setShowForm(true); setEditTarget(null); }}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Item
+          </button>
+        )}
       </div>
 
       {/* Unified sorted list */}
@@ -1459,20 +1463,22 @@ function TaxCalendarTab({ year }: { year: number }) {
                           {s === "filed" ? "Completed" : item.daysUntilDue < 0 ? `${Math.abs(item.daysUntilDue)}d overdue` : item.daysUntilDue === 0 ? "Due today" : `${item.daysUntilDue}d away`}
                         </p>
                       </div>
-                      <div className="flex gap-1 flex-shrink-0">
-                        <button onClick={() => handleToggleComplete(item)} title={s === "filed" ? "Mark upcoming" : "Mark complete"}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
-                          <CheckCircle2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => { setEditTarget(item); setShowForm(false); }} title="Edit"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(item.id)} title="Delete"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canEdit("invoices") && (
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => handleToggleComplete(item)} title={s === "filed" ? "Mark upcoming" : "Mark complete"}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => { setEditTarget(item); setShowForm(false); }} title="Edit"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleDelete(item.id)} title="Delete"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1"><CalendarClock className="w-3 h-3" />{formatComplianceDate(item.dueDate)}</span>

@@ -187,7 +187,7 @@ router.use("/estimates", sectionGuard("estimates"), estimatesRouter);
 router.use("/daily-logs", sectionGuard("daily_logs"), dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance"), complianceItemsRouter);
 
-router.use("/settings", requireOwnerForWrites, settingsRouter);
+router.use("/settings", requireOwner, settingsRouter);
 router.use("/reports", requireOwnerForWrites, reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/vendors", requireOwnerForWrites, vendorsRouter);
