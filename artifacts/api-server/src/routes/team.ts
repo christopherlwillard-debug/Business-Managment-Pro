@@ -64,6 +64,11 @@ router.post("/requests/:id/approve", async (req: Request, res: Response) => {
     const { permissions } = req.body;
     if (!permissions) { res.status(400).json({ error: "permissions required" }); return; }
 
+    const [existing] = await db.select({ status: accessRequestsTable.status })
+      .from(accessRequestsTable).where(eq(accessRequestsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Request not found" }); return; }
+    if (existing.status !== "pending") { res.status(409).json({ error: "Only pending requests can be approved" }); return; }
+
     const normalized = normalizePermissions(permissions);
 
     const [updated] = await db
@@ -83,6 +88,10 @@ router.post("/requests/:id/reject", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid request id" }); return; }
+    const [existing] = await db.select({ status: accessRequestsTable.status })
+      .from(accessRequestsTable).where(eq(accessRequestsTable.id, id));
+    if (!existing) { res.status(404).json({ error: "Request not found" }); return; }
+    if (existing.status !== "pending") { res.status(409).json({ error: "Only pending requests can be rejected" }); return; }
     const [updated] = await db
       .update(accessRequestsTable)
       .set({ status: "rejected", resolvedAt: new Date() })

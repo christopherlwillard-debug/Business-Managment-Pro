@@ -59,7 +59,7 @@ export function UserPermissionsProvider({ children }: { children: ReactNode }) {
     fetch(`${base}/api/auth/me`, { credentials: "include" })
       .then((res) => {
         if (res.status === 401) {
-          setAccessStatus("pending");
+          setAccessStatus("loading");
           return null;
         }
         return res.json();

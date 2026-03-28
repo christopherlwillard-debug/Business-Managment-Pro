@@ -1,4 +1,5 @@
-import { pgTable, serial, text, timestamp, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, jsonb, unique, check } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const accessRequestsTable = pgTable(
   "access_requests",
@@ -13,7 +14,10 @@ export const accessRequestsTable = pgTable(
     requestedAt: timestamp("requested_at").notNull().defaultNow(),
     resolvedAt: timestamp("resolved_at"),
   },
-  (table) => [unique("access_requests_user_id_unique").on(table.userId)],
+  (table) => [
+    unique("access_requests_user_id_unique").on(table.userId),
+    check("access_requests_status_check", sql`${table.status} IN ('pending', 'approved', 'rejected')`),
+  ],
 );
 
 export type AccessRequest = typeof accessRequestsTable.$inferSelect;
