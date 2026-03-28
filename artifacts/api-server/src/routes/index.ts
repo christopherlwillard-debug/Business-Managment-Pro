@@ -65,6 +65,16 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+async function requireOwnerForWrites(req: Request, res: Response, next: NextFunction) {
+  const isWrite = WRITE_METHODS.has(req.method.toUpperCase());
+  if (!isWrite) { next(); return; }
+  const userId = (req as any).user?.id as string;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const ownerId = await getOwnerId();
+  if (ownerId === userId) { next(); return; }
+  res.status(403).json({ error: "Owner access required" });
+}
+
 async function requireAccess(req: Request, res: Response, next: NextFunction) {
   const userId = (req as any).user?.id as string;
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -149,7 +159,7 @@ router.use("/estimates", sectionGuard("estimates") as any, estimatesRouter);
 router.use("/daily-logs", sectionGuard("daily_logs") as any, dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance") as any, complianceItemsRouter);
 
-router.use("/settings", settingsRouter);
+router.use("/settings", requireOwnerForWrites as any, settingsRouter);
 router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/vendors", vendorsRouter);

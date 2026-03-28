@@ -28,7 +28,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     "estimates", "subcontractors", "compliance", "clients",
   ];
 
-  const allNavItems: { name: string; href: string; icon: any; feature: string | null; section: SectionKey | null }[] = [
+  const allNavItems: { name: string; href: string; icon: any; feature: string | null; section: SectionKey | null; ownerOnly?: boolean }[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null, section: null },
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs" },
     { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates", section: "estimates" },
@@ -36,13 +36,14 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors" },
     { name: "Clients", href: "/clients", icon: Users, feature: "clients", section: "clients" },
-    { name: "Materials", href: "/materials", icon: Package, feature: null, section: null },
-    { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: null },
+    { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true },
+    { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null },
   ];
 
   const navigation = allNavItems.filter((item) => {
     if (item.feature !== null && !enabledFeatures.includes(item.feature)) return false;
+    if (item.ownerOnly && !isOwner) return false;
     if (item.section !== null && !isOwner && !canView(item.section)) return false;
     return true;
   });

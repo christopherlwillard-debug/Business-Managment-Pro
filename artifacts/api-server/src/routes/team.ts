@@ -2,6 +2,27 @@ import { Router, type Request, type Response } from "express";
 import { db, settingsTable, accessRequestsTable, sessionsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 
+type SectionKey =
+  | "expenses" | "jobs" | "invoices" | "clients" | "mileage"
+  | "subcontractors" | "daily_logs" | "estimates" | "compliance";
+
+const SECTION_KEYS: SectionKey[] = [
+  "expenses", "jobs", "invoices", "clients", "mileage",
+  "subcontractors", "daily_logs", "estimates", "compliance",
+];
+
+function normalizePermissions(raw: unknown): Record<SectionKey, { view: boolean; edit: boolean }> {
+  const input = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  const result = {} as Record<SectionKey, { view: boolean; edit: boolean }>;
+  for (const key of SECTION_KEYS) {
+    const p = input[key] ?? {};
+    const edit = !!(p.edit);
+    const view = !!(p.view) || edit;
+    result[key] = { view, edit };
+  }
+  return result;
+}
+
 const router = Router();
 
 async function isOwner(userId: string): Promise<boolean> {
@@ -38,9 +59,11 @@ router.post("/requests/:id/approve", async (req: Request, res: Response) => {
     const { permissions } = req.body;
     if (!permissions) { res.status(400).json({ error: "permissions required" }); return; }
 
+    const normalized = normalizePermissions(permissions);
+
     const [updated] = await db
       .update(accessRequestsTable)
-      .set({ status: "approved", permissions, resolvedAt: new Date() })
+      .set({ status: "approved", permissions: normalized, resolvedAt: new Date() })
       .where(eq(accessRequestsTable.id, id))
       .returning();
     if (!updated) { res.status(404).json({ error: "Request not found" }); return; }
@@ -87,9 +110,11 @@ router.put("/members/:userId/permissions", async (req: Request, res: Response) =
     const { permissions } = req.body;
     if (!permissions) { res.status(400).json({ error: "permissions required" }); return; }
 
+    const normalized = normalizePermissions(permissions);
+
     const [updated] = await db
       .update(accessRequestsTable)
-      .set({ permissions })
+      .set({ permissions: normalized })
       .where(and(eq(accessRequestsTable.userId, userId), eq(accessRequestsTable.status, "approved")))
       .returning();
     if (!updated) { res.status(404).json({ error: "Member not found" }); return; }
