@@ -6,7 +6,8 @@ import {
   ExchangeMobileAuthorizationCodeResponse,
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, settingsTable, accessRequestsTable } from "@workspace/db";
+import { eq, and, sql } from "drizzle-orm";
 import {
   clearSession,
   getOidcConfig,
@@ -82,12 +83,59 @@ async function upsertUser(claims: Record<string, unknown>) {
   return user;
 }
 
+async function ensureOwner(userId: string): Promise<void> {
+  const [settings] = await db.select({ id: settingsTable.id, ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
+  if (!settings) {
+    await db.insert(settingsTable).values({ ownerUserId: userId } as any).onConflictDoNothing();
+  } else if (!settings.ownerUserId) {
+    await db.update(settingsTable)
+      .set({ ownerUserId: userId })
+      .where(and(eq(settingsTable.id, settings.id), sql`${settingsTable.ownerUserId} IS NULL`));
+  }
+}
+
 router.get("/auth/user", (req: Request, res: Response) => {
   res.json(
     GetCurrentAuthUserResponse.parse({
       user: req.isAuthenticated() ? req.user : null,
     }),
   );
+});
+
+router.get("/auth/me", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const userId = (req.user as any)?.id as string;
+  try {
+    const [settings] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
+    const isOwner = settings?.ownerUserId === userId;
+
+    if (isOwner) {
+      res.json({ isOwner: true, accessStatus: "owner", permissions: null });
+      return;
+    }
+
+    const [record] = await db
+      .select()
+      .from(accessRequestsTable)
+      .where(eq(accessRequestsTable.userId, userId));
+
+    if (!record) {
+      res.json({ isOwner: false, accessStatus: "pending", permissions: null });
+      return;
+    }
+
+    res.json({
+      isOwner: false,
+      accessStatus: record.status as "pending" | "approved" | "rejected",
+      permissions: record.status === "approved" ? (record.permissions ?? null) : null,
+    });
+  } catch (err) {
+    console.error("auth/me error", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 router.get("/login", async (req: Request, res: Response) => {
@@ -168,6 +216,8 @@ router.get("/callback", async (req: Request, res: Response) => {
     claims as unknown as Record<string, unknown>,
   );
 
+  await ensureOwner(dbUser.id);
+
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
     user: {
@@ -237,6 +287,8 @@ router.post(
       const dbUser = await upsertUser(
         claims as unknown as Record<string, unknown>,
       );
+
+      await ensureOwner(dbUser.id);
 
       const now = Math.floor(Date.now() / 1000);
       const sessionData: SessionData = {

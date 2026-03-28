@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
 } from "@workspace/api-client-react";
@@ -960,6 +961,7 @@ function RecurringSection({
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Expenses() {
+  const { canEdit } = useUserPermissions();
   const { data: expenses, isLoading, refetch } = useListExpenses();
   const { data: jobs }    = useListJobs();
   const { data: subs }    = useListSubcontractors();
@@ -1056,20 +1058,22 @@ export default function Expenses() {
           <h1 className="text-3xl font-display font-bold text-foreground">Expenses</h1>
           <p className="text-muted-foreground mt-1">Track materials, tools, and subs with receipt documentation.</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setImportOpen(true)}
-            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border"
-          >
-            <Upload className="w-4 h-4 mr-2" /> Import
-          </button>
-          <button
-            onClick={openDialog}
-            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
-          >
-            <Plus className="w-5 h-5 mr-2" /> Log Expense
-          </button>
-        </div>
+        {canEdit("expenses") && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setImportOpen(true)}
+              className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border"
+            >
+              <Upload className="w-4 h-4 mr-2" /> Import
+            </button>
+            <button
+              onClick={openDialog}
+              className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
+            >
+              <Plus className="w-5 h-5 mr-2" /> Log Expense
+            </button>
+          </div>
+        )}
       </div>
 
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
@@ -1275,23 +1279,27 @@ export default function Expenses() {
                           className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button onClick={() => { setEditReceiptFile(null); setEditingRow({
-                            id: exp.id,
-                            description: exp.description ?? "",
-                            amount: String(exp.amount ?? ""),
-                            date: (exp.date ?? "").slice(0, 10),
-                            category: exp.category ?? CATEGORIES[0],
-                            vendor: exp.vendor ?? "",
-                            jobId: exp.jobId ? String(exp.jobId) : "",
-                            notes: exp.notes ?? "",
-                          }); }}
-                          className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setDeleteTarget(exp)}
-                          className="text-muted-foreground hover:text-destructive transition-colors" title="Delete expense">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canEdit("expenses") && (
+                          <>
+                            <button onClick={() => { setEditReceiptFile(null); setEditingRow({
+                                id: exp.id,
+                                description: exp.description ?? "",
+                                amount: String(exp.amount ?? ""),
+                                date: (exp.date ?? "").slice(0, 10),
+                                category: exp.category ?? CATEGORIES[0],
+                                vendor: exp.vendor ?? "",
+                                jobId: exp.jobId ? String(exp.jobId) : "",
+                                notes: exp.notes ?? "",
+                              }); }}
+                              className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setDeleteTarget(exp)}
+                              className="text-muted-foreground hover:text-destructive transition-colors" title="Delete expense">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

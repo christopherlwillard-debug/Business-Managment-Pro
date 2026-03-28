@@ -35,6 +35,8 @@ export const settingsTable = pgTable("settings", {
   mileageDefaultClassification: text("mileage_default_classification").default("business"),
   mileageUnits: text("mileage_units").default("miles"),
   mileageReminderFrequency: text("mileage_reminder_frequency").default("daily"),
+  // Team access
+  ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

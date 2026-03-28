@@ -1,4 +1,5 @@
 import { useState, useRef, ReactNode } from "react";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, useListInvoices,
@@ -829,6 +830,7 @@ function JobCard({
   lastLogDate?: string;
   materialListCount: number;
 }) {
+  const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
@@ -851,16 +853,18 @@ function JobCard({
               <p className="text-amber-600 font-bold text-sm">{formatCurrency(job.estimatedAmount)}</p>
             )}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => onEdit(job)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => onDelete(job)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {canEdit("jobs") && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button onClick={() => onEdit(job)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => onDelete(job)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5 text-xs text-muted-foreground">
@@ -1206,6 +1210,7 @@ function DeleteConfirm({
 const UNPAID_STATUSES = new Set(["draft", "pending", "sent", "overdue"]);
 
 function SavedInvoicesSection() {
+  const { canEdit } = useUserPermissions();
   const { data: invoices = [], isLoading } = useListInvoices();
   const { data: settings }  = useGetSettings();
   const updateStatus  = useUpdateInvoiceStatus();
@@ -1284,20 +1289,24 @@ function SavedInvoicesSection() {
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors">
                     <Eye className="w-3 h-3" /> View
                   </button>
-                  <button onClick={() => setEditInvoice(inv)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-foreground hover:bg-muted/50 transition-colors">
-                    <Edit2 className="w-3 h-3" /> Edit
-                  </button>
-                  {inv.status !== "paid" && (
-                    <button onClick={() => handleMarkPaid(inv)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors">
-                      <Check className="w-3 h-3" /> Paid
-                    </button>
+                  {canEdit("invoices") && (
+                    <>
+                      <button onClick={() => setEditInvoice(inv)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-foreground hover:bg-muted/50 transition-colors">
+                        <Edit2 className="w-3 h-3" /> Edit
+                      </button>
+                      {inv.status !== "paid" && (
+                        <button onClick={() => handleMarkPaid(inv)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors">
+                          <Check className="w-3 h-3" /> Paid
+                        </button>
+                      )}
+                      <button onClick={() => setDeleteTarget(inv)}
+                        className="p-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </>
                   )}
-                  <button onClick={() => setDeleteTarget(inv)}
-                    className="p-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
                 </div>
               </td>
             </tr>
@@ -1394,6 +1403,8 @@ function SavedInvoicesSection() {
 
 // ─── Main Jobs Page ────────────────────────────────────────────────────────────
 export default function Jobs() {
+  const { canEdit } = useUserPermissions();
+  const canEditJobs = canEdit("jobs");
   const queryClient = useQueryClient();
   const { data: jobs = [],    isLoading } = useListJobs();
   const { data: clients = [] }            = useListClients();
@@ -1481,10 +1492,12 @@ export default function Jobs() {
           <h1 className="text-3xl font-display font-bold text-foreground">Jobs</h1>
           <p className="text-muted-foreground mt-1">Manage jobs and generate invoices for completed work.</p>
         </div>
-        <button onClick={openNewJob}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
-          <Plus className="w-4 h-4" /> New Job
-        </button>
+        {canEditJobs && (
+          <button onClick={openNewJob}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
+            <Plus className="w-4 h-4" /> New Job
+          </button>
+        )}
       </div>
 
       {/* Status filter */}
@@ -1520,10 +1533,12 @@ export default function Jobs() {
           <Briefcase className="w-12 h-12 text-muted-foreground/30 mx-auto" />
           <p className="font-semibold text-foreground">No jobs yet</p>
           <p className="text-sm text-muted-foreground">Create your first job to get started.</p>
-          <button onClick={openNewJob}
-            className="mx-auto mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
-            <Plus className="w-4 h-4" /> New Job
-          </button>
+          {canEditJobs && (
+            <button onClick={openNewJob}
+              className="mx-auto mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
+              <Plus className="w-4 h-4" /> New Job
+            </button>
+          )}
         </Card>
       )}
 

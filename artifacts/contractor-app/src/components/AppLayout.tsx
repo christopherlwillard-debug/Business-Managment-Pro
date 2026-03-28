@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
 import { useAuth } from "@workspace/replit-auth-web";
+import { useUserPermissions, type SectionKey } from "@/contexts/UserPermissions";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -20,27 +21,31 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const { data: settings } = useGetSettings();
   const { logout } = useAuth();
+  const { canView, isOwner } = useUserPermissions();
+
   const enabledFeatures: string[] = (settings as any)?.enabledFeatures ?? [
     "invoices", "expenses", "mileage",
     "estimates", "subcontractors", "compliance", "clients",
   ];
 
-  const allNavItems = [
-    { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null },
-    { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs" },
-    { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates" },
-    { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses" },
-    { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage" },
-    { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors" },
-    { name: "Clients", href: "/clients", icon: Users, feature: "clients" },
-    { name: "Materials", href: "/materials", icon: Package, feature: null },
-    { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null },
-    { name: "Settings", href: "/settings", icon: Settings, feature: null },
+  const allNavItems: { name: string; href: string; icon: any; feature: string | null; section: SectionKey | null }[] = [
+    { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null, section: null },
+    { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs" },
+    { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates", section: "estimates" },
+    { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses" },
+    { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage" },
+    { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors" },
+    { name: "Clients", href: "/clients", icon: Users, feature: "clients", section: "clients" },
+    { name: "Materials", href: "/materials", icon: Package, feature: null, section: null },
+    { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: null },
+    { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null },
   ];
 
-  const navigation = allNavItems.filter(
-    (item) => item.feature === null || enabledFeatures.includes(item.feature)
-  );
+  const navigation = allNavItems.filter((item) => {
+    if (item.feature !== null && !enabledFeatures.includes(item.feature)) return false;
+    if (item.section !== null && !isOwner && !canView(item.section)) return false;
+    return true;
+  });
 
   const companyName = (settings as any)?.companyName || "BuildPro";
   const logoUrl = (settings as any)?.logoUrl ?? null;
@@ -54,14 +59,19 @@ export function AppLayout({ children }: AppLayoutProps) {
     transition: { duration: 0.18 },
   };
 
-  const bottomNavItems = [
-    { name: "Home", href: "/", icon: LayoutDashboard },
-    { name: "Jobs", href: "/jobs", icon: Briefcase },
-    { name: "Clients", href: "/clients", icon: Users },
-    { name: "Mileage", href: "/mileage", icon: Navigation },
-    { name: "Expenses", href: "/expenses", icon: Receipt },
-    { name: "More", href: "#", icon: Menu, action: () => setMobileMenuOpen(true) },
+  const allBottomNavItems: { name: string; href: string; icon: any; action?: () => void; section: SectionKey | null }[] = [
+    { name: "Home", href: "/", icon: LayoutDashboard, section: null },
+    { name: "Jobs", href: "/jobs", icon: Briefcase, section: "jobs" },
+    { name: "Clients", href: "/clients", icon: Users, section: "clients" },
+    { name: "Mileage", href: "/mileage", icon: Navigation, section: "mileage" },
+    { name: "Expenses", href: "/expenses", icon: Receipt, section: "expenses" },
+    { name: "More", href: "#", icon: Menu, action: () => setMobileMenuOpen(true), section: null },
   ];
+
+  const bottomNavItems = allBottomNavItems.filter((item) => {
+    if (item.section !== null && !isOwner && !canView(item.section)) return false;
+    return true;
+  });
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -182,7 +192,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {bottomNavItems.map((item: any) => {
           const isActive = item.href !== "#" && (location === item.href || (item.href !== "/" && location.startsWith(item.href)));
           const Element = item.action ? "button" : Link;
-          
+
           return (
             <Element
               key={item.name}

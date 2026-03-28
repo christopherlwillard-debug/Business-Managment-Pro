@@ -8,8 +8,9 @@ import {
   Building2, Settings2, Receipt, Check, AlertCircle, Upload,
   X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
-  Bell
+  Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus
 } from "lucide-react";
+import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -47,7 +48,350 @@ const TABS = [
   { key: "financial", label: "Financial", icon: DollarSign },
   { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "modules", label: "Modules", icon: Settings2 },
+  { key: "team", label: "Team", icon: Users2 },
 ];
+
+const PERMISSION_SECTIONS: { key: SectionKey; label: string }[] = [
+  { key: "expenses", label: "Expenses" },
+  { key: "jobs", label: "Jobs" },
+  { key: "invoices", label: "Invoices" },
+  { key: "clients", label: "Clients" },
+  { key: "mileage", label: "Mileage" },
+  { key: "subcontractors", label: "Subcontractors" },
+  { key: "daily_logs", label: "Daily Logs" },
+  { key: "estimates", label: "Estimates" },
+  { key: "compliance", label: "Compliance" },
+];
+
+function defaultPerms(): Permissions {
+  const p: any = {};
+  PERMISSION_SECTIONS.forEach(s => { p[s.key] = { view: false, edit: false }; });
+  return p;
+}
+
+interface AccessRecord {
+  id: number;
+  userId: string;
+  userName: string;
+  userEmail: string | null;
+  profileImageUrl: string | null;
+  status: string;
+  permissions: Permissions | null;
+  requestedAt: string;
+  resolvedAt: string | null;
+}
+
+function PermissionsGrid({ perms, onChange, readonly = false }: {
+  perms: Permissions;
+  onChange?: (p: Permissions) => void;
+  readonly?: boolean;
+}) {
+  function toggle(section: SectionKey, field: "view" | "edit") {
+    if (readonly || !onChange) return;
+    const cur = perms[section];
+    let next = { ...cur };
+    if (field === "edit") {
+      next.edit = !cur.edit;
+      if (next.edit) next.view = true;
+    } else {
+      next.view = !cur.view;
+      if (!next.view) next.edit = false;
+    }
+    onChange({ ...perms, [section]: next });
+  }
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden text-sm">
+      <div className="grid grid-cols-[1fr_80px_80px] bg-muted/40 px-4 py-2 text-xs font-semibold text-muted-foreground border-b border-border">
+        <span>Section</span>
+        <span className="text-center">View</span>
+        <span className="text-center">Add/Edit</span>
+      </div>
+      {PERMISSION_SECTIONS.map((s, i) => (
+        <div key={s.key} className={`grid grid-cols-[1fr_80px_80px] px-4 py-2.5 items-center ${i % 2 === 0 ? "bg-background" : "bg-muted/10"}`}>
+          <span className="font-medium text-foreground text-sm">{s.label}</span>
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => toggle(s.key, "view")}
+              disabled={readonly}
+              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                perms[s.key]?.view
+                  ? "border-primary bg-primary"
+                  : "border-muted-foreground/40 bg-background"
+              } ${readonly ? "cursor-default" : "cursor-pointer hover:border-primary/70"}`}
+            >
+              {perms[s.key]?.view && <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+            </button>
+          </div>
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => toggle(s.key, "edit")}
+              disabled={readonly}
+              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                perms[s.key]?.edit
+                  ? "border-emerald-500 bg-emerald-500"
+                  : "border-muted-foreground/40 bg-background"
+              } ${readonly ? "cursor-default" : "cursor-pointer hover:border-emerald-400"}`}
+            >
+              {perms[s.key]?.edit && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TeamSection() {
+  const [requests, setRequests] = useState<AccessRecord[]>([]);
+  const [members, setMembers] = useState<AccessRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [pendingPerms, setPendingPerms] = useState<Permissions>(defaultPerms());
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [editPerms, setEditPerms] = useState<Record<string, Permissions>>({});
+  const { refresh: refreshPermissions } = useUserPermissions();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [reqRes, memRes] = await Promise.all([
+        fetch(`${BASE}/api/team/requests`, { credentials: "include" }),
+        fetch(`${BASE}/api/team/members`, { credentials: "include" }),
+      ]);
+      const reqs = reqRes.ok ? await reqRes.json() : [];
+      const mems = memRes.ok ? await memRes.json() : [];
+      setRequests(reqs);
+      setMembers(mems);
+      const ep: Record<string, Permissions> = {};
+      mems.forEach((m: AccessRecord) => {
+        ep[m.userId] = m.permissions ?? defaultPerms();
+      });
+      setEditPerms(ep);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleApprove(req: AccessRecord) {
+    const [res] = await Promise.all([
+      fetch(`${BASE}/api/team/requests/${req.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ permissions: pendingPerms }),
+      }),
+    ]);
+    if (res.ok) {
+      setApprovingId(null);
+      setPendingPerms(defaultPerms());
+      load();
+    }
+  }
+
+  async function handleReject(req: AccessRecord) {
+    await fetch(`${BASE}/api/team/requests/${req.id}/reject`, {
+      method: "POST",
+      credentials: "include",
+    });
+    load();
+  }
+
+  async function handleSavePerms(userId: string) {
+    setSavingId(userId);
+    await fetch(`${BASE}/api/team/members/${userId}/permissions`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ permissions: editPerms[userId] }),
+    });
+    setSavingId(null);
+    refreshPermissions();
+  }
+
+  async function handleRemove(userId: string) {
+    if (!confirm("Remove this team member? Their access will be revoked immediately.")) return;
+    await fetch(`${BASE}/api/team/members/${userId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    load();
+    refreshPermissions();
+  }
+
+  if (loading) {
+    return <div className="space-y-3">{[1,2].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Owner row */}
+      <Card className="border-border/50 shadow-md bg-card">
+        <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+          <CardTitle className="font-display flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" /> Owner
+          </CardTitle>
+          <CardDescription>The owner has full access to all sections of the app.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
+              You
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Account Owner</p>
+              <p className="text-xs text-muted-foreground">Full access to everything</p>
+            </div>
+            <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Owner
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending requests */}
+      <Card className="border-border/50 shadow-md bg-card">
+        <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+          <CardTitle className="font-display flex items-center gap-2">
+            <Users2 className="w-5 h-5 text-primary" /> Access Requests
+            {requests.length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold">{requests.length}</span>
+            )}
+          </CardTitle>
+          <CardDescription>People who have logged in and are waiting for you to approve their access.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4">
+          {requests.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No pending access requests.</p>
+          ) : (
+            <div className="space-y-4">
+              {requests.map(req => (
+                <div key={req.id} className="border border-border rounded-xl p-4 space-y-4">
+                  <div className="flex items-center gap-3">
+                    {req.profileImageUrl ? (
+                      <img src={req.profileImageUrl} className="w-10 h-10 rounded-full object-cover" alt={req.userName} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground">
+                        {req.userName?.[0]?.toUpperCase() ?? "?"}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{req.userName || "Unknown user"}</p>
+                      {req.userEmail && <p className="text-xs text-muted-foreground">{req.userEmail}</p>}
+                    </div>
+                    <span className="ml-auto text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full font-semibold">Pending</span>
+                  </div>
+
+                  {approvingId === req.id ? (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-foreground">Set what this person can access:</p>
+                      <PermissionsGrid perms={pendingPerms} onChange={setPendingPerms} />
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleApprove(req)}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors"
+                        >
+                          <CheckCircle2 className="w-4 h-4" /> Approve with these permissions
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setApprovingId(null); setPendingPerms(defaultPerms()); }}
+                          className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setApprovingId(req.id); setPendingPerms(defaultPerms()); }}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors"
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReject(req)}
+                        className="flex items-center gap-1.5 px-4 py-2 border border-destructive/30 text-destructive rounded-lg text-sm font-semibold hover:bg-destructive/5 transition-colors"
+                      >
+                        <XCircle className="w-4 h-4" /> Deny
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Approved members */}
+      <Card className="border-border/50 shadow-md bg-card">
+        <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+          <CardTitle className="font-display flex items-center gap-2">
+            <Users2 className="w-5 h-5 text-primary" /> Team Members
+          </CardTitle>
+          <CardDescription>Approved members and their current permissions. Changes apply immediately.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-4">
+          {members.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No team members yet. Approve a request above to add someone.</p>
+          ) : (
+            <div className="space-y-6">
+              {members.map(m => (
+                <div key={m.userId} className="border border-border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    {m.profileImageUrl ? (
+                      <img src={m.profileImageUrl} className="w-10 h-10 rounded-full object-cover" alt={m.userName} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground">
+                        {m.userName?.[0]?.toUpperCase() ?? "?"}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{m.userName || "Unknown user"}</p>
+                      {m.userEmail && <p className="text-xs text-muted-foreground">{m.userEmail}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(m.userId)}
+                      className="ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-destructive/30 text-destructive rounded-lg text-xs font-semibold hover:bg-destructive/5 transition-colors"
+                    >
+                      <UserMinus className="w-3.5 h-3.5" /> Remove
+                    </button>
+                  </div>
+                  {editPerms[m.userId] && (
+                    <>
+                      <PermissionsGrid
+                        perms={editPerms[m.userId]}
+                        onChange={p => setEditPerms(prev => ({ ...prev, [m.userId]: p }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSavePerms(m.userId)}
+                        disabled={savingId === m.userId}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+                      >
+                        {savingId === m.userId ? "Saving…" : "Save Permissions"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 // ─── Mini invoice preview showing logo placement ──────────────────────────────
 function InvoiceLogoPreview({
@@ -236,6 +580,7 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetSettings();
   const updateMutation = useUpdateSettings();
+  const { isOwner } = useUserPermissions();
 
   const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
@@ -366,7 +711,7 @@ export default function Settings() {
 
       {/* Tab bar */}
       <div className="flex overflow-x-auto scrollbar-hide gap-1 mb-6 bg-muted/40 rounded-2xl p-1.5 border border-border">
-        {TABS.map(tab => {
+        {TABS.filter(t => t.key !== "team" || isOwner).map(tab => {
           const Icon = tab.icon;
           const active = activeTab === tab.key;
           return (
@@ -386,7 +731,14 @@ export default function Settings() {
         })}
       </div>
 
-      <form onSubmit={handleSave} className="space-y-5">
+      {/* ── Team (outside form, owner-only) ── */}
+      {activeTab === "team" && isOwner && (
+        <div className="space-y-5 pb-8">
+          <TeamSection />
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className={`space-y-5 ${activeTab === "team" ? "hidden" : ""}`}>
 
         {/* ── Profile ── */}
         {activeTab === "profile" && (

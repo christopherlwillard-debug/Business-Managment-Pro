@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useQuery } from "@tanstack/react-query";
 import { useListSubcontractors, useCreateSubcontractor, useDeleteSubcontractor } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +16,7 @@ import { generate1099NecPdf } from "@/lib/generate1099NecPdf";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Subcontractors() {
+  const { canEdit } = useUserPermissions();
   const { data: subs, isLoading, refetch } = useListSubcontractors();
   const createMutation = useCreateSubcontractor();
   const deleteMutation = useDeleteSubcontractor();
@@ -345,12 +347,14 @@ export default function Subcontractors() {
           >
             <FileText className="w-4 h-4 mr-2" /> 1099 Report
           </button>
-          <button
-            onClick={() => setIsDialogOpen(true)}
-            className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
-          >
-            <Plus className="w-5 h-5 mr-2" /> Add Subcontractor
-          </button>
+          {canEdit("subcontractors") && (
+            <button
+              onClick={() => setIsDialogOpen(true)}
+              className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
+            >
+              <Plus className="w-5 h-5 mr-2" /> Add Subcontractor
+            </button>
+          )}
         </div>
       </div>
 
@@ -432,14 +436,16 @@ export default function Subcontractors() {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <button
-                          onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name, hasLinkedRecords: !!(sub as any).hasLinkedRecords })}
-                          disabled={deletingId === sub.id}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors mx-auto disabled:opacity-40"
-                          title="Delete subcontractor"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canEdit("subcontractors") && (
+                          <button
+                            onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name, hasLinkedRecords: !!(sub as any).hasLinkedRecords })}
+                            disabled={deletingId === sub.id}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors mx-auto disabled:opacity-40"
+                            title="Delete subcontractor"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

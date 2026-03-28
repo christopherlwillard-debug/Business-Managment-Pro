@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListMileageLogs,
   useGetMileageSummary,
@@ -36,6 +37,7 @@ interface ManualForm {
 const today = localDateString();
 
 export default function Mileage() {
+  const { canEdit } = useUserPermissions();
   const queryClient = useQueryClient();
   const { data: logs, isLoading } = useListMileageLogs();
   const { data: summary } = useGetMileageSummary();
@@ -184,7 +186,7 @@ export default function Mileage() {
       )}
 
       {/* Manual Entry Card */}
-      <Card className="border-border/50 shadow-md bg-card overflow-hidden">
+      {canEdit("mileage") && <Card className="border-border/50 shadow-md bg-card overflow-hidden">
         <div className="h-1 bg-gradient-to-r from-blue-400 to-blue-600" />
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center gap-2 mb-1">
@@ -311,7 +313,7 @@ export default function Mileage() {
             {manualSaving ? "Saving..." : manual.classification === "business" ? "Save & Log Expense" : "Save Trip"}
           </button>
         </CardContent>
-      </Card>
+      </Card>}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="bg-primary text-primary-foreground border-none shadow-lg">
@@ -419,13 +421,15 @@ export default function Mileage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => handleDelete(log.id, log.classification)}
-                        className="text-muted-foreground hover:text-destructive transition-colors"
-                        title="Delete trip"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {canEdit("mileage") && (
+                        <button
+                          onClick={() => handleDelete(log.id, log.classification)}
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                          title="Delete trip"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
