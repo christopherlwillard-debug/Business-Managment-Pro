@@ -14,6 +14,23 @@ const SECTION_KEYS: SectionKey[] = [
 
 type RawSectionPerm = { view?: unknown; edit?: unknown };
 
+function validatePermissionsPayload(value: unknown): string | null {
+  if (value === null || value === undefined) return "permissions required";
+  if (typeof value !== "object" || Array.isArray(value)) return "permissions must be a plain object";
+  const obj = value as Record<string, unknown>;
+  for (const key of SECTION_KEYS) {
+    const section = obj[key];
+    if (section === undefined) continue;
+    if (section === null || typeof section !== "object" || Array.isArray(section)) {
+      return `${key}: section permissions must be an object`;
+    }
+    const s = section as Record<string, unknown>;
+    if ("view" in s && typeof s.view !== "boolean") return `${key}.view must be a boolean`;
+    if ("edit" in s && typeof s.edit !== "boolean") return `${key}.edit must be a boolean`;
+  }
+  return null;
+}
+
 function normalizePermissions(raw: unknown): Record<SectionKey, { view: boolean; edit: boolean }> {
   const input = (raw && typeof raw === "object" ? raw : {}) as Record<string, RawSectionPerm | undefined>;
   const result = {} as Record<SectionKey, { view: boolean; edit: boolean }>;
@@ -58,7 +75,8 @@ router.post("/requests/:id/approve", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid request id" }); return; }
     const { permissions } = req.body;
-    if (!permissions) { res.status(400).json({ error: "permissions required" }); return; }
+    const permError = validatePermissionsPayload(permissions);
+    if (permError) { res.status(400).json({ error: permError }); return; }
 
     const [existing] = await db.select({ status: accessRequestsTable.status })
       .from(accessRequestsTable).where(eq(accessRequestsTable.id, id));
@@ -119,7 +137,8 @@ router.put("/members/:userId/permissions", async (req: Request, res: Response) =
   try {
     const { userId } = req.params;
     const { permissions } = req.body;
-    if (!permissions) { res.status(400).json({ error: "permissions required" }); return; }
+    const permError = validatePermissionsPayload(permissions);
+    if (permError) { res.status(400).json({ error: permError }); return; }
 
     const normalized = normalizePermissions(permissions);
 
