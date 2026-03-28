@@ -17,8 +17,13 @@ export function formatCurrency(amount: number | null | undefined): string {
 export function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "N/A";
   try {
-    const [y, m, d] = dateString.split("-").map(Number);
-    return format(new Date(y, m - 1, d), "MMM d, yyyy");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [y, m, d] = dateString.split("-").map(Number);
+      return format(new Date(y, m - 1, d), "MMM d, yyyy");
+    }
+    const dt = new Date(dateString);
+    if (isNaN(dt.getTime())) return dateString;
+    return format(dt, "MMM d, yyyy");
   } catch (e) {
     return dateString;
   }
