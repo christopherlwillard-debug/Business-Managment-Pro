@@ -711,7 +711,32 @@ export default function Invoices() {
         </div>
         <div className="flex gap-3">
           {activeTab === "tax" && (
-            <button className="flex items-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
+            <button
+              onClick={() => {
+                if (!taxReport || !(taxReport as any[]).length) return;
+                const rows = taxReport as any[];
+                const header = ["Invoice #", "Date", "City", "State", "Subtotal", "Tax", "Total"];
+                const lines = rows.map((r: any) => [
+                  r.invoiceNumber ?? "",
+                  r.issueDate ?? "",
+                  r.city ?? "",
+                  r.state ?? "",
+                  r.subtotal != null ? Number(r.subtotal).toFixed(2) : "0.00",
+                  r.taxAmount != null ? Number(r.taxAmount).toFixed(2) : "0.00",
+                  r.total != null ? Number(r.total).toFixed(2) : "0.00",
+                ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
+                const csv = [header.join(","), ...lines].join("\n");
+                const blob = new Blob([csv], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `invoice-tax-report.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              disabled={!taxReport || !(taxReport as any[]).length}
+              className="flex items-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Download className="w-4 h-4 mr-2" /> Export CSV
             </button>
           )}
