@@ -36,6 +36,7 @@ import materialListsRouter from "./material-lists";
 import registeredAgentRouter from "./registered-agent";
 import form1099sRouter from "./form-1099s";
 import teamRouter from "./team";
+import otherIncomeRouter from "./other-income";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -168,5 +169,6 @@ router.use("/material-lists", sectionGuard("jobs"), materialListsRouter);
 router.use("/registered-agent", sectionGuard("compliance"), registeredAgentRouter);
 router.use("/1099s", sectionGuard("subcontractors"), form1099sRouter);
 router.use("/team", teamRouter);
+router.use("/other-income", sectionGuard("invoices"), otherIncomeRouter);
 
 export default router;

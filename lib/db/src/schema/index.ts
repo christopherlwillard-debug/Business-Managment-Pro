@@ -18,3 +18,4 @@ export * from "./material-lists";
 export * from "./registered-agent";
 export * from "./generated-1099s";
 export * from "./access-requests";
+export * from "./other-income";

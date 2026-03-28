@@ -15,12 +15,15 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function downloadCSV(records: any[], year: number) {
-  const headers = ["Invoice #", "Date", "Client", "City", "State", "Subtotal", "Tax Collected", "Total", "Status"];
+  const headers = ["Type", "Invoice #", "Date", "Client / Source", "Description", "City", "State", "Subtotal", "Tax Collected", "Total", "Status", "Payment Method"];
   const rows = records.map((r: any) => [
+    r.type === "other_income" ? "Other Income" : "Invoice",
     r.invoiceNumber ?? "", r.issueDate ?? "", r.clientName ?? "",
+    r.jobTitle ?? "",
     r.city ?? "", r.state ?? "",
     r.subtotal?.toFixed(2) ?? "0.00", r.taxAmount?.toFixed(2) ?? "0.00",
     r.total?.toFixed(2) ?? "0.00", r.status ?? "",
+    r.paymentMethod ?? "",
   ]);
   const csvContent = [headers, ...rows].map(row =>
     row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
@@ -30,6 +33,54 @@ function downloadCSV(records: any[], year: number) {
   const a = document.createElement("a");
   a.href = url; a.download = `tax-records-${year}.csv`; a.click();
   URL.revokeObjectURL(url);
+}
+
+const OTHER_INCOME_API = `${BASE}/api/other-income`;
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "Cash", check: "Check", bank_transfer: "Bank Transfer", other: "Other",
+};
+
+function useOtherIncome(year: number) {
+  return useQuery<any[]>({
+    queryKey: ["other-income", year],
+    queryFn: async () => {
+      const res = await fetch(`${OTHER_INCOME_API}?startDate=${year}-01-01&endDate=${year}-12-31`);
+      if (!res.ok) throw new Error("Failed to load other income");
+      return res.json();
+    },
+  });
+}
+
+function useCreateOtherIncome(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch(OTHER_INCOME_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error("Failed to create");
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); },
+  });
+}
+
+function useUpdateOtherIncome(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: any) => {
+      const res = await fetch(`${OTHER_INCOME_API}/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); },
+  });
+}
+
+function useDeleteOtherIncome(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => { await fetch(`${OTHER_INCOME_API}/${id}`, { method: "DELETE" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); },
+  });
 }
 
 async function fetchAccounting(year: number) {
@@ -385,20 +436,54 @@ function ComplianceItemForm({
 
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
-type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records";
+type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income";
 
 function OverviewTab({ data, year }: { data: any; year: number }) {
   const [openModule, setOpenModule] = useState<ModuleKey | null>(null);
   const s = data?.summary ?? {};
   const netProfit = s.netProfit ?? 0;
+  const otherIncomeTotal: number = s.otherIncomeTotal ?? 0;
+
+  const { data: otherIncomeRows = [], isLoading: oiLoading } = useOtherIncome(year);
+  const createOI = useCreateOtherIncome(year);
+  const updateOI = useUpdateOtherIncome(year);
+  const deleteOI = useDeleteOtherIncome(year);
+  const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; notes: string }>>(null);
+  const [oiSaving, setOiSaving] = useState(false);
+
+  const { canEdit } = useUserPermissions();
+
+  function openAddOI() {
+    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", notes: "" });
+    setOpenModule("other_income");
+  }
+  function openEditOI(row: any) {
+    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", notes: row.notes ?? "" });
+    setOpenModule("other_income");
+  }
+  async function handleSaveOI(e: React.FormEvent) {
+    e.preventDefault();
+    if (!oiForm) return;
+    setOiSaving(true);
+    try {
+      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", notes: oiForm.notes || null };
+      if (oiForm.id) { await updateOI.mutateAsync({ id: oiForm.id, ...payload }); }
+      else { await createOI.mutateAsync(payload); }
+      setOiForm(null);
+    } catch { } finally { setOiSaving(false); }
+  }
+  async function handleDeleteOI(id: number) {
+    if (!confirm("Delete this income entry?")) return;
+    await deleteOI.mutateAsync(id);
+  }
 
   function toggleModule(key: ModuleKey) {
     setOpenModule(prev => prev === key ? null : key);
   }
 
   const statTiles = [
-    { label: "Gross Revenue", value: formatCurrency(s.grossRevenue), sub: "All invoices", icon: TrendingUp, color: "bg-emerald-100 text-emerald-700", border: "border-l-emerald-500" },
-    { label: "Collected", value: formatCurrency(s.paidRevenue), sub: "Paid invoices", icon: DollarSign, color: "bg-blue-100 text-blue-700", border: "border-l-blue-500" },
+    { label: "Gross Revenue", value: formatCurrency(s.grossRevenue), sub: otherIncomeTotal > 0 ? `Invoices + ${formatCurrency(otherIncomeTotal)} other` : "All invoices", icon: TrendingUp, color: "bg-emerald-100 text-emerald-700", border: "border-l-emerald-500" },
+    { label: "Collected", value: formatCurrency(s.paidRevenue), sub: otherIncomeTotal > 0 ? "Paid invoices + other income" : "Paid invoices", icon: DollarSign, color: "bg-blue-100 text-blue-700", border: "border-l-blue-500" },
     { label: "Total Expenses", value: formatCurrency(s.totalExpenses), sub: `+${formatCurrency(s.mileageDeduction ?? 0)} mileage`, icon: TrendingDown, color: "bg-red-100 text-red-700", border: "border-l-red-500" },
     { label: "Est. Net Profit", value: formatCurrency(netProfit), sub: "Collected − Expenses − Mileage", icon: netProfit >= 0 ? TrendingUp : TrendingDown, color: netProfit >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700", border: netProfit >= 0 ? "border-l-emerald-500" : "border-l-red-500" },
   ];
@@ -433,8 +518,13 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     },
     {
       key: "records", label: "Tax Records", icon: FileSpreadsheet,
-      stat: data?.invoiceRecords?.length > 0 ? `${data.invoiceRecords.length} invoices` : "No invoices",
+      stat: data?.invoiceRecords?.length > 0 ? `${data.invoiceRecords.length} entries` : "No records",
       statLabel: "Full ledger · CSV export", color: "text-emerald-600",
+    },
+    {
+      key: "other_income", label: "Other Income", icon: DollarSign,
+      stat: otherIncomeTotal > 0 ? formatCurrency(otherIncomeTotal) : "$0",
+      statLabel: `${otherIncomeRows.length} entr${otherIncomeRows.length !== 1 ? "ies" : "y"} · Non-invoice income`, color: "text-teal-600",
     },
   ];
 
@@ -800,6 +890,174 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {openModule === "other_income" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-teal-600" />
+              <span className="font-semibold text-sm text-foreground">Other Income — {year}</span>
+              <span className="text-xs text-muted-foreground ml-1">Cash jobs, pre-app payments, retainers, etc.</span>
+            </div>
+            {canEdit("invoices") && !oiForm && (
+              <button
+                onClick={openAddOI}
+                className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Entry
+              </button>
+            )}
+          </div>
+
+          {/* Add / Edit form */}
+          {oiForm && (
+            <form onSubmit={handleSaveOI} className="px-5 py-4 border-b border-border bg-muted/20 space-y-3">
+              <h4 className="text-sm font-semibold text-foreground">{oiForm.id ? "Edit Entry" : "New Other Income"}</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Amount *</label>
+                  <input type="number" step="0.01" min="0" required
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    placeholder="0.00"
+                    value={oiForm.amount ?? ""}
+                    onChange={e => setOiForm(f => f ? { ...f, amount: e.target.value } : f)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Date *</label>
+                  <input type="date" required
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    value={oiForm.date ?? ""}
+                    onChange={e => setOiForm(f => f ? { ...f, date: e.target.value } : f)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Description *</label>
+                <input type="text" required
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  placeholder="e.g. Cash payment for fence repair"
+                  value={oiForm.description ?? ""}
+                  onChange={e => setOiForm(f => f ? { ...f, description: e.target.value } : f)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Received From</label>
+                  <input type="text"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    placeholder="Client or payer name (optional)"
+                    value={oiForm.source ?? ""}
+                    onChange={e => setOiForm(f => f ? { ...f, source: e.target.value } : f)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Payment Method</label>
+                  <select
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    value={oiForm.paymentMethod ?? "cash"}
+                    onChange={e => setOiForm(f => f ? { ...f, paymentMethod: e.target.value } : f)}
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="check">Check</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Notes</label>
+                <input type="text"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  placeholder="Optional notes"
+                  value={oiForm.notes ?? ""}
+                  onChange={e => setOiForm(f => f ? { ...f, notes: e.target.value } : f)}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" onClick={() => setOiForm(null)}
+                  className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={oiSaving}
+                  className="px-5 py-2 rounded-xl text-sm font-bold bg-teal-600 text-white hover:bg-teal-700 transition-colors disabled:opacity-60 shadow">
+                  {oiSaving ? "Saving…" : oiForm.id ? "Save Changes" : "Add Entry"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Entries table */}
+          {oiLoading ? (
+            <div className="p-8 text-center text-muted-foreground text-sm animate-pulse">Loading…</div>
+          ) : otherIncomeRows.length === 0 && !oiForm ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              <DollarSign className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              No other income entries for {year}. Click "Add Entry" to record cash jobs, pre-app payments, etc.
+            </div>
+          ) : otherIncomeRows.length > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-left">Description</th>
+                      <th className="px-4 py-3 text-left">From</th>
+                      <th className="px-4 py-3 text-left">Method</th>
+                      <th className="px-4 py-3 text-right">Amount</th>
+                      {canEdit("invoices") && <th className="px-4 py-3 text-center">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {(otherIncomeRows as any[]).map((row: any) => (
+                      <tr key={row.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.date}</td>
+                        <td className="px-4 py-2.5 font-medium text-foreground">{row.description}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{row.source || "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+                            {PAYMENT_METHOD_LABELS[row.paymentMethod] ?? row.paymentMethod}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-teal-700">{formatCurrency(parseFloat(row.amount))}</td>
+                        {canEdit("invoices") && (
+                          <td className="px-4 py-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={() => openEditOI(row)} title="Edit"
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => handleDeleteOI(row.id)} title="Delete"
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
+                    <tr>
+                      <td colSpan={canEdit("invoices") ? 4 : 3} className="px-4 py-3 text-foreground">{otherIncomeRows.length} entr{otherIncomeRows.length !== 1 ? "ies" : "y"}</td>
+                      <td className="px-4 py-3 text-right text-teal-700">{formatCurrency(otherIncomeTotal)}</td>
+                      {canEdit("invoices") && <td />}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              {canEdit("invoices") && !oiForm && (
+                <div className="px-4 py-2.5 border-t border-border">
+                  <button onClick={openAddOI} className="flex items-center gap-1.5 text-xs text-teal-600 font-semibold hover:underline">
+                    <Plus className="w-3.5 h-3.5" /> Add another entry
+                  </button>
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       )}
 

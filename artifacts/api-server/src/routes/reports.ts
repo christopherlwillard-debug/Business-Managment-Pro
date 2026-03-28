@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard } from "./guards";
@@ -28,16 +28,19 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     }
     const endDate = now.toISOString().split("T")[0];
 
-    const [allInvoices, allExpenses, allMileage, activeJobsRows, recentJobsRows, recentInvoicesRows] = await Promise.all([
+    const [allInvoices, allExpenses, allMileage, allOtherIncome, activeJobsRows, recentJobsRows, recentInvoicesRows] = await Promise.all([
       db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
       db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
       db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, estimatedAmount: jobsTable.estimatedAmount, actualAmount: jobsTable.actualAmount, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
       db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
     ]);
 
-    const totalRevenue = allInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const invoiceRevenue = allInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const otherIncomeTotal = allOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+    const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = allInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const overdueInvoices = allInvoices.filter(i => i.status === "overdue").length;
     const totalExpenses = allExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -49,13 +52,16 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const d = new Date(now);
       d.setMonth(d.getMonth() - i);
       const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const [monthlyInv, monthlyExp] = await Promise.all([
+      const [monthlyInv, monthlyExp, monthlyOther] = await Promise.all([
         db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-31`))),
         db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-31`))),
+        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-31`))),
       ]);
+      const invRevenue = monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       monthlyRevenue.push({
         month: monthStr,
-        revenue: monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0),
+        revenue: invRevenue + othRevenue,
         expenses: monthlyExp.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
       });
     }
@@ -151,7 +157,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
 
-    const [invoices, expenses, mileageLogs, subs, settings] = await Promise.all([
+    const [invoices, expenses, mileageLogs, subs, settings, otherIncomeRows] = await Promise.all([
       db.select({
         id: invoicesTable.id,
         status: invoicesTable.status,
@@ -174,13 +180,17 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
     ]);
 
     const rate = parseFloat(settings[0]?.mileageRate ?? "0.725");
 
-    const grossRevenue = invoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-    const paidRevenue = invoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const invoiceGrossRevenue = invoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const invoicePaidRevenue = invoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const pendingRevenue = invoices.filter(i => ["sent", "overdue"].includes(i.status)).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const otherIncomeSum = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+    const grossRevenue = invoiceGrossRevenue + otherIncomeSum;
+    const paidRevenue = invoicePaidRevenue + otherIncomeSum;
 
     const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
@@ -210,7 +220,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }
     const incomeByCity = Array.from(cityMap.values()).sort((a, b) => b.gross - a.gross);
 
-    // Full invoice records for tax spreadsheet
+    // Full records for tax spreadsheet — invoices + other income rows
     const invoiceRecords = invoices.map(inv => ({
       invoiceNumber: inv.invoiceNumber,
       issueDate: inv.issueDate,
@@ -222,7 +232,23 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       taxAmount: parseFloat(inv.taxAmount ?? "0"),
       total: parseFloat(inv.total ?? "0"),
       status: inv.status,
-    })).sort((a, b) => a.issueDate.localeCompare(b.issueDate));
+      type: "invoice" as const,
+    }));
+    const otherIncomeRecords = otherIncomeRows.map(o => ({
+      invoiceNumber: `OTHER`,
+      issueDate: o.date,
+      clientName: o.source ?? "",
+      jobTitle: o.description,
+      city: "",
+      state: "",
+      subtotal: parseFloat(o.amount ?? "0"),
+      taxAmount: 0,
+      total: parseFloat(o.amount ?? "0"),
+      status: "paid" as const,
+      type: "other_income" as const,
+      paymentMethod: o.paymentMethod,
+    }));
+    const allRecords = [...invoiceRecords, ...otherIncomeRecords].sort((a, b) => a.issueDate.localeCompare(b.issueDate));
 
     // Expenses by category
     const catMap = new Map<string, { category: string; amount: number; count: number }>();
@@ -241,10 +267,13 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const ms = `${year}-${String(m).padStart(2, "0")}`;
       const monthInvs = invoices.filter(i => i.issueDate.startsWith(ms));
       const monthExp = expenses.filter(e => e.date.startsWith(ms));
+      const monthOther = otherIncomeRows.filter(o => o.date.startsWith(ms));
+      const invGross = monthInvs.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const othGross = monthOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       monthlyIncome.push({
         month: ms,
-        gross: monthInvs.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0),
-        paid: monthInvs.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0),
+        gross: invGross + othGross,
+        paid: monthInvs.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0) + othGross,
         expenses: monthExp.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
       });
     }
@@ -261,12 +290,13 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       year,
-      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit },
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum },
       incomeByCity,
       expensesByCategory,
       monthlyIncome,
       subcontractor1099,
-      invoiceRecords,
+      invoiceRecords: allRecords,
+      otherIncomeRows,
     });
   } catch (err) {
     console.error(err);
