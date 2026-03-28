@@ -19,6 +19,7 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
+import { invalidateOwnerCache } from "./owner-cache";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
@@ -244,6 +245,7 @@ router.get("/callback", async (req: Request, res: Response) => {
   );
 
   await ensureOwner(dbUser.id);
+  invalidateOwnerCache();
 
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
@@ -316,6 +318,7 @@ router.post(
       );
 
       await ensureOwner(dbUser.id);
+      invalidateOwnerCache();
 
       const now = Math.floor(Date.now() / 1000);
       const sessionData: SessionData = {

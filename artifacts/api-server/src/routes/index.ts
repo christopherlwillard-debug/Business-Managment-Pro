@@ -4,6 +4,7 @@ import { db, settingsTable, accessRequestsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import healthRouter from "./health";
 import authRouter from "./auth";
+import { getOwnerCache, setOwnerCache, invalidateOwnerCache } from "./owner-cache";
 import clientsRouter from "./clients";
 import jobsRouter from "./jobs";
 import invoicesRouter from "./invoices";
@@ -44,18 +45,16 @@ export type Permissions = Record<SectionKey, SectionPermission>;
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-let cachedOwnerId: string | null | undefined = undefined;
-
 async function getOwnerId(): Promise<string | null> {
-  if (cachedOwnerId !== undefined) return cachedOwnerId;
+  const cached = getOwnerCache();
+  if (cached !== undefined) return cached;
   const [settings] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
-  cachedOwnerId = settings?.ownerUserId ?? null;
-  return cachedOwnerId;
+  const id = settings?.ownerUserId ?? null;
+  setOwnerCache(id);
+  return id;
 }
 
-export function invalidateOwnerCache() {
-  cachedOwnerId = undefined;
-}
+export { invalidateOwnerCache };
 
 interface RequestUser {
   id?: string;
@@ -187,7 +186,7 @@ router.use("/estimates", sectionGuard("estimates"), estimatesRouter);
 router.use("/daily-logs", sectionGuard("daily_logs"), dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance"), complianceItemsRouter);
 
-router.use("/settings", requireOwner, settingsRouter);
+router.use("/settings", requireOwnerForWrites, settingsRouter);
 router.use("/reports", requireOwnerForWrites, reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/vendors", requireOwnerForWrites, vendorsRouter);
