@@ -46,6 +46,8 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
 
   function handlePrint() { window.print(); }
 
+  const hasAnyContact = companyAddress || companyCity || companyState || companyZip || companyPhone || companyEmail;
+
   const logoEl = logoUrl ? (
     <img src={`${base}${logoUrl}`} alt="Logo" className="flex-shrink-0"
       style={{ height: logoPx, width: "auto", maxWidth: logoPx * 2.5, objectFit: "contain" }} />
@@ -56,52 +58,38 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     </div>
   );
 
-  const nameEl = (
-    <p className="text-xl font-extrabold text-gray-900">{companyName || "Your Company"}</p>
-  );
-
   const contactEl = (
-    <div className="text-xs text-gray-400 space-y-0.5">
-      {companyAddress && <p>{companyAddress}</p>}
-      {(companyCity || companyState || companyZip) && (
-        <p>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
+    <div className="text-xs text-gray-500 space-y-0.5 mt-2" style={{ fontStyle: "normal", textDecoration: "none" }}>
+      {!logoUrl && companyName && (
+        <p className="font-bold text-gray-800 text-sm mb-1">{companyName}</p>
       )}
-      {companyPhone && <p>{companyPhone}</p>}
-      {companyEmail && <p>{companyEmail}</p>}
-    </div>
-  );
-
-  const companyBlock = logoPos === "top-center" ? (
-    <div className="flex-1 flex flex-col items-center text-center gap-1">
-      {logoEl}{nameEl}{contactEl}
-    </div>
-  ) : logoPos === "top-right" ? (
-    <div className="flex-1">{nameEl}{contactEl}</div>
-  ) : (
-    <div className="flex-1">
-      <div className="flex items-center gap-3 mb-1">{logoEl}{nameEl}</div>
-      {contactEl}
+      {companyAddress && <p style={{ textDecoration: "none" }}>{companyAddress}</p>}
+      {(companyCity || companyState || companyZip) && (
+        <p style={{ textDecoration: "none" }}>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
+      )}
+      {companyPhone && <p style={{ textDecoration: "none" }}>{companyPhone}</p>}
+      {companyEmail && <p style={{ textDecoration: "none" }}>{companyEmail}</p>}
     </div>
   );
 
   const invoiceDetailsEl = (
-    <div className="text-right">
-      <p className="text-3xl font-black tracking-widest text-gray-200 uppercase">Invoice</p>
-      <p className="text-sm font-bold text-amber-600 -mt-1">{invoice.invoiceNumber}</p>
-      <div className="mt-2 space-y-0.5 text-xs">
-        <div className="flex justify-end gap-2 text-gray-500">
-          <span className="font-semibold text-gray-600">Date:</span>
+    <div className="text-right flex-shrink-0">
+      <p className="text-4xl font-black tracking-widest text-gray-800 uppercase leading-none">Invoice</p>
+      <p className="text-base font-bold text-amber-500 mt-1">{invoice.invoiceNumber}</p>
+      <div className="mt-3 space-y-1 text-xs">
+        <div className="flex justify-end gap-3 text-gray-600">
+          <span className="font-semibold text-gray-700">Date:</span>
           <span>{formatDate(invoice.issueDate)}</span>
         </div>
         {invoice.dueDate && (
-          <div className="flex justify-end gap-2 text-gray-500">
-            <span className="font-semibold text-gray-600">Due:</span>
+          <div className="flex justify-end gap-3 text-gray-600">
+            <span className="font-semibold text-gray-700">Due:</span>
             <span>{formatDate(invoice.dueDate)}</span>
           </div>
         )}
         {invoice.terms && (
-          <div className="flex justify-end gap-2 text-gray-500">
-            <span className="font-semibold text-gray-600">Terms:</span>
+          <div className="flex justify-end gap-3 text-gray-600">
+            <span className="font-semibold text-gray-700">Terms:</span>
             <span>{invoice.terms}</span>
           </div>
         )}
@@ -109,14 +97,66 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     </div>
   );
 
-  const headerRow = logoPos === "top-right" ? (
+  const companyLeftBlock = (
+    <div className="flex flex-col">
+      {logoEl}
+      {hasAnyContact && contactEl}
+    </div>
+  );
+
+  const companyRightBlock = (
+    <div className="flex flex-col items-end">
+      {logoEl}
+      {hasAnyContact && (
+        <div className="text-xs text-gray-500 space-y-0.5 mt-2 text-right" style={{ fontStyle: "normal", textDecoration: "none" }}>
+          {!logoUrl && companyName && (
+            <p className="font-bold text-gray-800 text-sm mb-1">{companyName}</p>
+          )}
+          {companyAddress && <p style={{ textDecoration: "none" }}>{companyAddress}</p>}
+          {(companyCity || companyState || companyZip) && (
+            <p style={{ textDecoration: "none" }}>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
+          )}
+          {companyPhone && <p style={{ textDecoration: "none" }}>{companyPhone}</p>}
+          {companyEmail && <p style={{ textDecoration: "none" }}>{companyEmail}</p>}
+        </div>
+      )}
+    </div>
+  );
+
+  const companyCenterBlock = (
+    <div className="flex flex-col items-center text-center">
+      {logoEl}
+      {hasAnyContact && (
+        <div className="text-xs text-gray-500 space-y-0.5 mt-2" style={{ fontStyle: "normal", textDecoration: "none" }}>
+          {!logoUrl && companyName && (
+            <p className="font-bold text-gray-800 text-sm mb-1">{companyName}</p>
+          )}
+          {companyAddress && <p style={{ textDecoration: "none" }}>{companyAddress}</p>}
+          {(companyCity || companyState || companyZip) && (
+            <p style={{ textDecoration: "none" }}>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>
+          )}
+          {companyPhone && <p style={{ textDecoration: "none" }}>{companyPhone}</p>}
+          {companyEmail && <p style={{ textDecoration: "none" }}>{companyEmail}</p>}
+        </div>
+      )}
+    </div>
+  );
+
+  const headerRow = logoPos === "top-center" ? (
     <div className="flex justify-between items-start gap-4">
-      {companyBlock}
-      <div className="flex flex-col items-end gap-2">{logoEl}{invoiceDetailsEl}</div>
+      <div className="w-16" />
+      {companyCenterBlock}
+      {invoiceDetailsEl}
+    </div>
+  ) : logoPos === "top-right" ? (
+    <div className="flex justify-between items-start gap-4">
+      {invoiceDetailsEl}
+      {companyRightBlock}
     </div>
   ) : (
     <div className="flex justify-between items-start gap-4">
-      {companyBlock}{invoiceDetailsEl}
+      {companyLeftBlock}
+      {invoiceDetailsEl}
     </div>
   );
 
@@ -162,16 +202,16 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
               {headerRow}
 
               {/* Bill To + Location */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className={workLocation ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-3">Bill To</p>
                   {invoice.clientName
                     ? <div className="space-y-2">
-                        <p className="font-semibold text-gray-900 text-sm">{invoice.clientName}</p>
+                        <p className="font-bold text-gray-900 text-sm">{invoice.clientName}</p>
                         {invoice.clientEmail && (
-                          <div className="flex items-center text-xs text-gray-600 gap-2">
-                            <Mail className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                            <span>{invoice.clientEmail}</span>
+                          <div className="flex items-start text-xs text-gray-600 gap-2">
+                            <Mail className="w-3 h-3 text-gray-400 flex-shrink-0 mt-0.5" />
+                            <span className="break-all">{invoice.clientEmail}</span>
                           </div>
                         )}
                         {invoice.clientPhone && (
@@ -183,7 +223,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                         {(invoice.clientAddress || invoice.clientCity || invoice.clientState || invoice.clientZip) && (
                           <div className="flex items-start text-xs text-gray-600 gap-2">
                             <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0 mt-0.5" />
-                            <span>
+                            <span className="break-words">
                               {[invoice.clientAddress, invoice.clientCity, invoice.clientState, invoice.clientZip].filter(Boolean).join(", ")}
                             </span>
                           </div>
@@ -196,19 +236,19 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                         )}
                         {invoice.jobTitle && <p className="text-xs text-gray-500 mt-2">Re: {invoice.jobTitle}</p>}
                       </div>
-                    : <p className="text-gray-300 italic text-xs">No client specified</p>}
+                    : <p className="text-gray-400 italic text-xs">No client specified</p>}
                 </div>
                 {workLocation && (
                   <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-                    <p className="text-[9px] uppercase tracking-widest font-bold text-amber-400 mb-2 flex items-center gap-1">
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-amber-500 mb-2 flex items-center gap-1">
                       <MapPin className="w-2.5 h-2.5" /> Work Location
                     </p>
                     <div className="space-y-1">
                       {invoice.locationName && (
-                        <p className="font-semibold text-gray-800 text-sm">{invoice.locationName}</p>
+                        <p className="font-bold text-gray-800 text-sm">{invoice.locationName}</p>
                       )}
                       {(invoice.city || invoice.state) && (
-                        <p className="text-xs text-gray-700">
+                        <p className="text-xs text-gray-600">
                           {[invoice.city, invoice.state].filter(Boolean).join(", ")}
                         </p>
                       )}
@@ -221,19 +261,19 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr className="border-b-2 border-gray-800">
-                    <th className="text-left pb-2 font-bold uppercase tracking-wide text-gray-500 w-[50%]">Description</th>
-                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-500 w-[12%]">Qty</th>
-                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-500 w-[19%]">Unit Price</th>
-                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-500 w-[19%]">Total</th>
+                    <th className="text-left pb-2 font-bold uppercase tracking-wide text-gray-600 w-[50%]">Description</th>
+                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-600 w-[12%]">Qty</th>
+                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-600 w-[19%]">Unit Price</th>
+                    <th className="text-right pb-2 font-bold uppercase tracking-wide text-gray-600 w-[19%]">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {lineItems.length > 0 ? lineItems.map((li: InvoiceLineItem, i: number) => (
                     <tr key={i} className={i % 2 === 0 ? "" : "bg-gray-50/60"}>
-                      <td className="py-2 pr-3 text-gray-800">{li.description}</td>
-                      <td className="py-2 text-right text-gray-500">{li.quantity}</td>
-                      <td className="py-2 text-right text-gray-500">{formatCurrency(li.unitPrice)}</td>
-                      <td className="py-2 text-right font-semibold text-gray-900">{formatCurrency(li.quantity * li.unitPrice)}</td>
+                      <td className="py-2.5 pr-3 text-gray-800">{li.description}</td>
+                      <td className="py-2.5 text-right text-gray-500">{li.quantity}</td>
+                      <td className="py-2.5 text-right text-gray-500">{formatCurrency(li.unitPrice)}</td>
+                      <td className="py-2.5 text-right font-semibold text-gray-900">{formatCurrency(li.quantity * li.unitPrice)}</td>
                     </tr>
                   )) : (
                     <tr><td colSpan={4} className="py-4 text-center text-gray-300 italic">No line items</td></tr>
@@ -243,7 +283,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
 
               {/* Totals */}
               <div className="flex justify-end">
-                <div className="w-52 space-y-1.5 text-xs">
+                <div className="w-56 space-y-1.5 text-xs">
                   <div className="flex justify-between text-gray-500">
                     <span>Subtotal</span><span>{formatCurrency(subtotal)}</span>
                   </div>
@@ -252,7 +292,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                       <span>Tax ({taxRate}%)</span><span>{formatCurrency(taxAmount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between font-extrabold text-sm text-gray-900 border-t-2 border-gray-800 pt-2">
+                  <div className="flex justify-between font-extrabold text-sm text-gray-900 border-t-2 border-gray-800 pt-2.5 mt-1">
                     <span>Total Due</span>
                     <span className="text-amber-600">{formatCurrency(total)}</span>
                   </div>
