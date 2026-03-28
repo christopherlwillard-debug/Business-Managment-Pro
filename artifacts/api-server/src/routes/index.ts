@@ -83,7 +83,7 @@ const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
   if (record?.status === "pending") { res.status(403).json({ error: "ACCESS_PENDING" }); return; }
 
   const user = getRequestUser(req);
-  const userEmail = user?.email ?? null;
+  const userEmail = user?.email ? user.email.trim().toLowerCase() : null;
   const userName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || userId;
 
   if (userEmail) {
@@ -91,7 +91,7 @@ const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
       .select({ id: accessRequestsTable.id })
       .from(accessRequestsTable)
       .where(and(
-        eq(accessRequestsTable.userEmail, userEmail.toLowerCase()),
+        eq(accessRequestsTable.userEmail, userEmail),
         eq(accessRequestsTable.status, "invited"),
       ));
 

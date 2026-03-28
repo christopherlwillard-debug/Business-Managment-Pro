@@ -274,6 +274,16 @@ function TeamSection() {
       toast({ title: "Invalid email", description: "Please enter a valid email address.", variant: "destructive" });
       return;
     }
+    const alreadyMember = members.some(m => (m.userEmail ?? "").toLowerCase() === email);
+    const alreadyPending = requests.some(r => (r.userEmail ?? "").toLowerCase() === email);
+    if (alreadyMember) {
+      toast({ title: "Already on team", description: "Someone with this email is already a member or has a pending invite.", variant: "destructive" });
+      return;
+    }
+    if (alreadyPending) {
+      toast({ title: "Pending request", description: "This person has already requested access. Approve them from the Access Requests section.", variant: "destructive" });
+      return;
+    }
     setInviting(true);
     try {
       const res = await fetch(`${BASE}/api/team/members/invite`, {
