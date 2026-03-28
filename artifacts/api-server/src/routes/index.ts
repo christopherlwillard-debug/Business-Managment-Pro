@@ -193,7 +193,7 @@ router.use("/vendors", requireOwnerForWrites, vendorsRouter);
 router.use("/expense-import", requireOwnerForWrites, expenseImportRouter);
 router.use("/payments", requireOwnerForWrites, paymentsRouter);
 router.use("/tax-reports", requireOwner, taxReportsRouter);
-router.use("/recurring-expenses", requireOwnerForWrites, recurringExpensesRouter);
+router.use("/recurring-expenses", sectionGuard("expenses"), recurringExpensesRouter);
 router.use("/materials", requireOwner, materialsRouter);
 router.use("/material-lists", requireOwnerForWrites, materialListsRouter);
 router.use("/registered-agent", requireOwnerForWrites, registeredAgentRouter);

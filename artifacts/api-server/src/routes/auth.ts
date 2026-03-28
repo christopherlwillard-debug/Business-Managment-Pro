@@ -118,6 +118,7 @@ router.get("/auth/me", async (req: Request, res: Response) => {
       db.select({
         firstName: usersTable.firstName,
         lastName: usersTable.lastName,
+        email: usersTable.email,
         profileImageUrl: usersTable.profileImageUrl,
       }).from(usersTable).where(eq(usersTable.id, userId)).limit(1),
     ]);
