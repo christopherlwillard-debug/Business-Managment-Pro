@@ -112,6 +112,7 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
   const createList = useCreateMaterialList();
   const deleteList = useDeleteMaterialList();
   const attachToInvoice = useAttachMaterialListToInvoice();
+  const { canEdit } = useUserPermissions();
 
   const [showForm, setShowForm] = useState(false);
   const [newName, setNewName] = useState("");
@@ -395,7 +396,7 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                 {saving ? "Saving…" : "Save List"}
               </button>
             </div>
-          ) : (
+          ) : canEdit("jobs") ? (
             <div className="p-5 border-b border-border/50 bg-muted/20">
               <button
                 onClick={() => setShowForm(true)}
@@ -404,7 +405,7 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                 <Plus className="w-4 h-4" /> New Material List
               </button>
             </div>
-          )}
+          ) : null}
 
           {/* Existing lists */}
           <div className="p-5 space-y-4">
@@ -446,17 +447,20 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                         >
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
-                        <button
-                          onClick={() => handleDelete(list.id)}
-                          disabled={deletingId === list.id}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEdit("jobs") && (
+                          <button
+                            onClick={() => handleDelete(list.id)}
+                            disabled={deletingId === list.id}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
                     {/* Attach to invoice button */}
+                    {canEdit("invoices") && (
                     <div className="px-3.5 pb-3">
                       <button
                         onClick={() => handleAttach(list)}
@@ -468,6 +472,7 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                         <p className={`mt-1.5 text-xs ${msg.ok ? "text-emerald-600" : "text-destructive"}`}>{msg.text}</p>
                       )}
                     </div>
+                    )}
 
                     {/* Expanded items */}
                     {isExpanded && list.items.length > 0 && (
@@ -519,6 +524,7 @@ function JobDailyLogPanel({
   const createLog  = useCreateDailyLog();
   const deleteLog  = useDeleteDailyLog();
   const attachToInvoice = useAttachMaterialListToInvoice();
+  const { canEdit } = useUserPermissions();
 
   const today = localDateString();
   const [form, setForm] = useState({ date: today, notes: "", workCompleted: "", materialListId: "" });
@@ -643,7 +649,8 @@ function JobDailyLogPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {/* Add entry form */}
+          {/* Add entry form — only for users with daily_logs edit permission */}
+          {canEdit("daily_logs") && (
           <div className="p-5 border-b border-border/50 bg-muted/20">
             <h3 className="font-semibold text-foreground text-sm mb-3 flex items-center gap-1.5">
               <Plus className="w-3.5 h-3.5 text-amber-500" /> Add Entry
@@ -724,6 +731,7 @@ function JobDailyLogPanel({
               </button>
             </form>
           </div>
+          )}
 
           {/* Log history */}
           <div className="p-5 space-y-4">
@@ -756,12 +764,14 @@ function JobDailyLogPanel({
                         </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleDeleteLog(log.id)}
-                      disabled={deletingId === log.id}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {canEdit("daily_logs") && (
+                      <button
+                        onClick={() => handleDeleteLog(log.id)}
+                        disabled={deletingId === log.id}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                   {log.workCompleted && (
                     <div>
@@ -799,11 +809,13 @@ function JobDailyLogPanel({
                           <p className="text-xs text-amber-600 font-bold">{formatCurrency(total)}</p>
                           {msg && <p className={`text-[10px] mt-0.5 ${msg.ok ? "text-emerald-600" : "text-destructive"}`}>{msg.text}</p>}
                         </div>
-                        <button
-                          onClick={() => handlePushToInvoice(log)}
-                          className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors">
-                          <FileText className="w-3 h-3" /> Push to Invoice
-                        </button>
+                        {canEdit("invoices") && (
+                          <button
+                            onClick={() => handlePushToInvoice(log)}
+                            className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors">
+                            <FileText className="w-3 h-3" /> Push to Invoice
+                          </button>
+                        )}
                       </div>
                     );
                   })()}
@@ -924,17 +936,21 @@ function JobCard({
         </button>
 
         {isCompleted ? (
-          <button
-            onClick={() => onReviewInvoice(job)}
-            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
-            <FileText className="w-3.5 h-3.5" /> Review Invoice
-          </button>
+          canEdit("invoices") && (
+            <button
+              onClick={() => onReviewInvoice(job)}
+              className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
+              <FileText className="w-3.5 h-3.5" /> Review Invoice
+            </button>
+          )
         ) : (
-          <button
-            onClick={() => onMarkCompleted(job)}
-            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
-            <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
-          </button>
+          canEdit("jobs") && (
+            <button
+              onClick={() => onMarkCompleted(job)}
+              className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
+              <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
+            </button>
+          )
         )}
       </Card>
 
