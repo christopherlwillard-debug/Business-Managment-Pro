@@ -751,6 +751,7 @@ function RecurringSection({
   highlightedTemplateId: number | null;
   onClearHighlight: () => void;
 }) {
+  const { canEdit } = useUserPermissions();
   const { data: templates = [], isLoading } = useRecurringExpenses();
   const updateRecurring = useUpdateRecurring();
   const deleteRecurring = useDeleteRecurring();
@@ -811,13 +812,15 @@ function RecurringSection({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={e => { e.stopPropagation(); setModalOpen(true); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Recurring
-            </button>
+            {canEdit("expenses") && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setModalOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Recurring
+              </button>
+            )}
             {collapsed ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronUp className="w-4 h-4 text-muted-foreground" />}
           </div>
         </div>
@@ -842,7 +845,7 @@ function RecurringSection({
                     <th className="px-6 py-3">End Date</th>
                     <th className="px-6 py-3 text-right">Amount</th>
                     <th className="px-6 py-3 text-center">Status</th>
-                    <th className="px-6 py-3 text-center">Actions</th>
+                    {canEdit("expenses") && <th className="px-6 py-3 text-center">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
@@ -895,24 +898,26 @@ function RecurringSection({
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => toggleActive(t)}
-                            className="text-muted-foreground hover:text-primary transition-colors"
-                            title={t.active ? "Pause" : "Resume"}
-                          >
-                            {t.active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(t)}
-                            className="text-muted-foreground hover:text-destructive transition-colors"
-                            title="Delete template"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+                      {canEdit("expenses") && (
+                        <td className="px-6 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => toggleActive(t)}
+                              className="text-muted-foreground hover:text-primary transition-colors"
+                              title={t.active ? "Pause" : "Resume"}
+                            >
+                              {t.active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                            </button>
+                            <button
+                              onClick={() => setDeleteTarget(t)}
+                              className="text-muted-foreground hover:text-destructive transition-colors"
+                              title="Delete template"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
