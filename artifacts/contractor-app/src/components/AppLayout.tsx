@@ -54,9 +54,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   ];
 
   const navigation = allNavItems.filter((item) => {
-    if (item.feature !== null && !enabledFeatures.includes(item.feature)) return false;
     if (item.ownerOnly && !isOwner) return false;
-    if (item.section !== null && !isOwner && !canView(item.section)) return false;
+    if (!isOwner) {
+      if (item.section !== null && !canView(item.section)) return false;
+      return item.section !== null;
+    }
+    if (item.feature !== null && !enabledFeatures.includes(item.feature)) return false;
     return true;
   });
 
