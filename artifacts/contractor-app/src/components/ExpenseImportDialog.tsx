@@ -5,7 +5,7 @@ import {
   AlertCircle, Loader2, ChevronDown, Trash2, Receipt,
   Sparkles, TableProperties, CloudUpload,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, localDateString } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const API  = `${BASE}/api`;
@@ -88,7 +88,7 @@ function ReceiptTab({ onImported }: { onImported: () => void }) {
         description: data.description ?? "",
         vendor:      data.vendor      ?? "",
         amount:      data.amount      ? String(data.amount) : "",
-        date:        data.date        ?? new Date().toISOString().slice(0, 10),
+        date:        data.date        ?? localDateString(),
         category:    CATEGORIES.includes(data.category) ? data.category : CATEGORIES[0],
         notes:       data.notes       ?? "",
         jobId:       "",

@@ -14,12 +14,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
 import { ClipboardList, Plus, Trash2, FileText, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { formatDate, formatCurrency, localDateString } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateString();
 }
 
 type FormState = {

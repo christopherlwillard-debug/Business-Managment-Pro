@@ -13,7 +13,7 @@ import {
   InvoiceAttachment,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import {
   FileText, Download, Plus, Trash2, X,
@@ -597,7 +597,7 @@ export default function Invoices() {
 
   const [form, setFormState] = useState({
     clientId: "", jobId: "",
-    issueDate: new Date().toISOString().slice(0, 10),
+    issueDate: localDateString(),
     dueDate: "", status: "draft", taxRate: "",
     city: "", state: "KY", locationName: "", notes: "", terms: "Net 30",
     clientEmail: "", clientPhone: "", clientAddress: "", 
@@ -625,7 +625,7 @@ export default function Invoices() {
   function resetForm() {
     setFormState({
       clientId: "", jobId: "",
-      issueDate: new Date().toISOString().slice(0, 10),
+      issueDate: localDateString(),
       dueDate: "", status: "draft", taxRate: "",
       city: "", state: "KY", notes: "", terms: "Net 30",
       clientEmail: "", clientPhone: "", clientAddress: "", 

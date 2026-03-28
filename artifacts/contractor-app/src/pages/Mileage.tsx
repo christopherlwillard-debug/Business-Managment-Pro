@@ -9,7 +9,7 @@ import {
   useGetSettings,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Navigation,
@@ -33,7 +33,7 @@ interface ManualForm {
   jobId: string;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+const today = localDateString();
 
 export default function Mileage() {
   const queryClient = useQueryClient();
@@ -65,7 +65,7 @@ export default function Mileage() {
     const cutoffDays = mileageReminderFrequency === "weekly" ? 7 : 1;
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - cutoffDays);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const cutoffStr = localDateString(cutoff);
     return (logs as any[])?.filter(
       (l: any) => l.date >= cutoffStr && l.classification === "business" && !l.purpose
     ) ?? [];

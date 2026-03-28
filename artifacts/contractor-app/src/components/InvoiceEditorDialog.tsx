@@ -5,7 +5,7 @@ import {
   Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest, InvoiceAttachment,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, localDateString } from "@/lib/utils";
 import {
   Building2, MapPin, Check, X, Plus, Trash2, Lock, Printer, Paperclip, Upload,
 } from "lucide-react";
@@ -66,7 +66,7 @@ export function InvoiceEditorDialog({
       return {
         clientId: String(existingInvoice.clientId ?? ""),
         jobId: String(existingInvoice.jobId ?? ""),
-        issueDate: existingInvoice.issueDate ?? new Date().toISOString().slice(0, 10),
+        issueDate: existingInvoice.issueDate ?? localDateString(),
         dueDate: existingInvoice.dueDate ?? "",
         status: existingInvoice.status ?? "draft",
         taxRate: existingInvoice.taxRate ? String(existingInvoice.taxRate) : "",
@@ -87,7 +87,7 @@ export function InvoiceEditorDialog({
     return {
       clientId: String(initialData?.clientId ?? ""),
       jobId: String(initialData?.jobId ?? ""),
-      issueDate: new Date().toISOString().slice(0, 10),
+      issueDate: localDateString(),
       dueDate: "",
       status: "draft",
       taxRate: "",

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, localDateString } from "@/lib/utils";
 import {
   HardHat, Briefcase, Receipt, Navigation, DollarSign, Settings,
   Plus, Trash2, AlertCircle, CheckCircle2, X, FileText,
@@ -1085,7 +1085,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   });
 
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", jobId: "" });
+  const [form, setForm] = useState({ description: "", amount: "", category: "Materials", date: localDateString(), vendor: "", jobId: "" });
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const receiptInputRef = useRef<HTMLInputElement>(null);
@@ -1103,7 +1103,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   }, []);
 
   function resetForm() {
-    setForm({ description: "", amount: "", category: "Materials", date: new Date().toISOString().slice(0, 10), vendor: "", jobId: "" });
+    setForm({ description: "", amount: "", category: "Materials", date: localDateString(), vendor: "", jobId: "" });
     setReceiptFile(null);
     setReceiptPreview(null);
     if (receiptInputRef.current) receiptInputRef.current.value = "";
@@ -1262,7 +1262,7 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
     queryFn: () => apiFetch(`/portal/${token}/mileage`),
   });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const [formOpen, setFormOpen] = useState(false);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState({
