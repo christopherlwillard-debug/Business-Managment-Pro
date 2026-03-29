@@ -31,7 +31,7 @@ const logoUpload = multer({
 router.post("/logo", logoUpload.single("logo"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const logoUrl = `/api/uploads/logos/${req.file.filename}`;
+    const logoUrl = `/uploads/logos/${req.file.filename}`;
     // Persist to settings
     let [s] = await db.select().from(settingsTable).limit(1);
     if (!s) {
@@ -39,7 +39,7 @@ router.post("/logo", logoUpload.single("logo"), async (req, res) => {
     } else {
       // Delete old logo file if different
       if (s.logoUrl) {
-        const old = path.resolve(s.logoUrl.replace("/api/uploads/", "uploads/"));
+        const old = path.resolve(s.logoUrl.replace(/^\/uploads\//, "uploads/"));
         if (fs.existsSync(old)) fs.unlinkSync(old);
       }
       [s] = await db.update(settingsTable).set({ logoUrl, updatedAt: new Date() }).where(eq(settingsTable.id, s.id)).returning();
@@ -55,9 +55,9 @@ router.delete("/logo", async (_req, res) => {
   try {
     let [s] = await db.select().from(settingsTable).limit(1);
     if (s?.logoUrl) {
-      const fp = path.resolve(s.logoUrl.replace("/api/uploads/", "uploads/"));
+      const fp = path.resolve(s.logoUrl.replace(/^\/uploads\//, "uploads/"));
       if (fs.existsSync(fp)) fs.unlinkSync(fp);
-      await db.update(settingsTable).set({ logoUrl: null, updatedAt: new Date() });
+      await db.update(settingsTable).set({ logoUrl: null, updatedAt: new Date() }).where(eq(settingsTable.id, s.id));
     }
     res.json({ success: true });
   } catch (err) {

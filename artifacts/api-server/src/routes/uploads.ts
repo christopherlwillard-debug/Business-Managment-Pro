@@ -24,7 +24,7 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 router.post("/", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   res.json({
-    url: `/api/uploads/${req.file.filename}`,
+    url: `/uploads/${req.file.filename}`,
     filename: req.file.originalname,
     size: req.file.size,
   });

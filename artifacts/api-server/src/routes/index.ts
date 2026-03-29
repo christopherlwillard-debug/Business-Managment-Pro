@@ -144,6 +144,7 @@ router.use("/portal", portalRouter);
 router.use(requireAuth);
 router.use(requireAccess);
 
+
 router.use("/uploads", express.static(path.resolve("uploads")));
 
 router.use("/clients", sectionGuard("clients"), clientsRouter);
