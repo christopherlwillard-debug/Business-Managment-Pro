@@ -546,13 +546,23 @@ function ExpenseViewModal({
                     <Download className="w-4 h-4" /> Download Receipt
                   </a>
                 </div>
-              ) : (
-                <button type="button" onClick={() => setLightbox(true)}
-                  className="flex items-center gap-3 px-4 py-3 w-full hover:bg-gray-50 transition-colors">
-                  <FileText className="w-8 h-8 text-primary flex-shrink-0" />
-                  <p className="text-sm text-gray-600">PDF receipt — tap to view</p>
-                </button>
-              )}
+              ) : isPdf ? (
+                <div className="flex flex-col">
+                  <embed
+                    src={receiptUrl}
+                    type="application/pdf"
+                    className="w-full"
+                    style={{ height: 280 }}
+                  />
+                  <a
+                    href={receiptUrl}
+                    download
+                    className="flex items-center justify-center gap-1.5 py-2 text-xs text-primary font-medium hover:underline border-t border-gray-100"
+                  >
+                    <Download className="w-3 h-3" /> Download PDF
+                  </a>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="text-center py-3 text-xs text-gray-400 italic">No receipt attached</div>
@@ -590,13 +600,21 @@ function ExpenseViewModal({
               <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
-              <FileText className="w-16 h-16 text-white/60" />
-              <p className="text-white font-semibold text-lg">PDF Receipt</p>
+            <div
+              className="flex flex-col items-center gap-3 w-full h-full"
+              style={{ maxWidth: 700, maxHeight: "90vh", padding: "16px" }}
+              onClick={e => e.stopPropagation()}
+            >
+              <embed
+                src={receiptUrl}
+                type="application/pdf"
+                className="w-full flex-1 rounded-xl"
+                style={{ minHeight: 0, height: "calc(90vh - 80px)" }}
+              />
               <a
                 href={receiptUrl}
                 download
-                className="inline-flex items-center gap-2 px-5 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
               >
                 <Download className="w-4 h-4" /> Download PDF
               </a>
@@ -1558,13 +1576,21 @@ export default function Expenses() {
               <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
-              <FileText className="w-16 h-16 text-white/60" />
-              <p className="text-white font-semibold text-lg">PDF Receipt</p>
+            <div
+              className="flex flex-col items-center gap-3 w-full h-full"
+              style={{ maxWidth: 700, maxHeight: "90vh", padding: "16px" }}
+              onClick={e => e.stopPropagation()}
+            >
+              <embed
+                src={editLightboxUrl}
+                type="application/pdf"
+                className="w-full flex-1 rounded-xl"
+                style={{ minHeight: 0, height: "calc(90vh - 80px)" }}
+              />
               <a
                 href={editLightboxUrl}
                 download
-                className="inline-flex items-center gap-2 px-5 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
               >
                 <Download className="w-4 h-4" /> Download PDF
               </a>

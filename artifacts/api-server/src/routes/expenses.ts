@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { expensesTable, jobsTable, subcontractorsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import multer from "multer";
+import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
@@ -135,12 +136,28 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
     const id = parseInt(req.params.id);
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+    let fileBuffer = req.file.buffer;
+    let fileMimetype = req.file.mimetype;
+    let originalFilename = req.file.originalname;
+
+    // Convert HEIC/HEIF (iPhone photos) to JPEG for universal browser support
+    const isHeic =
+      fileMimetype === "image/heic" ||
+      fileMimetype === "image/heif" ||
+      /\.(heic|heif)$/i.test(originalFilename);
+
+    if (isHeic) {
+      fileBuffer = await sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer();
+      fileMimetype = "image/jpeg";
+      originalFilename = originalFilename.replace(/\.(heic|heif)$/i, ".jpg");
+    }
+
     // Upload to GCS and store the objectPath
     const objectPath = await objectStorage.uploadBufferWithFilename(
-      req.file.buffer,
-      req.file.mimetype,
+      fileBuffer,
+      fileMimetype,
       "uploads/receipts",
-      req.file.originalname
+      originalFilename
     );
 
     const [updated] = await db.update(expensesTable).set({ receiptUrl: objectPath }).where(eq(expensesTable.id, id)).returning();
