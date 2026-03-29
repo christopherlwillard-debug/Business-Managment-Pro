@@ -226,6 +226,18 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       existing.taxCollected += parseFloat(inv.taxAmount ?? "0");
       cityMap.set(key, existing);
     }
+    // Also include other income rows that have a city
+    for (const o of otherIncomeRows) {
+      if (!o.city) continue;
+      const city = o.city.trim();
+      const state = (o.state ?? "").trim();
+      const key = `${city}||${state}`;
+      const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, taxCollected: 0 };
+      const amt = parseFloat(o.amount ?? "0");
+      existing.gross += amt;
+      existing.paid += amt;
+      cityMap.set(key, existing);
+    }
     const incomeByCity = Array.from(cityMap.values()).sort((a, b) => b.gross - a.gross);
 
     // Full records for tax spreadsheet — invoices + other income rows
@@ -247,8 +259,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       issueDate: o.date,
       clientName: o.source ?? "",
       jobTitle: o.description,
-      city: "",
-      state: "",
+      city: o.city ?? "",
+      state: o.state ?? "",
       subtotal: parseFloat(o.amount ?? "0"),
       taxAmount: 0,
       total: parseFloat(o.amount ?? "0"),

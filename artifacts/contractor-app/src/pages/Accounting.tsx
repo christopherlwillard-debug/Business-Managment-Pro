@@ -448,17 +448,17 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   const createOI = useCreateOtherIncome(year);
   const updateOI = useUpdateOtherIncome(year);
   const deleteOI = useDeleteOtherIncome(year);
-  const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; notes: string }>>(null);
+  const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; city: string; state: string; notes: string }>>(null);
   const [oiSaving, setOiSaving] = useState(false);
 
   const { canEdit } = useUserPermissions();
 
   function openAddOI() {
-    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", notes: "" });
+    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "" });
     setOpenModule("other_income");
   }
   function openEditOI(row: any) {
-    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", notes: row.notes ?? "" });
+    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "" });
     setOpenModule("other_income");
   }
   async function handleSaveOI(e: React.FormEvent) {
@@ -466,7 +466,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     if (!oiForm) return;
     setOiSaving(true);
     try {
-      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", notes: oiForm.notes || null };
+      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", city: oiForm.city || null, state: oiForm.state || null, notes: oiForm.notes || null };
       if (oiForm.id) { await updateOI.mutateAsync({ id: oiForm.id, ...payload }); }
       else { await createOI.mutateAsync(payload); }
       setOiForm(null);
@@ -967,6 +967,26 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                   </select>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">City</label>
+                  <input type="text"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    placeholder="e.g. Lexington (optional)"
+                    value={oiForm.city ?? ""}
+                    onChange={e => setOiForm(f => f ? { ...f, city: e.target.value } : f)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">State</label>
+                  <input type="text" maxLength={2}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    placeholder="e.g. KY (optional)"
+                    value={oiForm.state ?? ""}
+                    onChange={e => setOiForm(f => f ? { ...f, state: e.target.value.toUpperCase() } : f)}
+                  />
+                </div>
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1">Notes</label>
                 <input type="text"
@@ -1006,6 +1026,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                       <th className="px-4 py-3 text-left">Date</th>
                       <th className="px-4 py-3 text-left">Description</th>
                       <th className="px-4 py-3 text-left">From</th>
+                      <th className="px-4 py-3 text-left">City, ST</th>
                       <th className="px-4 py-3 text-left">Method</th>
                       <th className="px-4 py-3 text-right">Amount</th>
                       {canEdit("invoices") && <th className="px-4 py-3 text-center">Actions</th>}
@@ -1017,6 +1038,9 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                         <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.date}</td>
                         <td className="px-4 py-2.5 font-medium text-foreground">{row.description}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{row.source || "—"}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {row.city && row.state ? `${row.city}, ${row.state}` : row.city || "—"}
+                        </td>
                         <td className="px-4 py-2.5">
                           <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
                             {PAYMENT_METHOD_LABELS[row.paymentMethod] ?? row.paymentMethod}
@@ -1042,7 +1066,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                   </tbody>
                   <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
                     <tr>
-                      <td colSpan={canEdit("invoices") ? 4 : 3} className="px-4 py-3 text-foreground">{otherIncomeRows.length} entr{otherIncomeRows.length !== 1 ? "ies" : "y"}</td>
+                      <td colSpan={canEdit("invoices") ? 5 : 4} className="px-4 py-3 text-foreground">{otherIncomeRows.length} entr{otherIncomeRows.length !== 1 ? "ies" : "y"}</td>
                       <td className="px-4 py-3 text-right text-teal-700">{formatCurrency(otherIncomeTotal)}</td>
                       {canEdit("invoices") && <td />}
                     </tr>
