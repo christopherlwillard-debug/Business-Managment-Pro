@@ -275,6 +275,7 @@ function ReceiptDropZone({ file, onFile, onClear }: {
       try {
         const result = await heic2any({ blob: f, toType: "image/jpeg", quality: 0.92 });
         const jpegBlob = Array.isArray(result) ? result[0] : result;
+        if (!(jpegBlob instanceof Blob)) throw new Error("Unexpected output from converter");
         const baseName = f.name.replace(/\.(heic|heif)$/i, "");
         const jpegFile = new File([jpegBlob], `${baseName}.jpg`, { type: "image/jpeg" });
         onFile(jpegFile);
