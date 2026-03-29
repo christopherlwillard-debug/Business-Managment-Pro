@@ -228,8 +228,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }
     // Also include other income rows that have a city
     for (const o of otherIncomeRows) {
-      if (!o.city) continue;
-      const city = o.city.trim();
+      const city = (o.city ?? "").trim();
+      if (!city) continue;
       const state = (o.state ?? "").trim();
       const key = `${city}||${state}`;
       const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, taxCollected: 0 };
