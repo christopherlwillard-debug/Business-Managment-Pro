@@ -149,7 +149,8 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
     if (isHeic) {
       fileBuffer = await sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer();
       fileMimetype = "image/jpeg";
-      originalFilename = originalFilename.replace(/\.(heic|heif)$/i, ".jpg");
+      // Always strip any existing extension and add .jpg to guarantee correct ext
+      originalFilename = originalFilename.replace(/\.[^.]+$/, "") + ".jpg";
     }
 
     // Upload to GCS and store the objectPath
