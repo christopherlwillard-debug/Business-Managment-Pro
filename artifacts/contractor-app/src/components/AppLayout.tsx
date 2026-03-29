@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -68,6 +68,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   const initials = companyName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const [logoImgError, setLogoImgError] = useState(false);
+  // Reset error when logo URL changes (e.g. user uploads a new logo)
+  const logoUrlRef = useRef(logoUrl);
+  if (logoUrlRef.current !== logoUrl) {
+    logoUrlRef.current = logoUrl;
+    if (logoImgError) setLogoImgError(false);
+  }
 
   const pageTransition = {
     initial: { opacity: 0, y: 10 },

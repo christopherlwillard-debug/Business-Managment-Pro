@@ -667,6 +667,7 @@ function LogoUpload({
       const res = await fetch(`${BASE}/api/settings/logo`, { method: "POST", body: form });
       if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
       const { logoUrl: url } = await res.json();
+      setLogoImgError(false);
       onUploaded(url);
     } catch (err: any) {
       setError(err.message || "Upload failed");
