@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import heic2any from "heic2any";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
@@ -251,14 +252,43 @@ function VendorCombobox({
 }
 
 // ─── Receipt drop zone ─────────────────────────────────────────────────────────
+function isHeic(f: File) {
+  return (
+    f.type === "image/heic" || f.type === "image/heif" ||
+    /\.(heic|heif)$/i.test(f.name)
+  );
+}
+
 function ReceiptDropZone({ file, onFile, onClear }: {
   file: File | null; onFile: (f: File) => void; onClear: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
 
-  const handleFile = useCallback((f: File) => {
+  const handleFile = useCallback(async (f: File) => {
+    setConvertError(null);
+    if (isHeic(f)) {
+      setConverting(true);
+      try {
+        const result = await heic2any({ blob: f, toType: "image/jpeg", quality: 0.92 });
+        const jpegBlob = Array.isArray(result) ? result[0] : result;
+        const baseName = f.name.replace(/\.(heic|heif)$/i, "");
+        const jpegFile = new File([jpegBlob], `${baseName}.jpg`, { type: "image/jpeg" });
+        onFile(jpegFile);
+        const reader = new FileReader();
+        reader.onload = e => setPreview(e.target?.result as string);
+        reader.readAsDataURL(jpegFile);
+      } catch {
+        setConvertError("Could not convert HEIC file. Try exporting as JPEG from your camera roll.");
+        if (inputRef.current) inputRef.current.value = "";
+      } finally {
+        setConverting(false);
+      }
+      return;
+    }
     onFile(f);
     if (f.type.startsWith("image/")) {
       const reader = new FileReader();
@@ -269,11 +299,23 @@ function ReceiptDropZone({ file, onFile, onClear }: {
     }
   }, [onFile]);
 
-  const handleClear = () => { onClear(); setPreview(null); if (inputRef.current) inputRef.current.value = ""; };
+  const handleClear = () => { onClear(); setPreview(null); setConvertError(null); if (inputRef.current) inputRef.current.value = ""; };
   const handleDrop  = (e: React.DragEvent) => {
     e.preventDefault(); setDragging(false);
     const f = e.dataTransfer.files[0]; if (f) handleFile(f);
   };
+
+  if (converting) {
+    return (
+      <div className="border-2 border-dashed border-primary/50 rounded-xl px-4 py-5 flex flex-col items-center gap-2 bg-primary/5">
+        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center animate-pulse">
+          <Upload className="w-4 h-4 text-primary" />
+        </div>
+        <p className="text-sm font-medium text-foreground">Converting HEIC to JPEG…</p>
+        <p className="text-xs text-muted-foreground">This only takes a moment</p>
+      </div>
+    );
+  }
 
   if (file) {
     return (
@@ -302,22 +344,27 @@ function ReceiptDropZone({ file, onFile, onClear }: {
   }
 
   return (
-    <div
-      onClick={() => inputRef.current?.click()}
-      onDragOver={e => { e.preventDefault(); setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
-      className={`border-2 border-dashed rounded-xl px-4 py-5 flex flex-col items-center gap-2 cursor-pointer transition-all ${
-        dragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/50 hover:bg-muted/40"
-      }`}
-    >
-      <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-        <Upload className="w-4 h-4 text-primary" />
+    <div>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        className={`border-2 border-dashed rounded-xl px-4 py-5 flex flex-col items-center gap-2 cursor-pointer transition-all ${
+          dragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/50 hover:bg-muted/40"
+        }`}
+      >
+        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Upload className="w-4 h-4 text-primary" />
+        </div>
+        <p className="text-sm font-medium text-foreground">Drop receipt here or click to browse</p>
+        <p className="text-xs text-muted-foreground">Any photo or PDF up to 10 MB</p>
+        <input ref={inputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       </div>
-      <p className="text-sm font-medium text-foreground">Drop receipt here or click to browse</p>
-      <p className="text-xs text-muted-foreground">Any photo or PDF up to 10 MB</p>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf" className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      {convertError && (
+        <p className="mt-1.5 text-xs text-red-600 text-center">{convertError}</p>
+      )}
     </div>
   );
 }
