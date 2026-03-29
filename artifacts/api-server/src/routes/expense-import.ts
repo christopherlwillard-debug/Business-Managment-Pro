@@ -32,7 +32,7 @@ const CATEGORIES = [
 function guessCategory(text: string): string {
   const t = text.toLowerCase();
   if (/lumber|concrete|pipe|wire|paint|drywall|hardware|home depot|lowe|menards|material/.test(t)) return "Materials";
-  if (/advertis|marketing|flyer|signage|logo|promo|ad agency/.test(t)) return "Advertising";
+  if (/\bad\b|advertis|marketing|flyer|signage|logo|promo|ad agency/.test(t)) return "Advertising";
   if (/fuel|gas station|mileage|travel|hotel|lodging|uber|lyft|toll/.test(t)) return "Fuel/Travel";
   if (/sub|labor|contractor/.test(t)) return "Subcontractor";
   if (/insurance|policy|premium/.test(t)) return "Insurance";
@@ -41,7 +41,7 @@ function guessCategory(text: string): string {
   if (/rent|lease/.test(t)) return "Rent/Lease";
   if (/repair|fix|maintenance|patch|service call/.test(t)) return "Repairs/Maintenance";
   if (/tool|equipment|drill|saw|compressor/.test(t)) return "Tools/Equipment";
-  if (/electric|utility|utilities|power|water|sewer|internet|phone/.test(t)) return "Utilities";
+  if (/electric|utility|utilities|power|gas|water|sewer|internet|phone/.test(t)) return "Utilities";
   return "Other";
 }
 

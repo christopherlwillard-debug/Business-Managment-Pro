@@ -33,17 +33,17 @@ const CATEGORIES = [
 
 const CATEGORY_LABELS: Record<string, string> = {
   "Materials":             "Materials — Line 4 (Cost of Goods)",
-  "Advertising":           "Advertising — Line 8",
+  "Advertising":           "Advertising — Line 8 (Advertising)",
   "Fuel/Travel":           "Fuel/Travel — Line 9 (Car & Truck)",
   "Subcontractor":         "Subcontractor — Line 11 (Contract Labor)",
-  "Insurance":             "Insurance — Line 15",
-  "Professional Services": "Professional Services — Line 17",
-  "Office/Admin":          "Office/Admin — Line 18",
-  "Rent/Lease":            "Rent/Lease — Line 20",
-  "Repairs/Maintenance":   "Repairs/Maintenance — Line 21",
+  "Insurance":             "Insurance — Line 15 (Insurance)",
+  "Professional Services": "Professional Services — Line 17 (Legal & Prof.)",
+  "Office/Admin":          "Office/Admin — Line 18 (Office Expense)",
+  "Rent/Lease":            "Rent/Lease — Line 20 (Rent or Lease)",
+  "Repairs/Maintenance":   "Repairs/Maintenance — Line 21 (Repairs)",
   "Tools/Equipment":       "Tools/Equipment — Line 22 (Supplies)",
-  "Utilities":             "Utilities — Line 25",
-  "Other":                 "Other — Line 27",
+  "Utilities":             "Utilities — Line 25 (Utilities)",
+  "Other":                 "Other — Line 27 (Other Expenses)",
 };
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const API = `${BASE}/api`;
