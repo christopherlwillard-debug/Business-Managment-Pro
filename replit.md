@@ -94,7 +94,8 @@ Feature keys (stored in DB): `jobs`, `invoices`, `expenses`, `mileage`, `estimat
 - `/api/settings` - GET/PUT for app settings; `POST /logo` for logo upload (multipart); `DELETE /logo` for removal
 - `/api/reports/dashboard` - Dashboard stats
 - `/api/reports/compliance` - Compliance alerts
-- `/api/uploads` - File upload endpoint (static files served from `uploads/` dir)
+- `/api/uploads` - General file upload endpoint (now uses GCS Object Storage)
+- `/api/storage/objects/*` - Serve uploaded files from GCS Object Storage (authenticated)
 
 ### Database Schema (lib/db/src/schema/)
 Tables: clients, jobs, invoices, expenses, mileage_logs, subcontractors, estimates, daily_logs, settings
@@ -119,7 +120,7 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 React + Vite frontend served at `/`. Uses React Query hooks from `@workspace/api-client-react`.
 
 ### `artifacts/api-server` (`@workspace/api-server`)
-Express 5 API server. Routes in `src/routes/`. File uploads handled by multer, stored in `uploads/` dir.
+Express 5 API server. Routes in `src/routes/`. File uploads handled by multer with memory storage, then saved to Replit Object Storage (GCS-backed). Files persist across deployments. Service: `src/lib/objectStorage.ts`. Logos stored as raw `/objects/uploads/logos/uuid.ext` in DB; normalized to `/api/storage/objects/...` serving URLs before returning to client.
 - `pnpm --filter @workspace/api-server run dev` — dev server
 
 ### `lib/db` (`@workspace/db`)

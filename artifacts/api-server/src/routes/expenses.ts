@@ -3,22 +3,22 @@ import { db } from "@workspace/db";
 import { expensesTable, jobsTable, subcontractorsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
+const objectStorage = new ObjectStorageService();
 
-const uploadsDir = path.resolve("uploads/receipts");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+/** Convert a raw DB objectPath (/objects/...) to a serving URL (/api/storage/objects/...) */
+function toServingUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return `/api/storage/objects/${raw.slice("/objects/".length)}`;
+  return raw;
+}
 
 function formatExpense(e: any, jobTitle?: string | null, subcontractorName?: string | null) {
   return {
@@ -27,6 +27,7 @@ function formatExpense(e: any, jobTitle?: string | null, subcontractorName?: str
     subcontractorName: subcontractorName ?? null,
     amount: parseFloat(e.amount ?? "0"),
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+    receiptUrl: toServingUrl(e.receiptUrl),
   };
 }
 
@@ -128,8 +129,16 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const receiptUrl = `/api/uploads/receipts/${req.file.filename}`;
-    const [updated] = await db.update(expensesTable).set({ receiptUrl }).where(eq(expensesTable.id, id)).returning();
+
+    // Upload to GCS and store the objectPath
+    const objectPath = await objectStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      "uploads/receipts",
+      req.file.originalname
+    );
+
+    const [updated] = await db.update(expensesTable).set({ receiptUrl: objectPath }).where(eq(expensesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));

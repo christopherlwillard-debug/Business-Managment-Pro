@@ -384,10 +384,21 @@ function ExpenseViewModal({
   expense: any; onClose: () => void; onDelete: () => void; onJumpToTemplate?: (id: number) => void;
 }) {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const receiptUrl = expense.receiptUrl
-    ? (expense.receiptUrl.startsWith("http") ? expense.receiptUrl : `${base}${expense.receiptUrl}`)
-    : null;
-  const isImage = receiptUrl && /\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(receiptUrl);
+
+  function buildReceiptUrl(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    if (raw.startsWith("http")) return raw;
+    // GCS object path stored as /objects/... → serve via /api/storage/objects/...
+    if (raw.startsWith("/objects/")) return `${base}/api/storage${raw}`;
+    // Legacy /api/uploads/... paths (may be broken if file was lost on redeploy)
+    return `${base}${raw}`;
+  }
+
+  const receiptUrl = buildReceiptUrl(expense.receiptUrl);
+  // HEIC/HEIF files cannot be rendered inline in browsers — show download only
+  const isHeic = receiptUrl && /\.(heic|heif)$/i.test(receiptUrl);
+  const isImage = receiptUrl && !isHeic && /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(receiptUrl);
+  const isPdf = receiptUrl && /\.pdf$/i.test(receiptUrl);
   const [lightbox, setLightbox] = useState(false);
 
   return (
@@ -502,10 +513,12 @@ function ExpenseViewModal({
                 <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-gray-400">
                   <ImageIcon className="w-3 h-3" /> Receipt
                 </div>
-                <button type="button" onClick={() => setLightbox(true)}
-                  className="inline-flex items-center gap-1 text-xs text-primary font-semibold hover:underline">
-                  <Maximize2 className="w-3 h-3" /> Expand
-                </button>
+                {!isHeic && (
+                  <button type="button" onClick={() => setLightbox(true)}
+                    className="inline-flex items-center gap-1 text-xs text-primary font-semibold hover:underline">
+                    <Maximize2 className="w-3 h-3" /> Expand
+                  </button>
+                )}
               </div>
               {isImage ? (
                 <img
@@ -513,6 +526,18 @@ function ExpenseViewModal({
                   className="w-full max-h-52 object-contain bg-gray-100 cursor-zoom-in"
                   onClick={() => setLightbox(true)}
                 />
+              ) : isHeic ? (
+                <div className="flex flex-col items-center gap-3 px-4 py-5 bg-gray-50">
+                  <ImageIcon className="w-10 h-10 text-gray-300" />
+                  <p className="text-sm text-gray-500 text-center">iPhone photo (HEIC) — cannot preview in browser</p>
+                  <a
+                    href={receiptUrl}
+                    download
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+                  >
+                    <Download className="w-4 h-4" /> Download Receipt
+                  </a>
+                </div>
               ) : (
                 <button type="button" onClick={() => setLightbox(true)}
                   className="flex items-center gap-3 px-4 py-3 w-full hover:bg-gray-50 transition-colors">
@@ -1491,7 +1516,17 @@ export default function Expenses() {
           >
             <X className="w-6 h-6 text-white" />
           </button>
-          {/\.(jpg|jpeg|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(editLightboxUrl) ? (
+          {/\.(heic|heif)$/i.test(editLightboxUrl) ? (
+            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+              <ImageIcon className="w-16 h-16 text-white/30" />
+              <p className="text-white font-semibold text-lg">iPhone Photo (HEIC)</p>
+              <p className="text-white/60 text-sm">Cannot preview in browser</p>
+              <a href={editLightboxUrl} download
+                className="inline-flex items-center gap-2 px-5 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors">
+                <Download className="w-4 h-4" /> Download Receipt
+              </a>
+            </div>
+          ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) ? (
             <img
               src={editLightboxUrl}
               alt="Receipt"

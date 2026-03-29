@@ -3,24 +3,14 @@ import { db } from "@workspace/db";
 import { settingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
+const objectStorage = new ObjectStorageService();
 
 // ── Logo upload ────────────────────────────────────────────────────────────────
-const logosDir = path.resolve("uploads/logos");
-if (!fs.existsSync(logosDir)) fs.mkdirSync(logosDir, { recursive: true });
-
-const logoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, logosDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `logo-${Date.now()}${ext}`);
-  },
-});
 const logoUpload = multer({
-  storage: logoStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpeg|png|gif|webp|svg\+xml)$/.test(file.mimetype)) cb(null, true);
@@ -31,20 +21,30 @@ const logoUpload = multer({
 router.post("/logo", logoUpload.single("logo"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const logoUrl = `/uploads/logos/${req.file.filename}`;
-    // Persist to settings
+
+    // Upload to GCS
+    const objectPath = await objectStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      "uploads/logos",
+      req.file.originalname
+    );
+    // DB stores raw objectPath; serving URL is /api/storage/objects/...
+    const servingUrl = toServingUrl(objectPath)!;
+
+    // Persist raw objectPath to settings
     let [s] = await db.select().from(settingsTable).limit(1);
     if (!s) {
-      [s] = await db.insert(settingsTable).values({ logoUrl } as any).returning();
+      [s] = await db.insert(settingsTable).values({ logoUrl: objectPath } as any).returning();
     } else {
-      // Delete old logo file if different
-      if (s.logoUrl) {
-        const old = path.resolve(s.logoUrl.replace(/^\/uploads\//, "uploads/"));
-        if (fs.existsSync(old)) fs.unlinkSync(old);
+      // Delete old logo from GCS if it's a GCS path
+      if (s.logoUrl && s.logoUrl.startsWith("/objects/")) {
+        try { await objectStorage.deleteObject(s.logoUrl); } catch { /* ignore */ }
       }
-      [s] = await db.update(settingsTable).set({ logoUrl, updatedAt: new Date() }).where(eq(settingsTable.id, s.id)).returning();
+      [s] = await db.update(settingsTable).set({ logoUrl: objectPath, updatedAt: new Date() }).where(eq(settingsTable.id, s.id)).returning();
     }
-    res.json({ logoUrl });
+    // Return the serving URL so frontend can use it directly
+    res.json({ logoUrl: servingUrl });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to upload logo" });
@@ -55,8 +55,9 @@ router.delete("/logo", async (_req, res) => {
   try {
     let [s] = await db.select().from(settingsTable).limit(1);
     if (s?.logoUrl) {
-      const fp = path.resolve(s.logoUrl.replace(/^\/uploads\//, "uploads/"));
-      if (fs.existsSync(fp)) fs.unlinkSync(fp);
+      if (s.logoUrl.startsWith("/objects/")) {
+        try { await objectStorage.deleteObject(s.logoUrl); } catch { /* ignore */ }
+      }
       await db.update(settingsTable).set({ logoUrl: null, updatedAt: new Date() }).where(eq(settingsTable.id, s.id));
     }
     res.json({ success: true });
@@ -99,9 +100,17 @@ const DEFAULT_SETTINGS = {
   thresholdAmount1099: "600",
 };
 
+/** Convert a raw DB objectPath (/objects/...) to a serving URL (/api/storage/objects/...) */
+function toServingUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return `/api/storage/objects/${raw.slice("/objects/".length)}`;
+  return raw; // Already a serving URL or legacy path
+}
+
 function format(s: any) {
   return {
     ...s,
+    logoUrl: toServingUrl(s.logoUrl),
     defaultTaxRate: s.defaultTaxRate ? parseFloat(s.defaultTaxRate) : null,
     lateFeePercent: s.lateFeePercent ? parseFloat(s.lateFeePercent) : null,
     mileageRate: s.mileageRate ? parseFloat(s.mileageRate) : 0.725,
@@ -131,7 +140,6 @@ router.get("/", async (req, res) => {
     const isOwner = settings.ownerUserId === userId;
     const formatted = format(settings);
     if (!isOwner) {
-      // Non-owners receive display/invoice settings only — SMTP details and EIN are owner-only
       const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, ...safe } = formatted;
       res.json(safe);
       return;

@@ -1,33 +1,34 @@
 import { Router } from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
+const objectStorage = new ObjectStorageService();
 
-const uploadsDir = path.resolve("uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-const receiptsDir = path.resolve("uploads/receipts");
-if (!fs.existsSync(receiptsDir)) fs.mkdirSync(receiptsDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, _file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
-const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
-router.post("/", upload.single("file"), (req, res) => {
+router.post("/", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  res.json({
-    url: `/uploads/${req.file.filename}`,
-    filename: req.file.originalname,
-    size: req.file.size,
-  });
+  try {
+    const objectPath = await objectStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      "uploads",
+      req.file.originalname
+    );
+    res.json({
+      url: `/api/storage/objects${objectPath.slice("/objects".length)}`,
+      objectPath,
+      filename: req.file.originalname,
+      size: req.file.size,
+    });
+  } catch (err) {
+    console.error("Upload failed:", err);
+    res.status(500).json({ error: "Upload failed" });
+  }
 });
 
 export default router;
