@@ -32,7 +32,9 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response):
  * GET /storage/public-objects/*
  *
  * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
- * These are unconditionally public — no authentication required.
+ * Note: In this app this route is mounted behind requireAuth, so access
+ * is limited to authenticated users. Move before auth guards if truly
+ * public access is needed.
  */
 router.get("/storage/public-objects/*filePath", async (req: Request, res: Response): Promise<void> => {
   try {
