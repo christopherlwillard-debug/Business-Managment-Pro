@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateMileageLogRequestClassification } from "./createMileageLogRequestClassification";
+import type { CreateMileageLogRequestSource } from "./createMileageLogRequestSource";
 
 export interface CreateMileageLogRequest {
   date: string;
@@ -16,4 +17,5 @@ export interface CreateMileageLogRequest {
   jobId?: number | null;
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
+  source?: CreateMileageLogRequestSource;
 }

@@ -1376,6 +1376,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/UploadedFile"
 
+  /storage/objects/{objectPath}:
+    get:
+      operationId: getStorageObject
+      tags: [uploads]
+      summary: Serve a file from persistent object storage
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Object path (everything after /objects/)
+      responses:
+        "200":
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: File not found
+
 components:
   parameters:
     AuthorizationSessionHeader:

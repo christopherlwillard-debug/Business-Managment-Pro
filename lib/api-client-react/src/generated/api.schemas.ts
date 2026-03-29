@@ -190,20 +190,10 @@ export interface Invoice {
   invoiceNumber: string;
   clientId?: number | null;
   clientName?: string | null;
-  clientEmail?: string | null;
-  clientPhone?: string | null;
-  clientAddress?: string | null;
-  clientCity?: string | null;
-  clientState?: string | null;
-  clientZip?: string | null;
-  clientNotes?: string | null;
   jobId?: number | null;
   jobTitle?: string | null;
   jobCity?: string | null;
   jobState?: string | null;
-  locationName?: string | null;
-  city?: string | null;
-  state?: string | null;
   status: InvoiceStatus;
   issueDate: string;
   dueDate?: string | null;
@@ -409,7 +399,8 @@ export const CreateMileageLogRequestClassification = {
 } as const;
 
 export type CreateMileageLogRequestSource =
-  (typeof CreateMileageLogRequestSource)[keyof typeof CreateMileageLogRequestSource];
+  | (typeof CreateMileageLogRequestSource)[keyof typeof CreateMileageLogRequestSource]
+  | null;
 
 export const CreateMileageLogRequestSource = {
   gps: "gps",
@@ -425,7 +416,7 @@ export interface CreateMileageLogRequest {
   jobId?: number | null;
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
-  source?: CreateMileageLogRequestSource | null;
+  source?: CreateMileageLogRequestSource;
 }
 
 export interface MileageSummary {
@@ -559,8 +550,6 @@ export interface DailyLog {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls: string[];
-  materialListId?: number | null;
-  authorName?: string | null;
   createdAt: string;
 }
 
@@ -575,7 +564,6 @@ export interface CreateDailyLogRequest {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls?: string[];
-  materialListId?: number | null;
 }
 
 export type AppSettingsInvoiceLogoSize =

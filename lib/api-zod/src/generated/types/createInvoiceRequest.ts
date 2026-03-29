@@ -7,6 +7,7 @@
  */
 import type { CreateInvoiceRequestLineItemsItem } from "./createInvoiceRequestLineItemsItem";
 import type { CreateInvoiceRequestStatus } from "./createInvoiceRequestStatus";
+import type { InvoiceAttachment } from "./invoiceAttachment";
 
 export interface CreateInvoiceRequest {
   clientId?: number | null;
@@ -21,4 +22,5 @@ export interface CreateInvoiceRequest {
   city?: string | null;
   state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
+  attachments?: InvoiceAttachment[] | null;
 }

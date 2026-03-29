@@ -400,6 +400,7 @@ function ExpenseViewModal({
   const isImage = receiptUrl && !isHeic && /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(receiptUrl);
   const isPdf = receiptUrl && /\.pdf$/i.test(receiptUrl);
   const [lightbox, setLightbox] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -520,12 +521,19 @@ function ExpenseViewModal({
                   </button>
                 )}
               </div>
-              {isImage ? (
+              {isImage && !imgError ? (
                 <img
                   src={receiptUrl} alt="Receipt"
                   className="w-full max-h-52 object-contain bg-gray-100 cursor-zoom-in"
                   onClick={() => setLightbox(true)}
+                  onError={() => setImgError(true)}
                 />
+              ) : isImage && imgError ? (
+                <div className="flex flex-col items-center gap-2 px-4 py-5 bg-red-50 text-center">
+                  <ImageIcon className="w-8 h-8 text-red-300" />
+                  <p className="text-sm font-semibold text-red-700">Receipt no longer available</p>
+                  <p className="text-xs text-red-500">This file was lost in a previous deployment. Please re-upload the receipt.</p>
+                </div>
               ) : isHeic ? (
                 <div className="flex flex-col items-center gap-3 px-4 py-5 bg-gray-50">
                   <ImageIcon className="w-10 h-10 text-gray-300" />
@@ -567,13 +575,20 @@ function ExpenseViewModal({
           >
             <X className="w-6 h-6 text-white" />
           </button>
-          {isImage ? (
+          {isImage && !imgError ? (
             <img
               src={receiptUrl}
               alt="Receipt full view"
               className="max-w-full max-h-full object-contain select-none"
               onClick={e => e.stopPropagation()}
+              onError={() => setImgError(true)}
             />
+          ) : isImage && imgError ? (
+            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+              <ImageIcon className="w-16 h-16 text-red-300" />
+              <p className="text-white font-semibold text-lg">Receipt no longer available</p>
+              <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
+            </div>
           ) : (
             <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
               <FileText className="w-16 h-16 text-white/60" />
@@ -1532,6 +1547,17 @@ export default function Expenses() {
               alt="Receipt"
               className="max-w-full max-h-full object-contain select-none"
               onClick={e => e.stopPropagation()}
+              onError={e => {
+                const target = e.currentTarget;
+                target.style.display = "none";
+                const parent = target.parentElement;
+                if (parent && !parent.querySelector(".img-error-msg")) {
+                  const msg = document.createElement("div");
+                  msg.className = "img-error-msg flex flex-col items-center gap-4 p-8 text-center";
+                  msg.innerHTML = '<p style="color:white;font-weight:600;font-size:1.125rem">Receipt no longer available</p><p style="color:rgba(255,255,255,0.6);font-size:0.875rem">This file was lost in a previous deployment.<br>Please re-upload the receipt.</p>';
+                  parent.appendChild(msg);
+                }
+              }}
             />
           ) : (
             <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>

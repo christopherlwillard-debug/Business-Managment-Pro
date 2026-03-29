@@ -13,11 +13,16 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-/** Convert a raw DB objectPath (/objects/...) to a serving URL (/api/storage/objects/...) */
+/** Convert a raw DB path to a correct serving URL.
+ * - /objects/...      → /api/storage/objects/... (GCS-backed, new uploads)
+ * - /api/uploads/...  → returned as-is (legacy, served by static middleware)
+ * - /uploads/...      → /api/uploads/... (corrects a brief bad-fix period)
+ */
 function toServingUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
   if (raw.startsWith("/objects/")) return `/api/storage/objects/${raw.slice("/objects/".length)}`;
-  return raw;
+  if (raw.startsWith("/uploads/")) return `/api${raw}`;
+  return raw; // Already /api/uploads/... or http://...
 }
 
 function formatExpense(e: any, jobTitle?: string | null, subcontractorName?: string | null) {

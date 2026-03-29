@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MileageLogClassification } from "./mileageLogClassification";
+import type { MileageLogSource } from "./mileageLogSource";
 
 export interface MileageLog {
   id: number;
@@ -20,5 +21,6 @@ export interface MileageLog {
   ratePerMile: number;
   deductionAmount: number;
   notes?: string | null;
+  source: MileageLogSource;
   createdAt: string;
 }

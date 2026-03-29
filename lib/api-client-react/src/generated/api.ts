@@ -5857,3 +5857,92 @@ export const useUploadFile = <
 > => {
   return useMutation(getUploadFileMutationOptions(options));
 };
+
+/**
+ * @summary Serve a file from persistent object storage
+ */
+export const getGetStorageObjectUrl = (objectPath: string) => {
+  return `/api/storage/objects/${objectPath}`;
+};
+
+export const getStorageObject = async (
+  objectPath: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetStorageObjectUrl(objectPath), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStorageObjectQueryKey = (objectPath: string) => {
+  return [`/api/storage/objects/${objectPath}`] as const;
+};
+
+export const getGetStorageObjectQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStorageObject>>,
+  TError = ErrorType<void>,
+>(
+  objectPath: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStorageObject>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetStorageObjectQueryKey(objectPath);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getStorageObject>>
+  > = ({ signal }) =>
+    getStorageObject(objectPath, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!objectPath,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStorageObject>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStorageObjectQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStorageObject>>
+>;
+export type GetStorageObjectQueryError = ErrorType<void>;
+
+/**
+ * @summary Serve a file from persistent object storage
+ */
+
+export function useGetStorageObject<
+  TData = Awaited<ReturnType<typeof getStorageObject>>,
+  TError = ErrorType<void>,
+>(
+  objectPath: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStorageObject>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStorageObjectQueryOptions(objectPath, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

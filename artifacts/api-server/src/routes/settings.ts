@@ -100,11 +100,16 @@ const DEFAULT_SETTINGS = {
   thresholdAmount1099: "600",
 };
 
-/** Convert a raw DB objectPath (/objects/...) to a serving URL (/api/storage/objects/...) */
+/** Convert a raw DB path to a correct serving URL.
+ * - /objects/...      → /api/storage/objects/... (GCS-backed, new uploads)
+ * - /api/uploads/...  → returned as-is (legacy, served by static middleware)
+ * - /uploads/...      → /api/uploads/... (corrects a brief bad-fix period)
+ */
 function toServingUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
   if (raw.startsWith("/objects/")) return `/api/storage/objects/${raw.slice("/objects/".length)}`;
-  return raw; // Already a serving URL or legacy path
+  if (raw.startsWith("/uploads/")) return `/api${raw}`;
+  return raw; // Already /api/uploads/... or http://...
 }
 
 function format(s: any) {

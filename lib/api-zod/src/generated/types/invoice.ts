@@ -5,6 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { InvoiceAttachment } from "./invoiceAttachment";
 import type { InvoiceLineItem } from "./invoiceLineItem";
 import type { InvoiceStatus } from "./invoiceStatus";
 
@@ -28,5 +29,6 @@ export interface Invoice {
   notes?: string | null;
   terms?: string | null;
   lineItems?: InvoiceLineItem[];
+  attachments?: InvoiceAttachment[] | null;
   createdAt: string;
 }

@@ -431,6 +431,15 @@ export const ListInvoicesResponseItem = zod.object({
       }),
     )
     .optional(),
+  attachments: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        url: zod.string(),
+        size: zod.number().nullish(),
+      }),
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
@@ -459,6 +468,15 @@ export const CreateInvoiceBody = zod.object({
       }),
     )
     .optional(),
+  attachments: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        url: zod.string(),
+        size: zod.number().nullish(),
+      }),
+    )
+    .nullish(),
 });
 
 /**
@@ -498,6 +516,15 @@ export const GetInvoiceResponse = zod.object({
       }),
     )
     .optional(),
+  attachments: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        url: zod.string(),
+        size: zod.number().nullish(),
+      }),
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 
@@ -529,6 +556,15 @@ export const UpdateInvoiceBody = zod.object({
       }),
     )
     .optional(),
+  attachments: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        url: zod.string(),
+        size: zod.number().nullish(),
+      }),
+    )
+    .nullish(),
 });
 
 export const UpdateInvoiceResponse = zod.object({
@@ -561,6 +597,15 @@ export const UpdateInvoiceResponse = zod.object({
       }),
     )
     .optional(),
+  attachments: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        url: zod.string(),
+        size: zod.number().nullish(),
+      }),
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 
@@ -612,6 +657,15 @@ export const UpdateInvoiceStatusResponse = zod.object({
       }),
     )
     .optional(),
+  attachments: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        url: zod.string(),
+        size: zod.number().nullish(),
+      }),
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 
@@ -885,6 +939,8 @@ export const ListMileageLogsQueryParams = zod.object({
   classified: zod.coerce.boolean().optional(),
 });
 
+export const listMileageLogsResponseSourceDefault = `gps`;
+
 export const ListMileageLogsResponseItem = zod.object({
   id: zod.number(),
   date: zod.string(),
@@ -898,6 +954,9 @@ export const ListMileageLogsResponseItem = zod.object({
   ratePerMile: zod.number(),
   deductionAmount: zod.number(),
   notes: zod.string().nullish(),
+  source: zod
+    .enum(["gps", "manual"])
+    .default(listMileageLogsResponseSourceDefault),
   createdAt: zod.string(),
 });
 export const ListMileageLogsResponse = zod.array(ListMileageLogsResponseItem);
@@ -914,6 +973,7 @@ export const CreateMileageLogBody = zod.object({
   jobId: zod.number().nullish(),
   classification: zod.enum(["business", "personal"]),
   notes: zod.string().nullish(),
+  source: zod.enum(["gps", "manual"]).nullish(),
 });
 
 /**
@@ -932,7 +992,10 @@ export const UpdateMileageLogBody = zod.object({
   jobId: zod.number().nullish(),
   classification: zod.enum(["business", "personal"]),
   notes: zod.string().nullish(),
+  source: zod.enum(["gps", "manual"]).nullish(),
 });
+
+export const updateMileageLogResponseSourceDefault = `gps`;
 
 export const UpdateMileageLogResponse = zod.object({
   id: zod.number(),
@@ -947,6 +1010,9 @@ export const UpdateMileageLogResponse = zod.object({
   ratePerMile: zod.number(),
   deductionAmount: zod.number(),
   notes: zod.string().nullish(),
+  source: zod
+    .enum(["gps", "manual"])
+    .default(updateMileageLogResponseSourceDefault),
   createdAt: zod.string(),
 });
 
@@ -1597,6 +1663,15 @@ export const GetDashboardStatsResponse = zod.object({
           }),
         )
         .optional(),
+      attachments: zod
+        .array(
+          zod.object({
+            name: zod.string(),
+            url: zod.string(),
+            size: zod.number().nullish(),
+          }),
+        )
+        .nullish(),
       createdAt: zod.string(),
     }),
   ),
@@ -1645,4 +1720,13 @@ export const UploadFileResponse = zod.object({
   url: zod.string(),
   filename: zod.string(),
   size: zod.number(),
+});
+
+/**
+ * @summary Serve a file from persistent object storage
+ */
+export const GetStorageObjectParams = zod.object({
+  objectPath: zod.coerce
+    .string()
+    .describe("Object path (everything after \/objects\/)"),
 });
