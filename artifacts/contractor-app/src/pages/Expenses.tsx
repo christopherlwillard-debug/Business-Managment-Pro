@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import heic2any from "heic2any";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
@@ -253,10 +252,9 @@ function VendorCombobox({
 
 // ─── Receipt drop zone ─────────────────────────────────────────────────────────
 function isHeic(f: File) {
-  return (
-    f.type === "image/heic" || f.type === "image/heif" ||
-    /\.(heic|heif)$/i.test(f.name)
-  );
+  const mimeCheck = f.type === "image/heic" || f.type === "image/heif" || f.type === "image/heic-sequence" || f.type === "image/heif-sequence";
+  const nameCheck = /\.(heic|heif|heics)$/i.test(f.name);
+  return mimeCheck || nameCheck;
 }
 
 function ReceiptDropZone({ file, onFile, onClear }: {
@@ -273,6 +271,8 @@ function ReceiptDropZone({ file, onFile, onClear }: {
     if (isHeic(f)) {
       setConverting(true);
       try {
+        const heic2anyModule = await import("heic2any");
+        const heic2any = heic2anyModule.default || heic2anyModule;
         const result = await heic2any({ blob: f, toType: "image/jpeg", quality: 0.92 });
         const jpegBlob = Array.isArray(result) ? result[0] : result;
         if (!(jpegBlob instanceof Blob)) throw new Error("Unexpected output from converter");
@@ -282,8 +282,10 @@ function ReceiptDropZone({ file, onFile, onClear }: {
         const reader = new FileReader();
         reader.onload = e => setPreview(e.target?.result as string);
         reader.readAsDataURL(jpegFile);
-      } catch {
-        setConvertError("Could not convert HEIC file. Try exporting as JPEG from your camera roll.");
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error("HEIC conversion error:", errMsg);
+        setConvertError(`Could not convert HEIC file (${errMsg}). Try exporting as JPEG from your camera roll.`);
         if (inputRef.current) inputRef.current.value = "";
       } finally {
         setConverting(false);
