@@ -6,13 +6,36 @@ const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
 /**
+ * POST /storage/uploads/request-url
+ *
+ * Request a presigned GCS URL for direct file upload.
+ * The client sends JSON metadata (name, size, contentType) — NOT the file.
+ * Then uploads the file directly to the returned presigned URL.
+ */
+router.post("/storage/uploads/request-url", async (req: Request, res: Response): Promise<void> => {
+  const { name, size, contentType } = req.body ?? {};
+  if (!name || !size || !contentType) {
+    res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+    return;
+  }
+  try {
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+    res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
+  } catch (error) {
+    console.error("Error generating upload URL:", error);
+    res.status(500).json({ error: "Failed to generate upload URL" });
+  }
+});
+
+/**
  * GET /storage/objects/*
  *
  * Serve object entities from PRIVATE_OBJECT_DIR.
  * Protected — requires prior requireAuth + requireAccess middleware
  * (mounted in index.ts after those guards).
  */
-router.get("/storage/objects/*path", async (req: Request, res: Response) => {
+router.get("/storage/objects/*path", async (req: Request, res: Response): Promise<void> => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;

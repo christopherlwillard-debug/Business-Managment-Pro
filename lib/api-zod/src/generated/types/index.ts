@@ -89,3 +89,5 @@ export * from "./updateRecurringExpenseRequestFrequency";
 export * from "./uploadedFile";
 export * from "./uploadExpenseReceiptBody";
 export * from "./uploadFileBody";
+export * from "./uploadUrlRequest";
+export * from "./uploadUrlResponse";
