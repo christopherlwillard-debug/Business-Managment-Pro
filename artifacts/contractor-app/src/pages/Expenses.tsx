@@ -1028,6 +1028,7 @@ export default function Expenses() {
   const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
+  const [editLightboxImgError, setEditLightboxImgError] = useState(false);
   const editReceiptInputRef                           = useRef<HTMLInputElement>(null);
   const [deleteTarget,  setDeleteTarget]              = useState<any | null>(null);
   const [deleting,     setDeleting]                   = useState(false);
@@ -1199,6 +1200,7 @@ export default function Expenses() {
                               <button type="button" onClick={() => {
                                 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
                                 const url = exp.receiptUrl.startsWith("http") ? exp.receiptUrl : `${base}${exp.receiptUrl}`;
+                                setEditLightboxImgError(false);
                                 setEditLightboxUrl(url);
                               }} className="text-xs text-primary hover:underline flex items-center gap-1">
                                 <ImageIcon className="w-3 h-3" />View
@@ -1541,24 +1543,20 @@ export default function Expenses() {
                 <Download className="w-4 h-4" /> Download Receipt
               </a>
             </div>
-          ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) ? (
+          ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) && !editLightboxImgError ? (
             <img
               src={editLightboxUrl}
               alt="Receipt"
               className="max-w-full max-h-full object-contain select-none"
               onClick={e => e.stopPropagation()}
-              onError={e => {
-                const target = e.currentTarget;
-                target.style.display = "none";
-                const parent = target.parentElement;
-                if (parent && !parent.querySelector(".img-error-msg")) {
-                  const msg = document.createElement("div");
-                  msg.className = "img-error-msg flex flex-col items-center gap-4 p-8 text-center";
-                  msg.innerHTML = '<p style="color:white;font-weight:600;font-size:1.125rem">Receipt no longer available</p><p style="color:rgba(255,255,255,0.6);font-size:0.875rem">This file was lost in a previous deployment.<br>Please re-upload the receipt.</p>';
-                  parent.appendChild(msg);
-                }
-              }}
+              onError={() => setEditLightboxImgError(true)}
             />
+          ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) && editLightboxImgError ? (
+            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+              <ImageIcon className="w-16 h-16 text-red-300" />
+              <p className="text-white font-semibold text-lg">Receipt no longer available</p>
+              <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
+            </div>
           ) : (
             <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
               <FileText className="w-16 h-16 text-white/60" />

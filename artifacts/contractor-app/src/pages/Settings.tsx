@@ -593,9 +593,10 @@ function InvoiceLogoPreview({
 }) {
   const px = LOGO_SIZES.find(s => s.key === size)?.px ?? 100;
   const imgStyle = { height: px, width: "auto", maxWidth: px * 2.5, objectFit: "contain" as const };
+  const [previewImgError, setPreviewImgError] = useState(false);
 
-  const logoEl = logoUrl
-    ? <img src={`${BASE}${logoUrl}`} style={imgStyle} alt="Logo" className="rounded" />
+  const logoEl = logoUrl && !previewImgError
+    ? <img src={`${BASE}${logoUrl}`} style={imgStyle} alt="Logo" className="rounded" onError={() => setPreviewImgError(true)} />
     : (
       <div style={{ width: px, height: px }} className="rounded bg-amber-100 flex items-center justify-center">
         <Building2 className="text-amber-500" style={{ width: px * 0.4, height: px * 0.4 }} />
@@ -652,6 +653,7 @@ function LogoUpload({
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [logoImgError, setLogoImgError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function upload(file: File) {
@@ -694,10 +696,22 @@ function LogoUpload({
     return (
       <div className="flex items-center gap-4">
         <div className="w-24 h-24 rounded-xl border-2 border-border bg-muted/30 flex items-center justify-center overflow-hidden flex-shrink-0">
-          <img src={`${BASE}${logoUrl}`} className="w-full h-full object-contain p-1" alt="Company logo" />
+          {logoImgError ? (
+            <div className="flex flex-col items-center justify-center gap-1 p-2 text-center">
+              <span className="text-xs text-red-500 font-semibold">File lost</span>
+              <span className="text-[10px] text-muted-foreground">Please re-upload</span>
+            </div>
+          ) : (
+            <img
+              src={`${BASE}${logoUrl}`}
+              className="w-full h-full object-contain p-1"
+              alt="Company logo"
+              onError={() => setLogoImgError(true)}
+            />
+          )}
         </div>
         <div className="space-y-2">
-          <p className="text-sm font-medium text-foreground">Logo uploaded</p>
+          <p className="text-sm font-medium text-foreground">{logoImgError ? "Logo unavailable" : "Logo uploaded"}</p>
           <p className="text-xs text-muted-foreground">PNG, JPG, or SVG · Max 5 MB</p>
           <div className="flex gap-2">
             <button

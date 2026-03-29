@@ -67,6 +67,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const logoUrl = (isOwner ? settings?.logoUrl : ctxLogoUrl) ?? ctxLogoUrl ?? null;
   const initials = companyName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const [logoImgError, setLogoImgError] = useState(false);
 
   const pageTransition = {
     initial: { opacity: 0, y: 10 },
@@ -118,8 +119,13 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Logo */}
         <div className="flex items-center justify-between h-16 px-4 bg-primary border-b border-primary-foreground/10 flex-shrink-0">
           <Link href="/" className="flex items-center" onClick={() => setMobileMenuOpen(false)}>
-            {logoUrl ? (
-              <img src={`${base}${logoUrl}`} className="w-12 h-12 rounded-lg object-contain bg-white/10" alt="Logo" />
+            {logoUrl && !logoImgError ? (
+              <img
+                src={`${base}${logoUrl}`}
+                className="w-12 h-12 rounded-lg object-contain bg-white/10"
+                alt="Logo"
+                onError={() => setLogoImgError(true)}
+              />
             ) : (
               <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-accent-foreground font-display font-bold text-xl select-none">
                 {initials}
@@ -185,8 +191,13 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           {/* Mobile: show logo mark centered */}
           <div className="lg:hidden absolute left-1/2 -translate-x-1/2">
-            {logoUrl ? (
-              <img src={`${base}${logoUrl}`} className="w-8 h-8 rounded object-contain" alt="Logo" />
+            {logoUrl && !logoImgError ? (
+              <img
+                src={`${base}${logoUrl}`}
+                className="w-8 h-8 rounded object-contain"
+                alt="Logo"
+                onError={() => setLogoImgError(true)}
+              />
             ) : (
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-display font-bold text-sm select-none">
                 {initials}
