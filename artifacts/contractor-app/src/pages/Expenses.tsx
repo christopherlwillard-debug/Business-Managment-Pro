@@ -16,7 +16,35 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
 
-const CATEGORIES = ["Materials", "Tools/Equipment", "Fuel/Travel", "Subcontractor", "Insurance", "Office/Admin", "Other"];
+const CATEGORIES = [
+  "Materials",             // Sch C Line 4
+  "Advertising",           // Sch C Line 8
+  "Fuel/Travel",           // Sch C Line 9
+  "Subcontractor",         // Sch C Line 11
+  "Insurance",             // Sch C Line 15
+  "Professional Services", // Sch C Line 17
+  "Office/Admin",          // Sch C Line 18
+  "Rent/Lease",            // Sch C Line 20
+  "Repairs/Maintenance",   // Sch C Line 21
+  "Tools/Equipment",       // Sch C Line 22
+  "Utilities",             // Sch C Line 25
+  "Other",                 // Sch C Line 27
+];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  "Materials":             "Materials — Line 4 (Cost of Goods)",
+  "Advertising":           "Advertising — Line 8",
+  "Fuel/Travel":           "Fuel/Travel — Line 9 (Car & Truck)",
+  "Subcontractor":         "Subcontractor — Line 11 (Contract Labor)",
+  "Insurance":             "Insurance — Line 15",
+  "Professional Services": "Professional Services — Line 17",
+  "Office/Admin":          "Office/Admin — Line 18",
+  "Rent/Lease":            "Rent/Lease — Line 20",
+  "Repairs/Maintenance":   "Repairs/Maintenance — Line 21",
+  "Tools/Equipment":       "Tools/Equipment — Line 22 (Supplies)",
+  "Utilities":             "Utilities — Line 25",
+  "Other":                 "Other — Line 27",
+};
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const API = `${BASE}/api`;
 
@@ -419,13 +447,18 @@ function ExpenseDeleteConfirm({
 
 // ─── Expense View Modal ───────────────────────────────────────────────────────
 const CATEGORY_COLORS: Record<string, string> = {
-  "Materials":        "bg-amber-100 text-amber-700",
-  "Tools/Equipment":  "bg-blue-100 text-blue-700",
-  "Fuel/Travel":      "bg-green-100 text-green-700",
-  "Subcontractor":    "bg-purple-100 text-purple-700",
-  "Insurance":        "bg-cyan-100 text-cyan-700",
-  "Office/Admin":     "bg-gray-100 text-gray-600",
-  "Other":            "bg-orange-100 text-orange-700",
+  "Materials":             "bg-amber-100 text-amber-700",
+  "Advertising":           "bg-pink-100 text-pink-700",
+  "Fuel/Travel":           "bg-green-100 text-green-700",
+  "Subcontractor":         "bg-purple-100 text-purple-700",
+  "Insurance":             "bg-cyan-100 text-cyan-700",
+  "Professional Services": "bg-indigo-100 text-indigo-700",
+  "Office/Admin":          "bg-gray-100 text-gray-600",
+  "Rent/Lease":            "bg-violet-100 text-violet-700",
+  "Repairs/Maintenance":   "bg-red-100 text-red-700",
+  "Tools/Equipment":       "bg-blue-100 text-blue-700",
+  "Utilities":             "bg-sky-100 text-sky-700",
+  "Other":                 "bg-orange-100 text-orange-700",
 };
 
 function ExpenseViewModal({
@@ -784,7 +817,7 @@ function RecurringModal({
                 onChange={e => setCategory(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none"
               >
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
               </select>
             </div>
           </div>
@@ -1236,7 +1269,7 @@ export default function Expenses() {
                           <select value={editingRow.category}
                             onChange={e => setEditingRow(r => r && ({ ...r, category: e.target.value }))}
                             className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none">
-                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
                           </select>
                         </td>
                         <td className="px-3 py-2">
@@ -1486,7 +1519,7 @@ export default function Expenses() {
                   onChange={e => setCategory(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none"
                 >
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
                 </select>
               </div>
             </div>

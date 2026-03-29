@@ -14,16 +14,34 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-const CATEGORIES = ["Materials", "Tools/Equipment", "Fuel/Travel", "Subcontractor", "Insurance", "Office/Admin", "Other"];
+const CATEGORIES = [
+  "Materials",             // Sch C Line 4
+  "Advertising",           // Sch C Line 8
+  "Fuel/Travel",           // Sch C Line 9
+  "Subcontractor",         // Sch C Line 11
+  "Insurance",             // Sch C Line 15
+  "Professional Services", // Sch C Line 17
+  "Office/Admin",          // Sch C Line 18
+  "Rent/Lease",            // Sch C Line 20
+  "Repairs/Maintenance",   // Sch C Line 21
+  "Tools/Equipment",       // Sch C Line 22
+  "Utilities",             // Sch C Line 25
+  "Other",                 // Sch C Line 27
+];
 
 function guessCategory(text: string): string {
   const t = text.toLowerCase();
   if (/lumber|concrete|pipe|wire|paint|drywall|hardware|home depot|lowe|menards|material/.test(t)) return "Materials";
-  if (/tool|equipment|drill|saw|rent|compressor/.test(t)) return "Tools/Equipment";
-  if (/fuel|gas|mileage|travel|hotel|lodging|uber|lyft/.test(t)) return "Fuel/Travel";
+  if (/advertis|marketing|flyer|signage|logo|promo|ad agency/.test(t)) return "Advertising";
+  if (/fuel|gas station|mileage|travel|hotel|lodging|uber|lyft|toll/.test(t)) return "Fuel/Travel";
   if (/sub|labor|contractor/.test(t)) return "Subcontractor";
   if (/insurance|policy|premium/.test(t)) return "Insurance";
-  if (/office|supply|printer|software|phone|internet/.test(t)) return "Office/Admin";
+  if (/accountant|lawyer|legal|cpa|consultant|professional service/.test(t)) return "Professional Services";
+  if (/office|supply|supplies|printer|software/.test(t)) return "Office/Admin";
+  if (/rent|lease/.test(t)) return "Rent/Lease";
+  if (/repair|fix|maintenance|patch|service call/.test(t)) return "Repairs/Maintenance";
+  if (/tool|equipment|drill|saw|compressor/.test(t)) return "Tools/Equipment";
+  if (/electric|utility|utilities|power|water|sewer|internet|phone/.test(t)) return "Utilities";
   return "Other";
 }
 
@@ -75,7 +93,7 @@ Extract expense information from this text and return ONLY valid JSON (no markdo
   "vendor": "store or company name",
   "amount": 0.00,
   "date": "YYYY-MM-DD",
-  "category": "one of: Materials, Tools/Equipment, Fuel/Travel, Subcontractor, Insurance, Office/Admin, Other",
+  "category": "one of: Materials, Advertising, Fuel/Travel, Subcontractor, Insurance, Professional Services, Office/Admin, Rent/Lease, Repairs/Maintenance, Tools/Equipment, Utilities, Other",
   "notes": "any useful notes (optional, empty string if none)"
 }
 
@@ -103,7 +121,7 @@ Extract expense information from this receipt image and return ONLY valid JSON (
   "vendor": "store or company name",
   "amount": 0.00,
   "date": "YYYY-MM-DD",
-  "category": "one of: Materials, Tools/Equipment, Fuel/Travel, Subcontractor, Insurance, Office/Admin, Other",
+  "category": "one of: Materials, Advertising, Fuel/Travel, Subcontractor, Insurance, Professional Services, Office/Admin, Rent/Lease, Repairs/Maintenance, Tools/Equipment, Utilities, Other",
   "notes": "any useful notes (optional, empty string if none)"
 }
 
