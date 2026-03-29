@@ -39,7 +39,7 @@ function guessCategory(text: string): string {
   if (/accountant|lawyer|legal|cpa|consultant|professional service/.test(t)) return "Professional Services";
   if (/office|supply|supplies|printer|software/.test(t)) return "Office/Admin";
   if (/rent|lease/.test(t)) return "Rent/Lease";
-  if (/repair|fix|maintenance|patch|service call/.test(t)) return "Repairs/Maintenance";
+  if (/repair|fix|maintenance|patch|service call|service/.test(t)) return "Repairs/Maintenance";
   if (/tool|equipment|drill|saw|compressor/.test(t)) return "Tools/Equipment";
   if (/electric|utility|utilities|power|gas|water|sewer|internet|phone/.test(t)) return "Utilities";
   return "Other";
