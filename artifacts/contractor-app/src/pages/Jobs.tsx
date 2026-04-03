@@ -1331,7 +1331,7 @@ export default function Jobs() {
     if (!searchLower) return true;
     return (
       j.title?.toLowerCase().includes(searchLower) ||
-      j.clientId?.toString().includes(searchLower) ||
+      j.clientName?.toLowerCase().includes(searchLower) ||
       j.locationName?.toLowerCase().includes(searchLower) ||
       j.city?.toLowerCase().includes(searchLower) ||
       j.state?.toLowerCase().includes(searchLower)
