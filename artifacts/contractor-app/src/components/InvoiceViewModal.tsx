@@ -49,7 +49,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
 
   const workLocation = invoice.locationName || invoice.city || invoice.state;
 
-  const { isConnected: googleConnected, getToken, signIn } = useGoogleAuth();
+  const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn } = useGoogleAuth();
   const { toast } = useToast();
 
   const [showGmailCompose, setShowGmailCompose] = useState(false);
@@ -269,16 +269,24 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors">
               <Printer className="w-3.5 h-3.5" /> Print
             </button>
-            <button
-              onClick={handleGmailButtonClick}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showGmailCompose ? "bg-red-50 text-red-600" : "text-gray-500 hover:bg-gray-100"}`}
-              title={googleConnected ? "Send via Gmail" : "Connect Google to send via Gmail"}
+            <a
+              href={`mailto:${invoice.clientEmail ?? ""}?subject=${encodeURIComponent(`Invoice ${invoice.invoiceNumber} from ${companyName || "us"}`)}&body=${encodeURIComponent(`Hi,\n\nPlease find invoice ${invoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}.\n\nThank you,\n${companyName || ""}`)}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
+              title="Open in your email client"
             >
               <Mail className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">
-                {googleConnected ? "Gmail" : "Gmail"}
-              </span>
-            </button>
+              <span className="hidden sm:inline">Email</span>
+            </a>
+            {googleConfigured && (
+              <button
+                onClick={handleGmailButtonClick}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showGmailCompose ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-100"}`}
+                title={googleConnected ? "Send via Gmail" : "Connect Google to send via Gmail"}
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Gmail</span>
+              </button>
+            )}
             {onDelete && (
               <button onClick={onDelete}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">

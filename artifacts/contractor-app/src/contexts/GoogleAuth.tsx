@@ -144,7 +144,7 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback((onSuccess?: () => void) => {
     if (!tokenClientRef.current) return;
     if (onSuccess) pendingOnSuccessRef.current = onSuccess;
-    tokenClientRef.current.requestAccessToken({ prompt: "" });
+    tokenClientRef.current.requestAccessToken({ prompt: "select_account" });
   }, []);
 
   const signOut = useCallback(() => {
