@@ -1322,7 +1322,15 @@ export default function Expenses() {
               {yearExpenses.length} {yearExpenses.length === 1 ? "expense" : "expenses"}
             </span>
             <span className="text-muted-foreground">·</span>
-            <span className="font-bold text-foreground">{formatCurrency(yearTotal)}</span>
+            <span className="font-bold text-foreground">{formatCurrency(yearTotal)} total</span>
+            {yearExpenses.some(e => e.category !== "mileage") && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground text-xs">
+                  {formatCurrency(yearExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0))} excl. mileage
+                </span>
+              </>
+            )}
           </div>
         )}
 
