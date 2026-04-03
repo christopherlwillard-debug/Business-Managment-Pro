@@ -1,9 +1,19 @@
 import { Router } from "express";
+import multer from "multer";
 import { db } from "@workspace/db";
 import { complianceItemsTable } from "@workspace/db/schema";
+import type { ComplianceDocument } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
+const objectStorage = new ObjectStorageService();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+function toServingUrl(objectPath: string): string {
+  if (objectPath.startsWith("/objects/")) return `/api/storage/objects/${objectPath.slice("/objects/".length)}`;
+  return objectPath;
+}
 
 function format(item: any) {
   const today = new Date();
@@ -19,7 +29,17 @@ function format(item: any) {
     else computedStatus = "upcoming";
   }
 
-  return { ...item, computedStatus, daysUntilDue: diffDays };
+  const docs: ComplianceDocument[] = Array.isArray(item.documents) ? item.documents : [];
+  return {
+    ...item,
+    computedStatus,
+    daysUntilDue: diffDays,
+    enabled: item.enabled ?? true,
+    documents: docs.map(d => ({
+      ...d,
+      servingUrl: toServingUrl(d.objectPath),
+    })),
+  };
 }
 
 router.get("/", async (_req, res) => {
@@ -43,7 +63,17 @@ router.post("/", async (req, res) => {
     }
     const [item] = await db
       .insert(complianceItemsTable)
-      .values({ title: title.trim(), category: category || "Other", jurisdiction: jurisdiction || null, dueDate, recurrence: recurrence || "one-time", status: "upcoming", notes: notes || null })
+      .values({
+        title: title.trim(),
+        category: category || "Other",
+        jurisdiction: jurisdiction || null,
+        dueDate,
+        recurrence: recurrence || "one-time",
+        status: "upcoming",
+        notes: notes || null,
+        enabled: true,
+        documents: [],
+      })
       .returning();
     res.status(201).json(format(item));
   } catch (err) {
@@ -55,10 +85,17 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, category, jurisdiction, dueDate, recurrence, status, notes } = req.body;
+    const { title, category, jurisdiction, dueDate, recurrence, status, notes, enabled } = req.body;
+    const updateData: Record<string, any> = {
+      title, category,
+      jurisdiction: jurisdiction || null,
+      dueDate, recurrence, status,
+      notes: notes || null,
+    };
+    if (enabled !== undefined) updateData.enabled = enabled;
     const [item] = await db
       .update(complianceItemsTable)
-      .set({ title, category, jurisdiction: jurisdiction || null, dueDate, recurrence, status, notes: notes || null })
+      .set(updateData)
       .where(eq(complianceItemsTable.id, id))
       .returning();
     if (!item) return res.status(404).json({ error: "Not found" });
@@ -71,11 +108,79 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(complianceItemsTable).where(eq(complianceItemsTable.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id);
+    const [item] = await db.select().from(complianceItemsTable).where(eq(complianceItemsTable.id, id));
+    if (item && Array.isArray(item.documents)) {
+      for (const doc of item.documents as ComplianceDocument[]) {
+        try { await objectStorage.deleteObject(doc.objectPath); } catch {}
+      }
+    }
+    await db.delete(complianceItemsTable).where(eq(complianceItemsTable.id, id));
     res.status(204).send();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete" });
+  }
+});
+
+router.post("/:id/documents", upload.single("file"), async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+  try {
+    const id = parseInt(req.params.id);
+    const [item] = await db.select().from(complianceItemsTable).where(eq(complianceItemsTable.id, id));
+    if (!item) { res.status(404).json({ error: "Not found" }); return; }
+
+    const objectPath = await objectStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      `compliance-items/${id}`,
+      req.file.originalname,
+    );
+
+    const existing: ComplianceDocument[] = Array.isArray(item.documents) ? (item.documents as ComplianceDocument[]) : [];
+    const newDoc: ComplianceDocument = {
+      objectPath,
+      fileName: req.file.originalname,
+      uploadedAt: new Date().toISOString(),
+    };
+    const updated = [...existing, newDoc];
+
+    const [updatedItem] = await db
+      .update(complianceItemsTable)
+      .set({ documents: updated })
+      .where(eq(complianceItemsTable.id, id))
+      .returning();
+
+    res.json(format(updatedItem));
+  } catch (err) {
+    console.error("Document upload failed:", err);
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+router.delete("/:id/documents/:docIndex", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const docIndex = parseInt(req.params.docIndex);
+    const [item] = await db.select().from(complianceItemsTable).where(eq(complianceItemsTable.id, id));
+    if (!item) return res.status(404).json({ error: "Not found" });
+
+    const docs: ComplianceDocument[] = Array.isArray(item.documents) ? (item.documents as ComplianceDocument[]) : [];
+    if (docIndex < 0 || docIndex >= docs.length) return res.status(404).json({ error: "Document index out of range" });
+
+    const [removed] = docs.splice(docIndex, 1);
+    try { await objectStorage.deleteObject(removed.objectPath); } catch {}
+
+    const [updatedItem] = await db
+      .update(complianceItemsTable)
+      .set({ documents: docs })
+      .where(eq(complianceItemsTable.id, id))
+      .returning();
+
+    res.json(format(updatedItem));
+  } catch (err) {
+    console.error("Document delete failed:", err);
+    res.status(500).json({ error: "Delete failed" });
   }
 });
 

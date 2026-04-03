@@ -27,6 +27,7 @@ import uploadsRouter from "./uploads";
 import portalRouter from "./portal";
 import vendorsRouter from "./vendors";
 import complianceItemsRouter from "./compliance-items";
+import kyFilingSettingsRouter from "./ky-filing-settings";
 import expenseImportRouter from "./expense-import";
 import paymentsRouter from "./payments";
 import taxReportsRouter from "./tax-reports";
@@ -157,6 +158,7 @@ router.use("/subcontractors", sectionGuard("subcontractors"), subcontractorsRout
 router.use("/estimates", sectionGuard("estimates"), estimatesRouter);
 router.use("/daily-logs", sectionGuard("daily_logs"), dailyLogsRouter);
 router.use("/compliance-items", sectionGuard("compliance"), complianceItemsRouter);
+router.use("/ky-filing-settings", sectionGuard("compliance"), kyFilingSettingsRouter);
 
 router.use("/settings", requireOwnerForWrites, settingsRouter);
 router.use("/reports", reportsRouter);

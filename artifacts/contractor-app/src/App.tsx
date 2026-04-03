@@ -18,7 +18,6 @@ import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
 import Materials from "./pages/Materials";
-import Compliance from "./pages/Compliance";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
@@ -109,7 +108,6 @@ const SECTION_ROUTES: { section: SectionKey; href: string }[] = [
   { section: "mileage", href: "/mileage" },
   { section: "clients", href: "/clients" },
   { section: "subcontractors", href: "/subcontractors" },
-  { section: "compliance", href: "/compliance" },
   { section: "invoices", href: "/accounting" },
 ];
 
@@ -212,9 +210,6 @@ function AdminApp() {
         </Route>
         <Route path="/materials">
           <PermissionGuard ownerOnly><Materials /></PermissionGuard>
-        </Route>
-        <Route path="/compliance">
-          <PermissionGuard section="compliance"><Compliance /></PermissionGuard>
         </Route>
         <Route component={NotFound} />
       </Switch>

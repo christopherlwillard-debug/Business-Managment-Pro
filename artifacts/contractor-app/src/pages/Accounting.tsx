@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
   Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell,
   FileCheck, X, ChevronRight, Home,
+  Upload, Eye, EyeOff, Settings2, Paperclip,
 } from "lucide-react";
 import { useScheduleCReport } from "@workspace/api-client-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -256,10 +257,25 @@ const STATUS_CYCLE: FilingStatus[] = ["not-filed", "filed", "na"];
 
 // ─── Compliance Items ────────────────────────────────────────────────────────
 
+interface ComplianceDoc {
+  objectPath: string;
+  fileName: string;
+  uploadedAt: string;
+  servingUrl?: string;
+}
+
 interface ComplianceItem {
   id: number; title: string; category: string; jurisdiction: string | null;
   dueDate: string; recurrence: string; status: string; computedStatus: string;
   daysUntilDue: number; notes: string | null;
+  enabled: boolean;
+  documents: ComplianceDoc[];
+}
+
+interface KyFilingSetting {
+  filingId: string;
+  enabled: boolean;
+  documents: ComplianceDoc[];
 }
 
 const COMPLIANCE_CATEGORIES = [
@@ -321,6 +337,86 @@ function useDeleteComplianceItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => { await fetch(`${COMPLIANCE_API}/${id}`, { method: "DELETE" }); },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["compliance-items"] }),
+  });
+}
+
+const KY_SETTINGS_API = `${BASE}/api/ky-filing-settings`;
+
+function useKyFilingSettings() {
+  return useQuery<KyFilingSetting[]>({
+    queryKey: ["ky-filing-settings"],
+    queryFn: async () => {
+      const res = await fetch(KY_SETTINGS_API);
+      if (!res.ok) throw new Error("Failed to load KY filing settings");
+      return res.json();
+    },
+  });
+}
+
+function useUpdateKyFilingSetting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ filingId, enabled }: { filingId: string; enabled: boolean }) => {
+      const res = await fetch(`${KY_SETTINGS_API}/${filingId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ky-filing-settings"] }),
+  });
+}
+
+function useUploadKyFilingDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ filingId, file }: { filingId: string; file: File }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${KY_SETTINGS_API}/${filingId}/documents`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload failed");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ky-filing-settings"] }),
+  });
+}
+
+function useDeleteKyFilingDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ filingId, docIndex }: { filingId: string; docIndex: number }) => {
+      const res = await fetch(`${KY_SETTINGS_API}/${filingId}/documents/${docIndex}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ky-filing-settings"] }),
+  });
+}
+
+function useUploadComplianceItemDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: number; file: File }) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${COMPLIANCE_API}/${id}/documents`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload failed");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["compliance-items"] }),
+  });
+}
+
+function useDeleteComplianceItemDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, docIndex }: { id: number; docIndex: number }) => {
+      const res = await fetch(`${COMPLIANCE_API}/${id}/documents/${docIndex}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      return res.json();
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["compliance-items"] }),
   });
 }
@@ -1492,14 +1588,24 @@ function TaxCalendarTab({ year }: { year: number }) {
   });
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "due-soon" | "filed" | "na">("all");
+  const [showManage, setShowManage] = useState(false);
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
 
   const { data: items = [], isLoading: loadingItems } = useComplianceItems();
+  const { data: kySettings = [] } = useKyFilingSettings();
   const createItem = useCreateComplianceItem();
   const updateItem = useUpdateComplianceItem();
   const deleteItem = useDeleteComplianceItem();
+  const updateKyFilingSetting = useUpdateKyFilingSetting();
+  const uploadKyDoc = useUploadKyFilingDocument();
+  const deleteKyDoc = useDeleteKyFilingDocument();
+  const uploadCiDoc = useUploadComplianceItemDocument();
+  const deleteCiDoc = useDeleteComplianceItemDocument();
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<ComplianceItem | null>(null);
   const saving = createItem.isPending || updateItem.isPending;
+
+  const kySettingsMap = Object.fromEntries(kySettings.map(s => [s.filingId, s]));
 
   const getFilingStatus = useCallback((id: string): FilingStatus => statuses[id] ?? "not-filed", [statuses]);
   const cycleFilingStatus = useCallback((id: string) => {
@@ -1513,35 +1619,68 @@ function TaxCalendarTab({ year }: { year: number }) {
     });
   }, [storageKey]);
 
+  async function handleFileUpload(entityKey: string, file: File) {
+    setUploadingFor(entityKey);
+    try {
+      if (entityKey.startsWith("ky-")) {
+        const filingId = entityKey.slice(3);
+        await uploadKyDoc.mutateAsync({ filingId, file });
+      } else {
+        const id = parseInt(entityKey.slice(3));
+        await uploadCiDoc.mutateAsync({ id, file });
+      }
+    } finally {
+      setUploadingFor(null);
+    }
+  }
+
+  async function handleDocDelete(entityKey: string, docIndex: number) {
+    if (!confirm("Remove this document?")) return;
+    if (entityKey.startsWith("ky-")) {
+      const filingId = entityKey.slice(3);
+      await deleteKyDoc.mutateAsync({ filingId, docIndex });
+    } else {
+      const id = parseInt(entityKey.slice(3));
+      await deleteCiDoc.mutateAsync({ id, docIndex });
+    }
+  }
+
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  // Build unified list from both KY filings and compliance items
-  const kyEntries: UnifiedEntry[] = KY_FILINGS.map(f => {
-    const fs = getFilingStatus(f.id);
-    const dueDate = f.dueDate(year);
-    const us = computeUnifiedStatus(dueDate, fs === "filed", fs === "na", today);
-    return {
-      id: `ky-${f.id}`, kind: "ky", title: f.name, authority: f.authority,
-      dueDateObj: dueDate, dueDateLabel: f.dueDateLabel(year),
-      unifiedStatus: us, filing: f, filingStatus: fs,
-    };
-  });
+  // Build unified list from both KY filings (filtered by enabled) and compliance items
+  const kyEntries: UnifiedEntry[] = KY_FILINGS
+    .filter(f => {
+      const setting = kySettingsMap[f.id];
+      return setting ? setting.enabled : true;
+    })
+    .map(f => {
+      const fs = getFilingStatus(f.id);
+      const dueDate = f.dueDate(year);
+      const us = computeUnifiedStatus(dueDate, fs === "filed", fs === "na", today);
+      return {
+        id: `ky-${f.id}`, kind: "ky" as const, title: f.name, authority: f.authority,
+        dueDateObj: dueDate, dueDateLabel: f.dueDateLabel(year),
+        unifiedStatus: us, filing: f, filingStatus: fs,
+      };
+    });
 
-  const ciEntries: UnifiedEntry[] = items.map(i => {
-    const [y, m, d] = i.dueDate.split("-").map(Number);
-    const dueDate = new Date(y, m - 1, d);
-    const us = computeUnifiedStatus(
-      dueDate,
-      i.computedStatus === "complete",
-      false,
-      today,
-    );
-    return {
-      id: `ci-${i.id}`, kind: "ci", title: i.title, authority: i.category,
-      dueDateObj: dueDate, dueDateLabel: formatComplianceDate(i.dueDate),
-      unifiedStatus: us, item: i,
-    };
-  });
+  const ciEntries: UnifiedEntry[] = items
+    .filter(i => i.enabled !== false)
+    .map(i => {
+      const [y, m, d] = i.dueDate.split("-").map(Number);
+      const dueDate = new Date(y, m - 1, d);
+      const us = computeUnifiedStatus(
+        dueDate,
+        i.computedStatus === "complete",
+        false,
+        today,
+      );
+      return {
+        id: `ci-${i.id}`, kind: "ci" as const, title: i.title, authority: i.category,
+        dueDateObj: dueDate, dueDateLabel: formatComplianceDate(i.dueDate),
+        unifiedStatus: us, item: i,
+      };
+    });
 
   const allEntries: UnifiedEntry[] = [...kyEntries, ...ciEntries].sort((a, b) => {
     // Primary: due date ascending (null/no-date entries pushed to end)
@@ -1651,7 +1790,7 @@ function TaxCalendarTab({ year }: { year: number }) {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           {statusFilter !== "all" && (
             <>
@@ -1662,18 +1801,81 @@ function TaxCalendarTab({ year }: { year: number }) {
             </>
           )}
           {statusFilter === "all" && (
-            <span className="text-xs text-muted-foreground">{allEntries.length} total items, sorted by due date</span>
+            <span className="text-xs text-muted-foreground">{allEntries.length} active items, sorted by due date</span>
           )}
         </div>
-        {canEdit("invoices") && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => { setShowForm(true); setEditTarget(null); }}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
+            onClick={() => setShowManage(v => !v)}
+            className={`flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold transition-all ${showManage ? "bg-primary/10 text-primary border border-primary/30" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
           >
-            <Plus className="w-3.5 h-3.5" /> Add Item
+            <Settings2 className="w-3.5 h-3.5" /> Manage Items
           </button>
-        )}
+          {canEdit("invoices") && (
+            <button
+              onClick={() => { setShowForm(true); setEditTarget(null); }}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Item
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Manage Items panel */}
+      {showManage && (
+        <div className="bg-white rounded-2xl border border-primary/20 shadow-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-bold text-gray-900 text-base flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-primary" />
+              Manage Visible Items
+            </h4>
+            <button onClick={() => setShowManage(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">Toggle items off to hide them from the calendar. Data is preserved and can be re-enabled at any time.</p>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Built-in Filings (KY/Federal)</p>
+            {KY_FILINGS.map(f => {
+              const setting = kySettingsMap[f.id];
+              const isEnabled = setting ? setting.enabled : true;
+              return (
+                <div key={f.id} className="flex items-center justify-between py-2 px-3 rounded-xl hover:bg-muted/40 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{f.name}</p>
+                    <p className="text-xs text-muted-foreground">{f.authority}</p>
+                  </div>
+                  <button
+                    onClick={() => updateKyFilingSetting.mutate({ filingId: f.id, enabled: !isEnabled })}
+                    className={`ml-3 flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${isEnabled ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                  >
+                    {isEnabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    {isEnabled ? "Visible" : "Hidden"}
+                  </button>
+                </div>
+              );
+            })}
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-4 mb-2">My Custom Items</p>
+            {items.length === 0 && <p className="text-xs text-muted-foreground px-3">No custom items added yet.</p>}
+            {items.map(item => (
+              <div key={item.id} className="flex items-center justify-between py-2 px-3 rounded-xl hover:bg-muted/40 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
+                  <p className="text-xs text-muted-foreground">{item.category}</p>
+                </div>
+                <button
+                  onClick={() => updateItem.mutate({ id: item.id, ...item, enabled: !item.enabled })}
+                  className={`ml-3 flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${item.enabled !== false ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                >
+                  {item.enabled !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  {item.enabled !== false ? "Visible" : "Hidden"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Unified sorted list */}
       {loadingItems && items.length === 0 ? (
@@ -1747,6 +1949,38 @@ function TaxCalendarTab({ year }: { year: number }) {
                         <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                         <p className="text-xs text-red-700"><strong>Penalty:</strong> {filing.penalty}</p>
                       </div>
+                      {/* Documents section */}
+                      {(() => {
+                        const entityKey = `ky-${filing.id}`;
+                        const kyDoc = kySettingsMap[filing.id];
+                        const docs: ComplianceDoc[] = kyDoc?.documents ?? [];
+                        const isUploading = uploadingFor === entityKey;
+                        return (
+                          <div className="border-t border-border/30 pt-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Paperclip className="w-3 h-3" /> Documents</span>
+                              <label className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${isUploading ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
+                                {isUploading ? <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Upload className="w-3 h-3" />}
+                                {isUploading ? "Uploading…" : "Attach"}
+                                <input type="file" className="hidden" disabled={isUploading}
+                                  onChange={e => { const f = e.target.files?.[0]; if (f) { handleFileUpload(entityKey, f); e.target.value = ""; } }} />
+                              </label>
+                            </div>
+                            {docs.length === 0 && <p className="text-xs text-muted-foreground italic">No documents attached.</p>}
+                            {docs.map((doc, idx) => (
+                              <div key={idx} className="flex items-center gap-2 bg-muted/30 rounded-lg px-2.5 py-1.5">
+                                <Paperclip className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                                <a href={`${BASE}${doc.servingUrl ?? `/api/storage/objects${doc.objectPath.slice("/objects".length)}`}`} target="_blank" rel="noopener noreferrer"
+                                  className="flex-1 text-xs text-primary hover:underline truncate">{doc.fileName}</a>
+                                <button onClick={() => handleDocDelete(entityKey, idx)}
+                                  className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -1765,51 +1999,93 @@ function TaxCalendarTab({ year }: { year: number }) {
                 : s === "filed" ? "bg-emerald-400"
                 : "bg-blue-400";
 
+              const ciEntityKey = `ci-${item.id}`;
+              const isCiUploading = uploadingFor === ciEntityKey;
+              const ciDocs: ComplianceDoc[] = Array.isArray(item.documents) ? item.documents : [];
+
               return (
-                <div key={entry.id} className={`bg-card rounded-2xl border shadow-sm p-4 flex gap-4 transition-all hover:shadow-md ${borderCls} ${s === "filed" ? "opacity-70" : ""}`}>
-                  <div className={`flex-shrink-0 w-1 rounded-full ${barCls}`} />
-                  <div className="text-xl flex-shrink-0 mt-0.5">{complianceCategoryIcon(item.category)}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                          <span className={`font-semibold text-foreground leading-tight text-sm ${s === "filed" ? "line-through opacity-60" : ""}`}>{item.title}</span>
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 uppercase tracking-wide">My Item</span>
-                          {badge && <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>{badge.label}</span>}
+                <div key={entry.id} className={`bg-card rounded-2xl border shadow-sm transition-all hover:shadow-md ${borderCls} ${s === "filed" ? "opacity-70" : ""} overflow-hidden`}>
+                  <div className="p-4 flex gap-4">
+                    <div className={`flex-shrink-0 w-1 rounded-full ${barCls}`} />
+                    <div className="text-xl flex-shrink-0 mt-0.5">{complianceCategoryIcon(item.category)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                            <span className={`font-semibold text-foreground leading-tight text-sm ${s === "filed" ? "line-through opacity-60" : ""}`}>{item.title}</span>
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 uppercase tracking-wide">My Item</span>
+                            {badge && <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>{badge.label}</span>}
+                            {ciDocs.length > 0 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700">
+                                <Paperclip className="w-2.5 h-2.5" />{ciDocs.length}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {s === "filed" ? "Completed" : item.daysUntilDue < 0 ? `${Math.abs(item.daysUntilDue)}d overdue` : item.daysUntilDue === 0 ? "Due today" : `${item.daysUntilDue}d away`}
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {s === "filed" ? "Completed" : item.daysUntilDue < 0 ? `${Math.abs(item.daysUntilDue)}d overdue` : item.daysUntilDue === 0 ? "Due today" : `${item.daysUntilDue}d away`}
-                        </p>
-                      </div>
-                      {canEdit("invoices") && (
                         <div className="flex gap-1 flex-shrink-0">
-                          <button onClick={() => handleToggleComplete(item)} title={s === "filed" ? "Mark upcoming" : "Mark complete"}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => { setEditTarget(item); setShowForm(false); }} title="Edit"
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => handleDelete(item.id)} title="Delete"
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
-                            <Trash2 className="w-3.5 h-3.5" />
+                          {canEdit("invoices") && (
+                            <>
+                              <button onClick={() => handleToggleComplete(item)} title={s === "filed" ? "Mark upcoming" : "Mark complete"}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                                <CheckCircle2 className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => { setEditTarget(item); setShowForm(false); }} title="Edit"
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => handleDelete(item.id)} title="Delete"
+                                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => setExpandedIds(prev => ({ ...prev, [entry.id]: !prev[entry.id] }))}
+                            className="w-7 h-7 rounded-lg bg-muted/60 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground">
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                           </button>
                         </div>
+                      </div>
+                      <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><CalendarClock className="w-3 h-3" />{formatComplianceDate(item.dueDate)}</span>
+                        {item.jurisdiction && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{item.jurisdiction}</span>}
+                        {item.recurrence !== "one-time" && (
+                          <span className="flex items-center gap-1 capitalize"><RefreshCw className="w-3 h-3" />{COMPLIANCE_RECURRENCES.find(r => r.value === item.recurrence)?.label}</span>
+                        )}
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px]">{item.category}</span>
+                      </div>
+                      {item.notes && (
+                        <p className="mt-2 text-xs text-muted-foreground leading-relaxed bg-muted/30 rounded-lg px-2.5 py-1.5 border border-border">{item.notes}</p>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><CalendarClock className="w-3 h-3" />{formatComplianceDate(item.dueDate)}</span>
-                      {item.jurisdiction && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{item.jurisdiction}</span>}
-                      {item.recurrence !== "one-time" && (
-                        <span className="flex items-center gap-1 capitalize"><RefreshCw className="w-3 h-3" />{COMPLIANCE_RECURRENCES.find(r => r.value === item.recurrence)?.label}</span>
-                      )}
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px]">{item.category}</span>
-                    </div>
-                    {item.notes && (
-                      <p className="mt-2 text-xs text-muted-foreground leading-relaxed bg-muted/30 rounded-lg px-2.5 py-1.5 border border-border">{item.notes}</p>
-                    )}
                   </div>
+                  {isExpanded && (
+                    <div className="border-t border-border/50 px-4 py-3 bg-background/50 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Paperclip className="w-3 h-3" /> Documents</span>
+                        <label className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${isCiUploading ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
+                          {isCiUploading ? <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Upload className="w-3 h-3" />}
+                          {isCiUploading ? "Uploading…" : "Attach"}
+                          <input type="file" className="hidden" disabled={isCiUploading}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) { handleFileUpload(ciEntityKey, f); e.target.value = ""; } }} />
+                        </label>
+                      </div>
+                      {ciDocs.length === 0 && <p className="text-xs text-muted-foreground italic">No documents attached.</p>}
+                      {ciDocs.map((doc, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-muted/30 rounded-lg px-2.5 py-1.5">
+                          <Paperclip className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                          <a href={`${BASE}${doc.servingUrl ?? `/api/storage/objects${doc.objectPath.slice("/objects".length)}`}`} target="_blank" rel="noopener noreferrer"
+                            className="flex-1 text-xs text-primary hover:underline truncate">{doc.fileName}</a>
+                          <button onClick={() => handleDocDelete(ciEntityKey, idx)}
+                            className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             }
