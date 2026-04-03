@@ -763,6 +763,12 @@ export default function Invoices() {
         },
       });
 
+      // Invoice created — close the form immediately
+      queryClient.invalidateQueries();
+      resetForm();
+      setOpen(false);
+
+      // Attach material list as a separate, non-fatal post-create step
       if (pendingMaterialList && (newInvoice as any)?.id) {
         const invoiceId = (newInvoice as any).id;
         const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -787,18 +793,19 @@ export default function Invoices() {
           }
         } catch { /* PDF upload failure is non-fatal */ }
 
-        await attachMaterialList.mutateAsync({
-          id: pendingMaterialList.id,
-          invoiceId,
-          attachmentUrl,
-          attachmentName,
-          attachmentSize,
-        });
+        try {
+          await attachMaterialList.mutateAsync({
+            id: pendingMaterialList.id,
+            invoiceId,
+            attachmentUrl,
+            attachmentName,
+            attachmentSize,
+          });
+          queryClient.invalidateQueries();
+        } catch {
+          // Invoice was already created; attachment failed silently
+        }
       }
-
-      queryClient.invalidateQueries();
-      resetForm();
-      setOpen(false);
     } catch {
       setFormError("Failed to create invoice. Please try again.");
     } finally {
