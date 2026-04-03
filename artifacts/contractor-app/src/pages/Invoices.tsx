@@ -10,10 +10,12 @@ import {
   useDeleteInvoice,
   useGetSettings,
   useListMaterialLists,
+  useAttachMaterialListToInvoice,
   Invoice,
   InvoiceAttachment,
   type MaterialList,
 } from "@workspace/api-client-react";
+import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -43,6 +45,7 @@ function InvoiceBuilder({
   submitting, formError, onSubmit, onCancel,
   isNewClient, setIsNewClient, clientInput, setClientInput,
   attachments, onAttachmentsChange,
+  pendingMaterialList, onPendingMaterialListChange,
 }: {
   form: any; setField: (k: string, v: string) => void;
   lineItems: LineItem[]; setLineItems: React.Dispatch<React.SetStateAction<LineItem[]>>;
@@ -52,6 +55,8 @@ function InvoiceBuilder({
   isNewClient: boolean; setIsNewClient: (v: boolean) => void;
   clientInput: string; setClientInput: (v: string) => void;
   attachments: InvoiceAttachment[]; onAttachmentsChange: (a: InvoiceAttachment[]) => void;
+  pendingMaterialList: MaterialList | null;
+  onPendingMaterialListChange: (list: MaterialList | null) => void;
 }) {
   const [showClientDrop, setShowClientDrop] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -63,18 +68,6 @@ function InvoiceBuilder({
   const { data: jobMaterialLists = [] } = useListMaterialLists(
     jobIdNum ? { jobId: jobIdNum } : undefined
   );
-
-  function addMaterialListAsLine(list: MaterialList) {
-    const markupMult = list.markup / 100 + 1;
-    const listTotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
-    const desc = `Materials \u2013 ${list.name}`;
-    const existing = lineItems.findIndex(l => l.description === desc);
-    if (existing >= 0) {
-      setLineItems(ls => ls.map((l, i) => i === existing ? { ...l, unitPrice: parseFloat(listTotal.toFixed(2)) } : l));
-    } else {
-      setLineItems(ls => [...ls, { description: desc, quantity: 1, unitPrice: parseFloat(listTotal.toFixed(2)) }]);
-    }
-  }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -471,40 +464,48 @@ function InvoiceBuilder({
               </button>
 
               {/* ── Material Lists (from linked job) ── */}
-              {form.jobId && jobMaterialLists.length > 0 && (
+              {form.jobId && (
                 <div className="mt-4 border-t border-gray-100 pt-3">
                   <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 flex items-center gap-1">
-                    <Package className="w-3 h-3" /> Material Lists for This Job
+                    <Package className="w-3 h-3" /> Attach Material List
                   </p>
-                  <div className="flex flex-col gap-1.5">
-                    {jobMaterialLists.map(list => {
-                      const markupMult = list.markup / 100 + 1;
-                      const listTotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
-                      const desc = `Materials \u2013 ${list.name}`;
-                      const alreadyAdded = lineItems.some(l => l.description === desc);
-                      return (
-                        <div key={list.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50/60 rounded-lg border border-amber-100">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 truncate">{list.name}</p>
-                            <p className="text-[10px] text-gray-400">{list.items.length} item{list.items.length !== 1 ? "s" : ""} · {formatCurrency(listTotal)}</p>
+                  {jobMaterialLists.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">No material lists for this job yet — create one in Materials.</p>
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      {jobMaterialLists.map(list => {
+                        const markupMult = list.markup / 100 + 1;
+                        const listTotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
+                        const isSelected = pendingMaterialList?.id === list.id;
+                        return (
+                          <div key={list.id} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border transition-colors ${isSelected ? "bg-emerald-50 border-emerald-300" : "bg-amber-50/60 border-amber-100"}`}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-gray-800 truncate">{list.name}</p>
+                              <p className="text-[10px] text-gray-400">{list.items.length} item{list.items.length !== 1 ? "s" : ""} · {formatCurrency(listTotal)} (incl. {list.markup}% markup)</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => onPendingMaterialListChange(isSelected ? null : list)}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
+                                isSelected
+                                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                  : "bg-amber-500 text-white hover:bg-amber-600"
+                              }`}
+                            >
+                              {isSelected
+                                ? <><Check className="w-3 h-3" /> Selected</>
+                                : "Select"}
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => addMaterialListAsLine(list)}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
-                              alreadyAdded
-                                ? "bg-emerald-100 text-emerald-700 cursor-default"
-                                : "bg-amber-500 text-white hover:bg-amber-600"
-                            }`}
-                          >
-                            {alreadyAdded
-                              ? <><Check className="w-3 h-3" /> Added</>
-                              : <><Plus className="w-3 h-3" /> Add to Invoice</>}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                      {pendingMaterialList && (
+                        <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                          "{pendingMaterialList.name}" will be added to the invoice as a line item + PDF attachment on save.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -651,6 +652,7 @@ export default function Invoices() {
   const createClientMutation    = useCreateClient();
   const updateStatus            = useUpdateInvoiceStatus();
   const deleteInvoice           = useDeleteInvoice();
+  const attachMaterialList      = useAttachMaterialListToInvoice();
 
   const [form, setFormState] = useState({
     clientId: "", jobId: "",
@@ -662,6 +664,7 @@ export default function Invoices() {
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
   const [invoiceAttachments, setInvoiceAttachments] = useState<InvoiceAttachment[]>([]);
+  const [pendingMaterialList, setPendingMaterialList] = useState<MaterialList | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError,  setFormError]  = useState("");
   const [isNewClient, setIsNewClient] = useState(false);
@@ -691,6 +694,7 @@ export default function Invoices() {
     });
     setLineItems([emptyLine()]);
     setInvoiceAttachments([]);
+    setPendingMaterialList(null);
     setFormError("");
     setClientInput("");
     setIsNewClient(false);
@@ -711,7 +715,7 @@ export default function Invoices() {
         resolvedClientId = (nc as any).id;
         queryClient.invalidateQueries({ queryKey: ["listClients"] });
       }
-      await createInvoice.mutateAsync({
+      const newInvoice = await createInvoice.mutateAsync({
         data: {
           clientId:  resolvedClientId,
           jobId:     form.jobId    ? parseInt(form.jobId)    : undefined,
@@ -730,6 +734,40 @@ export default function Invoices() {
           attachments: invoiceAttachments,
         },
       });
+
+      if (pendingMaterialList && (newInvoice as any)?.id) {
+        const invoiceId = (newInvoice as any).id;
+        const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+        let attachmentUrl: string | undefined;
+        let attachmentName: string | undefined;
+        let attachmentSize: number | undefined;
+        try {
+          const pdfBlob = generateMaterialListPdf(
+            pendingMaterialList,
+            undefined,
+            (settings as any)?.companyName ?? undefined
+          );
+          const fd = new FormData();
+          const filename = `material-list-${pendingMaterialList.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
+          fd.append("file", pdfBlob, filename);
+          const uploadRes = await fetch(`${base}/api/uploads`, { method: "POST", body: fd });
+          if (uploadRes.ok) {
+            const uploaded = await uploadRes.json() as { url: string; filename: string; size: number };
+            attachmentUrl = uploaded.url;
+            attachmentName = `Material List \u2013 ${pendingMaterialList.name}.pdf`;
+            attachmentSize = uploaded.size;
+          }
+        } catch { /* PDF upload failure is non-fatal */ }
+
+        await attachMaterialList.mutateAsync({
+          id: pendingMaterialList.id,
+          invoiceId,
+          attachmentUrl,
+          attachmentName,
+          attachmentSize,
+        });
+      }
+
       queryClient.invalidateQueries();
       resetForm();
       setOpen(false);
@@ -942,6 +980,8 @@ export default function Invoices() {
               clientInput={clientInput} setClientInput={setClientInput}
               attachments={invoiceAttachments}
               onAttachmentsChange={setInvoiceAttachments}
+              pendingMaterialList={pendingMaterialList}
+              onPendingMaterialListChange={setPendingMaterialList}
             />
           </div>
         </div>

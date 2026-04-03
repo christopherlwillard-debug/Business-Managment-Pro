@@ -325,57 +325,51 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       ? { name: attachmentName ?? `Material List – ${list.name}.html`, url: attachmentUrl, size: attachmentSize ?? null }
       : null;
 
-    if (existingInvoice && existingInvoice.status === "draft") {
-      const rawItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems : [];
-      const lineItems = rawItems as LineItem[];
-      const matIdx = lineItems.findIndex((li) => li.description === "Materials");
-      const newLineItem: LineItem = {
-        id: matIdx >= 0 ? lineItems[matIdx].id : (lineItems.length + 1),
-        ...lineItemEntry,
-      };
-      const newItems: LineItem[] = matIdx >= 0
-        ? lineItems.map((li, i) => i === matIdx ? newLineItem : li)
-        : [...lineItems, newLineItem];
-
-      const subtotal = newItems.reduce((s, li) => s + (li.quantity * li.unitPrice), 0);
-      const taxRate = existingInvoice.taxRate ? parseFloat(existingInvoice.taxRate) : 0;
-      const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
-
-      const rawAttachments = Array.isArray(existingInvoice.attachments) ? existingInvoice.attachments : [];
-      const existingAttachments = rawAttachments as InvoiceAttachment[];
-      const updatedAttachments: InvoiceAttachment[] = newAttachment
-        ? [...existingAttachments.filter(a => a.name !== newAttachment.name), newAttachment]
-        : existingAttachments;
-
-      await db.update(invoicesTable).set({
-        lineItems: newItems,
-        subtotal: subtotal.toFixed(2),
-        taxAmount: taxAmount.toFixed(2),
-        total: (subtotal + taxAmount).toFixed(2),
-        attachments: updatedAttachments,
-      }).where(eq(invoicesTable.id, existingInvoice.id));
-
-      return res.json({ invoiceId: existingInvoice.id, created: false });
+    if (targetInvoiceId) {
+      if (!existingInvoice) {
+        return res.status(400).json({ error: "Invoice not found." });
+      }
+      if (existingInvoice.status !== "draft") {
+        return res.status(400).json({ error: "Invoice is not a draft and cannot be modified." });
+      }
+    } else {
+      if (!existingInvoice) {
+        return res.json({ invoiceId: null, created: false });
+      }
     }
 
-    const today = new Date().toISOString().split("T")[0];
-    const invoiceNumber = await getNextInvoiceNumber();
-    const subtotal = parseFloat(totalCost.toFixed(2));
-    const lineItems = [{ id: 1, ...lineItemEntry }];
+    const invoice = existingInvoice!;
 
-    const [newInvoice] = await db.insert(invoicesTable).values({
-      invoiceNumber,
-      jobId: list.jobId,
-      status: "draft",
-      issueDate: today,
+    const rawItems = Array.isArray(invoice.lineItems) ? invoice.lineItems : [];
+    const lineItems = rawItems as LineItem[];
+    const matIdx = lineItems.findIndex((li) => li.description === "Materials");
+    const newLineItem: LineItem = {
+      id: matIdx >= 0 ? lineItems[matIdx].id : (lineItems.length + 1),
+      ...lineItemEntry,
+    };
+    const newItems: LineItem[] = matIdx >= 0
+      ? lineItems.map((li, i) => i === matIdx ? newLineItem : li)
+      : [...lineItems, newLineItem];
+
+    const subtotal = newItems.reduce((s, li) => s + (li.quantity * li.unitPrice), 0);
+    const taxRate = invoice.taxRate ? parseFloat(invoice.taxRate) : 0;
+    const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
+
+    const rawAttachments = Array.isArray(invoice.attachments) ? invoice.attachments : [];
+    const existingAttachments = rawAttachments as InvoiceAttachment[];
+    const updatedAttachments: InvoiceAttachment[] = newAttachment
+      ? [...existingAttachments.filter(a => a.name !== newAttachment.name), newAttachment]
+      : existingAttachments;
+
+    await db.update(invoicesTable).set({
+      lineItems: newItems,
       subtotal: subtotal.toFixed(2),
-      taxAmount: "0",
-      total: subtotal.toFixed(2),
-      lineItems,
-      attachments: newAttachment ? [newAttachment] : [],
-    }).returning();
+      taxAmount: taxAmount.toFixed(2),
+      total: (subtotal + taxAmount).toFixed(2),
+      attachments: updatedAttachments,
+    }).where(eq(invoicesTable.id, invoice.id));
 
-    return res.json({ invoiceId: newInvoice.id, created: true });
+    return res.json({ invoiceId: invoice.id, created: false });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to attach to invoice" });
