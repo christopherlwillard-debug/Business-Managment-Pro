@@ -11,9 +11,12 @@ import {
   useGetSettings,
   useListMaterialLists,
   useAttachMaterialListToInvoice,
+  useListMaterials,
   Invoice,
   InvoiceAttachment,
   type MaterialList,
+  type Material,
+  type Job,
 } from "@workspace/api-client-react";
 import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,6 +28,7 @@ import {
   Paperclip, Upload, Package,
 } from "lucide-react";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
+import { MaterialListDialog } from "@/pages/Materials";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface LineItem { description: string; quantity: number; unitPrice: number; }
@@ -60,6 +64,7 @@ function InvoiceBuilder({
 }) {
   const [showClientDrop, setShowClientDrop] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [showNewListDialog, setShowNewListDialog] = useState(false);
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -68,6 +73,7 @@ function InvoiceBuilder({
   const { data: jobMaterialLists = [] } = useListMaterialLists(
     jobIdNum ? { jobId: jobIdNum } : undefined
   );
+  const { data: allMaterials = [] } = useListMaterials();
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -134,6 +140,7 @@ function InvoiceBuilder({
   const docSelect = "bg-transparent border-0 border-b border-transparent focus:border-amber-400 focus:outline-none focus:bg-amber-50/40 rounded-none transition-colors text-inherit font-inherit cursor-pointer px-0.5";
 
   return (
+    <>
     <form onSubmit={onSubmit} className="flex flex-col h-full">
 
       {/* Action bar */}
@@ -466,11 +473,20 @@ function InvoiceBuilder({
               {/* ── Material Lists (from linked job) ── */}
               {form.jobId && (
                 <div className="mt-4 border-t border-gray-100 pt-3">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 flex items-center gap-1">
-                    <Package className="w-3 h-3" /> Attach Material List
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-1">
+                      <Package className="w-3 h-3" /> Attach Material List
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewListDialog(true)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-amber-700 border border-amber-200 hover:bg-amber-50 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> New List
+                    </button>
+                  </div>
                   {jobMaterialLists.length === 0 ? (
-                    <p className="text-[11px] text-gray-400 italic">No material lists for this job yet — create one in Materials.</p>
+                    <p className="text-[11px] text-gray-400 italic">No material lists for this job yet.</p>
                   ) : (
                     <div className="flex flex-col gap-1.5">
                       {jobMaterialLists.map(list => {
@@ -594,6 +610,17 @@ function InvoiceBuilder({
         </div>
       </div>
     </form>
+    {showNewListDialog && (
+      <MaterialListDialog
+        open={showNewListDialog}
+        onClose={() => setShowNewListDialog(false)}
+        editList={null}
+        materials={allMaterials as Material[]}
+        jobs={jobs as Job[]}
+        initialJobId={jobIdNum}
+      />
+    )}
+    </>
   );
 }
 

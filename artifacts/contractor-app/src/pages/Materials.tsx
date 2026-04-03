@@ -10,6 +10,7 @@ import {
   useUpdateMaterialList,
   useDeleteMaterialList,
   useAttachMaterialListToInvoice,
+  useListInvoices,
   type MaterialList,
   type MaterialListItem,
   type MaterialListItemInput,
@@ -32,24 +33,26 @@ function emptyMaterialForm(): Partial<Material> {
 }
 
 // ─── Material List Editor Dialog ───────────────────────────────────────────────
-function MaterialListDialog({
+export function MaterialListDialog({
   open,
   onClose,
   editList,
   materials,
   jobs,
+  initialJobId,
 }: {
   open: boolean;
   onClose: () => void;
   editList: MaterialList | null;
   materials: Material[];
   jobs: Job[];
+  initialJobId?: number;
 }) {
   const createList = useCreateMaterialList();
   const updateList = useUpdateMaterialList();
 
   const [name, setName] = useState(editList?.name ?? "");
-  const [jobId, setJobId] = useState<number | "">(editList?.jobId ?? "");
+  const [jobId, setJobId] = useState<number | "">(editList?.jobId ?? initialJobId ?? "");
   const [markup, setMarkup] = useState(editList?.markup ?? 40);
   const [items, setItems] = useState<MaterialListItemInput[]>(
     editList?.items.map(i => ({
@@ -319,14 +322,22 @@ function MaterialListCard({
   const [expanded, setExpanded] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [attachMsg, setAttachMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showInvoicePicker, setShowInvoicePicker] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | "">("");
   const attachMutation = useAttachMaterialListToInvoice();
   const { data: settings } = useGetSettings();
+  const { data: allInvoices = [] } = useListInvoices({ status: "draft" });
+
+  const draftInvoicesForJob = list.jobId
+    ? (allInvoices as any[]).filter((inv: any) => inv.jobId === list.jobId)
+    : [];
 
   const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * (list.markup / 100 + 1), 0);
 
-  async function handleAttach() {
+  async function handleAttach(invoiceId: number) {
     setAttaching(true);
     setAttachMsg(null);
+    setShowInvoicePicker(false);
     try {
       const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -344,25 +355,40 @@ function MaterialListCard({
         if (uploadRes.ok) {
           const uploaded = await uploadRes.json() as { url: string; filename: string; size: number };
           attachmentUrl = uploaded.url;
-          attachmentName = `Material List – ${list.name}.pdf`;
+          attachmentName = `Material List \u2013 ${list.name}.pdf`;
           attachmentSize = uploaded.size;
         } else {
           pdfUploadFailed = true;
         }
       } catch { pdfUploadFailed = true; }
 
-      const res = await attachMutation.mutateAsync({ id: list.id, attachmentUrl, attachmentName, attachmentSize });
+      const invLabel = (allInvoices as any[]).find((inv: any) => inv.id === invoiceId)?.invoiceNumber || `#${invoiceId}`;
+      const res = await attachMutation.mutateAsync({ id: list.id, invoiceId, attachmentUrl, attachmentName, attachmentSize });
       if (res.invoiceId) {
-        const successMsg = `Added to invoice draft for ${list.jobTitle || "job"}.`;
-        setAttachMsg({ ok: true, text: pdfUploadFailed ? `${successMsg} (PDF attachment could not be uploaded.)` : successMsg });
+        const successMsg = `Added to invoice ${invLabel}.`;
+        setAttachMsg({ ok: true, text: pdfUploadFailed ? `${successMsg} (PDF could not be uploaded.)` : successMsg });
       } else {
-        setAttachMsg({ ok: false, text: "No draft invoice found for this job. Create one first." });
+        setAttachMsg({ ok: false, text: "Failed to attach." });
       }
     } catch {
       setAttachMsg({ ok: false, text: "Failed to attach. Please try again." });
     } finally {
       setAttaching(false);
     }
+  }
+
+  function handleAttachClick() {
+    setAttachMsg(null);
+    if (draftInvoicesForJob.length === 0) {
+      setAttachMsg({ ok: false, text: "No draft invoice for this job. Create one in Invoices first." });
+      return;
+    }
+    if (draftInvoicesForJob.length === 1) {
+      handleAttach(draftInvoicesForJob[0].id);
+      return;
+    }
+    setSelectedInvoiceId(draftInvoicesForJob[0].id);
+    setShowInvoicePicker(true);
   }
 
   return (
@@ -415,14 +441,46 @@ function MaterialListCard({
         {/* Attach to invoice */}
         {list.jobId && (
           <div className="mt-3">
-            <button
-              onClick={handleAttach}
-              disabled={attaching}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-60"
-            >
-              <Link2 className="w-3.5 h-3.5" />
-              {attaching ? "Attaching…" : "Attach to Job Invoice"}
-            </button>
+            {!showInvoicePicker ? (
+              <button
+                onClick={handleAttachClick}
+                disabled={attaching}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-60"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                {attaching ? "Attaching…" : "Attach to Invoice"}
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Select draft invoice:</p>
+                <select
+                  value={selectedInvoiceId}
+                  onChange={e => setSelectedInvoiceId(Number(e.target.value))}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                >
+                  {draftInvoicesForJob.map((inv: any) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.invoiceNumber || `Invoice #${inv.id}`}{inv.clientName ? ` \u2013 ${inv.clientName}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { if (selectedInvoiceId) handleAttach(Number(selectedInvoiceId)); }}
+                    disabled={!selectedInvoiceId || attaching}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors disabled:opacity-60"
+                  >
+                    <Link2 className="w-3 h-3" /> Attach
+                  </button>
+                  <button
+                    onClick={() => setShowInvoicePicker(false)}
+                    className="px-3 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             {attachMsg && (
               <p className={`mt-1.5 text-xs ${attachMsg.ok ? "text-emerald-600" : "text-red-500"}`}>
                 {attachMsg.text}

@@ -332,13 +332,29 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       if (existingInvoice.status !== "draft") {
         return res.status(400).json({ error: "Invoice is not a draft and cannot be modified." });
       }
-    } else {
-      if (!existingInvoice) {
-        return res.json({ invoiceId: null, created: false });
-      }
     }
 
-    const invoice = existingInvoice!;
+    if (!existingInvoice) {
+      const today = new Date().toISOString().split("T")[0];
+      const invoiceNumber = await getNextInvoiceNumber();
+      const subtotal = parseFloat(totalCost.toFixed(2));
+      const autoLineItems = [{ id: 1, description, quantity: 1, unitPrice: subtotal, total: subtotal }];
+      const newAttachmentArr: InvoiceAttachment[] = newAttachment ? [newAttachment] : [];
+      const [created] = await db.insert(invoicesTable).values({
+        invoiceNumber,
+        jobId: list.jobId,
+        status: "draft",
+        issueDate: today,
+        subtotal: subtotal.toFixed(2),
+        taxAmount: "0",
+        total: subtotal.toFixed(2),
+        lineItems: autoLineItems,
+        attachments: newAttachmentArr,
+      }).returning();
+      return res.json({ invoiceId: created.id, created: true });
+    }
+
+    const invoice = existingInvoice;
 
     const rawItems = Array.isArray(invoice.lineItems) ? invoice.lineItems : [];
     const lineItems = rawItems as LineItem[];
