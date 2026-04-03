@@ -218,17 +218,19 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const totalSubPayments = subsWithYtdAcc.reduce((acc, s) => acc + s._ytd, 0);
     const netProfit = paidRevenue - totalExpenses - mileageDeduction;
 
-    // Income by city
-    const cityMap = new Map<string, { city: string; state: string; invoiceCount: number; gross: number; paid: number; taxCollected: number }>();
+    // Income by city — estOccTax replaces taxCollected (Willard never charges sales tax)
+    // Owensboro occupational tax rate: 1.39%
+    const OWENSBORO_OCC_RATE = 0.0139;
+    const cityMap = new Map<string, { city: string; state: string; invoiceCount: number; gross: number; paid: number; estOccTax: number }>();
     for (const inv of invoices) {
       const city = inv.invoiceCity || inv.jobCity || "Unspecified";
       const state = inv.invoiceState || inv.jobState || "";
       const key = `${city}||${state}`;
-      const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, taxCollected: 0 };
+      const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, estOccTax: 0 };
       existing.invoiceCount++;
-      existing.gross += parseFloat(inv.total ?? "0");
-      if (inv.status === "paid") existing.paid += parseFloat(inv.total ?? "0");
-      existing.taxCollected += parseFloat(inv.taxAmount ?? "0");
+      const total = parseFloat(inv.total ?? "0");
+      existing.gross += total;
+      if (inv.status === "paid") existing.paid += total;
       cityMap.set(key, existing);
     }
     // Also include other income rows that have a city
@@ -237,13 +239,35 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       if (!city) continue;
       const state = (o.state ?? "").trim();
       const key = `${city}||${state}`;
-      const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, taxCollected: 0 };
+      const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, estOccTax: 0 };
       const amt = parseFloat(o.amount ?? "0");
       existing.gross += amt;
       existing.paid += amt;
       cityMap.set(key, existing);
     }
+    // Compute estOccTax after all income is accumulated (only for Owensboro rows)
+    for (const row of cityMap.values()) {
+      if (row.city.toLowerCase() === "owensboro") {
+        row.estOccTax = Math.max(0, row.gross * OWENSBORO_OCC_RATE);
+      }
+    }
     const incomeByCity = Array.from(cityMap.values()).sort((a, b) => b.gross - a.gross);
+
+    // Estimated tax liabilities based on YTD net profit
+    const owensboroGross = incomeByCity.find(r => r.city.toLowerCase() === "owensboro")?.gross ?? 0;
+    const owensboroOccTax = Math.max(0, owensboroGross * OWENSBORO_OCC_RATE);
+    const kyStateTax = Math.max(0, netProfit * 0.04);
+    // IRS SE tax: 15.3% × (net profit × 92.35%) — 92.35% accounts for half-SE deduction
+    const federalSETax = Math.max(0, netProfit * 0.9235 * 0.153);
+    const estimatedTaxes = {
+      owensboroOccTax,
+      kyStateTax,
+      federalSETax,
+      totalEstimated: owensboroOccTax + kyStateTax + federalSETax,
+      owensboroOccRate: OWENSBORO_OCC_RATE,
+      kyStateRate: 0.04,
+      federalSERate: 0.153,
+    };
 
     // Full records for tax spreadsheet — invoices + other income rows
     const invoiceRecords = invoices.map(inv => ({
@@ -317,6 +341,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       year,
       summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum },
       incomeByCity,
+      estimatedTaxes,
       expensesByCategory,
       monthlyIncome,
       subcontractor1099,

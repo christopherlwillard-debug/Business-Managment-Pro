@@ -15,16 +15,21 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function downloadCSV(records: any[], year: number) {
-  const headers = ["Type", "Invoice #", "Date", "Client / Source", "Description", "City", "State", "Subtotal", "Tax Collected", "Total", "Status", "Payment Method"];
-  const rows = records.map((r: any) => [
-    r.type === "other_income" ? "Other Income" : "Invoice",
-    r.invoiceNumber ?? "", r.issueDate ?? "", r.clientName ?? "",
-    r.jobTitle ?? "",
-    r.city ?? "", r.state ?? "",
-    r.subtotal?.toFixed(2) ?? "0.00", r.taxAmount?.toFixed(2) ?? "0.00",
-    r.total?.toFixed(2) ?? "0.00", r.status ?? "",
-    r.paymentMethod ?? "",
-  ]);
+  const OWENSBORO_OCC_RATE = 0.0139;
+  const headers = ["Type", "Invoice #", "Date", "Client / Source", "Description", "City", "State", "Subtotal", "Est. Occ. Tax", "Total", "Status", "Payment Method"];
+  const rows = records.map((r: any) => {
+    const isOwensboro = (r.city ?? "").trim().toLowerCase() === "owensboro";
+    const estOccTax = isOwensboro ? ((r.total ?? 0) * OWENSBORO_OCC_RATE) : 0;
+    return [
+      r.type === "other_income" ? "Other Income" : "Invoice",
+      r.invoiceNumber ?? "", r.issueDate ?? "", r.clientName ?? "",
+      r.jobTitle ?? "",
+      r.city ?? "", r.state ?? "",
+      r.subtotal?.toFixed(2) ?? "0.00", estOccTax.toFixed(2),
+      r.total?.toFixed(2) ?? "0.00", r.status ?? "",
+      r.paymentMethod ?? "",
+    ];
+  });
   const csvContent = [headers, ...rows].map(row =>
     row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
   ).join("\n");
@@ -607,7 +612,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                     <th className="px-5 py-3 text-right">Invoices</th>
                     <th className="px-5 py-3 text-right">Gross Income</th>
                     <th className="px-5 py-3 text-right">Collected</th>
-                    <th className="px-5 py-3 text-right">Tax Collected</th>
+                    <th className="px-5 py-3 text-right">Est. Occ. Tax</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
@@ -618,7 +623,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                       <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
                       <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
                       <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
-                      <td className="px-5 py-3 text-right text-blue-600">{formatCurrency(row.taxCollected)}</td>
+                      <td className="px-5 py-3 text-right text-amber-600 font-medium">{formatCurrency(row.estOccTax ?? 0)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -627,10 +632,41 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                     <td colSpan={3} className="px-5 py-3 text-foreground">Totals</td>
                     <td className="px-5 py-3 text-right">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.gross, 0))}</td>
                     <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.paid, 0))}</td>
-                    <td className="px-5 py-3 text-right text-blue-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.taxCollected, 0))}</td>
+                    <td className="px-5 py-3 text-right text-amber-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + (r.estOccTax ?? 0), 0))}</td>
                   </tr>
                 </tfoot>
               </table>
+            </div>
+          )}
+
+          {/* Estimated Taxes Owed panel */}
+          {data.estimatedTaxes && (
+            <div className="border-t border-border">
+              <div className="px-5 py-3 bg-amber-50/60 dark:bg-amber-900/10 border-b border-amber-200/50">
+                <span className="font-semibold text-sm text-amber-900 dark:text-amber-300">Estimated Taxes Owed — YTD</span>
+                <span className="text-xs text-amber-700/70 dark:text-amber-400/70 ml-2">Based on net profit after expenses &amp; mileage</span>
+              </div>
+              <div className="divide-y divide-border/50">
+                <div className="px-5 py-3 flex justify-between items-center text-sm">
+                  <span className="text-foreground">Owensboro Occupational Tax <span className="text-xs text-muted-foreground">({((data.estimatedTaxes.owensboroOccRate ?? 0.0139) * 100).toFixed(2)}% of Owensboro gross)</span></span>
+                  <span className="font-semibold text-amber-700 dark:text-amber-400">{formatCurrency(data.estimatedTaxes.owensboroOccTax)}</span>
+                </div>
+                <div className="px-5 py-3 flex justify-between items-center text-sm">
+                  <span className="text-foreground">Kentucky State Income Tax <span className="text-xs text-muted-foreground">(4.0% flat rate on net profit)</span></span>
+                  <span className="font-semibold text-amber-700 dark:text-amber-400">{formatCurrency(data.estimatedTaxes.kyStateTax)}</span>
+                </div>
+                <div className="px-5 py-3 flex justify-between items-center text-sm">
+                  <span className="text-foreground">Federal Self-Employment Tax <span className="text-xs text-muted-foreground">(15.3% × 92.35% of net profit)</span></span>
+                  <span className="font-semibold text-amber-700 dark:text-amber-400">{formatCurrency(data.estimatedTaxes.federalSETax)}</span>
+                </div>
+                <div className="px-5 py-3 flex justify-between items-center text-sm bg-amber-50/80 dark:bg-amber-900/20 font-semibold">
+                  <span className="text-foreground">Total Estimated Tax Liability</span>
+                  <span className="text-amber-800 dark:text-amber-300 text-base">{formatCurrency(data.estimatedTaxes.totalEstimated)}</span>
+                </div>
+              </div>
+              <div className="px-5 py-2 bg-muted/30 border-t border-border">
+                <p className="text-xs text-muted-foreground italic">Estimates only — actual liability depends on deductions, filing status, and other income. Consult a tax professional for your exact figures.</p>
+              </div>
             </div>
           )}
         </div>
