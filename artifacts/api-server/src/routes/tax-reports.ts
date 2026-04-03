@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   invoicesTable, expensesTable, mileageLogsTable,
-  paymentsTable, subcontractorsTable, clientsTable
+  paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sum, desc, count, ne } from "drizzle-orm";
 
@@ -75,6 +75,8 @@ interface ScheduleCLineItem {
 interface ScheduleCReport {
   year: number;
   grossReceipts: number;
+  otherIncome: number;
+  grossIncome: number;
   expenses: Record<string, number>;
   expensesByCategory: Record<string, { amount: number; count: number }>;
   scheduleLines: ScheduleCLineItem[];
@@ -114,6 +116,20 @@ router.get("/schedule-c", async (req, res) => {
       );
 
     const grossReceipts = grossResult?.total ? parseFloat(grossResult.total as any) : 0;
+
+    // 1b. Other Income (Line 6) - cash jobs, misc payments, etc.
+    const [otherIncomeResult] = await db
+      .select({ total: sum(otherIncomeTable.amount) })
+      .from(otherIncomeTable)
+      .where(
+        and(
+          gte(otherIncomeTable.date, startDate),
+          lte(otherIncomeTable.date, endDate)
+        )
+      );
+
+    const otherIncomeTotal = otherIncomeResult?.total ? parseFloat(otherIncomeResult.total as any) : 0;
+    const grossIncome = grossReceipts + otherIncomeTotal;
 
     // 2. Expenses by category (exclude mileage — it's calculated separately)
     const expensesData = await db
@@ -208,6 +224,22 @@ router.get("/schedule-c", async (req, res) => {
       amount: grossReceipts,
     });
 
+    // Line 6 - Other Income (cash jobs, misc, etc.)
+    if (otherIncomeTotal > 0) {
+      scheduleLines.push({
+        line: 6,
+        description: "Other income",
+        amount: otherIncomeTotal,
+      });
+    }
+
+    // Line 7 - Gross Income (Line 1 + Line 6)
+    scheduleLines.push({
+      line: 7,
+      description: "Gross income",
+      amount: grossIncome,
+    });
+
     // Expense lines
     for (const [categoryKey, expenseAmount] of Object.entries(expenses)) {
       const lineInfo = SCHEDULE_C_LINES[categoryKey as keyof typeof SCHEDULE_C_LINES];
@@ -228,8 +260,8 @@ router.get("/schedule-c", async (req, res) => {
       amount: totalExpenses,
     });
 
-    // Line 29 - Gross Profit
-    const grossProfit = grossReceipts - totalExpenses;
+    // Line 29 - Gross Profit (Gross Income minus total expenses)
+    const grossProfit = grossIncome - totalExpenses;
     scheduleLines.push({
       line: 29,
       description: "Gross profit or loss",
@@ -273,6 +305,8 @@ router.get("/schedule-c", async (req, res) => {
     const response: ScheduleCReport = {
       year,
       grossReceipts,
+      otherIncome: otherIncomeTotal,
+      grossIncome,
       expenses,
       expensesByCategory,
       scheduleLines: scheduleLines.sort((a, b) => a.line - b.line),

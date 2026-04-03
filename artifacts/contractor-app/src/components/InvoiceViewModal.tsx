@@ -345,6 +345,15 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
             <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-500" />
           </div>
         </div>
+        {/* Close button footer */}
+        <div className="flex-shrink-0 px-5 py-3 border-t border-gray-200 bg-white print-hide">
+          <button
+            onClick={onClose}
+            className="w-full py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

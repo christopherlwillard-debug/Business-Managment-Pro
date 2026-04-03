@@ -486,13 +486,13 @@ function ExpenseViewModal({
   const [imgError, setImgError] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden">
+      <div className="relative w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden flex flex-col my-auto">
 
         {/* Header bar */}
-        <div className="h-1.5 bg-gradient-to-r from-amber-500 to-amber-400" />
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="h-1.5 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0" />
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Receipt className="w-4 h-4 text-amber-500" />
             <span className="font-bold text-gray-900">Expense Detail</span>
@@ -651,7 +651,16 @@ function ExpenseViewModal({
             <div className="text-center py-3 text-xs text-gray-400 italic">No receipt attached</div>
           )}
         </div>
-        <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-500" />
+        {/* Close button footer */}
+        <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100 bg-gray-50">
+          <button
+            onClick={onClose}
+            className="w-full py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+        <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-500 flex-shrink-0" />
       </div>
 
       {/* Full-screen receipt lightbox */}
