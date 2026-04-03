@@ -484,7 +484,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   const statTiles = [
     { label: "Gross Revenue", value: formatCurrency(s.grossRevenue), sub: otherIncomeTotal > 0 ? `Invoices + ${formatCurrency(otherIncomeTotal)} other` : "All invoices", icon: TrendingUp, color: "bg-emerald-100 text-emerald-700", border: "border-l-emerald-500" },
     { label: "Collected", value: formatCurrency(s.paidRevenue), sub: otherIncomeTotal > 0 ? "Paid invoices + other income" : "Paid invoices", icon: DollarSign, color: "bg-blue-100 text-blue-700", border: "border-l-blue-500" },
-    { label: "Total Expenses", value: formatCurrency(s.totalExpenses), sub: `+${formatCurrency(s.mileageDeduction ?? 0)} mileage`, icon: TrendingDown, color: "bg-red-100 text-red-700", border: "border-l-red-500" },
+    { label: "Business Expenses (excl. mileage)", value: formatCurrency(s.totalExpenses), sub: `+${formatCurrency(s.mileageDeduction ?? 0)} mileage`, icon: TrendingDown, color: "bg-red-100 text-red-700", border: "border-l-red-500" },
     { label: "Est. Net Profit", value: formatCurrency(netProfit), sub: "Collected − Expenses − Mileage", icon: netProfit >= 0 ? TrendingUp : TrendingDown, color: netProfit >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700", border: netProfit >= 0 ? "border-l-emerald-500" : "border-l-red-500" },
   ];
 

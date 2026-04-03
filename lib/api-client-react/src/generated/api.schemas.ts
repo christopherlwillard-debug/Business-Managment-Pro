@@ -620,6 +620,8 @@ export interface DashboardStats {
   activeJobs: number;
   totalExpenses: number;
   mileageDeduction: number;
+  ytdMiles: number;
+  ytdMileageRate: number;
   overdueInvoices: number;
   recentJobs: Job[];
   recentInvoices: Invoice[];

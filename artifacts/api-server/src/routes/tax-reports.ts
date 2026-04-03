@@ -8,6 +8,19 @@ import { eq, and, gte, lte, sum, desc, count, ne } from "drizzle-orm";
 
 const router = Router();
 
+// IRS standard mileage rates — integer year keys, explicit fallback for unknown years
+const IRS_MILEAGE_RATES: Record<number, number> = {
+  2023: 0.655,
+  2024: 0.670,
+  2025: 0.700,
+  2026: 0.700,
+};
+const FALLBACK_MILEAGE_RATE = 0.700; // most recent known rate
+
+function getIrsMileageRate(year: number): number {
+  return IRS_MILEAGE_RATES[year] !== undefined ? IRS_MILEAGE_RATES[year] : FALLBACK_MILEAGE_RATE;
+}
+
 const SCHEDULE_C_LINES = {
   cogs:            { line: 4,  description: "Cost of goods sold" },
   advertising:     { line: 8,  description: "Advertising" },
@@ -170,9 +183,12 @@ router.get("/schedule-c", async (req, res) => {
       }
     }
 
-    // 3. Mileage Deduction (Line 9)
+    // 3. Mileage Deduction (Line 9) — use stored deductionAmount as source of truth
     const mileageData = await db
-      .select({ totalMiles: sum(mileageLogsTable.miles) })
+      .select({
+        totalMiles: sum(mileageLogsTable.miles),
+        totalDeduction: sum(mileageLogsTable.deductionAmount),
+      })
       .from(mileageLogsTable)
       .where(
         and(
@@ -193,12 +209,13 @@ router.get("/schedule-c", async (req, res) => {
       );
 
     const totalBusinessMiles = mileageData[0]?.totalMiles ? parseFloat(mileageData[0].totalMiles as any) : 0;
-    const ratePerMile = 0.725; // 2025 IRS rate
-    const mileageDeduction = totalBusinessMiles * ratePerMile;
+    // Use stored deductionAmount (matches dashboard); irsMileageRate is for display only
+    const mileageDeduction = mileageData[0]?.totalDeduction ? parseFloat(mileageData[0].totalDeduction as any) : 0;
+    const irsMileageRate = getIrsMileageRate(year);
 
-    if (mileageDeduction > 0) {
-      expenses["carTruck"] = (expenses["carTruck"] || 0) + mileageDeduction;
-    }
+    // Separate Fuel/Travel expenses (carTruck) from mileage so Line 9 is handled explicitly
+    const fuelTravelExpenses = expenses["carTruck"] || 0;
+    delete expenses["carTruck"];
 
     // 4. Subcontractor payments (Line 11) - from payments table
     const paymentData = await db
@@ -240,6 +257,14 @@ router.get("/schedule-c", async (req, res) => {
         totalExpenses += expenseAmount;
       }
     }
+
+    // Line 9 — Car and truck expenses (ALWAYS included, even when $0, for explicit Schedule C accuracy)
+    const totalCarTruck = fuelTravelExpenses + mileageDeduction;
+    const line9Description = totalBusinessMiles > 0
+      ? `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi \u00d7 $${irsMileageRate.toFixed(3)}/mi)`
+      : "Car and truck expenses";
+    scheduleLines.push({ line: 9, description: line9Description, amount: totalCarTruck });
+    totalExpenses += totalCarTruck;
 
     // Line 28 - Total Expenses
     scheduleLines.push({
@@ -302,7 +327,7 @@ router.get("/schedule-c", async (req, res) => {
       grossProfit,
       mileageData: {
         totalBusinessMiles,
-        ratePerMile,
+        ratePerMile: irsMileageRate,
         deduction: mileageDeduction,
         logCount: mileageLogCount.length,
       },

@@ -50,6 +50,10 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // separately via mileageLogsTable to avoid double-counting in net profit.
     const totalExpenses = allExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const mileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
+    // IRS standard mileage rates — integer year keys, fallback to most recent known rate
+    const IRS_MILEAGE_RATES_REPORT: Record<number, number> = { 2023: 0.655, 2024: 0.670, 2025: 0.700, 2026: 0.700 };
+    const ytdMileageRate = IRS_MILEAGE_RATES_REPORT[now.getFullYear()] ?? 0.700;
 
     // Monthly revenue for last 6 months
     const monthlyRevenue = [];
@@ -77,6 +81,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       activeJobs: activeJobsRows.length,
       totalExpenses,
       mileageDeduction,
+      ytdMiles,
+      ytdMileageRate,
       overdueInvoices,
       recentJobs: recentJobsRows.map(j => ({ ...j, createdAt: j.createdAt.toISOString() })),
       recentInvoices: recentInvoicesRows.map(i => ({

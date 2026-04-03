@@ -187,8 +187,18 @@ export default function Dashboard() {
               <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-1">YTD Mileage Deduction</p>
+              <p className="text-sm text-muted-foreground mb-0.5">YTD Mileage Deduction</p>
               <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
+              <div className="mt-3 pt-3 border-t border-accent/20 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Business Miles</p>
+                  <p className="text-base font-semibold text-foreground">{(stats.ytdMiles ?? 0).toFixed(0)} mi</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">IRS Rate</p>
+                  <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.700).toFixed(3)}/mi</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
