@@ -9,6 +9,11 @@ export interface GoogleTokenInfo {
   expiresAt: number;
 }
 
+interface PendingTokenRequest {
+  resolve: (token: string) => void;
+  reject: (err: Error) => void;
+}
+
 interface GoogleAuthContextValue {
   isConfigured: boolean;
   isConnected: boolean;
@@ -76,7 +81,7 @@ function clearToken() {
 export function GoogleAuthProvider({ children }: { children: ReactNode }) {
   const [tokenInfo, setTokenInfo] = useState<GoogleTokenInfo | null>(loadPersistedToken);
   const tokenClientRef = useRef<any>(null);
-  const pendingResolveRef = useRef<((token: string) => void) | null>(null);
+  const pendingTokenRef = useRef<PendingTokenRequest | null>(null);
   const pendingOnSuccessRef = useRef<(() => void) | null>(null);
 
   const isConfigured = CLIENT_ID.length > 0;
@@ -89,11 +94,15 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
         scope: SCOPES,
         callback: (resp: any) => {
           if (resp.error || !resp.access_token) {
-            console.error("GIS token error:", resp.error);
-            pendingResolveRef.current = null;
+            const err = new Error(resp.error_description ?? resp.error ?? "Google sign-in failed or was cancelled");
+            if (pendingTokenRef.current) {
+              pendingTokenRef.current.reject(err);
+              pendingTokenRef.current = null;
+            }
             pendingOnSuccessRef.current = null;
             return;
           }
+
           const expiresAt = Date.now() + parseInt(resp.expires_in ?? "3600") * 1000;
           fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${resp.access_token}`)
             .then(r => r.json())
@@ -105,9 +114,9 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
               };
               setTokenInfo(ti);
               saveToken(ti);
-              if (pendingResolveRef.current) {
-                pendingResolveRef.current(resp.access_token);
-                pendingResolveRef.current = null;
+              if (pendingTokenRef.current) {
+                pendingTokenRef.current.resolve(resp.access_token);
+                pendingTokenRef.current = null;
               }
               if (pendingOnSuccessRef.current) {
                 pendingOnSuccessRef.current();
@@ -118,8 +127,14 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
               const ti: GoogleTokenInfo = { token: resp.access_token, email: "", expiresAt };
               setTokenInfo(ti);
               saveToken(ti);
-              if (pendingResolveRef.current) { pendingResolveRef.current(resp.access_token); pendingResolveRef.current = null; }
-              if (pendingOnSuccessRef.current) { pendingOnSuccessRef.current(); pendingOnSuccessRef.current = null; }
+              if (pendingTokenRef.current) {
+                pendingTokenRef.current.resolve(resp.access_token);
+                pendingTokenRef.current = null;
+              }
+              if (pendingOnSuccessRef.current) {
+                pendingOnSuccessRef.current();
+                pendingOnSuccessRef.current = null;
+              }
             });
         },
       });
@@ -145,8 +160,11 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
       return Promise.resolve(tokenInfo.token);
     }
     return new Promise((resolve, reject) => {
-      if (!tokenClientRef.current) { reject(new Error("Google Auth not initialized")); return; }
-      pendingResolveRef.current = resolve;
+      if (!tokenClientRef.current) {
+        reject(new Error("Google Auth not initialized"));
+        return;
+      }
+      pendingTokenRef.current = { resolve, reject };
       tokenClientRef.current.requestAccessToken({ prompt: "" });
     });
   }, [tokenInfo]);

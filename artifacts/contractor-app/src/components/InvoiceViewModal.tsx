@@ -133,8 +133,6 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
       await sendViaGmail({
         token,
         to: gmailTo.trim(),
-        from: companyEmail || "",
-        fromName: companyName || undefined,
         subject: gmailSubject.trim() || `Invoice ${invoice.invoiceNumber}`,
         html,
         text: gmailMessage.trim() || `Please see invoice ${invoice.invoiceNumber}. Total due: $${total.toFixed(2)}`,

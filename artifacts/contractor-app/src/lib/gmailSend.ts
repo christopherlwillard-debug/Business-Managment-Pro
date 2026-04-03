@@ -11,20 +11,21 @@ function base64UrlEncode(input: string): string {
 export interface GmailSendOptions {
   token: string;
   to: string;
-  from: string;
-  fromName?: string;
   subject: string;
   html: string;
   text?: string;
 }
 
+/**
+ * Send an email via the Gmail API using an OAuth2 access token.
+ * The From address is always the authenticated Gmail user's address —
+ * we do NOT set a custom From header to avoid authorization failures.
+ */
 export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
-  const { token, to, from, fromName, subject, html, text } = opts;
+  const { token, to, subject, html, text } = opts;
   const boundary = `==BP${Date.now()}==`;
-  const senderDisplay = fromName ? `"${fromName}" <${from}>` : from;
 
   const rfcLines = [
-    `From: ${senderDisplay}`,
     `To: ${to}`,
     `Subject: ${subject}`,
     `MIME-Version: 1.0`,

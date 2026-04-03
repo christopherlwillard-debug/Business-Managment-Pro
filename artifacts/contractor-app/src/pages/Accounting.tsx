@@ -1596,7 +1596,7 @@ const STATUS_SORT_ORDER: Record<UnifiedStatus, number> = {
 
 function TaxCalendarTab({ year }: { year: number }) {
   const { canEdit } = useUserPermissions();
-  const { isConnected: googleConnected, getToken } = useGoogleAuth();
+  const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn: googleSignIn } = useGoogleAuth();
   const { toast } = useToast();
   const storageKey = `ky-filing-statuses-${year}`;
   const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
@@ -1653,7 +1653,9 @@ function TaxCalendarTab({ year }: { year: number }) {
 
   async function handleDriveUpload(entityKey: string) {
     if (!googleConnected) {
-      toast({ title: "Google not connected", description: "Go to Settings → Google to connect your Google account first.", variant: "destructive" });
+      googleSignIn(() => {
+        handleDriveUpload(entityKey);
+      });
       return;
     }
     setDrivePickingFor(entityKey);
@@ -1997,11 +1999,12 @@ function TaxCalendarTab({ year }: { year: number }) {
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Paperclip className="w-3 h-3" /> Documents</span>
                               <div className="flex items-center gap-1.5">
-                                {googleConnected && (
+                                {googleConfigured && (
                                   <button
                                     type="button"
                                     disabled={isDrivePicking || isUploading}
                                     onClick={() => handleDriveUpload(entityKey)}
+                                    title={googleConnected ? "Pick from Google Drive" : "Connect Google to pick from Drive"}
                                     className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors ${isDrivePicking ? "bg-muted text-muted-foreground" : "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"}`}
                                   >
                                     {isDrivePicking ? <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /> : <HardDrive className="w-3 h-3" />}
@@ -2116,11 +2119,12 @@ function TaxCalendarTab({ year }: { year: number }) {
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Paperclip className="w-3 h-3" /> Documents</span>
                         <div className="flex items-center gap-1.5">
-                          {googleConnected && (
+                          {googleConfigured && (
                             <button
                               type="button"
                               disabled={drivePickingFor === ciEntityKey || isCiUploading}
                               onClick={() => handleDriveUpload(ciEntityKey)}
+                              title={googleConnected ? "Pick from Google Drive" : "Connect Google to pick from Drive"}
                               className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors ${drivePickingFor === ciEntityKey ? "bg-muted text-muted-foreground" : "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"}`}
                             >
                               {drivePickingFor === ciEntityKey ? <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /> : <HardDrive className="w-3 h-3" />}
