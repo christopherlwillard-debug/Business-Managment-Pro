@@ -126,10 +126,11 @@ router.get("/tax-report", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { status, clientId, startDate, endDate } = req.query;
+    const { status, clientId, jobId, startDate, endDate } = req.query;
     const conditions: any[] = [];
     if (status) conditions.push(eq(invoicesTable.status, status as string));
     if (clientId) conditions.push(eq(invoicesTable.clientId, parseInt(clientId as string)));
+    if (jobId) conditions.push(eq(invoicesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(invoicesTable.issueDate, startDate as string));
     if (endDate) conditions.push(lte(invoicesTable.issueDate, endDate as string));
 

@@ -7,13 +7,13 @@ import {
   useListDailyLogs, useCreateDailyLog, useDeleteDailyLog,
   useGetSettings,
   useListMaterials, useListMaterialLists, useCreateMaterialList,
-  useDeleteMaterialList, useAttachMaterialListToInvoice,
+  useDeleteMaterialList,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
+import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { Card } from "@/components/ui/card";
 import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
@@ -21,7 +21,7 @@ import {
   Briefcase, MapPin, Calendar, HardHat, Users,
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
-  AlertCircle, ArrowLeft, Eye, Package, ListChecks, Link2, Search,
+  AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -111,17 +111,14 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
   const { data: settings } = useGetSettings();
   const createList = useCreateMaterialList();
   const deleteList = useDeleteMaterialList();
-  const attachToInvoice = useAttachMaterialListToInvoice();
   const { canEdit } = useUserPermissions();
 
   const [showForm, setShowForm] = useState(false);
-  const [newName, setNewName] = useState("");
   const [newMarkup, setNewMarkup] = useState(40);
   const [newItems, setNewItems] = useState<MaterialListItemInput[]>([]);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const [attachMsg, setAttachMsg] = useState<Record<number, { ok: boolean; text: string }>>({});
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -153,7 +150,6 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
   }
 
   function resetForm() {
-    setNewName("");
     setNewMarkup(40);
     setNewItems([]);
     setSearch("");
@@ -161,13 +157,12 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
   }
 
   async function handleCreate() {
-    if (!newName.trim()) { setFormError("List name is required."); return; }
     if (newItems.length === 0) { setFormError("Add at least one material."); return; }
     setFormError("");
     setSaving(true);
     try {
       await createList.mutateAsync({
-        name: newName.trim(),
+        name: "Materials",
         jobId: job.id,
         markup: newMarkup,
         items: newItems,
@@ -175,6 +170,8 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
       qc.invalidateQueries({ queryKey: ["/api/material-lists"] });
       resetForm();
       setShowForm(false);
+      // Auto-generate & attach the itemized materials PDF to the draft invoice
+      autoAttachMaterialsPdf(job.id, job.title, settings?.companyName ?? undefined).catch(console.error);
     } catch {
       setFormError("Failed to save. Please try again.");
     } finally {
@@ -187,61 +184,10 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
     try {
       await deleteList.mutateAsync(listId);
       qc.invalidateQueries({ queryKey: ["/api/material-lists"] });
+      // Regenerate the PDF attachment reflecting the updated material totals
+      autoAttachMaterialsPdf(job.id, job.title, settings?.companyName ?? undefined).catch(console.error);
     } finally {
       setDeletingId(null);
-    }
-  }
-
-  async function handleAttach(list: MaterialList) {
-    const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-    let attachmentUrl: string | undefined;
-    let attachmentName: string | undefined;
-    let attachmentSize: number | undefined;
-    let pdfUploadFailed = false;
-
-    try {
-      const pdfBlob = generateMaterialListPdf(list, job.title, settings?.companyName ?? undefined);
-      const fd = new FormData();
-      const filename = `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
-      fd.append("file", pdfBlob, filename);
-      const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
-      if (uploadRes.ok) {
-        const uploaded = await uploadRes.json() as { url: string; filename: string; size: number };
-        attachmentUrl = uploaded.url;
-        attachmentName = `Material List – ${list.name}.pdf`;
-        attachmentSize = uploaded.size;
-      } else {
-        pdfUploadFailed = true;
-      }
-    } catch {
-      pdfUploadFailed = true;
-    }
-
-    try {
-      const res = await attachToInvoice.mutateAsync({
-        id: list.id,
-        attachmentUrl,
-        attachmentName,
-        attachmentSize,
-      });
-      const baseMsg = res.created
-        ? "Created a new draft invoice with these materials."
-        : "Added to existing draft invoice.";
-      setAttachMsg(prev => ({
-        ...prev,
-        [list.id]: {
-          ok: true,
-          text: pdfUploadFailed ? `${baseMsg} (PDF attachment could not be uploaded.)` : baseMsg,
-        },
-      }));
-      qc.invalidateQueries({ queryKey: ["/api/invoices"] });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to attach to invoice.";
-      setAttachMsg(prev => ({
-        ...prev,
-        [list.id]: { ok: false, text: msg },
-      }));
     }
   }
 
@@ -285,27 +231,14 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                   <AlertCircle className="w-3.5 h-3.5" /> {formError}
                 </p>
               )}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">List Name *</label>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                    placeholder="e.g. Foundation Materials"
-                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Markup %</label>
-                  <input
-                    type="number" min="0" max="200" step="5"
-                    value={newMarkup}
-                    onChange={e => setNewMarkup(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Markup %</label>
+                <input
+                  type="number" min="0" max="200" step="5"
+                  value={newMarkup}
+                  onChange={e => setNewMarkup(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
               </div>
 
               {/* Catalog picker */}
@@ -430,7 +363,6 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
               lists.map((list: MaterialList) => {
                 const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * (list.markup / 100 + 1), 0);
                 const isExpanded = expandedId === list.id;
-                const msg = attachMsg[list.id];
                 return (
                   <div key={list.id} className="rounded-xl border border-border/50 bg-background overflow-hidden">
                     <div className="p-3.5 flex items-start gap-2">
@@ -458,21 +390,6 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                         )}
                       </div>
                     </div>
-
-                    {/* Attach to invoice button */}
-                    {canEdit("invoices") && (
-                    <div className="px-3.5 pb-3">
-                      <button
-                        onClick={() => handleAttach(list)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors"
-                      >
-                        <Link2 className="w-3 h-3" /> Attach to Invoice
-                      </button>
-                      {msg && (
-                        <p className={`mt-1.5 text-xs ${msg.ok ? "text-emerald-600" : "text-destructive"}`}>{msg.text}</p>
-                      )}
-                    </div>
-                    )}
 
                     {/* Expanded items */}
                     {isExpanded && list.items.length > 0 && (
@@ -520,10 +437,8 @@ function JobDailyLogPanel({
   const queryClient = useQueryClient();
   const { data: logs = [], isLoading } = useListDailyLogs({ jobId: job.id });
   const { data: materialLists = [] } = useListMaterialLists({ jobId: job.id });
-  const { data: settings } = useGetSettings();
   const createLog  = useCreateDailyLog();
   const deleteLog  = useDeleteDailyLog();
-  const attachToInvoice = useAttachMaterialListToInvoice();
   const { canEdit } = useUserPermissions();
 
   const today = localDateString();
@@ -533,7 +448,6 @@ function JobDailyLogPanel({
   const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [attachMsg, setAttachMsg] = useState<Record<number, { ok: boolean; text: string }>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sortedLogs = [...logs].sort((a, b) => b.date.localeCompare(a.date));
@@ -579,39 +493,6 @@ function JobDailyLogPanel({
       queryClient.invalidateQueries({ queryKey: ["/api/daily-logs"] });
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handlePushToInvoice(log: DailyLog) {
-    if (!log.materialListId) return;
-    const list = materialLists.find(l => l.id === log.materialListId);
-    if (!list) return;
-    const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-    let attachmentUrl: string | undefined;
-    let attachmentName: string | undefined;
-    let attachmentSize: number | undefined;
-    let pdfUploadFailed = false;
-    try {
-      const pdfBlob = generateMaterialListPdf(list, job.title, settings?.companyName ?? undefined);
-      const fd = new FormData();
-      fd.append("file", pdfBlob, `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`);
-      const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
-      if (uploadRes.ok) {
-        const up = await uploadRes.json() as { url: string; filename: string; size: number };
-        attachmentUrl = up.url;
-        attachmentName = `Material List – ${list.name}.pdf`;
-        attachmentSize = up.size;
-      } else {
-        pdfUploadFailed = true;
-      }
-    } catch { pdfUploadFailed = true; }
-    try {
-      await attachToInvoice.mutateAsync({ id: list.id, attachmentUrl, attachmentName, attachmentSize });
-      const pushMsg = pdfUploadFailed ? "Pushed to invoice. (PDF attachment could not be uploaded.)" : "Pushed to invoice.";
-      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: true, text: pushMsg } }));
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-    } catch {
-      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: false, text: "Failed to push to invoice." } }));
     }
   }
 
@@ -800,22 +681,11 @@ function JobDailyLogPanel({
                     if (!list) return null;
                     const markupMult = list.markup / 100 + 1;
                     const total = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
-                    const msg = attachMsg[log.id];
                     return (
-                      <div className="mt-1 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-0.5">Material List</p>
-                          <p className="text-xs font-medium text-foreground truncate">{list.name}</p>
-                          <p className="text-xs text-amber-600 font-bold">{formatCurrency(total)}</p>
-                          {msg && <p className={`text-[10px] mt-0.5 ${msg.ok ? "text-emerald-600" : "text-destructive"}`}>{msg.text}</p>}
-                        </div>
-                        {canEdit("invoices") && (
-                          <button
-                            onClick={() => handlePushToInvoice(log)}
-                            className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors">
-                            <FileText className="w-3 h-3" /> Push to Invoice
-                          </button>
-                        )}
+                      <div className="mt-1 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-0.5">Material List</p>
+                        <p className="text-xs font-medium text-foreground truncate">{list.name}</p>
+                        <p className="text-xs text-amber-600 font-bold">{formatCurrency(total)}</p>
                       </div>
                     );
                   })()}
@@ -1451,9 +1321,10 @@ export default function Jobs() {
   const [deleting, setDeleting]         = useState(false);
   const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number } | null>(null);
 
-  const [invoiceEditorOpen, setInvoiceEditorOpen] = useState(false);
-  const [invoiceDraftData, setInvoiceDraftData]   = useState<InvoiceDraft | null>(null);
-  const [invoiceFetching, setInvoiceFetching]     = useState(false);
+  const [invoiceEditorOpen, setInvoiceEditorOpen]       = useState(false);
+  const [invoiceDraftData, setInvoiceDraftData]         = useState<InvoiceDraft | null>(null);
+  const [selectedExistingInvoice, setSelectedExistingInvoice] = useState<Invoice | null>(null);
+  const [invoiceFetching, setInvoiceFetching]           = useState(false);
 
   const filteredJobs  = jobs.filter(j => {
     if (statusFilter === "all") return true;
@@ -1492,9 +1363,64 @@ export default function Jobs() {
   async function handleReviewInvoice(job: Job) {
     setInvoiceFetching(true);
     try {
-      const draft = await getJobInvoiceDraft(job.id);
-      setInvoiceDraftData(draft);
-      setInvoiceEditorOpen(true);
+      // Fetch all drafts and job invoice draft data in parallel
+      const [invRes, jobDraft] = await Promise.all([
+        fetch(`${BASE}/api/invoices?status=draft`),
+        getJobInvoiceDraft(job.id).catch(() => null),
+      ]);
+
+      let existingDraft: Invoice | undefined;
+      if (invRes.ok) {
+        const allDrafts: Invoice[] = await invRes.json();
+        existingDraft = allDrafts.find(inv => inv.jobId === job.id);
+      }
+
+      if (existingDraft) {
+        // Ensure the job's labor/service line item is present on the existing draft.
+        // Auto-sync only manages the "Materials" line; the labor line must also be there.
+        const currentLineItems: Array<{ id: number; description: string; quantity: number; unitPrice: number; total: number }> =
+          Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems : [];
+
+        const laborDesc = jobDraft?.lineItems?.[0]?.description;
+        const laborPrice = jobDraft?.lineItems?.[0]?.unitPrice ?? 0;
+        const hasLaborLine = laborDesc
+          ? currentLineItems.some(li => li.description === laborDesc)
+          : false;
+
+        if (!hasLaborLine && laborDesc) {
+          // Add the labor/service line item to the existing draft
+          const nextId = currentLineItems.length > 0
+            ? Math.max(...currentLineItems.map((li: { id: number }) => li.id)) + 1
+            : 1;
+          const updatedLineItems = [
+            { id: nextId, description: laborDesc, quantity: 1, unitPrice: laborPrice, total: laborPrice },
+            ...currentLineItems,
+          ];
+          const putRes = await fetch(`${BASE}/api/invoices/${existingDraft.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...existingDraft,
+              lineItems: updatedLineItems,
+            }),
+          });
+          if (putRes.ok) {
+            existingDraft = await putRes.json();
+          }
+        }
+
+        setInvoiceDraftData(null);
+        setSelectedExistingInvoice(existingDraft ?? null);
+        setInvoiceEditorOpen(true);
+        return;
+      }
+
+      // No existing draft — open the editor using job draft data (creates new invoice on save)
+      if (jobDraft) {
+        setInvoiceDraftData(jobDraft);
+        setSelectedExistingInvoice(null);
+        setInvoiceEditorOpen(true);
+      }
     } catch {
       // ignore — if the draft fetch fails the dialog just won't open
     } finally { setInvoiceFetching(false); }
@@ -1637,9 +1563,21 @@ export default function Jobs() {
       {invoiceEditorOpen && (
         <InvoiceEditorDialog
           open={invoiceEditorOpen}
-          onOpenChange={open => { if (!open) { setInvoiceEditorOpen(false); setInvoiceDraftData(null); } }}
+          onOpenChange={open => {
+            if (!open) {
+              setInvoiceEditorOpen(false);
+              setInvoiceDraftData(null);
+              setSelectedExistingInvoice(null);
+            }
+          }}
           initialData={invoiceDraftData}
-          onSaved={() => { setInvoiceEditorOpen(false); setInvoiceDraftData(null); queryClient.invalidateQueries(); }}
+          existingInvoice={selectedExistingInvoice ?? undefined}
+          onSaved={() => {
+            setInvoiceEditorOpen(false);
+            setInvoiceDraftData(null);
+            setSelectedExistingInvoice(null);
+            queryClient.invalidateQueries();
+          }}
         />
       )}
 

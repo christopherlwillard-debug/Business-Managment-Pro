@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable } from "@workspace/db/schema";
 import { eq, and, count } from "drizzle-orm";
+import { syncMaterialsToJobInvoice } from "./material-lists";
 
 const router = Router();
 
@@ -265,6 +266,12 @@ router.put("/:id", async (req, res) => {
 
     if (Array.isArray(subcontractorIds)) {
       await replaceSubcontractors(id, subcontractorIds);
+    }
+
+    // When a job is marked completed, ensure the draft invoice includes the
+    // latest materials totals so it's ready to review without extra steps.
+    if (status === "completed" || status === "invoiced") {
+      await syncMaterialsToJobInvoice(id);
     }
 
     const result = await getJobWithSubs(id);
