@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
@@ -1144,6 +1144,65 @@ export default function Expenses() {
   const [deleting,     setDeleting]                   = useState(false);
   const [highlightedTemplateId, setHighlightedTemplateId] = useState<number | null>(null);
 
+  // ─── Year / month grouping ───────────────────────────────────────────────────
+  const currentYear      = useMemo(() => String(new Date().getFullYear()), []);
+  const todayYearMonth   = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }, []);
+
+  function initMonthCollapsed(year: string): Record<string, boolean> {
+    // Only the current month starts open; everything else collapsed
+    return year === currentYear ? { [todayYearMonth]: false } : {};
+  }
+
+  const [selectedYear,   setSelectedYear]   = useState(currentYear);
+  const [monthCollapsed, setMonthCollapsed] = useState<Record<string, boolean>>(
+    () => initMonthCollapsed(currentYear)
+  );
+
+  function toggleMonth(key: string) {
+    setMonthCollapsed(prev => ({ ...prev, [key]: prev[key] !== false }));
+  }
+
+  const allYears = useMemo(() => {
+    const years = new Set([currentYear]);
+    (expenses ?? []).forEach(e => {
+      const y = (e.date ?? "").slice(0, 4);
+      if (y.length === 4) years.add(y);
+    });
+    return [...years].sort((a, b) => b.localeCompare(a));
+  }, [expenses, currentYear]);
+
+  const yearExpenses = useMemo(
+    () => (expenses ?? []).filter(e => (e.date ?? "").startsWith(selectedYear)),
+    [expenses, selectedYear]
+  );
+
+  const monthlyGroups = useMemo(() => {
+    const groups: Record<string, typeof yearExpenses> = {};
+    yearExpenses.forEach(e => {
+      const mk = (e.date ?? "").slice(0, 7);
+      if (mk.length === 7) {
+        if (!groups[mk]) groups[mk] = [];
+        groups[mk].push(e);
+      }
+    });
+    return Object.keys(groups).sort((a, b) => b.localeCompare(a)).map(mk => {
+      const [y, m] = mk.split("-");
+      return {
+        key: mk,
+        expenses: [...groups[mk]].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")),
+        total: groups[mk].reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+        label: new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-US", {
+          month: "long", year: "numeric",
+        }),
+      };
+    });
+  }, [yearExpenses]);
+
+  const yearTotal = yearExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+
   function jumpToTemplate(id: number) {
     setHighlightedTemplateId(id);
     document.getElementById("recurring-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1233,256 +1292,299 @@ export default function Expenses() {
       </div>
 
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-sm text-left whitespace-nowrap">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-              <tr>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Description / Vendor</th>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Job Allocation</th>
-                <th className="px-6 py-4 text-right">Amount</th>
-                <th className="px-6 py-4 text-center">Receipt</th>
-                <th className="px-6 py-4 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {isLoading ? (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground animate-pulse">Loading expenses…</td></tr>
-              ) : expenses?.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
-                    <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                    No expenses logged yet
-                  </td>
-                </tr>
-              ) : (
-                expenses?.map(exp => {
-                  const isEditing = editingRow?.id === exp.id;
-                  if (isEditing) {
-                    return (
-                      <tr key={exp.id} className="bg-amber-500/5 border-l-2 border-amber-500">
-                        <td className="px-3 py-2">
-                          <input type="date" value={editingRow.date}
-                            onChange={e => setEditingRow(r => r && ({ ...r, date: e.target.value }))}
-                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
-                        </td>
-                        <td className="px-3 py-2 space-y-1">
-                          <input type="text" value={editingRow.description}
-                            onChange={e => setEditingRow(r => r && ({ ...r, description: e.target.value }))}
-                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
-                            placeholder="Description" />
-                          <VendorCombobox value={editingRow.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
-                        </td>
-                        <td className="px-3 py-2">
-                          <select value={editingRow.category}
-                            onChange={e => setEditingRow(r => r && ({ ...r, category: e.target.value }))}
-                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none">
-                            {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <select value={editingRow.jobId}
-                            onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
-                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none">
-                            <option value="">— None —</option>
-                            {jobs?.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="relative">
-                            <span className="absolute left-2 top-1.5 text-xs text-muted-foreground">$</span>
-                            <input type="number" step="0.01" min="0" value={editingRow.amount}
-                              onChange={e => setEditingRow(r => r && ({ ...r, amount: e.target.value }))}
-                              className="w-full pl-5 pr-2 py-1 text-xs text-right rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 space-y-1">
-                          {/* Receipt: new file staged? / existing? / empty */}
-                          {editReceiptFile ? (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-emerald-600 font-medium truncate max-w-[80px]" title={editReceiptFile.name}>{editReceiptFile.name}</span>
-                              <button type="button" onClick={() => { setEditReceiptFile(null); if (editReceiptInputRef.current) editReceiptInputRef.current.value = ""; }}
-                                className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>
-                            </div>
-                          ) : exp.receiptUrl ? (
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <button type="button" onClick={() => {
-                                const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-                                const url = exp.receiptUrl.startsWith("http") ? exp.receiptUrl : `${base}${exp.receiptUrl}`;
-                                setEditLightboxImgError(false);
-                                setEditLightboxUrl(url);
-                              }} className="text-xs text-primary hover:underline flex items-center gap-1">
-                                <ImageIcon className="w-3 h-3" />View
-                              </button>
-                              <button type="button" onClick={() => editReceiptInputRef.current?.click()}
-                                className="text-xs text-muted-foreground hover:text-amber-500 flex items-center gap-1">
-                                <Upload className="w-3 h-3" />Replace
-                              </button>
-                            </div>
-                          ) : (
-                            <button type="button" onClick={() => editReceiptInputRef.current?.click()}
-                              className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
-                              <Upload className="w-3 h-3" />Add Receipt
-                            </button>
-                          )}
-                          <input ref={editReceiptInputRef} type="file" className="hidden"
-                            accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
-                            onChange={e => { const f = e.target.files?.[0]; if (f) setEditReceiptFile(f); }} />
-                          {/* Notes */}
-                          <input type="text" value={editingRow.notes}
-                            onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
-                            className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
-                            placeholder="Notes" />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={async () => {
-                                await updateExpense.mutateAsync({
-                                  id: editingRow.id,
-                                  data: {
-                                    description: editingRow.description,
-                                    amount: parseFloat(editingRow.amount),
-                                    date: editingRow.date,
-                                    category: editingRow.category,
-                                    vendor: editingRow.vendor || undefined,
-                                    jobId: editingRow.jobId ? parseInt(editingRow.jobId) : undefined,
-                                    notes: editingRow.notes || undefined,
-                                    receiptUrl: exp.receiptUrl,
-                                  },
-                                });
-                                if (editReceiptFile) {
-                                  await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
-                                }
-                                await qc.invalidateQueries({ queryKey: ["/api/expenses"] });
-                                if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
-                                setEditReceiptFile(null);
-                                setEditingRow(null);
-                              }}
-                              disabled={updateExpense.isPending || uploadMutation.isPending}
-                              className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors">
-                              {updateExpense.isPending || uploadMutation.isPending ? "…" : "Save"}
-                            </button>
-                            <button
-                              onClick={() => { setEditReceiptFile(null); setEditingRow(null); }}
-                              className="w-6 h-6 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-                  return (
-                  <tr key={exp.id}
-                    onClick={() => setViewExpense(exp)}
-                    className="hover:bg-muted/30 transition-colors cursor-pointer group">
-                    <td className="px-6 py-4 text-muted-foreground">{formatDate(exp.date)}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</span>
-                        {exp.recurringExpenseId && (
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); jumpToTemplate(exp.recurringExpenseId!); }}
-                            title="View recurring template"
-                            className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-blue-100 flex-shrink-0 hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
-                          >
-                            <RotateCcw className="w-2.5 h-2.5" /> Recurring ↓
-                          </button>
-                        )}
-                        {(exp as any).subcontractorName && exp.category?.toLowerCase() === "subcontractor" && (
-                          <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-100 flex-shrink-0">
-                            <HardHat className="w-2.5 h-2.5" /> Sub Payment
-                          </span>
-                        )}
-                      </div>
-                      {exp.vendor && (
-                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <Store className="w-3 h-3" /> {exp.vendor}
-                        </div>
-                      )}
-                      {(exp as any).subcontractorName && (
-                        <div className="text-xs text-amber-600 flex items-center gap-1 mt-0.5">
-                          <HardHat className="w-3 h-3" /> {(exp as any).subcontractorName}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${CATEGORY_COLORS[exp.category] ?? "bg-gray-100 text-gray-600"}`}>
-                        {exp.category}
+
+        {/* ── Year tabs ─────────────────────────────────────────────────────── */}
+        {allYears.length > 0 && (
+          <div className="flex items-center gap-1 px-5 pt-4 pb-3 border-b border-border/50 overflow-x-auto">
+            {allYears.map(year => (
+              <button
+                key={year}
+                onClick={() => { setSelectedYear(year); setMonthCollapsed(initMonthCollapsed(year)); }}
+                className={`flex-shrink-0 px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
+                  selectedYear === year
+                    ? "bg-amber-500 text-white shadow-sm"
+                    : "text-muted-foreground hover:bg-muted/60"
+                }`}
+              >
+                {year}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Annual summary banner ──────────────────────────────────────────── */}
+        {!isLoading && (
+          <div className="px-6 py-2.5 border-b border-border/40 bg-muted/20 flex items-center gap-2 text-sm flex-wrap">
+            <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="font-bold text-foreground">{selectedYear}</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="text-muted-foreground">
+              {yearExpenses.length} {yearExpenses.length === 1 ? "expense" : "expenses"}
+            </span>
+            <span className="text-muted-foreground">·</span>
+            <span className="font-bold text-foreground">{formatCurrency(yearTotal)}</span>
+          </div>
+        )}
+
+        {/* ── Month sections ─────────────────────────────────────────────────── */}
+        {isLoading ? (
+          <div className="px-6 py-10 text-center text-muted-foreground animate-pulse text-sm">
+            Loading expenses…
+          </div>
+        ) : monthlyGroups.length === 0 ? (
+          <div className="px-6 py-14 text-center text-muted-foreground">
+            <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
+            <p className="text-sm">No expenses logged for {selectedYear}</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/40">
+            {monthlyGroups.map(({ key, expenses: monthExp, total: monthTotal, label }) => {
+              const isCollapsed = monthCollapsed[key] !== false;
+              return (
+                <div key={key}>
+                  {/* Month header */}
+                  <div
+                    className="flex items-center justify-between px-6 py-3 cursor-pointer select-none hover:bg-muted/30 transition-colors"
+                    onClick={() => toggleMonth(key)}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {isCollapsed
+                        ? <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        : <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      }
+                      <span className="font-semibold text-sm text-foreground">{label}</span>
+                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full flex-shrink-0">
+                        {monthExp.length} {monthExp.length === 1 ? "expense" : "expenses"}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-muted-foreground">{(exp as any).jobTitle || "—"}</td>
-                    <td className="px-6 py-4 text-right font-display font-semibold text-foreground">{formatCurrency(exp.amount)}</td>
-                    <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
-                      {exp.receiptUrl ? (
-                        <a
-                          href={exp.receiptUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/8 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors border border-primary/20 hover:border-primary/40"
-                        >
-                          <ExternalLink className="w-3 h-3" /> View
-                        </a>
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic">No receipt</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => setViewExpense(exp)}
-                          className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {canEdit("expenses") && (
-                          <>
-                            <button onClick={() => { setEditReceiptFile(null); setEditingRow({
-                                id: exp.id,
-                                description: exp.description ?? "",
-                                amount: String(exp.amount ?? ""),
-                                date: (exp.date ?? "").slice(0, 10),
-                                category: exp.category ?? CATEGORIES[0],
-                                vendor: exp.vendor ?? "",
-                                jobId: exp.jobId ? String(exp.jobId) : "",
-                                notes: exp.notes ?? "",
-                              }); }}
-                              className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => setDeleteTarget(exp)}
-                              className="text-muted-foreground hover:text-destructive transition-colors" title="Delete expense">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })
-              )}
-            </tbody>
-            {!isLoading && expenses && expenses.length > 0 && (
-              <tfoot className="border-t-2 border-border bg-muted/30">
-                <tr>
-                  <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-muted-foreground">
-                    Business Expenses (excl. mileage)
-                  </td>
-                  <td className="px-6 py-3 text-right font-bold text-foreground">
-                    {formatCurrency(
-                      expenses
-                        .filter(e => e.category !== "mileage")
-                        .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0)
-                    )}
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+                    </div>
+                    <span className="font-bold text-sm text-foreground ml-4 flex-shrink-0">
+                      {formatCurrency(monthTotal)}
+                    </span>
+                  </div>
+
+                  {/* Month table */}
+                  {!isCollapsed && (
+                    <div className="overflow-x-auto custom-scrollbar border-t border-border/30">
+                      <table className="w-full text-sm text-left whitespace-nowrap">
+                        <thead className="bg-muted/40 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                          <tr>
+                            <th className="px-6 py-3">Date</th>
+                            <th className="px-6 py-3">Description / Vendor</th>
+                            <th className="px-6 py-3">Category</th>
+                            <th className="px-6 py-3 text-right">Amount</th>
+                            <th className="px-6 py-3 text-center">Receipt</th>
+                            <th className="px-6 py-3 text-center">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {monthExp.map(exp => {
+                            const isEditing = editingRow?.id === exp.id;
+                            if (isEditing) {
+                              return (
+                                <tr key={exp.id} className="bg-amber-500/5 border-l-2 border-amber-500">
+                                  <td className="px-3 py-2">
+                                    <input type="date" value={editingRow.date}
+                                      onChange={e => setEditingRow(r => r && ({ ...r, date: e.target.value }))}
+                                      className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
+                                  </td>
+                                  <td className="px-3 py-2 space-y-1">
+                                    <input type="text" value={editingRow.description}
+                                      onChange={e => setEditingRow(r => r && ({ ...r, description: e.target.value }))}
+                                      className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
+                                      placeholder="Description" />
+                                    <VendorCombobox value={editingRow.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <select value={editingRow.category}
+                                      onChange={e => setEditingRow(r => r && ({ ...r, category: e.target.value }))}
+                                      className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none">
+                                      {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
+                                    </select>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <div className="relative">
+                                      <span className="absolute left-2 top-1.5 text-xs text-muted-foreground">$</span>
+                                      <input type="number" step="0.01" min="0" value={editingRow.amount}
+                                        onChange={e => setEditingRow(r => r && ({ ...r, amount: e.target.value }))}
+                                        className="w-full pl-5 pr-2 py-1 text-xs text-right rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 space-y-1">
+                                    {editReceiptFile ? (
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-xs text-emerald-600 font-medium truncate max-w-[80px]" title={editReceiptFile.name}>{editReceiptFile.name}</span>
+                                        <button type="button" onClick={() => { setEditReceiptFile(null); if (editReceiptInputRef.current) editReceiptInputRef.current.value = ""; }}
+                                          className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>
+                                      </div>
+                                    ) : exp.receiptUrl ? (
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <button type="button" onClick={() => {
+                                          const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                                          const url = exp.receiptUrl.startsWith("http") ? exp.receiptUrl : `${base}${exp.receiptUrl}`;
+                                          setEditLightboxImgError(false);
+                                          setEditLightboxUrl(url);
+                                        }} className="text-xs text-primary hover:underline flex items-center gap-1">
+                                          <ImageIcon className="w-3 h-3" />View
+                                        </button>
+                                        <button type="button" onClick={() => editReceiptInputRef.current?.click()}
+                                          className="text-xs text-muted-foreground hover:text-amber-500 flex items-center gap-1">
+                                          <Upload className="w-3 h-3" />Replace
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button type="button" onClick={() => editReceiptInputRef.current?.click()}
+                                        className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+                                        <Upload className="w-3 h-3" />Add Receipt
+                                      </button>
+                                    )}
+                                    <input ref={editReceiptInputRef} type="file" className="hidden"
+                                      accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
+                                      onChange={e => { const f = e.target.files?.[0]; if (f) setEditReceiptFile(f); }} />
+                                    <input type="text" value={editingRow.notes}
+                                      onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
+                                      className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
+                                      placeholder="Notes" />
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        onClick={async () => {
+                                          await updateExpense.mutateAsync({
+                                            id: editingRow.id,
+                                            data: {
+                                              description: editingRow.description,
+                                              amount: parseFloat(editingRow.amount),
+                                              date: editingRow.date,
+                                              category: editingRow.category,
+                                              vendor: editingRow.vendor || undefined,
+                                              jobId: editingRow.jobId ? parseInt(editingRow.jobId) : undefined,
+                                              notes: editingRow.notes || undefined,
+                                              receiptUrl: exp.receiptUrl,
+                                            },
+                                          });
+                                          if (editReceiptFile) {
+                                            await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
+                                          }
+                                          await qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+                                          if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
+                                          setEditReceiptFile(null);
+                                          setEditingRow(null);
+                                        }}
+                                        disabled={updateExpense.isPending || uploadMutation.isPending}
+                                        className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                                        {updateExpense.isPending || uploadMutation.isPending ? "…" : "Save"}
+                                      </button>
+                                      <button
+                                        onClick={() => { setEditReceiptFile(null); setEditingRow(null); }}
+                                        className="w-6 h-6 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            }
+                            return (
+                              <tr key={exp.id}
+                                onClick={() => setViewExpense(exp)}
+                                className="hover:bg-muted/30 transition-colors cursor-pointer group">
+                                <td className="px-6 py-4 text-muted-foreground">{formatDate(exp.date)}</td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</span>
+                                    {exp.recurringExpenseId && (
+                                      <button
+                                        type="button"
+                                        onClick={e => { e.stopPropagation(); jumpToTemplate(exp.recurringExpenseId!); }}
+                                        title="View recurring template"
+                                        className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-blue-100 flex-shrink-0 hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
+                                      >
+                                        <RotateCcw className="w-2.5 h-2.5" /> Recurring ↓
+                                      </button>
+                                    )}
+                                    {(exp as any).subcontractorName && exp.category?.toLowerCase() === "subcontractor" && (
+                                      <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-100 flex-shrink-0">
+                                        <HardHat className="w-2.5 h-2.5" /> Sub Payment
+                                      </span>
+                                    )}
+                                  </div>
+                                  {exp.vendor && (
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                      <Store className="w-3 h-3" /> {exp.vendor}
+                                    </div>
+                                  )}
+                                  {(exp as any).subcontractorName && (
+                                    <div className="text-xs text-amber-600 flex items-center gap-1 mt-0.5">
+                                      <HardHat className="w-3 h-3" /> {(exp as any).subcontractorName}
+                                    </div>
+                                  )}
+                                  {(exp as any).jobTitle && (
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                      <Briefcase className="w-3 h-3" /> {(exp as any).jobTitle}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${CATEGORY_COLORS[exp.category] ?? "bg-gray-100 text-gray-600"}`}>
+                                    {exp.category}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-right font-display font-semibold text-foreground">{formatCurrency(exp.amount)}</td>
+                                <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
+                                  {exp.receiptUrl ? (
+                                    <a
+                                      href={exp.receiptUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/8 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors border border-primary/20 hover:border-primary/40"
+                                    >
+                                      <ExternalLink className="w-3 h-3" /> View
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground italic">No receipt</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button onClick={() => setViewExpense(exp)}
+                                      className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
+                                      <Eye className="w-4 h-4" />
+                                    </button>
+                                    {canEdit("expenses") && (
+                                      <>
+                                        <button onClick={() => { setEditReceiptFile(null); setEditingRow({
+                                            id: exp.id,
+                                            description: exp.description ?? "",
+                                            amount: String(exp.amount ?? ""),
+                                            date: (exp.date ?? "").slice(0, 10),
+                                            category: exp.category ?? CATEGORIES[0],
+                                            vendor: exp.vendor ?? "",
+                                            jobId: exp.jobId ? String(exp.jobId) : "",
+                                            notes: exp.notes ?? "",
+                                          }); }}
+                                          className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
+                                          <Pencil className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => setDeleteTarget(exp)}
+                                          className="text-muted-foreground hover:text-destructive transition-colors" title="Delete expense">
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       {/* Recurring Expenses Section */}
