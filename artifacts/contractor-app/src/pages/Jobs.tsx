@@ -1553,9 +1553,9 @@ export default function Jobs() {
               <p>No jobs found.</p>
             </div>
           )}
-          {scheduledJobs.length === 0 && searchLower && (
+          {scheduledJobs.length === 0 && searchLower && completedJobs.length === 0 && (
             <div className="py-10 text-center text-muted-foreground">
-              <p>No scheduled jobs match "{jobSearch}".</p>
+              <p>No jobs match "{jobSearch}".</p>
             </div>
           )}
         </>
