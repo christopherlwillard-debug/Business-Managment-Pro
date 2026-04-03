@@ -1315,6 +1315,7 @@ export default function Jobs() {
   }, {});
 
   const [jobSearch, setJobSearch]       = useState("");
+  const [completedExpanded, setCompletedExpanded] = useState(false);
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
@@ -1327,7 +1328,7 @@ export default function Jobs() {
   const [invoiceFetching, setInvoiceFetching]           = useState(false);
 
   const searchLower   = jobSearch.toLowerCase().trim();
-  const filteredJobs  = jobs.filter(j => {
+  const jobMatchesSearch = (j: Job) => {
     if (!searchLower) return true;
     return (
       j.title?.toLowerCase().includes(searchLower) ||
@@ -1336,9 +1337,12 @@ export default function Jobs() {
       j.city?.toLowerCase().includes(searchLower) ||
       j.state?.toLowerCase().includes(searchLower)
     );
-  });
-  const scheduledJobs = filteredJobs.filter(j => displayStatus(j.status) === "scheduled");
-  const completedJobs = filteredJobs.filter(j => displayStatus(j.status) === "completed");
+  };
+  const totalCompletedCount = jobs.filter(j => displayStatus(j.status) === "completed").length;
+  const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j));
+  const completedJobs = completedExpanded
+    ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j))
+    : [];
 
   function openNewJob() { setEditJob(null); setJobFormOpen(true); }
   function openEditJob(job: Job) { setEditJob(job); setJobFormOpen(true); }
@@ -1508,32 +1512,50 @@ export default function Jobs() {
             </div>
           )}
 
-          {completedJobs.length > 0 && (
+          {totalCompletedCount > 0 && (
             <div>
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle className="w-4 h-4 text-emerald-500" />
+              <button
+                type="button"
+                onClick={() => setCompletedExpanded(v => !v)}
+                className="flex items-center gap-2 w-full text-left group mb-3"
+              >
+                <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                 <h2 className="font-semibold text-foreground">Completed</h2>
-                <span className="text-sm text-muted-foreground">({completedJobs.length})</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {completedJobs.map(job => {
-                  const jobLogs = logsByJob[job.id] ?? [];
-                  const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
-                  return (
-                    <JobCard key={job.id} job={job} onEdit={openEditJob}
-                      onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
-                      onMarkCompleted={handleMarkCompleted}
-                      logCount={jobLogs.length} lastLogDate={lastLog?.date}
-                      materialListCount={materialListCountByJob[job.id] ?? 0} />
-                  );
-                })}
-              </div>
+                <span className="text-sm text-muted-foreground">({totalCompletedCount})</span>
+                <span className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors">
+                  {completedExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </span>
+              </button>
+              {completedExpanded && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {completedJobs.length > 0 ? completedJobs.map(job => {
+                    const jobLogs = logsByJob[job.id] ?? [];
+                    const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
+                    return (
+                      <JobCard key={job.id} job={job} onEdit={openEditJob}
+                        onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
+                        onMarkCompleted={handleMarkCompleted}
+                        logCount={jobLogs.length} lastLogDate={lastLog?.date}
+                        materialListCount={materialListCountByJob[job.id] ?? 0} />
+                    );
+                  }) : (
+                    <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
+                      No completed jobs match "{jobSearch}".
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {filteredJobs.length === 0 && (
+          {scheduledJobs.length === 0 && !searchLower && totalCompletedCount === 0 && (
             <div className="py-10 text-center text-muted-foreground">
-              <p>{searchLower ? `No jobs match "${jobSearch}".` : "No jobs found."}</p>
+              <p>No jobs found.</p>
+            </div>
+          )}
+          {scheduledJobs.length === 0 && searchLower && (
+            <div className="py-10 text-center text-muted-foreground">
+              <p>No scheduled jobs match "{jobSearch}".</p>
             </div>
           )}
         </>
