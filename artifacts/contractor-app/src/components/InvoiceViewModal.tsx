@@ -311,7 +311,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
               title="Download invoice as PDF">
               <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">PDF</span>
+              <span className="hidden sm:inline">Download PDF</span>
             </button>
             {googleConfigured && (
               <button

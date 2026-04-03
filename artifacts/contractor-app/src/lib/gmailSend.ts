@@ -1,3 +1,13 @@
+/** Strip CR and LF to prevent header injection; trim surrounding whitespace. */
+function sanitizeHeader(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+/** Escape double-quotes in MIME parameter values (e.g. Content-Disposition filename). */
+function sanitizeFilename(name: string): string {
+  return sanitizeHeader(name).replace(/"/g, "'");
+}
+
 function base64UrlEncode(input: string): string {
   const bytes = new TextEncoder().encode(input);
   let binary = "";
@@ -42,9 +52,11 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
     // Chunk base64 at 76 chars per RFC 2045
     const chunkBase64 = (b64: string) => b64.match(/.{1,76}/g)?.join("\r\n") ?? b64;
 
+    const safeFilename = sanitizeFilename(pdfFilename);
+
     rfcLines = [
-      `To: ${to}`,
-      `Subject: ${subject}`,
+      `To: ${sanitizeHeader(to)}`,
+      `Subject: ${sanitizeHeader(subject)}`,
       `MIME-Version: 1.0`,
       `Content-Type: multipart/mixed; boundary="${outer}"`,
       ``,
@@ -66,8 +78,8 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
       `--${inner}--`,
       ``,
       `--${outer}`,
-      `Content-Type: application/pdf; name="${pdfFilename}"`,
-      `Content-Disposition: attachment; filename="${pdfFilename}"`,
+      `Content-Type: application/pdf; name="${safeFilename}"`,
+      `Content-Disposition: attachment; filename="${safeFilename}"`,
       `Content-Transfer-Encoding: base64`,
       ``,
       chunkBase64(pdfBase64),
@@ -79,8 +91,8 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
     const boundary = `==BP${Date.now()}==`;
 
     rfcLines = [
-      `To: ${to}`,
-      `Subject: ${subject}`,
+      `To: ${sanitizeHeader(to)}`,
+      `Subject: ${sanitizeHeader(subject)}`,
       `MIME-Version: 1.0`,
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
       ``,
