@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@workspace/replit-auth-web";
 import { UserPermissionsProvider, useUserPermissions, type SectionKey } from "@/contexts/UserPermissions";
+import { GoogleAuthProvider } from "@/contexts/GoogleAuth";
 import { PermissionGuard } from "./components/PermissionGuard";
 
 import { AppLayout } from "./components/AppLayout";
@@ -233,9 +234,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <UserPermissionsProvider>
-            <Router />
-          </UserPermissionsProvider>
+          <GoogleAuthProvider>
+            <UserPermissionsProvider>
+              <Router />
+            </UserPermissionsProvider>
+          </GoogleAuthProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

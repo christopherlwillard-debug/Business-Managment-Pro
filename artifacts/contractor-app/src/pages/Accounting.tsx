@@ -8,10 +8,13 @@ import {
   ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
   Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell,
   FileCheck, X, ChevronRight, Home,
-  Upload, Eye, EyeOff, Settings2, Paperclip,
+  Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive,
 } from "lucide-react";
 import { useScheduleCReport } from "@workspace/api-client-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useGoogleAuth } from "@/contexts/GoogleAuth";
+import { openDrivePicker } from "@/lib/googleDrivePicker";
+import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1593,6 +1596,8 @@ const STATUS_SORT_ORDER: Record<UnifiedStatus, number> = {
 
 function TaxCalendarTab({ year }: { year: number }) {
   const { canEdit } = useUserPermissions();
+  const { isConnected: googleConnected, getToken } = useGoogleAuth();
+  const { toast } = useToast();
   const storageKey = `ky-filing-statuses-${year}`;
   const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
     try { const raw = localStorage.getItem(storageKey); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
@@ -1601,6 +1606,7 @@ function TaxCalendarTab({ year }: { year: number }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "due-soon" | "filed" | "na">("all");
   const [showManage, setShowManage] = useState(false);
   const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [drivePickingFor, setDrivePickingFor] = useState<string | null>(null);
 
   const { data: items = [], isLoading: loadingItems } = useComplianceItems();
   const { data: kySettings = [] } = useKyFilingSettings();
@@ -1642,6 +1648,25 @@ function TaxCalendarTab({ year }: { year: number }) {
       }
     } finally {
       setUploadingFor(null);
+    }
+  }
+
+  async function handleDriveUpload(entityKey: string) {
+    if (!googleConnected) {
+      toast({ title: "Google not connected", description: "Go to Settings → Google to connect your Google account first.", variant: "destructive" });
+      return;
+    }
+    setDrivePickingFor(entityKey);
+    try {
+      const token = await getToken();
+      const file = await openDrivePicker(token);
+      if (file) {
+        await handleFileUpload(entityKey, file);
+      }
+    } catch (err: any) {
+      toast({ title: "Drive error", description: err?.message ?? "Could not open Google Drive picker.", variant: "destructive" });
+    } finally {
+      setDrivePickingFor(null);
     }
   }
 
@@ -1966,16 +1991,30 @@ function TaxCalendarTab({ year }: { year: number }) {
                         const kyDoc = kySettingsMap[filing.id];
                         const docs: ComplianceDoc[] = kyDoc?.documents ?? [];
                         const isUploading = uploadingFor === entityKey;
+                        const isDrivePicking = drivePickingFor === entityKey;
                         return (
                           <div className="border-t border-border/30 pt-3 space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Paperclip className="w-3 h-3" /> Documents</span>
-                              <label className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${isUploading ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
-                                {isUploading ? <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Upload className="w-3 h-3" />}
-                                {isUploading ? "Uploading…" : "Attach"}
-                                <input type="file" className="hidden" disabled={isUploading}
-                                  onChange={e => { const f = e.target.files?.[0]; if (f) { handleFileUpload(entityKey, f); e.target.value = ""; } }} />
-                              </label>
+                              <div className="flex items-center gap-1.5">
+                                {googleConnected && (
+                                  <button
+                                    type="button"
+                                    disabled={isDrivePicking || isUploading}
+                                    onClick={() => handleDriveUpload(entityKey)}
+                                    className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors ${isDrivePicking ? "bg-muted text-muted-foreground" : "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"}`}
+                                  >
+                                    {isDrivePicking ? <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /> : <HardDrive className="w-3 h-3" />}
+                                    {isDrivePicking ? "Picking…" : "Drive"}
+                                  </button>
+                                )}
+                                <label className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${isUploading ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
+                                  {isUploading ? <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Upload className="w-3 h-3" />}
+                                  {isUploading ? "Uploading…" : "Attach"}
+                                  <input type="file" className="hidden" disabled={isUploading}
+                                    onChange={e => { const f = e.target.files?.[0]; if (f) { handleFileUpload(entityKey, f); e.target.value = ""; } }} />
+                                </label>
+                              </div>
                             </div>
                             {docs.length === 0 && <p className="text-xs text-muted-foreground italic">No documents attached.</p>}
                             {docs.map((doc, idx) => (
@@ -2076,12 +2115,25 @@ function TaxCalendarTab({ year }: { year: number }) {
                     <div className="border-t border-border/50 px-4 py-3 bg-background/50 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Paperclip className="w-3 h-3" /> Documents</span>
-                        <label className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${isCiUploading ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
-                          {isCiUploading ? <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Upload className="w-3 h-3" />}
-                          {isCiUploading ? "Uploading…" : "Attach"}
-                          <input type="file" className="hidden" disabled={isCiUploading}
-                            onChange={e => { const f = e.target.files?.[0]; if (f) { handleFileUpload(ciEntityKey, f); e.target.value = ""; } }} />
-                        </label>
+                        <div className="flex items-center gap-1.5">
+                          {googleConnected && (
+                            <button
+                              type="button"
+                              disabled={drivePickingFor === ciEntityKey || isCiUploading}
+                              onClick={() => handleDriveUpload(ciEntityKey)}
+                              className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors ${drivePickingFor === ciEntityKey ? "bg-muted text-muted-foreground" : "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"}`}
+                            >
+                              {drivePickingFor === ciEntityKey ? <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /> : <HardDrive className="w-3 h-3" />}
+                              {drivePickingFor === ciEntityKey ? "Picking…" : "Drive"}
+                            </button>
+                          )}
+                          <label className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${isCiUploading ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}>
+                            {isCiUploading ? <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Upload className="w-3 h-3" />}
+                            {isCiUploading ? "Uploading…" : "Attach"}
+                            <input type="file" className="hidden" disabled={isCiUploading}
+                              onChange={e => { const f = e.target.files?.[0]; if (f) { handleFileUpload(ciEntityKey, f); e.target.value = ""; } }} />
+                          </label>
+                        </div>
                       </div>
                       {ciDocs.length === 0 && <p className="text-xs text-muted-foreground italic">No documents attached.</p>}
                       {ciDocs.map((doc, idx) => (

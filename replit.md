@@ -130,3 +130,25 @@ Drizzle ORM schema + PostgreSQL connection.
 ### `lib/api-spec` (`@workspace/api-spec`)
 OpenAPI spec in `openapi.yaml`. Codegen produces React Query hooks + Zod schemas.
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate after spec changes
+
+## Google Integration (Drive + Gmail)
+
+Frontend-only integration using Google Identity Services (GIS) OAuth2 implicit token flow.
+
+### Files
+- `artifacts/contractor-app/src/contexts/GoogleAuth.tsx` — GIS token client, localStorage persistence, `useGoogleAuth()` hook
+- `artifacts/contractor-app/src/lib/googleDrivePicker.ts` — Google Picker API (lazy-loads gapi.js), returns `File` object
+- `artifacts/contractor-app/src/lib/gmailSend.ts` — RFC 2822 base64url encoding, Gmail API send, `buildInvoiceEmailHtml()`
+
+### Required Environment Secrets
+- `VITE_GOOGLE_CLIENT_ID` — OAuth 2.0 Client ID from Google Cloud Console (Web application type)
+- `VITE_GOOGLE_API_KEY` — API Key for Google Drive Picker (restrict to Picker API)
+
+### Scopes Requested
+- `https://www.googleapis.com/auth/drive.readonly` — read files from Drive
+- `https://www.googleapis.com/auth/gmail.send` — send emails via Gmail
+
+### Features
+- Settings → Google tab: connect/disconnect UI, connection status, setup instructions
+- Accounting → Tax Calendar: "Drive" button next to "Attach" for compliance docs (KY filings + custom items)
+- InvoiceViewModal: "Gmail" button in toolbar opens compose panel pre-filled with client email
