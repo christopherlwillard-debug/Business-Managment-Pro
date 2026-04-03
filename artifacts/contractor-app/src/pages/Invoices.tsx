@@ -707,6 +707,7 @@ export default function Invoices() {
 
   function setField(k: string, v: string) {
     setFormState(f => ({ ...f, [k]: v }));
+    if (k === "jobId") setPendingMaterialList(null);
   }
 
   function resetForm() {

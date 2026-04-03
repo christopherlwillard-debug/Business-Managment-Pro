@@ -332,6 +332,9 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
       if (existingInvoice.status !== "draft") {
         return res.status(400).json({ error: "Invoice is not a draft and cannot be modified." });
       }
+      if (list.jobId && existingInvoice.jobId !== list.jobId) {
+        return res.status(400).json({ error: "Invoice does not belong to the same job as this material list." });
+      }
     }
 
     if (!existingInvoice) {

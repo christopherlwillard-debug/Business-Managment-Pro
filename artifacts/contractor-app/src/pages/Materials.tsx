@@ -383,10 +383,6 @@ function MaterialListCard({
       setAttachMsg({ ok: false, text: "No draft invoice for this job. Create one in Invoices first." });
       return;
     }
-    if (draftInvoicesForJob.length === 1) {
-      handleAttach(draftInvoicesForJob[0].id);
-      return;
-    }
     setSelectedInvoiceId(draftInvoicesForJob[0].id);
     setShowInvoicePicker(true);
   }
