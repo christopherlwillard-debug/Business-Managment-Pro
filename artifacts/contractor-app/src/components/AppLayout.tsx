@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   Calculator, HardHat, Users,
-  Settings, Menu, X, BookOpen, LogOut, Package, ClipboardList, ShieldCheck,
+  Settings, Menu, X, BookOpen, LogOut, Package, ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
