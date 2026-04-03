@@ -196,9 +196,10 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">IRS Rate</p>
-                  <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.700).toFixed(3)}/mi</p>
+                  <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.70).toFixed(2)}/mi</p>
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
             </CardContent>
           </Card>
         </div>

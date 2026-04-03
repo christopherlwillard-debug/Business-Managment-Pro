@@ -8,18 +8,7 @@ import { eq, and, gte, lte, sum, desc, count, ne } from "drizzle-orm";
 
 const router = Router();
 
-// IRS standard mileage rates — integer year keys, explicit fallback for unknown years
-const IRS_MILEAGE_RATES: Record<number, number> = {
-  2023: 0.655,
-  2024: 0.670,
-  2025: 0.700,
-  2026: 0.700,
-};
-const FALLBACK_MILEAGE_RATE = 0.700; // most recent known rate
-
-function getIrsMileageRate(year: number): number {
-  return IRS_MILEAGE_RATES[year] !== undefined ? IRS_MILEAGE_RATES[year] : FALLBACK_MILEAGE_RATE;
-}
+import { getIrsMileageRate } from "../lib/irs-rates.js";
 
 const SCHEDULE_C_LINES = {
   cogs:            { line: 4,  description: "Cost of goods sold" },
@@ -260,7 +249,7 @@ router.get("/schedule-c", async (req, res) => {
 
     // Line 9 — Car and truck expenses (ALWAYS included, even when $0, for explicit Schedule C accuracy)
     const totalCarTruck = fuelTravelExpenses + mileageDeduction;
-    const line9Description = `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi \u00d7 $${irsMileageRate.toFixed(3)}/mi)`;
+    const line9Description = `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi \u00d7 $${irsMileageRate.toFixed(2)}/mi)`;
     scheduleLines.push({ line: 9, description: line9Description, amount: totalCarTruck });
     totalExpenses += totalCarTruck;
 

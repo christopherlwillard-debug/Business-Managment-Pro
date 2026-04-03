@@ -4,6 +4,7 @@ import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontracto
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard } from "./guards";
+import { getIrsMileageRate } from "../lib/irs-rates.js";
 
 const router = Router();
 
@@ -51,9 +52,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const totalExpenses = allExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const mileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
     const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
-    // IRS standard mileage rates — integer year keys, fallback to most recent known rate
-    const IRS_MILEAGE_RATES_REPORT: Record<number, number> = { 2023: 0.655, 2024: 0.670, 2025: 0.700, 2026: 0.700 };
-    const ytdMileageRate = IRS_MILEAGE_RATES_REPORT[now.getFullYear()] ?? 0.700;
+    const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
     // Monthly revenue for last 6 months
     const monthlyRevenue = [];
