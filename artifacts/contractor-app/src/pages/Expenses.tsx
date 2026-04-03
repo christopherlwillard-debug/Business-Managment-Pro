@@ -1162,7 +1162,7 @@ export default function Expenses() {
   );
 
   function toggleMonth(key: string) {
-    setMonthCollapsed(prev => ({ ...prev, [key]: prev[key] !== false }));
+    setMonthCollapsed(prev => ({ ...prev, [key]: prev[key] === false }));
   }
 
   const allYears = useMemo(() => {
