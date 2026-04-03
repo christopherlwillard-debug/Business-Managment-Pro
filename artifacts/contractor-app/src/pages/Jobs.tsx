@@ -1314,7 +1314,7 @@ export default function Jobs() {
     return acc;
   }, {});
 
-  const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "completed">("all");
+  const [jobSearch, setJobSearch]       = useState("");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
@@ -1326,13 +1326,19 @@ export default function Jobs() {
   const [selectedExistingInvoice, setSelectedExistingInvoice] = useState<Invoice | null>(null);
   const [invoiceFetching, setInvoiceFetching]           = useState(false);
 
+  const searchLower   = jobSearch.toLowerCase().trim();
   const filteredJobs  = jobs.filter(j => {
-    if (statusFilter === "all") return true;
-    return displayStatus(j.status) === statusFilter;
+    if (!searchLower) return true;
+    return (
+      j.title?.toLowerCase().includes(searchLower) ||
+      j.clientId?.toString().includes(searchLower) ||
+      j.locationName?.toLowerCase().includes(searchLower) ||
+      j.city?.toLowerCase().includes(searchLower) ||
+      j.state?.toLowerCase().includes(searchLower)
+    );
   });
   const scheduledJobs = filteredJobs.filter(j => displayStatus(j.status) === "scheduled");
   const completedJobs = filteredJobs.filter(j => displayStatus(j.status) === "completed");
-  const showAll       = statusFilter === "all";
 
   function openNewJob() { setEditJob(null); setJobFormOpen(true); }
   function openEditJob(job: Job) { setEditJob(job); setJobFormOpen(true); }
@@ -1434,32 +1440,24 @@ export default function Jobs() {
           <h1 className="text-3xl font-display font-bold text-foreground">Jobs</h1>
           <p className="text-muted-foreground mt-1">Manage jobs and generate invoices for completed work.</p>
         </div>
-        {canEditJobs && (
-          <button onClick={openNewJob}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
-            <Plus className="w-4 h-4" /> New Job
-          </button>
-        )}
-      </div>
-
-      {/* Status filter */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {([
-          { key: "all",       label: "All Jobs" },
-          { key: "scheduled", label: "Scheduled", count: jobs.filter(j => displayStatus(j.status) === "scheduled").length },
-          { key: "completed", label: "Completed",  count: jobs.filter(j => displayStatus(j.status) === "completed").length },
-        ] as const).map(f => (
-          <button key={f.key}
-            onClick={() => setStatusFilter(f.key)}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
-              statusFilter === f.key
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "bg-card border border-border text-muted-foreground hover:bg-muted/50"
-            }`}>
-            {f.label}
-            {"count" in f && <span className="ml-1.5 text-xs opacity-80">({f.count})</span>}
-          </button>
-        ))}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search jobs…"
+              value={jobSearch}
+              onChange={e => setJobSearch(e.target.value)}
+              className="pl-9 pr-3 py-2 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 w-48"
+            />
+          </div>
+          {canEditJobs && (
+            <button onClick={openNewJob}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
+              <Plus className="w-4 h-4" /> New Job
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Loading */}
@@ -1487,15 +1485,13 @@ export default function Jobs() {
       {/* Jobs grid */}
       {!isLoading && jobs.length > 0 && (
         <>
-          {(showAll || statusFilter === "scheduled") && scheduledJobs.length > 0 && (
+          {scheduledJobs.length > 0 && (
             <div>
-              {showAll && (
-                <div className="flex items-center gap-2 mb-3">
-                  <Clock className="w-4 h-4 text-blue-500" />
-                  <h2 className="font-semibold text-foreground">Scheduled</h2>
-                  <span className="text-sm text-muted-foreground">({scheduledJobs.length})</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-blue-500" />
+                <h2 className="font-semibold text-foreground">Scheduled</h2>
+                <span className="text-sm text-muted-foreground">({scheduledJobs.length})</span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {scheduledJobs.map(job => {
                   const jobLogs = logsByJob[job.id] ?? [];
@@ -1512,15 +1508,13 @@ export default function Jobs() {
             </div>
           )}
 
-          {(showAll || statusFilter === "completed") && completedJobs.length > 0 && (
+          {completedJobs.length > 0 && (
             <div>
-              {showAll && (
-                <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle className="w-4 h-4 text-emerald-500" />
-                  <h2 className="font-semibold text-foreground">Completed</h2>
-                  <span className="text-sm text-muted-foreground">({completedJobs.length})</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                <h2 className="font-semibold text-foreground">Completed</h2>
+                <span className="text-sm text-muted-foreground">({completedJobs.length})</span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {completedJobs.map(job => {
                   const jobLogs = logsByJob[job.id] ?? [];
@@ -1539,7 +1533,7 @@ export default function Jobs() {
 
           {filteredJobs.length === 0 && (
             <div className="py-10 text-center text-muted-foreground">
-              <p>No {statusFilter} jobs found.</p>
+              <p>{searchLower ? `No jobs match "${jobSearch}".` : "No jobs found."}</p>
             </div>
           )}
         </>
