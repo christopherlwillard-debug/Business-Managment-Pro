@@ -469,10 +469,11 @@ function ComplianceItemForm({
     recurrence: initial?.recurrence ?? "one-time", notes: initial?.notes ?? "",
     status: initial?.status ?? "upcoming",
   });
+  const [enabled, setEnabled] = useState(initial?.enabled !== false);
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({ ...form, jurisdiction: form.jurisdiction.trim() || null, notes: form.notes.trim() || null });
+    onSave({ ...form, enabled, jurisdiction: form.jurisdiction.trim() || null, notes: form.notes.trim() || null });
   }
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -507,12 +508,22 @@ function ComplianceItemForm({
         </div>
       </div>
       {initial?.id && (
-        <div>
-          <label className={cl}>Status</label>
-          <select className={ci} value={form.status} onChange={e => set("status", e.target.value)}>
-            <option value="upcoming">Upcoming</option>
-            <option value="complete">Complete</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={cl}>Status</label>
+            <select className={ci} value={form.status} onChange={e => set("status", e.target.value)}>
+              <option value="upcoming">Upcoming</option>
+              <option value="complete">Complete</option>
+            </select>
+          </div>
+          <div>
+            <label className={cl}>Visibility</label>
+            <button type="button" onClick={() => setEnabled(v => !v)}
+              className={`flex items-center gap-2 w-full h-9 px-3 rounded-xl text-sm font-medium border transition-colors ${enabled ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-muted border-border text-muted-foreground"}`}>
+              {enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              {enabled ? "Visible on calendar" : "Hidden from calendar"}
+            </button>
+          </div>
         </div>
       )}
       <div>
