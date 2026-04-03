@@ -115,9 +115,9 @@ router.get("/schedule-c", async (req, res) => {
         )
       );
 
-    const grossReceipts = grossResult?.total ? parseFloat(grossResult.total as any) : 0;
+    const invoiceReceipts = grossResult?.total ? parseFloat(grossResult.total as any) : 0;
 
-    // 1b. Other Income (Line 6) - cash jobs, misc payments, etc.
+    // 1b. Prior/external revenue entered as "Other Income" - same business, goes into Line 1
     const [otherIncomeResult] = await db
       .select({ total: sum(otherIncomeTable.amount) })
       .from(otherIncomeTable)
@@ -129,7 +129,9 @@ router.get("/schedule-c", async (req, res) => {
       );
 
     const otherIncomeTotal = otherIncomeResult?.total ? parseFloat(otherIncomeResult.total as any) : 0;
-    const grossIncome = grossReceipts + otherIncomeTotal;
+    // All income is contracting work — combine into gross receipts (Line 1)
+    const grossReceipts = invoiceReceipts + otherIncomeTotal;
+    const grossIncome = grossReceipts;
 
     // 2. Expenses by category (exclude mileage — it's calculated separately)
     const expensesData = await db
@@ -217,27 +219,13 @@ router.get("/schedule-c", async (req, res) => {
     const scheduleLines: ScheduleCLineItem[] = [];
     let totalExpenses = 0;
 
-    // Line 1 - Gross Receipts
+    // Line 1 - Gross Receipts (app invoices + prior/external revenue combined)
     scheduleLines.push({
       line: 1,
-      description: "Gross receipts or sales",
+      description: otherIncomeTotal > 0
+        ? `Gross receipts or sales (invoices + $${otherIncomeTotal.toFixed(2)} prior revenue)`
+        : "Gross receipts or sales",
       amount: grossReceipts,
-    });
-
-    // Line 6 - Other Income (cash jobs, misc, etc.)
-    if (otherIncomeTotal > 0) {
-      scheduleLines.push({
-        line: 6,
-        description: "Other income",
-        amount: otherIncomeTotal,
-      });
-    }
-
-    // Line 7 - Gross Income (Line 1 + Line 6)
-    scheduleLines.push({
-      line: 7,
-      description: "Gross income",
-      amount: grossIncome,
     });
 
     // Expense lines
