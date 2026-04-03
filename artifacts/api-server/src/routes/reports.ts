@@ -254,7 +254,10 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const incomeByCity = Array.from(cityMap.values()).sort((a, b) => b.gross - a.gross);
 
     // Estimated tax liabilities based on YTD net profit
-    const owensboroGross = incomeByCity.find(r => r.city.toLowerCase() === "owensboro")?.gross ?? 0;
+    // Sum across ALL Owensboro rows (same city may appear with different state/blank state values)
+    const owensboroGross = incomeByCity
+      .filter(r => r.city.trim().toLowerCase() === "owensboro")
+      .reduce((s, r) => s + r.gross, 0);
     const owensboroOccTax = Math.max(0, owensboroGross * OWENSBORO_OCC_RATE);
     const kyStateTax = Math.max(0, netProfit * 0.04);
     // IRS SE tax: 15.3% × (net profit × 92.35%) — 92.35% accounts for half-SE deduction
