@@ -260,9 +260,7 @@ router.get("/schedule-c", async (req, res) => {
 
     // Line 9 — Car and truck expenses (ALWAYS included, even when $0, for explicit Schedule C accuracy)
     const totalCarTruck = fuelTravelExpenses + mileageDeduction;
-    const line9Description = totalBusinessMiles > 0
-      ? `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi \u00d7 $${irsMileageRate.toFixed(3)}/mi)`
-      : "Car and truck expenses";
+    const line9Description = `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi \u00d7 $${irsMileageRate.toFixed(3)}/mi)`;
     scheduleLines.push({ line: 9, description: line9Description, amount: totalCarTruck });
     totalExpenses += totalCarTruck;
 

@@ -1464,6 +1464,23 @@ export default function Expenses() {
                 })
               )}
             </tbody>
+            {!isLoading && expenses && expenses.length > 0 && (
+              <tfoot className="border-t-2 border-border bg-muted/30">
+                <tr>
+                  <td colSpan={4} className="px-6 py-3 text-sm font-semibold text-muted-foreground">
+                    Business Expenses (excl. mileage)
+                  </td>
+                  <td className="px-6 py-3 text-right font-bold text-foreground">
+                    {formatCurrency(
+                      expenses
+                        .filter(e => e.category !== "mileage")
+                        .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0)
+                    )}
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </Card>
