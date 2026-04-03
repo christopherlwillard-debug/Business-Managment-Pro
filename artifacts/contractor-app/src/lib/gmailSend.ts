@@ -14,37 +14,91 @@ export interface GmailSendOptions {
   subject: string;
   html: string;
   text?: string;
+  /** Standard base64 PDF bytes (from invoicePdfToBase64). When provided, the email is sent as multipart/mixed with the PDF attached. */
+  pdfBase64?: string;
+  /** Attachment filename, e.g. "Invoice-INV-0001.pdf" */
+  pdfFilename?: string;
 }
 
 /**
  * Send an email via the Gmail API using an OAuth2 access token.
+ * When pdfBase64 + pdfFilename are supplied the message is multipart/mixed
+ * (outer) containing a multipart/alternative (inner) for text+html parts
+ * plus an application/pdf attachment.
+ *
  * The From address is always the authenticated Gmail user's address —
  * we do NOT set a custom From header to avoid authorization failures.
  */
 export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
-  const { token, to, subject, html, text } = opts;
-  const boundary = `==BP${Date.now()}==`;
+  const { token, to, subject, html, text, pdfBase64, pdfFilename } = opts;
 
-  const rfcLines = [
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    ``,
-    `--${boundary}`,
-    `Content-Type: text/plain; charset="UTF-8"`,
-    `Content-Transfer-Encoding: quoted-printable`,
-    ``,
-    text ?? `Please see your invoice below.`,
-    ``,
-    `--${boundary}`,
-    `Content-Type: text/html; charset="UTF-8"`,
-    `Content-Transfer-Encoding: quoted-printable`,
-    ``,
-    html,
-    ``,
-    `--${boundary}--`,
-  ];
+  let rfcLines: string[];
+
+  if (pdfBase64 && pdfFilename) {
+    // ── multipart/mixed (with nested multipart/alternative + PDF attachment) ──
+    const outer = `==BPO${Date.now()}==`;
+    const inner = `==BPI${Date.now()}A==`;
+
+    // Chunk base64 at 76 chars per RFC 2045
+    const chunkBase64 = (b64: string) => b64.match(/.{1,76}/g)?.join("\r\n") ?? b64;
+
+    rfcLines = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: multipart/mixed; boundary="${outer}"`,
+      ``,
+      `--${outer}`,
+      `Content-Type: multipart/alternative; boundary="${inner}"`,
+      ``,
+      `--${inner}`,
+      `Content-Type: text/plain; charset="UTF-8"`,
+      `Content-Transfer-Encoding: quoted-printable`,
+      ``,
+      text ?? `Please see your invoice attached.`,
+      ``,
+      `--${inner}`,
+      `Content-Type: text/html; charset="UTF-8"`,
+      `Content-Transfer-Encoding: quoted-printable`,
+      ``,
+      html,
+      ``,
+      `--${inner}--`,
+      ``,
+      `--${outer}`,
+      `Content-Type: application/pdf; name="${pdfFilename}"`,
+      `Content-Disposition: attachment; filename="${pdfFilename}"`,
+      `Content-Transfer-Encoding: base64`,
+      ``,
+      chunkBase64(pdfBase64),
+      ``,
+      `--${outer}--`,
+    ];
+  } else {
+    // ── multipart/alternative (no attachment) ────────────────────────────────
+    const boundary = `==BP${Date.now()}==`;
+
+    rfcLines = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      ``,
+      `--${boundary}`,
+      `Content-Type: text/plain; charset="UTF-8"`,
+      `Content-Transfer-Encoding: quoted-printable`,
+      ``,
+      text ?? `Please see your invoice below.`,
+      ``,
+      `--${boundary}`,
+      `Content-Type: text/html; charset="UTF-8"`,
+      `Content-Transfer-Encoding: quoted-printable`,
+      ``,
+      html,
+      ``,
+      `--${boundary}--`,
+    ];
+  }
 
   const raw = base64UrlEncode(rfcLines.join("\r\n"));
 

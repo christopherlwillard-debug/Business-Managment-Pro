@@ -2,10 +2,11 @@ import { useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
 import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
+import { downloadInvoicePdf, invoicePdfToBase64 } from "@/lib/generateInvoicePdf";
 import {
   FileText, Trash2, X,
-  Building2, MapPin, Printer, Mail, Phone,
-  Paperclip, Send, Check, AlertCircle,
+  Building2, MapPin, Printer, Download, Mail, Phone,
+  Paperclip, Send, Check,
 } from "lucide-react";
 import { Invoice, InvoiceLineItem, InvoiceAttachment, AppSettings } from "@workspace/api-client-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
@@ -58,6 +59,39 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
   const [gmailMessage, setGmailMessage] = useState("");
   const [gmailSending, setGmailSending] = useState(false);
   const [gmailSent, setGmailSent] = useState(false);
+
+  function buildPdfData() {
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate,
+      terms: invoice.terms,
+      clientName: invoice.clientName,
+      clientEmail: invoice.clientEmail,
+      clientPhone: invoice.clientPhone,
+      clientAddress: invoice.clientAddress,
+      clientCity: invoice.clientCity,
+      clientState: invoice.clientState,
+      clientZip: invoice.clientZip,
+      locationName: invoice.locationName,
+      city: invoice.city,
+      state: invoice.state,
+      lineItems: lineItems.map(li => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice })),
+      subtotal,
+      taxRate,
+      taxAmount,
+      total,
+      notes: invoice.notes,
+    };
+  }
+
+  function buildPdfSettings() {
+    return { companyName, companyAddress, companyCity, companyState, companyZip, companyPhone, companyEmail };
+  }
+
+  function handleDownloadPdf() {
+    downloadInvoicePdf(buildPdfData(), buildPdfSettings());
+  }
 
   function handlePrint() {
     const absoluteLogoUrl = logoUrl ? `${window.location.origin}${base}${logoUrl}` : null;
@@ -130,15 +164,19 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         notes: invoice.notes ?? undefined,
         customMessage: gmailMessage.trim() || undefined,
       });
+      const pdfBase64 = invoicePdfToBase64(buildPdfData(), buildPdfSettings());
+      const pdfFilename = `Invoice-${invoice.invoiceNumber}.pdf`;
       await sendViaGmail({
         token,
         to: gmailTo.trim(),
         subject: gmailSubject.trim() || `Invoice ${invoice.invoiceNumber}`,
         html,
-        text: gmailMessage.trim() || `Please see invoice ${invoice.invoiceNumber}. Total due: $${total.toFixed(2)}`,
+        text: gmailMessage.trim() || `Please see invoice ${invoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
+        pdfBase64,
+        pdfFilename,
       });
       setGmailSent(true);
-      toast({ title: "Invoice sent via Gmail", description: `Delivered to ${gmailTo.trim()}` });
+      toast({ title: "Invoice sent via Gmail", description: `Delivered to ${gmailTo.trim()} with PDF attached` });
       setTimeout(() => {
         setShowGmailCompose(false);
         setGmailSent(false);
@@ -269,14 +307,12 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors">
               <Printer className="w-3.5 h-3.5" /> Print
             </button>
-            <a
-              href={`mailto:${invoice.clientEmail ?? ""}?subject=${encodeURIComponent(`Invoice ${invoice.invoiceNumber} from ${companyName || "us"}`)}&body=${encodeURIComponent(`Hi,\n\nPlease find invoice ${invoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}.\n\nThank you,\n${companyName || ""}`)}`}
+            <button onClick={handleDownloadPdf}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
-              title="Open in your email client"
-            >
-              <Mail className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Email</span>
-            </a>
+              title="Download invoice as PDF">
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">PDF</span>
+            </button>
             {googleConfigured && (
               <button
                 onClick={handleGmailButtonClick}
