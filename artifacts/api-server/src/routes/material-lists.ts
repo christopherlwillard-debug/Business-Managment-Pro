@@ -271,16 +271,17 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
-    const { attachmentUrl, attachmentName, attachmentSize } = (req.body ?? {}) as {
+    const { attachmentUrl, attachmentName, attachmentSize, invoiceId: targetInvoiceId } = (req.body ?? {}) as {
       attachmentUrl?: string;
       attachmentName?: string;
       attachmentSize?: number;
+      invoiceId?: number;
     };
 
     const list = await getListWithItems(id, req.user?.id);
     if (!list) return res.status(404).json({ error: "Material list not found" });
 
-    if (!list.jobId) {
+    if (!list.jobId && !targetInvoiceId) {
       return res.status(400).json({ error: "This list is not linked to a job. Link it to a job first." });
     }
 
@@ -291,15 +292,27 @@ router.post("/:id/attach-to-invoice", async (req, res) => {
 
     const description = "Materials";
 
-    const [existingInvoice] = await db
-      .select()
-      .from(invoicesTable)
-      .where(and(
-        eq(invoicesTable.jobId, list.jobId),
-        eq(invoicesTable.status, "draft"),
-      ))
-      .orderBy(desc(invoicesTable.id))
-      .limit(1);
+    let existingInvoice: typeof invoicesTable.$inferSelect | undefined;
+
+    if (targetInvoiceId) {
+      const [found] = await db
+        .select()
+        .from(invoicesTable)
+        .where(eq(invoicesTable.id, targetInvoiceId))
+        .limit(1);
+      existingInvoice = found;
+    } else {
+      const [found] = await db
+        .select()
+        .from(invoicesTable)
+        .where(and(
+          eq(invoicesTable.jobId, list.jobId!),
+          eq(invoicesTable.status, "draft"),
+        ))
+        .orderBy(desc(invoicesTable.id))
+        .limit(1);
+      existingInvoice = found;
+    }
 
     const lineItemEntry: Omit<LineItem, "id"> = {
       description,

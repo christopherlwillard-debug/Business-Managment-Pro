@@ -9,8 +9,10 @@ import {
   useUpdateInvoiceStatus,
   useDeleteInvoice,
   useGetSettings,
+  useListMaterialLists,
   Invoice,
   InvoiceAttachment,
+  type MaterialList,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
@@ -18,7 +20,7 @@ import { Card } from "@/components/ui/card";
 import {
   FileText, Download, Plus, Trash2, X,
   Building2, MapPin, Check, Eye, AlertTriangle,
-  Paperclip, Upload,
+  Paperclip, Upload, Package,
 } from "lucide-react";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
 
@@ -56,6 +58,23 @@ function InvoiceBuilder({
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const jobIdNum = form.jobId ? parseInt(form.jobId) : undefined;
+  const { data: jobMaterialLists = [] } = useListMaterialLists(
+    jobIdNum ? { jobId: jobIdNum } : undefined
+  );
+
+  function addMaterialListAsLine(list: MaterialList) {
+    const markupMult = list.markup / 100 + 1;
+    const listTotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
+    const desc = `Materials \u2013 ${list.name}`;
+    const existing = lineItems.findIndex(l => l.description === desc);
+    if (existing >= 0) {
+      setLineItems(ls => ls.map((l, i) => i === existing ? { ...l, unitPrice: parseFloat(listTotal.toFixed(2)) } : l));
+    } else {
+      setLineItems(ls => [...ls, { description: desc, quantity: 1, unitPrice: parseFloat(listTotal.toFixed(2)) }]);
+    }
+  }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -450,6 +469,44 @@ function InvoiceBuilder({
                 className="mt-3 flex items-center gap-1.5 text-xs text-amber-600 font-semibold hover:text-amber-700 transition-colors">
                 <Plus className="w-3.5 h-3.5" /> Add line item
               </button>
+
+              {/* ── Material Lists (from linked job) ── */}
+              {form.jobId && jobMaterialLists.length > 0 && (
+                <div className="mt-4 border-t border-gray-100 pt-3">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-2 flex items-center gap-1">
+                    <Package className="w-3 h-3" /> Material Lists for This Job
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {jobMaterialLists.map(list => {
+                      const markupMult = list.markup / 100 + 1;
+                      const listTotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * markupMult, 0);
+                      const desc = `Materials \u2013 ${list.name}`;
+                      const alreadyAdded = lineItems.some(l => l.description === desc);
+                      return (
+                        <div key={list.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50/60 rounded-lg border border-amber-100">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-800 truncate">{list.name}</p>
+                            <p className="text-[10px] text-gray-400">{list.items.length} item{list.items.length !== 1 ? "s" : ""} · {formatCurrency(listTotal)}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addMaterialListAsLine(list)}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
+                              alreadyAdded
+                                ? "bg-emerald-100 text-emerald-700 cursor-default"
+                                : "bg-amber-500 text-white hover:bg-amber-600"
+                            }`}
+                          >
+                            {alreadyAdded
+                              ? <><Check className="w-3 h-3" /> Added</>
+                              : <><Plus className="w-3 h-3" /> Add to Invoice</>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ── Totals ── */}

@@ -93,6 +93,7 @@ export function useDeleteMaterialList() {
 
 export interface AttachToInvoiceRequest {
   id: number;
+  invoiceId?: number;
   attachmentUrl?: string;
   attachmentName?: string;
   attachmentSize?: number;
