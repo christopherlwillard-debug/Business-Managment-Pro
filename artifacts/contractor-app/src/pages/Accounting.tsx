@@ -1313,9 +1313,8 @@ function ScheduleCTab({ year }: { year: number }) {
               onClick={() => {
                 const printWindow = window.open("", "", "width=800,height=600");
                 if (printWindow) {
-                  printWindow.document.write(`<html><head><title>Schedule C - Tax Year ${report.year}</title><style>body{font-family:Arial,sans-serif;padding:40px;line-height:1.6}h1{text-align:center;font-size:18px;margin-bottom:5px}h2{font-size:13px;margin:20px 0 10px}.line{display:flex;justify-content:space-between;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px}.ln{font-weight:bold;width:50px;color:#666;font-size:12px}.desc{flex:1;margin:0 20px;font-size:13px}.amt{width:100px;text-align:right;font-weight:600}.total{border-top:2px solid #333;font-weight:bold;background:#f5f5f5;padding:8px 4px}</style></head><body><h1>SCHEDULE C (FORM 1040)</h1><p style="text-align:center;color:#666">Profit or Loss from Business — Tax Year ${report.year}</p><h2>PART I — INCOME</h2>${report.scheduleLines.filter(l => l.line <= 7).map(l => `<div class="line"><span class="ln">Line ${l.line}</span><span class="desc">${l.description}</span><span class="amt">$${l.amount.toFixed(2)}</span></div>`).join("")}<h2>PART II — EXPENSES</h2>${report.scheduleLines.filter(l => l.line >= 8 && l.line < 28).map(l => `<div class="line"><span class="ln">Line ${l.line}</span><span class="desc">${l.description}</span><span class="amt">$${l.amount.toFixed(2)}</span></div>`).join("")}${homeOfficeDed > 0 ? `<div class="line"><span class="ln">Line 30</span><span class="desc">Home office deduction (Form 8829)</span><span class="amt">$${homeOfficeDed.toFixed(2)}</span></div>` : ""}<div class="line total"><span class="ln">Line 28</span><span class="desc">Total expenses</span><span class="amt">$${totalDeductions.toFixed(2)}</span></div><div class="line total"><span class="ln">Line 31</span><span class="desc">Net profit or (loss)</span><span class="amt">$${netProfit.toFixed(2)}</span></div></body></html>`);
+                  printWindow.document.write(`<html><head><title>Schedule C - Tax Year ${report.year}</title><style>body{font-family:Arial,sans-serif;padding:40px;padding-top:80px;line-height:1.6}h1{text-align:center;font-size:18px;margin-bottom:5px}h2{font-size:13px;margin:20px 0 10px}.line{display:flex;justify-content:space-between;margin-bottom:8px;border-bottom:1px solid #eee;padding-bottom:6px}.ln{font-weight:bold;width:50px;color:#666;font-size:12px}.desc{flex:1;margin:0 20px;font-size:13px}.amt{width:100px;text-align:right;font-weight:600}.total{border-top:2px solid #333;font-weight:bold;background:#f5f5f5;padding:8px 4px}.top-bar{position:fixed;top:max(16px,env(safe-area-inset-top,16px));left:0;right:0;display:flex;justify-content:space-between;padding:0 16px;z-index:9999;pointer-events:none}.top-bar button{pointer-events:all;background:rgba(0,0,0,0.75);color:#fff;border:none;padding:8px 16px;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer}@media print{.top-bar{display:none}}</style></head><body><div class="top-bar"><button onclick="window.close()">&#8592; Back to App</button><button onclick="window.print()">&#128438; Print</button></div><h1>SCHEDULE C (FORM 1040)</h1><p style="text-align:center;color:#666">Profit or Loss from Business — Tax Year ${report.year}</p><h2>PART I — INCOME</h2>${report.scheduleLines.filter(l => l.line <= 7).map(l => `<div class="line"><span class="ln">Line ${l.line}</span><span class="desc">${l.description}</span><span class="amt">$${l.amount.toFixed(2)}</span></div>`).join("")}<h2>PART II — EXPENSES</h2>${report.scheduleLines.filter(l => l.line >= 8 && l.line < 28).map(l => `<div class="line"><span class="ln">Line ${l.line}</span><span class="desc">${l.description}</span><span class="amt">$${l.amount.toFixed(2)}</span></div>`).join("")}${homeOfficeDed > 0 ? `<div class="line"><span class="ln">Line 30</span><span class="desc">Home office deduction (Form 8829)</span><span class="amt">$${homeOfficeDed.toFixed(2)}</span></div>` : ""}<div class="line total"><span class="ln">Line 28</span><span class="desc">Total expenses</span><span class="amt">$${totalDeductions.toFixed(2)}</span></div><div class="line total"><span class="ln">Line 31</span><span class="desc">Net profit or (loss)</span><span class="amt">$${netProfit.toFixed(2)}</span></div></body></html>`);
                   printWindow.document.close();
-                  setTimeout(() => printWindow.print(), 250);
                 }
               }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all text-sm"
@@ -1621,6 +1620,8 @@ function TaxCalendarTab({ year }: { year: number }) {
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<ComplianceItem | null>(null);
   const saving = createItem.isPending || updateItem.isPending;
+  const [docLightboxUrl, setDocLightboxUrl] = useState<string | null>(null);
+  const [docLightboxFileName, setDocLightboxFileName] = useState("");
 
   const kySettingsMap = Object.fromEntries(kySettings.map(s => [s.filingId, s]));
 
@@ -2023,8 +2024,15 @@ function TaxCalendarTab({ year }: { year: number }) {
                             {docs.map((doc, idx) => (
                               <div key={idx} className="flex items-center gap-2 bg-muted/30 rounded-lg px-2.5 py-1.5">
                                 <Paperclip className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                                <a href={`${BASE}${doc.servingUrl ?? `/api/storage/objects${doc.objectPath.slice("/objects".length)}`}`} target="_blank" rel="noopener noreferrer"
-                                  className="flex-1 text-xs text-primary hover:underline truncate">{doc.fileName}</a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const url = `${BASE}${doc.servingUrl ?? `/api/storage/objects${doc.objectPath.slice("/objects".length)}`}`;
+                                    setDocLightboxFileName(doc.fileName);
+                                    setDocLightboxUrl(url);
+                                  }}
+                                  className="flex-1 text-xs text-primary hover:underline truncate text-left"
+                                >{doc.fileName}</button>
                                 <button onClick={() => handleDocDelete(entityKey, idx)}
                                   className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
                                   <X className="w-3 h-3" />
@@ -2143,8 +2151,15 @@ function TaxCalendarTab({ year }: { year: number }) {
                       {ciDocs.map((doc, idx) => (
                         <div key={idx} className="flex items-center gap-2 bg-muted/30 rounded-lg px-2.5 py-1.5">
                           <Paperclip className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                          <a href={`${BASE}${doc.servingUrl ?? `/api/storage/objects${doc.objectPath.slice("/objects".length)}`}`} target="_blank" rel="noopener noreferrer"
-                            className="flex-1 text-xs text-primary hover:underline truncate">{doc.fileName}</a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const url = `${BASE}${doc.servingUrl ?? `/api/storage/objects${doc.objectPath.slice("/objects".length)}`}`;
+                              setDocLightboxFileName(doc.fileName);
+                              setDocLightboxUrl(url);
+                            }}
+                            className="flex-1 text-xs text-primary hover:underline truncate text-left"
+                          >{doc.fileName}</button>
                           <button onClick={() => handleDocDelete(ciEntityKey, idx)}
                             className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
                             <X className="w-3 h-3" />
@@ -2171,6 +2186,62 @@ function TaxCalendarTab({ year }: { year: number }) {
           Kentucky SBDC (<a href="https://kysbdc.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">kysbdc.com</a>) offers free small-business advising.
         </p>
       </div>
+
+      {/* ── Compliance Document Lightbox ───────────────────────────────────── */}
+      {docLightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/95 overflow-hidden"
+          onClick={() => setDocLightboxUrl(null)}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setDocLightboxUrl(null); }}
+            className="absolute z-10 right-4 flex items-center gap-1.5 text-white font-bold text-sm bg-black/70 hover:bg-black/90 px-4 py-2 rounded-xl border border-white/30 backdrop-blur-sm transition-colors"
+            style={{ top: "max(16px, env(safe-area-inset-top, 16px))" }}
+          >
+            <X className="w-4 h-4" /> Close
+          </button>
+          <div
+            className="absolute inset-0 flex items-center justify-center px-4 overflow-hidden"
+            style={{ paddingTop: "calc(max(52px, env(safe-area-inset-top, 52px)) + 32px)" }}
+          >
+            <div
+              className="flex flex-col items-center gap-6 p-8 text-center rounded-2xl bg-white/8 border border-white/12 w-full max-w-sm"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <FileText className="w-16 h-16 text-white/30" />
+              <div>
+                <p className="text-white font-semibold text-lg truncate max-w-xs">{docLightboxFileName}</p>
+                <p className="text-white/50 text-sm mt-1">Tap "Open" to view in a new tab</p>
+              </div>
+              <div className="flex gap-3 flex-wrap justify-center">
+                <a
+                  href={docLightboxUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors text-sm"
+                >
+                  <ExternalLink className="w-4 h-4" /> Open
+                </a>
+                <a
+                  href={docLightboxUrl}
+                  download={docLightboxFileName}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-white/15 text-white rounded-xl font-semibold hover:bg-white/25 transition-colors text-sm"
+                >
+                  <Download className="w-4 h-4" /> Download
+                </a>
+              </div>
+            </div>
+          </div>
+          <div
+            className="absolute left-0 right-0 text-center text-white/30 text-xs pointer-events-none"
+            style={{ bottom: "max(16px, env(safe-area-inset-bottom, 16px))" }}
+          >
+            Tap anywhere outside to close
+          </div>
+        </div>
+      )}
     </div>
   );
 }
