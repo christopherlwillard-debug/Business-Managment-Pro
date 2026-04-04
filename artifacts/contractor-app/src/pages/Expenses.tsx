@@ -1175,6 +1175,9 @@ export default function Expenses() {
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
   const [editLightboxImgError, setEditLightboxImgError] = useState(false);
+  const [receiptLightboxUrl, setReceiptLightboxUrl]   = useState<string | null>(null);
+  const [receiptLightboxIsPdf, setReceiptLightboxIsPdf] = useState(false);
+  const [receiptLightboxImgError, setReceiptLightboxImgError] = useState(false);
   const editReceiptInputRef                           = useRef<HTMLInputElement>(null);
   const [deleteTarget,  setDeleteTarget]              = useState<any | null>(null);
   const [deleting,     setDeleting]                   = useState(false);
@@ -1576,14 +1579,17 @@ export default function Expenses() {
                                 <td className="px-6 py-4 text-right font-display font-semibold text-foreground">{formatCurrency(exp.amount)}</td>
                                 <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
                                   {exp.receiptUrl ? (
-                                    <a
-                                      href={exp.receiptUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReceiptLightboxIsPdf(/\.pdf$/i.test(exp.receiptUrl));
+                                        setReceiptLightboxImgError(false);
+                                        setReceiptLightboxUrl(exp.receiptUrl);
+                                      }}
                                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/8 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors border border-primary/20 hover:border-primary/40"
                                     >
-                                      <ExternalLink className="w-3 h-3" /> View
-                                    </a>
+                                      <ImageIcon className="w-3 h-3" /> View
+                                    </button>
                                   ) : (
                                     <span className="text-xs text-muted-foreground italic">No receipt</span>
                                   )}
@@ -1875,6 +1881,85 @@ export default function Expenses() {
           </div>
 
           {/* Bottom hint — safe area aware */}
+          <div
+            className="flex-shrink-0 text-center text-white/30 text-xs"
+            style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))", paddingTop: 8 }}
+          >
+            Tap anywhere outside to close
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Receipt Lightbox (from table "View" button) ──────────────── */}
+      {receiptLightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/95 flex flex-col"
+          onClick={() => setReceiptLightboxUrl(null)}
+        >
+          {/* Safe-area-aware top bar */}
+          <div
+            className="flex-shrink-0 flex items-center justify-end px-4 pb-2"
+            style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setReceiptLightboxUrl(null)}
+              className="inline-flex items-center gap-1.5 text-white/80 hover:text-white font-semibold text-sm bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition-colors"
+            >
+              <X className="w-4 h-4" /> Close
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 flex items-center justify-center min-h-0 px-4">
+            {receiptLightboxIsPdf ? (
+              <div
+                className="flex flex-col items-center gap-6 p-8 text-center rounded-2xl bg-white/8 border border-white/12 mx-4 w-full max-w-sm"
+                onClick={e => e.stopPropagation()}
+              >
+                <Receipt className="w-16 h-16 text-white/30" />
+                <div>
+                  <p className="text-white font-semibold text-lg">Receipt PDF</p>
+                  <p className="text-white/50 text-sm mt-1">Tap "Open PDF" to view in a new tab</p>
+                </div>
+                <div className="flex gap-3 flex-wrap justify-center">
+                  <a
+                    href={receiptLightboxUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors text-sm"
+                  >
+                    <ExternalLink className="w-4 h-4" /> Open PDF
+                  </a>
+                  <a
+                    href={receiptLightboxUrl}
+                    download
+                    onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-white/15 text-white rounded-xl font-semibold hover:bg-white/25 transition-colors text-sm"
+                  >
+                    <Download className="w-4 h-4" /> Download
+                  </a>
+                </div>
+              </div>
+            ) : receiptLightboxImgError ? (
+              <div className="flex flex-col items-center gap-3 text-center" onClick={e => e.stopPropagation()}>
+                <ImageIcon className="w-16 h-16 text-red-300" />
+                <p className="text-white font-semibold text-lg">Receipt no longer available</p>
+                <p className="text-white/70 text-sm">Please close and re-upload the receipt.</p>
+              </div>
+            ) : (
+              <img
+                src={receiptLightboxUrl}
+                alt="Receipt"
+                className="max-w-full max-h-full object-contain select-none rounded-lg"
+                onClick={e => e.stopPropagation()}
+                onError={() => setReceiptLightboxImgError(true)}
+              />
+            )}
+          </div>
+
+          {/* Bottom hint */}
           <div
             className="flex-shrink-0 text-center text-white/30 text-xs"
             style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))", paddingTop: 8 }}
