@@ -598,9 +598,12 @@ function ExpenseViewModal({
                   <ImageIcon className="w-3 h-3" /> Receipt
                 </div>
                 {!isHeic && (
-                  <button type="button" onClick={() => setLightbox(true)}
+                  <button type="button" onClick={() => {
+                    if (isPdf) { window.open(receiptUrl!, "_blank", "noopener,noreferrer"); }
+                    else { setLightbox(true); }
+                  }}
                     className="inline-flex items-center gap-1 text-xs text-primary font-semibold hover:underline">
-                    <Maximize2 className="w-3 h-3" /> Expand
+                    <Maximize2 className="w-3 h-3" /> {isPdf ? "Open PDF" : "Expand"}
                   </button>
                 )}
               </div>
@@ -1177,7 +1180,11 @@ export default function Expenses() {
 
   function openReceiptLightbox(url: string) {
     const path = url.split("?")[0];
-    setReceiptLightboxIsPdf(/\.pdf$/i.test(path));
+    if (/\.pdf$/i.test(path)) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setReceiptLightboxIsPdf(false);
     setReceiptLightboxImgError(false);
     setReceiptLightboxUrl(url);
   }
@@ -1471,6 +1478,10 @@ export default function Expenses() {
                                         <button type="button" onClick={() => {
                                           const base = import.meta.env.BASE_URL.replace(/\/$/, "");
                                           const url = exp.receiptUrl.startsWith("http") ? exp.receiptUrl : `${base}${exp.receiptUrl}`;
+                                          if (/\.pdf$/i.test(url.split("?")[0])) {
+                                            window.open(url, "_blank", "noopener,noreferrer");
+                                            return;
+                                          }
                                           setEditLightboxImgError(false);
                                           setEditLightboxUrl(url);
                                         }} className="text-xs text-primary hover:underline flex items-center gap-1">
