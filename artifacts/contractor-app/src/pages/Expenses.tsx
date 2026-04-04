@@ -730,7 +730,7 @@ function ExpenseViewModal({
             className="flex-shrink-0 text-center text-white/30 text-xs"
             style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))", paddingTop: 8 }}
           >
-            Tap background to close
+            Tap anywhere outside to close
           </div>
         </div>
       )}
@@ -1853,7 +1853,7 @@ export default function Expenses() {
             className="flex-shrink-0 text-center text-white/30 text-xs"
             style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))", paddingTop: 8 }}
           >
-            Tap background to close
+            Tap anywhere outside to close
           </div>
         </div>
       )}
