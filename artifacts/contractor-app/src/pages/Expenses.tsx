@@ -1178,6 +1178,13 @@ export default function Expenses() {
   const [receiptLightboxUrl, setReceiptLightboxUrl]   = useState<string | null>(null);
   const [receiptLightboxIsPdf, setReceiptLightboxIsPdf] = useState(false);
   const [receiptLightboxImgError, setReceiptLightboxImgError] = useState(false);
+
+  function openReceiptLightbox(url: string) {
+    const path = url.split("?")[0];
+    setReceiptLightboxIsPdf(/\.pdf$/i.test(path));
+    setReceiptLightboxImgError(false);
+    setReceiptLightboxUrl(url);
+  }
   const editReceiptInputRef                           = useRef<HTMLInputElement>(null);
   const [deleteTarget,  setDeleteTarget]              = useState<any | null>(null);
   const [deleting,     setDeleting]                   = useState(false);
@@ -1581,11 +1588,7 @@ export default function Expenses() {
                                   {exp.receiptUrl ? (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setReceiptLightboxIsPdf(/\.pdf$/i.test(exp.receiptUrl));
-                                        setReceiptLightboxImgError(false);
-                                        setReceiptLightboxUrl(exp.receiptUrl);
-                                      }}
+                                      onClick={() => openReceiptLightbox(exp.receiptUrl)}
                                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/8 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors border border-primary/20 hover:border-primary/40"
                                     >
                                       <ImageIcon className="w-3 h-3" /> View
