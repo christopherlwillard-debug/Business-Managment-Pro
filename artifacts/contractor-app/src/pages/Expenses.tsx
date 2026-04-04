@@ -666,52 +666,72 @@ function ExpenseViewModal({
       {/* Full-screen receipt lightbox */}
       {lightbox && receiptUrl && (
         <div
-          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+          className="fixed inset-0 z-[100] bg-black/95 flex flex-col"
           onClick={() => setLightbox(false)}
         >
-          <button
-            type="button"
-            onClick={() => setLightbox(false)}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10"
-            aria-label="Close"
+          {/* Safe-area-aware top bar — always visible above notch/Dynamic Island */}
+          <div
+            className="flex-shrink-0 flex items-center justify-between px-4 pb-2"
+            style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}
+            onClick={e => e.stopPropagation()}
           >
-            <X className="w-6 h-6 text-white" />
-          </button>
-          {isImage && !imgError ? (
-            <img
-              src={receiptUrl}
-              alt="Receipt full view"
-              className="max-w-full max-h-full object-contain select-none"
-              onClick={e => e.stopPropagation()}
-              onError={() => setImgError(true)}
-            />
-          ) : isImage && imgError ? (
-            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
-              <ImageIcon className="w-16 h-16 text-red-300" />
-              <p className="text-white font-semibold text-lg">Receipt no longer available</p>
-              <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
-            </div>
-          ) : (
-            <div
-              className="flex flex-col items-center gap-3 w-full h-full"
-              style={{ maxWidth: 700, maxHeight: "90vh", padding: "16px" }}
-              onClick={e => e.stopPropagation()}
+            <span className="text-white/40 text-xs font-medium tracking-wide uppercase">Receipt</span>
+            <button
+              type="button"
+              onClick={() => setLightbox(false)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-sm font-semibold transition-colors"
+              aria-label="Close"
             >
-              <embed
+              <X className="w-4 h-4" /> Close
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 flex items-center justify-center min-h-0 px-4">
+            {isImage && !imgError ? (
+              <img
                 src={receiptUrl}
-                type="application/pdf"
-                className="w-full flex-1 rounded-xl"
-                style={{ minHeight: 0, height: "calc(90vh - 80px)" }}
+                alt="Receipt full view"
+                className="max-w-full max-h-full object-contain select-none"
+                onClick={e => e.stopPropagation()}
+                onError={() => setImgError(true)}
               />
-              <a
-                href={receiptUrl}
-                download
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
+            ) : isImage && imgError ? (
+              <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+                <ImageIcon className="w-16 h-16 text-red-300" />
+                <p className="text-white font-semibold text-lg">Receipt no longer available</p>
+                <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
+              </div>
+            ) : (
+              <div
+                className="flex flex-col items-center gap-3 w-full h-full"
+                style={{ maxWidth: 700, maxHeight: "100%", paddingTop: 8, paddingBottom: 8 }}
+                onClick={e => e.stopPropagation()}
               >
-                <Download className="w-4 h-4" /> Download PDF
-              </a>
-            </div>
-          )}
+                <embed
+                  src={receiptUrl}
+                  type="application/pdf"
+                  className="w-full flex-1 rounded-xl"
+                  style={{ minHeight: 0 }}
+                />
+                <a
+                  href={receiptUrl}
+                  download
+                  className="flex-shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
+                >
+                  <Download className="w-4 h-4" /> Download PDF
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom hint — safe area aware */}
+          <div
+            className="flex-shrink-0 text-center text-white/30 text-xs"
+            style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))", paddingTop: 8 }}
+          >
+            Tap background to close
+          </div>
         </div>
       )}
     </div>
@@ -1759,62 +1779,82 @@ export default function Expenses() {
       {/* Edit-row receipt lightbox */}
       {editLightboxUrl && (
         <div
-          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+          className="fixed inset-0 z-[100] bg-black/95 flex flex-col"
           onClick={() => setEditLightboxUrl(null)}
         >
-          <button
-            type="button"
-            onClick={() => setEditLightboxUrl(null)}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10"
-            aria-label="Close"
+          {/* Safe-area-aware top bar */}
+          <div
+            className="flex-shrink-0 flex items-center justify-between px-4 pb-2"
+            style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}
+            onClick={e => e.stopPropagation()}
           >
-            <X className="w-6 h-6 text-white" />
-          </button>
-          {/\.(heic|heif)$/i.test(editLightboxUrl) ? (
-            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
-              <ImageIcon className="w-16 h-16 text-white/30" />
-              <p className="text-white font-semibold text-lg">iPhone Photo (HEIC)</p>
-              <p className="text-white/60 text-sm">Cannot preview in browser</p>
-              <a href={editLightboxUrl} download
-                className="inline-flex items-center gap-2 px-5 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors">
-                <Download className="w-4 h-4" /> Download Receipt
-              </a>
-            </div>
-          ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) && !editLightboxImgError ? (
-            <img
-              src={editLightboxUrl}
-              alt="Receipt"
-              className="max-w-full max-h-full object-contain select-none"
-              onClick={e => e.stopPropagation()}
-              onError={() => setEditLightboxImgError(true)}
-            />
-          ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) && editLightboxImgError ? (
-            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
-              <ImageIcon className="w-16 h-16 text-red-300" />
-              <p className="text-white font-semibold text-lg">Receipt no longer available</p>
-              <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
-            </div>
-          ) : (
-            <div
-              className="flex flex-col items-center gap-3 w-full h-full"
-              style={{ maxWidth: 700, maxHeight: "90vh", padding: "16px" }}
-              onClick={e => e.stopPropagation()}
+            <span className="text-white/40 text-xs font-medium tracking-wide uppercase">Receipt</span>
+            <button
+              type="button"
+              onClick={() => setEditLightboxUrl(null)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-sm font-semibold transition-colors"
+              aria-label="Close"
             >
-              <embed
+              <X className="w-4 h-4" /> Close
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 flex items-center justify-center min-h-0 px-4">
+            {/\.(heic|heif)$/i.test(editLightboxUrl) ? (
+              <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+                <ImageIcon className="w-16 h-16 text-white/30" />
+                <p className="text-white font-semibold text-lg">iPhone Photo (HEIC)</p>
+                <p className="text-white/60 text-sm">Cannot preview in browser</p>
+                <a href={editLightboxUrl} download
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors">
+                  <Download className="w-4 h-4" /> Download Receipt
+                </a>
+              </div>
+            ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) && !editLightboxImgError ? (
+              <img
                 src={editLightboxUrl}
-                type="application/pdf"
-                className="w-full flex-1 rounded-xl"
-                style={{ minHeight: 0, height: "calc(90vh - 80px)" }}
+                alt="Receipt"
+                className="max-w-full max-h-full object-contain select-none"
+                onClick={e => e.stopPropagation()}
+                onError={() => setEditLightboxImgError(true)}
               />
-              <a
-                href={editLightboxUrl}
-                download
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
+            ) : /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(editLightboxUrl) && editLightboxImgError ? (
+              <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+                <ImageIcon className="w-16 h-16 text-red-300" />
+                <p className="text-white font-semibold text-lg">Receipt no longer available</p>
+                <p className="text-white/70 text-sm">This file was lost in a previous deployment.<br/>Please close and re-upload the receipt.</p>
+              </div>
+            ) : (
+              <div
+                className="flex flex-col items-center gap-3 w-full h-full"
+                style={{ maxWidth: 700, maxHeight: "100%", paddingTop: 8, paddingBottom: 8 }}
+                onClick={e => e.stopPropagation()}
               >
-                <Download className="w-4 h-4" /> Download PDF
-              </a>
-            </div>
-          )}
+                <embed
+                  src={editLightboxUrl}
+                  type="application/pdf"
+                  className="w-full flex-1 rounded-xl"
+                  style={{ minHeight: 0 }}
+                />
+                <a
+                  href={editLightboxUrl}
+                  download
+                  className="flex-shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
+                >
+                  <Download className="w-4 h-4" /> Download PDF
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom hint — safe area aware */}
+          <div
+            className="flex-shrink-0 text-center text-white/30 text-xs"
+            style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))", paddingTop: 8 }}
+          >
+            Tap background to close
+          </div>
         </div>
       )}
     </div>
