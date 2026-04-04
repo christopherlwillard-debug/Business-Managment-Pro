@@ -630,20 +630,26 @@ function ExpenseViewModal({
                   </a>
                 </div>
               ) : isPdf ? (
-                <div className="flex flex-col">
-                  <embed
-                    src={receiptUrl}
-                    type="application/pdf"
-                    className="w-full"
-                    style={{ height: 280 }}
-                  />
-                  <a
-                    href={receiptUrl}
-                    download
-                    className="flex items-center justify-center gap-1.5 py-2 text-xs text-primary font-medium hover:underline border-t border-gray-100"
-                  >
-                    <Download className="w-3 h-3" /> Download PDF
-                  </a>
+                <div className="flex flex-col items-center gap-3 px-4 py-6 bg-gray-50">
+                  <Receipt className="w-10 h-10 text-gray-300" />
+                  <p className="text-sm font-semibold text-gray-700">Receipt PDF</p>
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    <a
+                      href={receiptUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Open PDF
+                    </a>
+                    <a
+                      href={receiptUrl}
+                      download
+                      className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download
+                    </a>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -704,23 +710,33 @@ function ExpenseViewModal({
               </div>
             ) : (
               <div
-                className="flex flex-col items-center gap-3 w-full h-full"
-                style={{ maxWidth: 700, maxHeight: "100%", paddingTop: 8, paddingBottom: 8 }}
+                className="flex flex-col items-center gap-6 p-8 text-center rounded-2xl bg-white/8 border border-white/12 mx-4 w-full max-w-sm"
                 onClick={e => e.stopPropagation()}
               >
-                <embed
-                  src={receiptUrl}
-                  type="application/pdf"
-                  className="w-full flex-1 rounded-xl"
-                  style={{ minHeight: 0 }}
-                />
-                <a
-                  href={receiptUrl}
-                  download
-                  className="flex-shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
-                >
-                  <Download className="w-4 h-4" /> Download PDF
-                </a>
+                <Receipt className="w-16 h-16 text-white/30" />
+                <div>
+                  <p className="text-white font-semibold text-lg">Receipt PDF</p>
+                  <p className="text-white/50 text-sm mt-1">Tap "Open PDF" to view in a new tab</p>
+                </div>
+                <div className="flex gap-3 flex-wrap justify-center">
+                  <a
+                    href={receiptUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors text-sm"
+                  >
+                    <ExternalLink className="w-4 h-4" /> Open PDF
+                  </a>
+                  <a
+                    href={receiptUrl}
+                    download
+                    onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-white/15 text-white rounded-xl font-semibold hover:bg-white/25 transition-colors text-sm"
+                  >
+                    <Download className="w-4 h-4" /> Download
+                  </a>
+                </div>
               </div>
             )}
           </div>
@@ -1827,23 +1843,33 @@ export default function Expenses() {
               </div>
             ) : (
               <div
-                className="flex flex-col items-center gap-3 w-full h-full"
-                style={{ maxWidth: 700, maxHeight: "100%", paddingTop: 8, paddingBottom: 8 }}
+                className="flex flex-col items-center gap-6 p-8 text-center rounded-2xl bg-white/8 border border-white/12 mx-4 w-full max-w-sm"
                 onClick={e => e.stopPropagation()}
               >
-                <embed
-                  src={editLightboxUrl}
-                  type="application/pdf"
-                  className="w-full flex-1 rounded-xl"
-                  style={{ minHeight: 0 }}
-                />
-                <a
-                  href={editLightboxUrl}
-                  download
-                  className="flex-shrink-0 inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-900 rounded-xl font-semibold hover:bg-gray-100 transition-colors text-sm"
-                >
-                  <Download className="w-4 h-4" /> Download PDF
-                </a>
+                <Receipt className="w-16 h-16 text-white/30" />
+                <div>
+                  <p className="text-white font-semibold text-lg">Receipt PDF</p>
+                  <p className="text-white/50 text-sm mt-1">Tap "Open PDF" to view in a new tab</p>
+                </div>
+                <div className="flex gap-3 flex-wrap justify-center">
+                  <a
+                    href={editLightboxUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors text-sm"
+                  >
+                    <ExternalLink className="w-4 h-4" /> Open PDF
+                  </a>
+                  <a
+                    href={editLightboxUrl}
+                    download
+                    onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-white/15 text-white rounded-xl font-semibold hover:bg-white/25 transition-colors text-sm"
+                  >
+                    <Download className="w-4 h-4" /> Download
+                  </a>
+                </div>
               </div>
             )}
           </div>
