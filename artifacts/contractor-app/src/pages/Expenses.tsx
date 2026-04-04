@@ -672,7 +672,7 @@ function ExpenseViewModal({
       {/* Full-screen receipt lightbox */}
       {lightbox && receiptUrl && (
         <div
-          className="fixed inset-0 z-[100] bg-black/95 flex flex-col"
+          className="fixed inset-0 z-[100] bg-black/95 flex flex-col overflow-hidden"
           onClick={() => setLightbox(false)}
         >
           {/* Safe-area-aware top bar — always visible above notch/Dynamic Island */}
@@ -693,7 +693,7 @@ function ExpenseViewModal({
           </div>
 
           {/* Content */}
-          <div className="flex-1 flex items-center justify-center min-h-0 px-4">
+          <div className="flex-1 flex items-center justify-center min-h-0 px-4 overflow-hidden">
             {isImage && !imgError ? (
               <img
                 src={receiptUrl}
@@ -1804,7 +1804,7 @@ export default function Expenses() {
       {/* Edit-row receipt lightbox */}
       {editLightboxUrl && (
         <div
-          className="fixed inset-0 z-[100] bg-black/95 flex flex-col"
+          className="fixed inset-0 z-[100] bg-black/95 flex flex-col overflow-hidden"
           onClick={() => setEditLightboxUrl(null)}
         >
           {/* Safe-area-aware top bar */}
@@ -1825,7 +1825,7 @@ export default function Expenses() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 flex items-center justify-center min-h-0 px-4">
+          <div className="flex-1 flex items-center justify-center min-h-0 px-4 overflow-hidden">
             {/\.(heic|heif)$/i.test(editLightboxUrl) ? (
               <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
                 <ImageIcon className="w-16 h-16 text-white/30" />
@@ -1896,7 +1896,7 @@ export default function Expenses() {
       {/* ── Quick Receipt Lightbox (from table "View" button) ──────────────── */}
       {receiptLightboxUrl && (
         <div
-          className="fixed inset-0 z-[100] bg-black/95 flex flex-col"
+          className="fixed inset-0 z-[100] bg-black/95 flex flex-col overflow-hidden"
           onClick={() => setReceiptLightboxUrl(null)}
         >
           {/* Safe-area-aware top bar */}
@@ -1914,7 +1914,7 @@ export default function Expenses() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 flex items-center justify-center min-h-0 px-4">
+          <div className="flex-1 flex items-center justify-center min-h-0 px-4 overflow-hidden">
             {receiptLightboxIsPdf ? (
               <div
                 className="flex flex-col items-center gap-6 p-8 text-center rounded-2xl bg-white/8 border border-white/12 mx-4 w-full max-w-sm"
