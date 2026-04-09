@@ -58,7 +58,10 @@ async function postService(body: Partial<Service>): Promise<Service> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("Failed to create");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? "Failed to create service");
+  }
   return res.json();
 }
 

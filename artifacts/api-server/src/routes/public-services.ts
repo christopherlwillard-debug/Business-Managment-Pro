@@ -9,7 +9,11 @@ function parseJsonbArray(value: unknown): string[] | null {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) return value.map(String);
   if (typeof value === "string") {
-    try { return JSON.parse(value); } catch { return null; }
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(String);
+      return null;
+    } catch { return null; }
   }
   return null;
 }
@@ -52,6 +56,11 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     const [service] = await db.insert(servicesTable).values(updates as typeof servicesTable.$inferInsert).returning();
     res.status(201).json(service);
   } catch (err) {
+    const msg = String((err as { message?: string }).message ?? "");
+    if (msg.includes("unique") || msg.includes("duplicate") || msg.includes("slug")) {
+      res.status(409).json({ error: "A service with this slug already exists. Use a different name." });
+      return;
+    }
     console.error("public-services POST error", err);
     res.status(500).json({ error: "Failed to create service" });
   }
