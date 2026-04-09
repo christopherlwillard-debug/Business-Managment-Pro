@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, portfolioPhotosTable } from "@workspace/db";
+import { db } from "@workspace/db";
+import { portfolioPhotosTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -33,7 +34,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 });
 
 router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { caption, category, sortOrder, active } = req.body ?? {};
   const updates: Record<string, unknown> = {};
@@ -56,7 +57,7 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
 });
 
 router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     await db.delete(portfolioPhotosTable).where(eq(portfolioPhotosTable.id, id));

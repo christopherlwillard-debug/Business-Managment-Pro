@@ -1,8 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, publicServicesTable, portfolioPhotosTable, inquiriesTable } from "@workspace/db";
+import { Readable } from "stream";
+import { db } from "@workspace/db";
+import { publicServicesTable, portfolioPhotosTable, inquiriesTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 
 const router: IRouter = Router();
+const objectStorageService = new ObjectStorageService();
 
 router.get("/public/services", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -29,6 +33,32 @@ router.get("/public/portfolio", async (req: Request, res: Response): Promise<voi
   } catch (err) {
     console.error("public/portfolio error", err);
     res.status(500).json({ error: "Failed to load portfolio" });
+  }
+});
+
+router.get("/public/portfolio-image/*path", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const raw = req.params.path;
+    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    const objectPath = `/objects/${wildcardPath}`;
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+    console.error("public/portfolio-image error", error);
+    res.status(500).json({ error: "Failed to serve image" });
   }
 });
 

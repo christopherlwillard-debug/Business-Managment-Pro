@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, inquiriesTable } from "@workspace/db";
+import { db } from "@workspace/db";
+import { inquiriesTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -18,7 +19,7 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
 });
 
 router.patch("/:id/read", async (req: Request, res: Response): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     const [item] = await db
@@ -35,7 +36,7 @@ router.patch("/:id/read", async (req: Request, res: Response): Promise<void> => 
 });
 
 router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     await db.delete(inquiriesTable).where(eq(inquiriesTable.id, id));
