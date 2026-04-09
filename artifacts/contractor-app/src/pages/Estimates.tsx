@@ -13,6 +13,7 @@ import {
   ChevronRight, Check, Briefcase, DollarSign, Layers,
 } from "lucide-react";
 import { SidingCalculator } from "@/components/calculators/SidingCalculator";
+import { FlooringCalculator } from "@/components/calculators/FlooringCalculator";
 
 // ─── Trade templates ──────────────────────────────────────────────────────────
 const TRADE_TEMPLATES: Record<string, Array<{ category: string; description: string; quantity: number; unit: string; unitCost: number }>> = {
@@ -147,6 +148,7 @@ function EstimateModal({
   );
   const [templateApplied, setTemplateApplied] = useState(false);
   const [showSidingCalc, setShowSidingCalc] = useState(false);
+  const [showFlooringCalc, setShowFlooringCalc] = useState(false);
 
   const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
   const markupAmt = markup ? subtotal * (parseFloat(markup) / 100) : 0;
@@ -269,7 +271,7 @@ function EstimateModal({
               {jobType && TRADE_TEMPLATES[jobType] && !templateApplied && (
                 <p className="text-xs text-amber-600 mt-1">Tap "Use Template" to pre-fill line items for {jobType}</p>
               )}
-              {/* Siding interactive calculator button */}
+              {/* Trade-specific interactive calculator buttons */}
               {jobType === "Siding" && (
                 <button
                   type="button"
@@ -277,6 +279,15 @@ function EstimateModal({
                   className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
                 >
                   <Calculator className="w-3.5 h-3.5" /> Open Siding Calculator
+                </button>
+              )}
+              {jobType === "Flooring" && (
+                <button
+                  type="button"
+                  onClick={() => setShowFlooringCalc(true)}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
+                >
+                  <Calculator className="w-3.5 h-3.5" /> Open Flooring Calculator
                 </button>
               )}
             </div>
@@ -447,6 +458,23 @@ function EstimateModal({
       {showSidingCalc && (
         <SidingCalculator
           onClose={() => setShowSidingCalc(false)}
+          onUseNumbers={calcLines => {
+            setLines(calcLines.map(l => ({
+              category: l.category,
+              description: l.description,
+              quantity: String(l.quantity),
+              unit: l.unit,
+              unitCost: String(l.unitCost),
+            })));
+            setTemplateApplied(true);
+          }}
+        />
+      )}
+
+      {/* Flooring calculator overlay */}
+      {showFlooringCalc && (
+        <FlooringCalculator
+          onClose={() => setShowFlooringCalc(false)}
           onUseNumbers={calcLines => {
             setLines(calcLines.map(l => ({
               category: l.category,
