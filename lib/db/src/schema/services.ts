@@ -15,7 +15,7 @@ export const servicesTable = pgTable("services", {
   priceDisplay: text("price_display"),
   priceNote: text("price_note"),
   whatsIncluded: jsonb("whats_included").$type<string[]>(),
-  addOns: jsonb("add_ons").$type<string[]>(),
+  addOns: jsonb("add_ons").$type<{ name: string; price: number }[]>(),
   notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
   active: boolean("active").notNull().default(true),

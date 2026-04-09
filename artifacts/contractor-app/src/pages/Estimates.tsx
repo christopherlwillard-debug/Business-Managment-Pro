@@ -120,12 +120,16 @@ function lineTotal(l: DraftLine): number {
 }
 
 // ─── Estimate modal ───────────────────────────────────────────────────────────
-function EstimateModal({
+export function EstimateModal({
   initial,
+  prelinkedJobId,
+  prelinkedJobTitle,
   onClose,
   onSave,
 }: {
   initial?: Estimate;
+  prelinkedJobId?: number;
+  prelinkedJobTitle?: string;
   onClose: () => void;
   onSave: (req: CreateEstimateRequest) => void;
 }) {
@@ -187,7 +191,7 @@ function EstimateModal({
 
   function handleSave() {
     if (!title.trim()) return;
-    onSave({
+    const req: CreateEstimateRequest = {
       title: title.trim(),
       clientId: clientId ? parseInt(clientId) : null,
       jobType: jobType || null,
@@ -202,7 +206,10 @@ function EstimateModal({
         unit: l.unit || null,
         unitCost: parseFloat(l.unitCost) || 0,
       })),
-    });
+    };
+    const jobId = prelinkedJobId ?? (initial as Estimate & { jobId?: number })?.jobId ?? null;
+    if (jobId) (req as Record<string, unknown>).jobId = jobId;
+    onSave(req);
   }
 
   return (
@@ -211,11 +218,17 @@ function EstimateModal({
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Calculator className="w-5 h-5 text-amber-500" />
             <h2 className="text-lg font-bold text-gray-900">
               {initial ? "Edit Estimate" : "Build Estimate"}
             </h2>
+            {(prelinkedJobTitle ?? (initial as Estimate & { jobTitle?: string })?.jobTitle) && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                <Briefcase className="w-3 h-3" />
+                {prelinkedJobTitle ?? (initial as Estimate & { jobTitle?: string })?.jobTitle}
+              </span>
+            )}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5" />
@@ -761,11 +774,19 @@ export default function Estimates() {
                 {est.clientName && (
                   <p className="text-sm text-muted-foreground mb-1">{est.clientName}</p>
                 )}
-                {est.jobType && (
-                  <span className="inline-block text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
-                    {est.jobType}
-                  </span>
-                )}
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {est.jobType && (
+                    <span className="inline-block text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
+                      {est.jobType}
+                    </span>
+                  )}
+                  {(est as Estimate & { jobTitle?: string }).jobTitle && (
+                    <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 font-medium">
+                      <Briefcase className="w-2.5 h-2.5" />
+                      {(est as Estimate & { jobTitle?: string }).jobTitle}
+                    </span>
+                  )}
+                </div>
 
                 {/* Line items summary */}
                 {est.lineItems && est.lineItems.length > 0 && (

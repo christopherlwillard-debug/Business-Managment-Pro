@@ -2,6 +2,7 @@ import { pgTable, serial, text, timestamp, integer, numeric, jsonb } from "drizz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
+import { jobsTable } from "./jobs";
 
 export const estimatesTable = pgTable("estimates", {
   id: serial("id").primaryKey(),
@@ -16,6 +17,7 @@ export const estimatesTable = pgTable("estimates", {
   jobType: text("job_type"),
   notes: text("notes"),
   lineItems: jsonb("line_items").default("[]"),
+  jobId: integer("job_id").references(() => jobsTable.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

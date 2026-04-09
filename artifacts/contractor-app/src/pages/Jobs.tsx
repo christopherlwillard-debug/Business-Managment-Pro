@@ -8,10 +8,13 @@ import {
   useGetSettings,
   useListMaterials, useListMaterialLists, useCreateMaterialList,
   useDeleteMaterialList,
+  useCreateEstimate, useUpdateEstimate,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
+  Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { Card } from "@/components/ui/card";
@@ -22,6 +25,7 @@ import {
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
+  Calculator, DollarSign,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -699,6 +703,160 @@ function JobDailyLogPanel({
   );
 }
 
+// ─── Job Estimates Panel ───────────────────────────────────────────────────────
+const STATUS_BADGE: Record<string, string> = {
+  draft: "bg-gray-100 text-gray-700",
+  sent:  "bg-blue-100 text-blue-700",
+  won:   "bg-emerald-100 text-emerald-700",
+  lost:  "bg-red-100 text-red-700",
+};
+
+function JobEstimatesPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { canEdit } = useUserPermissions();
+  const createMut = useCreateEstimate();
+  const updateMut = useUpdateEstimate();
+
+  const { data: estimates = [], isLoading } = useQuery<(Estimate & { jobTitle?: string })[]>({
+    queryKey: ["job-estimates", job.id],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/estimates/by-job/${job.id}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const [showModal, setShowModal] = useState(false);
+  const [editEst, setEditEst] = useState<Estimate | null>(null);
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ["job-estimates", job.id] });
+    qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+  }
+
+  async function handleCreate(req: CreateEstimateRequest) {
+    await createMut.mutateAsync({ data: req });
+    invalidate();
+    setShowModal(false);
+  }
+
+  async function handleUpdate(id: number, req: CreateEstimateRequest) {
+    await updateMut.mutateAsync({ id, data: req });
+    invalidate();
+    setEditEst(null);
+  }
+
+  const totalLinked = estimates.reduce((s, e) => s + e.total, 0);
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-start justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-50 w-full max-w-md h-full bg-background shadow-2xl flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+          <div>
+            <h2 className="font-bold text-foreground flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-amber-500" /> Estimates
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[260px]">{job.title}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Summary */}
+        {estimates.length > 0 && (
+          <div className="px-5 py-3 border-b border-border/50 bg-muted/20 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">{estimates.length} estimate{estimates.length !== 1 ? "s" : ""}</span>
+            <span className="text-sm font-bold text-amber-600 flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5" />{formatCurrency(totalLinked).replace("$", "")}
+            </span>
+          </div>
+        )}
+
+        {/* New estimate button */}
+        {canEdit("estimates") && (
+          <div className="px-5 py-3 border-b border-border/50">
+            <button
+              onClick={() => setShowModal(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-amber-300 text-amber-600 text-sm font-semibold hover:bg-amber-50 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Build Estimate for this Job
+            </button>
+          </div>
+        )}
+
+        {/* Estimates list */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {isLoading ? (
+            [1, 2].map(i => <div key={i} className="h-20 rounded-xl bg-muted/40 animate-pulse" />)
+          ) : estimates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <Calculator className="w-10 h-10 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-medium text-muted-foreground">No estimates linked yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Click "Build Estimate" to add one</p>
+            </div>
+          ) : (
+            estimates.map(est => (
+              <div key={est.id} className="rounded-xl border border-border/50 bg-card p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_BADGE[est.status] ?? "bg-gray-100 text-gray-600"}`}>
+                    {est.status}
+                  </span>
+                  {canEdit("estimates") && (
+                    <button
+                      onClick={() => setEditEst(est)}
+                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-muted/50"
+                    >
+                      <Edit2 className="w-3 h-3" /> Edit
+                    </button>
+                  )}
+                </div>
+                <p className="font-semibold text-sm text-foreground">{est.title}</p>
+                {est.lineItems && est.lineItems.length > 0 && (
+                  <div className="space-y-0.5">
+                    {est.lineItems.slice(0, 2).map((l, i) => (
+                      <div key={i} className="flex justify-between text-xs text-muted-foreground">
+                        <span className="truncate max-w-[60%]">{l.description}</span>
+                        <span>{formatCurrency(l.total ?? l.quantity * l.unitCost)}</span>
+                      </div>
+                    ))}
+                    {est.lineItems.length > 2 && (
+                      <p className="text-xs text-muted-foreground italic">+{est.lineItems.length - 2} more</p>
+                    )}
+                  </div>
+                )}
+                <div className="pt-1 border-t border-border/50 flex justify-end">
+                  <span className="text-sm font-bold text-amber-600">{formatCurrency(est.total)}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {showModal && (
+        <EstimateModal
+          prelinkedJobId={job.id}
+          prelinkedJobTitle={job.title}
+          onClose={() => setShowModal(false)}
+          onSave={handleCreate}
+        />
+      )}
+      {editEst && (
+        <EstimateModal
+          initial={editEst}
+          prelinkedJobId={job.id}
+          prelinkedJobTitle={job.title}
+          onClose={() => setEditEst(null)}
+          onSave={req => handleUpdate(editEst.id, req)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount,
@@ -715,6 +873,7 @@ function JobCard({
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
+  const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
 
   return (
@@ -805,6 +964,15 @@ function JobCard({
           )}
         </button>
 
+        {/* Estimates button */}
+        <button
+          onClick={() => setEstimatesPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+          <Calculator className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <span className="flex-1 text-left">Estimates</span>
+          <span className="text-[10px] text-muted-foreground">View / Build</span>
+        </button>
+
         {isCompleted ? (
           canEdit("invoices") && (
             <button
@@ -829,6 +997,9 @@ function JobCard({
       )}
       {materialsPanelOpen && (
         <JobMaterialsPanel job={job} onClose={() => setMaterialsPanelOpen(false)} />
+      )}
+      {estimatesPanelOpen && (
+        <JobEstimatesPanel job={job} onClose={() => setEstimatesPanelOpen(false)} />
       )}
     </>
   );

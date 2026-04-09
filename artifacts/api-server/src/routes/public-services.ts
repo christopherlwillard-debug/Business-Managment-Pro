@@ -5,7 +5,9 @@ import { eq, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-function parseJsonbArray(value: unknown): string[] | null {
+type AddOnItem = { name: string; price: number };
+
+function parseStringArray(value: unknown): string[] | null {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) return value.map(String);
   if (typeof value === "string") {
@@ -16,6 +18,18 @@ function parseJsonbArray(value: unknown): string[] | null {
     } catch { return null; }
   }
   return null;
+}
+
+function parseAddOns(value: unknown): AddOnItem[] | null {
+  if (value === null || value === undefined) return null;
+  const arr = Array.isArray(value) ? value : (() => {
+    if (typeof value !== "string") return null;
+    try { return JSON.parse(value); } catch { return null; }
+  })();
+  if (!Array.isArray(arr)) return null;
+  return arr
+    .filter((x): x is Record<string, unknown> => x !== null && typeof x === "object")
+    .map(x => ({ name: String(x.name ?? ""), price: parseFloat(String(x.price ?? "0")) || 0 }));
 }
 
 function parseServiceBody(body: Record<string, unknown>): Record<string, unknown> {
@@ -30,8 +44,8 @@ function parseServiceBody(body: Record<string, unknown>): Record<string, unknown
     if (body[f] !== undefined) updates[f] = body[f];
   }
   if (body["active"] !== undefined) updates["active"] = body["active"];
-  if (body["addOns"] !== undefined) updates["addOns"] = parseJsonbArray(body["addOns"]);
-  if (body["whatsIncluded"] !== undefined) updates["whatsIncluded"] = parseJsonbArray(body["whatsIncluded"]);
+  if (body["addOns"] !== undefined) updates["addOns"] = parseAddOns(body["addOns"]);
+  if (body["whatsIncluded"] !== undefined) updates["whatsIncluded"] = parseStringArray(body["whatsIncluded"]);
   return updates;
 }
 

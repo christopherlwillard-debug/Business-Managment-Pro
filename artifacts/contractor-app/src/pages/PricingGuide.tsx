@@ -7,6 +7,8 @@ import {
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+interface AddOnItem { name: string; price: number; }
+
 interface Service {
   id: number;
   name: string;
@@ -22,7 +24,7 @@ interface Service {
   priceDisplay: string | null;
   priceNote: string | null;
   whatsIncluded: string[] | null;
-  addOns: string[] | null;
+  addOns: AddOnItem[] | null;
   notes: string | null;
   sortOrder: number | null;
   active: boolean;
@@ -95,7 +97,7 @@ function buildExportText(services: Service[]): string {
     }
     if (s.addOns?.length) {
       lines.push("  Add-ons:");
-      for (const b of s.addOns) lines.push(`    + ${b}`);
+      for (const b of s.addOns) lines.push(`    + ${b.name}${b.price ? ` — $${b.price.toFixed(2)}` : ""}`);
     }
     if (s.notes) {
       lines.push("  Notes:");
@@ -130,6 +132,8 @@ function buildExportJSON(services: Service[]): string {
   );
 }
 
+interface AddOnDraft { name: string; price: string; }
+
 interface EditDraft {
   name: string;
   description: string;
@@ -142,7 +146,7 @@ interface EditDraft {
   priceDisplay: string;
   priceNote: string;
   whatsIncluded: string;
-  addOns: string;
+  addOns: AddOnDraft[];
   notes: string;
 }
 
@@ -151,7 +155,7 @@ function emptyDraft(): EditDraft {
     name: "", description: "", category: "",
     pricingType: "flat", basePrice: "", priceMin: "", priceMax: "",
     unit: "", priceDisplay: "", priceNote: "",
-    whatsIncluded: "", addOns: "", notes: "",
+    whatsIncluded: "", addOns: [], notes: "",
   };
 }
 
@@ -168,7 +172,7 @@ function serviceToDraft(s: Service): EditDraft {
     priceDisplay: s.priceDisplay ?? "",
     priceNote: s.priceNote ?? "",
     whatsIncluded: arrayToLines(s.whatsIncluded),
-    addOns: arrayToLines(s.addOns),
+    addOns: (s.addOns ?? []).map(a => ({ name: a.name, price: String(a.price) })),
     notes: s.notes ?? "",
   };
 }
@@ -186,7 +190,10 @@ function draftToServicePatch(draft: EditDraft): Partial<Service> {
     priceDisplay: draft.priceDisplay || null,
     priceNote: draft.priceNote || null,
     whatsIncluded: linesToArray(draft.whatsIncluded),
-    addOns: linesToArray(draft.addOns),
+    addOns: draft.addOns.filter(a => a.name.trim()).map(a => ({
+      name: a.name.trim(),
+      price: parseFloat(a.price) || 0,
+    })),
     notes: draft.notes || null,
   };
 }
@@ -249,7 +256,43 @@ function EditForm({ draft, setDraft }: EditFormProps) {
         {textarea("What's Included (one per line → saved as JSON array)", "whatsIncluded", 3)}
       </div>
       <div className="sm:col-span-2">
-        {textarea("Add-ons (one per line → saved as JSON array)", "addOns", 3)}
+        <label className="block text-xs font-medium text-gray-500 mb-1">Add-ons (name + price each)</label>
+        <div className="space-y-1.5">
+          {draft.addOns.map((ao, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <input
+                type="text"
+                placeholder="Add-on name"
+                value={ao.name}
+                onChange={e => setDraft(d => ({ ...d, addOns: d.addOns.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x) }))}
+                className="flex-1 border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <input
+                type="number"
+                placeholder="Price"
+                min="0"
+                step="0.01"
+                value={ao.price}
+                onChange={e => setDraft(d => ({ ...d, addOns: d.addOns.map((x, idx) => idx === i ? { ...x, price: e.target.value } : x) }))}
+                className="w-24 border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <button
+                type="button"
+                onClick={() => setDraft(d => ({ ...d, addOns: d.addOns.filter((_, idx) => idx !== i) }))}
+                className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setDraft(d => ({ ...d, addOns: [...d.addOns, { name: "", price: "" }] }))}
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium mt-1"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add add-on
+          </button>
+        </div>
       </div>
       <div className="sm:col-span-2">
         {textarea("Notes / Reference Info", "notes", 3, "Internal reference notes")}
@@ -402,9 +445,14 @@ function ServiceCard({ service, onSaved, onDeleted }: {
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Add-ons</h4>
                   <ul className="space-y-1">
                     {addOns.map((b, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                        <span className="text-blue-400 mt-0.5">+</span>
-                        {b}
+                      <li key={i} className="flex items-start justify-between gap-2 text-sm text-gray-700">
+                        <span className="flex items-start gap-2">
+                          <span className="text-blue-400 mt-0.5">+</span>
+                          {b.name}
+                        </span>
+                        {b.price > 0 && (
+                          <span className="font-semibold text-gray-900 whitespace-nowrap">{fmt(String(b.price))}</span>
+                        )}
                       </li>
                     ))}
                   </ul>

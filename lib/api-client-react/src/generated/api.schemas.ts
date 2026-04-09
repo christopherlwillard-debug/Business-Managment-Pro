@@ -504,6 +504,8 @@ export interface Estimate {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: EstimateLineItem[];
+  jobId?: number | null;
+  jobTitle?: string | null;
   createdAt: string;
 }
 
@@ -535,6 +537,7 @@ export interface CreateEstimateRequest {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
+  jobId?: number | null;
 }
 
 export interface DailyLog {

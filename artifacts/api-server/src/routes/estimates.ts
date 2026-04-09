@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { estimatesTable, clientsTable, jobsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 
 const router = Router();
 
@@ -12,11 +12,12 @@ function calcTotals(lineItems: any[], markupPercent: number | null, contingencyP
   return { subtotal, total };
 }
 
-function format(e: any, clientName?: string | null) {
+function format(e: any, clientName?: string | null, jobTitle?: string | null) {
   const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
   return {
     ...e,
     clientName: clientName ?? null,
+    jobTitle: jobTitle ?? null,
     subtotal: parseFloat(e.subtotal ?? "0"),
     markupPercent: e.markupPercent ? parseFloat(e.markupPercent) : null,
     contingencyPercent: e.contingencyPercent ? parseFloat(e.contingencyPercent) : null,
@@ -37,10 +38,28 @@ function format(e: any, clientName?: string | null) {
 router.get("/", async (req, res) => {
   try {
     const estimates = await db
+      .select({ ...estimatesTable, clientName: clientsTable.name, jobTitle: jobsTable.title })
+      .from(estimatesTable)
+      .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
+      .leftJoin(jobsTable, eq(estimatesTable.jobId, jobsTable.id))
+      .orderBy(estimatesTable.createdAt);
+    res.json(estimates.map(e => format(e, e.clientName, e.jobTitle)));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch estimates" });
+  }
+});
+
+router.get("/by-job/:jobId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const estimates = await db
       .select({ ...estimatesTable, clientName: clientsTable.name })
       .from(estimatesTable)
       .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
-      .orderBy(estimatesTable.createdAt);
+      .where(eq(estimatesTable.jobId, jobId))
+      .orderBy(asc(estimatesTable.createdAt));
     res.json(estimates.map(e => format(e, e.clientName)));
   } catch (err) {
     console.error(err);
@@ -50,7 +69,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [] } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     const { subtotal, total } = calcTotals(lineItems, markupPercent, contingencyPercent);
 
@@ -63,6 +82,7 @@ router.post("/", async (req, res) => {
       total: total.toString(),
       jobType, notes,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
+      jobId: jobId || null,
     }).returning();
 
     let clientName = null;
@@ -79,9 +99,14 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const [e] = await db.select({ ...estimatesTable, clientName: clientsTable.name }).from(estimatesTable).leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id)).where(eq(estimatesTable.id, parseInt(req.params.id)));
+    const [e] = await db
+      .select({ ...estimatesTable, clientName: clientsTable.name, jobTitle: jobsTable.title })
+      .from(estimatesTable)
+      .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
+      .leftJoin(jobsTable, eq(estimatesTable.jobId, jobsTable.id))
+      .where(eq(estimatesTable.id, parseInt(req.params.id)));
     if (!e) return res.status(404).json({ error: "Estimate not found" });
-    res.json(format(e, e.clientName));
+    res.json(format(e, e.clientName, e.jobTitle));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch estimate" });
@@ -91,7 +116,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [] } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
     const { subtotal, total } = calcTotals(lineItems, markupPercent, contingencyPercent);
 
     await db.update(estimatesTable).set({
@@ -102,6 +127,7 @@ router.put("/:id", async (req, res) => {
       total: total.toString(),
       jobType, notes,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
+      jobId: jobId !== undefined ? (jobId || null) : undefined,
     }).where(eq(estimatesTable.id, id));
 
     const [e] = await db.select({ ...estimatesTable, clientName: clientsTable.name }).from(estimatesTable).leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id)).where(eq(estimatesTable.id, id));
