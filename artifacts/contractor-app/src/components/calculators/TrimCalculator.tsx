@@ -165,7 +165,7 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
       lines.push({
         category: "Labor",
         description: `Trim – Baseboard (${BASE_TIERS[baseTier].label}) @ $${baseRate}/ft${vaulted ? ` +${vaultPct}% vaulted` : ""}`,
-        quantity: parseFloat(roomLength) && parseFloat(roomWidth) ? calc.linearFeet : 1,
+        quantity: calc.linearFeet > 0 ? calc.linearFeet : 1,
         unit: calc.linearFeet > 0 ? "LF" : "LOT",
         unitCost: calc.linearFeet > 0 ? baseRate * (vaulted ? 1 + vaultPct / 100 : 1) : calc.baseLabor,
       });
@@ -233,7 +233,7 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
 
     if (materials > 0) {
       lines.push({
-        category: "Materials",
+        category: "Material",
         description: `Trim Materials`,
         quantity: 1,
         unit: "LOT",
