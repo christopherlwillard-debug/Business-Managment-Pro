@@ -21,6 +21,7 @@ import Accounting from "./pages/Accounting";
 import Materials from "./pages/Materials";
 import Portfolio from "./pages/Portfolio";
 import Inquiries from "./pages/Inquiries";
+import PublicServices from "./pages/PublicServices";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
@@ -219,6 +220,9 @@ function AdminApp() {
         </Route>
         <Route path="/inquiries">
           <Inquiries />
+        </Route>
+        <Route path="/website-services">
+          <PublicServices />
         </Route>
         <Route component={NotFound} />
       </Switch>

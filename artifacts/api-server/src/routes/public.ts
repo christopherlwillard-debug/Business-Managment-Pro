@@ -41,6 +41,22 @@ router.get("/public/portfolio-image/*path", async (req: Request, res: Response):
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
+
+    const activePhotos = await db
+      .select({ url: portfolioPhotosTable.url })
+      .from(portfolioPhotosTable)
+      .where(eq(portfolioPhotosTable.active, true));
+
+    const isAllowed = activePhotos.some(p => {
+      const normalized = p.url.replace(/^\/objects\//, "");
+      return normalized === wildcardPath;
+    });
+
+    if (!isAllowed) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
@@ -80,7 +96,6 @@ router.post("/public/contact", async (req: Request, res: Response): Promise<void
         bestTime: bestTime || null,
       })
       .returning();
-    console.log(`New inquiry from ${name} (${email ?? phone ?? "no contact"}) re: ${service ?? "general"}`);
     res.status(201).json({ success: true, id: inquiry.id });
   } catch (err) {
     console.error("public/contact error", err);

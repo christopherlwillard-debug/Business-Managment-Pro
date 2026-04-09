@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   Calculator, HardHat, Users,
-  Settings, Menu, X, BookOpen, LogOut, Package, Images, Inbox,
+  Settings, Menu, X, BookOpen, LogOut, Package, Images, Inbox, Globe,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true },
     { name: "Portfolio", href: "/portfolio", icon: Images, feature: null, section: null },
     { name: "Inquiries", href: "/inquiries", icon: Inbox, feature: null, section: null },
+    { name: "Website Services", href: "/website-services", icon: Globe, feature: null, section: null },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
   ];

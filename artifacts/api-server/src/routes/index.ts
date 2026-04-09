@@ -42,6 +42,7 @@ import storageRouter from "./storage";
 import publicRouter from "./public";
 import portfolioPhotosRouter from "./portfolio-photos";
 import inquiriesRouter from "./inquiries";
+import publicServicesRouter from "./public-services";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -181,5 +182,6 @@ router.use("/other-income", sectionGuard("invoices"), otherIncomeRouter);
 router.use(storageRouter);
 router.use("/portfolio-photos", portfolioPhotosRouter);
 router.use("/inquiries", inquiriesRouter);
+router.use("/public-services", publicServicesRouter);
 
 export default router;
