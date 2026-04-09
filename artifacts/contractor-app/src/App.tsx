@@ -19,6 +19,8 @@ import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
 import Materials from "./pages/Materials";
+import Portfolio from "./pages/Portfolio";
+import Inquiries from "./pages/Inquiries";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
@@ -211,6 +213,12 @@ function AdminApp() {
         </Route>
         <Route path="/materials">
           <PermissionGuard ownerOnly><Materials /></PermissionGuard>
+        </Route>
+        <Route path="/portfolio">
+          <PermissionGuard ownerOnly><Portfolio /></PermissionGuard>
+        </Route>
+        <Route path="/inquiries">
+          <PermissionGuard ownerOnly><Inquiries /></PermissionGuard>
         </Route>
         <Route component={NotFound} />
       </Switch>

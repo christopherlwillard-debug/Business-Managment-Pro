@@ -19,3 +19,6 @@ export * from "./registered-agent";
 export * from "./generated-1099s";
 export * from "./access-requests";
 export * from "./other-income";
+export * from "./portfolio-photos";
+export * from "./inquiries";
+export * from "./public-services";

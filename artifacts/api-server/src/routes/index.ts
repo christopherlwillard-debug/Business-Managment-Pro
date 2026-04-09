@@ -39,6 +39,9 @@ import form1099sRouter from "./form-1099s";
 import teamRouter from "./team";
 import otherIncomeRouter from "./other-income";
 import storageRouter from "./storage";
+import publicRouter from "./public";
+import portfolioPhotosRouter from "./portfolio-photos";
+import inquiriesRouter from "./inquiries";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -142,6 +145,7 @@ router.use(healthRouter);
 router.use(authRouter);
 
 router.use("/portal", portalRouter);
+router.use(publicRouter);
 
 router.use(requireAuth);
 router.use(requireAccess);
@@ -175,5 +179,7 @@ router.use("/1099s", sectionGuard("subcontractors"), form1099sRouter);
 router.use("/team", teamRouter);
 router.use("/other-income", sectionGuard("invoices"), otherIncomeRouter);
 router.use(storageRouter);
+router.use("/portfolio-photos", requireOwner, portfolioPhotosRouter);
+router.use("/inquiries", requireOwner, inquiriesRouter);
 
 export default router;
