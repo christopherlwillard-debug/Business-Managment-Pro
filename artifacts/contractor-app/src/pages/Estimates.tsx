@@ -12,6 +12,7 @@ import {
   Calculator, FileText, Plus, Trash2, Edit2, X,
   ChevronRight, Check, Briefcase, DollarSign, Layers,
 } from "lucide-react";
+import { SidingCalculator } from "@/components/calculators/SidingCalculator";
 
 // ─── Trade templates ──────────────────────────────────────────────────────────
 const TRADE_TEMPLATES: Record<string, Array<{ category: string; description: string; quantity: number; unit: string; unitCost: number }>> = {
@@ -145,6 +146,7 @@ function EstimateModal({
       : [emptyLine()]
   );
   const [templateApplied, setTemplateApplied] = useState(false);
+  const [showSidingCalc, setShowSidingCalc] = useState(false);
 
   const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
   const markupAmt = markup ? subtotal * (parseFloat(markup) / 100) : 0;
@@ -266,6 +268,16 @@ function EstimateModal({
               </div>
               {jobType && TRADE_TEMPLATES[jobType] && !templateApplied && (
                 <p className="text-xs text-amber-600 mt-1">Tap "Use Template" to pre-fill line items for {jobType}</p>
+              )}
+              {/* Siding interactive calculator button */}
+              {jobType === "Siding" && (
+                <button
+                  type="button"
+                  onClick={() => setShowSidingCalc(true)}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
+                >
+                  <Calculator className="w-3.5 h-3.5" /> Open Siding Calculator
+                </button>
               )}
             </div>
           </div>
@@ -430,6 +442,23 @@ function EstimateModal({
           </button>
         </div>
       </div>
+
+      {/* Siding calculator overlay */}
+      {showSidingCalc && (
+        <SidingCalculator
+          onClose={() => setShowSidingCalc(false)}
+          onUseNumbers={calcLines => {
+            setLines(calcLines.map(l => ({
+              category: l.category,
+              description: l.description,
+              quantity: String(l.quantity),
+              unit: l.unit,
+              unitCost: String(l.unitCost),
+            })));
+            setTemplateApplied(true);
+          }}
+        />
+      )}
     </div>
   );
 }
