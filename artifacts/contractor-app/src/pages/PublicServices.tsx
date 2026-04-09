@@ -10,10 +10,19 @@ interface PublicService {
   icon: string | null;
   priceDisplay: string | null;
   priceNote: string | null;
-  whatsIncluded: string | null;
-  addOns: string | null;
+  whatsIncluded: string[] | null;
+  addOns: string[] | null;
   sortOrder: number | null;
   active: boolean;
+}
+
+interface ServiceDraft {
+  name: string;
+  description: string;
+  priceDisplay: string;
+  priceNote: string;
+  whatsIncluded: string;
+  addOns: string;
 }
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -24,7 +33,7 @@ async function fetchServices(): Promise<PublicService[]> {
   return res.json();
 }
 
-async function patchService(id: number, body: Partial<PublicService>): Promise<PublicService> {
+async function patchService(id: number, body: Record<string, unknown>): Promise<PublicService> {
   const res = await fetch(`${BASE}/api/public-services/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -34,13 +43,24 @@ async function patchService(id: number, body: Partial<PublicService>): Promise<P
   return res.json();
 }
 
+function linesToArray(text: string): string[] {
+  return text.split("\n").map(s => s.trim()).filter(Boolean);
+}
+
+function arrayToLines(arr: string[] | null | undefined): string {
+  return arr ? arr.join("\n") : "";
+}
+
 function ServiceRow({ service }: { service: PublicService }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<Partial<PublicService>>({});
+  const [draft, setDraft] = useState<ServiceDraft>({
+    name: "", description: "", priceDisplay: "", priceNote: "",
+    whatsIncluded: "", addOns: "",
+  });
 
   const mutation = useMutation({
-    mutationFn: (body: Partial<PublicService>) => patchService(service.id, body),
+    mutationFn: (body: Record<string, unknown>) => patchService(service.id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["public-services"] }),
   });
 
@@ -49,20 +69,26 @@ function ServiceRow({ service }: { service: PublicService }) {
       name: service.name,
       priceDisplay: service.priceDisplay ?? "",
       priceNote: service.priceNote ?? "",
-      whatsIncluded: service.whatsIncluded ?? "",
-      addOns: service.addOns ?? "",
+      whatsIncluded: arrayToLines(service.whatsIncluded),
+      addOns: arrayToLines(service.addOns),
       description: service.description ?? "",
     });
     setEditing(true);
   }
 
   function cancelEdit() {
-    setDraft({});
     setEditing(false);
   }
 
   async function saveEdit() {
-    await mutation.mutateAsync(draft);
+    await mutation.mutateAsync({
+      name: draft.name,
+      description: draft.description || null,
+      priceDisplay: draft.priceDisplay || null,
+      priceNote: draft.priceNote || null,
+      whatsIncluded: linesToArray(draft.whatsIncluded),
+      addOns: linesToArray(draft.addOns),
+    });
     setEditing(false);
   }
 
@@ -79,7 +105,7 @@ function ServiceRow({ service }: { service: PublicService }) {
             {editing ? (
               <input
                 className="border border-gray-300 rounded px-2 py-1 text-sm font-semibold w-full"
-                value={draft.name ?? ""}
+                value={draft.name}
                 onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
               />
             ) : (
@@ -115,28 +141,28 @@ function ServiceRow({ service }: { service: PublicService }) {
           <input
             className="border border-gray-300 rounded px-2 py-1 text-sm"
             placeholder="e.g. Starting at $X/LF"
-            value={draft.priceDisplay ?? ""}
+            value={draft.priceDisplay}
             onChange={e => setDraft(d => ({ ...d, priceDisplay: e.target.value }))}
           />
           <label className="block text-xs font-medium text-gray-600">Price Note</label>
           <input
             className="border border-gray-300 rounded px-2 py-1 text-sm"
             placeholder="e.g. Based on linear footage"
-            value={draft.priceNote ?? ""}
+            value={draft.priceNote}
             onChange={e => setDraft(d => ({ ...d, priceNote: e.target.value }))}
           />
           <label className="block text-xs font-medium text-gray-600">What&apos;s Included (one per line)</label>
           <textarea
             className="border border-gray-300 rounded px-2 py-1 text-sm resize-none"
             rows={3}
-            value={draft.whatsIncluded ?? ""}
+            value={draft.whatsIncluded}
             onChange={e => setDraft(d => ({ ...d, whatsIncluded: e.target.value }))}
           />
           <label className="block text-xs font-medium text-gray-600">Add-ons (one per line)</label>
           <textarea
             className="border border-gray-300 rounded px-2 py-1 text-sm resize-none"
             rows={2}
-            value={draft.addOns ?? ""}
+            value={draft.addOns}
             onChange={e => setDraft(d => ({ ...d, addOns: e.target.value }))}
           />
         </div>

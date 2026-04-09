@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, boolean, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, boolean, integer, numeric, jsonb } from "drizzle-orm/pg-core";
 
 export const servicesTable = pgTable("services", {
   id: serial("id").primaryKey(),
@@ -14,8 +14,8 @@ export const servicesTable = pgTable("services", {
   unit: text("unit"),
   priceDisplay: text("price_display"),
   priceNote: text("price_note"),
-  whatsIncluded: text("whats_included"),
-  addOns: text("add_ons"),
+  whatsIncluded: jsonb("whats_included").$type<string[]>(),
+  addOns: jsonb("add_ons").$type<string[]>(),
   notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
   active: boolean("active").notNull().default(true),

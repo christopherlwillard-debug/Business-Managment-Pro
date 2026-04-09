@@ -8,8 +8,8 @@ interface Service {
   icon: string | null;
   priceDisplay: string | null;
   priceNote: string | null;
-  whatsIncluded: string | null;
-  addOns: string | null;
+  whatsIncluded: string[] | null;
+  addOns: string[] | null;
 }
 
 export function useServices() {

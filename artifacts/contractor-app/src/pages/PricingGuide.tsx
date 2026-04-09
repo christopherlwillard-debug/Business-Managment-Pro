@@ -21,8 +21,8 @@ interface Service {
   unit: string | null;
   priceDisplay: string | null;
   priceNote: string | null;
-  whatsIncluded: string | null;
-  addOns: string | null;
+  whatsIncluded: string[] | null;
+  addOns: string[] | null;
   notes: string | null;
   sortOrder: number | null;
   active: boolean;
@@ -73,6 +73,14 @@ function fmt(n: string | null | undefined): string {
   return isNaN(num) ? n : num % 1 === 0 ? `$${num.toLocaleString()}` : `$${num.toFixed(2)}`;
 }
 
+function linesToArray(text: string): string[] {
+  return text.split("\n").map(s => s.trim()).filter(Boolean);
+}
+
+function arrayToLines(arr: string[] | null | undefined): string {
+  return arr ? arr.join("\n") : "";
+}
+
 function buildExportText(services: Service[]): string {
   const lines: string[] = [
     "WILLARD'S GENERAL CONTRACTING LLC",
@@ -86,17 +94,17 @@ function buildExportText(services: Service[]): string {
     lines.push("");
     if (s.priceDisplay) lines.push(`  Pricing: ${s.priceDisplay}`);
     if (s.priceNote) lines.push(`  Note: ${s.priceNote}`);
-    if (s.whatsIncluded) {
+    if (s.whatsIncluded?.length) {
       lines.push("  What's Included:");
-      for (const b of s.whatsIncluded.split("\n").filter(Boolean)) lines.push(`    • ${b.trim()}`);
+      for (const b of s.whatsIncluded) lines.push(`    • ${b}`);
     }
-    if (s.addOns) {
+    if (s.addOns?.length) {
       lines.push("  Add-ons:");
-      for (const b of s.addOns.split("\n").filter(Boolean)) lines.push(`    + ${b.trim()}`);
+      for (const b of s.addOns) lines.push(`    + ${b}`);
     }
     if (s.notes) {
       lines.push("  Notes:");
-      for (const b of s.notes.split("\n").filter(Boolean)) lines.push(`    ${b.trim()}`);
+      for (const n of s.notes.split("\n").filter(Boolean)) lines.push(`    ${n}`);
     }
     lines.push("-".repeat(48));
     lines.push("");
@@ -118,8 +126,8 @@ function buildExportJSON(services: Service[]): string {
       unit: s.unit,
       priceDisplay: s.priceDisplay,
       priceNote: s.priceNote,
-      whatsIncluded: s.whatsIncluded ? s.whatsIncluded.split("\n").filter(Boolean) : [],
-      addOns: s.addOns ? s.addOns.split("\n").filter(Boolean) : [],
+      whatsIncluded: s.whatsIncluded ?? [],
+      addOns: s.addOns ?? [],
       notes: s.notes,
     })),
     null,
@@ -166,9 +174,28 @@ function serviceToDraft(s: Service): EditDraft {
     unit: s.unit ?? "",
     priceDisplay: s.priceDisplay ?? "",
     priceNote: s.priceNote ?? "",
-    whatsIncluded: s.whatsIncluded ?? "",
-    addOns: s.addOns ?? "",
+    whatsIncluded: arrayToLines(s.whatsIncluded),
+    addOns: arrayToLines(s.addOns),
     notes: s.notes ?? "",
+  };
+}
+
+function draftToServicePatch(draft: EditDraft): Partial<Service> {
+  return {
+    name: draft.name || undefined,
+    description: draft.description || null,
+    category: draft.category || null,
+    icon: draft.icon || null,
+    pricingType: draft.pricingType || null,
+    basePrice: draft.basePrice || null,
+    priceMin: draft.priceMin || null,
+    priceMax: draft.priceMax || null,
+    unit: draft.unit || null,
+    priceDisplay: draft.priceDisplay || null,
+    priceNote: draft.priceNote || null,
+    whatsIncluded: linesToArray(draft.whatsIncluded),
+    addOns: linesToArray(draft.addOns),
+    notes: draft.notes || null,
   };
 }
 
@@ -178,11 +205,7 @@ interface EditFormProps {
 }
 
 function EditForm({ draft, setDraft }: EditFormProps) {
-  function field(
-    label: string,
-    key: keyof EditDraft,
-    opts?: { type?: string; placeholder?: string }
-  ) {
+  function field(label: string, key: keyof EditDraft, opts?: { type?: string; placeholder?: string }) {
     return (
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-0.5">{label}</label>
@@ -229,13 +252,13 @@ function EditForm({ draft, setDraft }: EditFormProps) {
         {field("Price Note", "priceNote", { placeholder: "Short clarification note" })}
       </div>
       <div className="sm:col-span-2">
-        {textarea("Description", "description", 2, "One or two sentence summary of the service")}
+        {textarea("Description", "description", 2, "One or two sentence summary")}
       </div>
       <div className="sm:col-span-2">
-        {textarea("What's Included (one per line)", "whatsIncluded", 3)}
+        {textarea("What's Included (one per line → saved as JSON array)", "whatsIncluded", 3)}
       </div>
       <div className="sm:col-span-2">
-        {textarea("Add-ons (one per line)", "addOns", 3)}
+        {textarea("Add-ons (one per line → saved as JSON array)", "addOns", 3)}
       </div>
       <div className="sm:col-span-2">
         {textarea("Notes / Reference Info", "notes", 3, "Internal reference notes")}
@@ -271,33 +294,17 @@ function ServiceCard({ service, onSaved, onDeleted }: {
   }
 
   async function save() {
-    await patchMut.mutateAsync({
-      name: draft.name || undefined,
-      description: draft.description || null,
-      category: draft.category || null,
-      icon: draft.icon || null,
-      pricingType: draft.pricingType || null,
-      basePrice: draft.basePrice || null,
-      priceMin: draft.priceMin || null,
-      priceMax: draft.priceMax || null,
-      unit: draft.unit || null,
-      priceDisplay: draft.priceDisplay || null,
-      priceNote: draft.priceNote || null,
-      whatsIncluded: draft.whatsIncluded || null,
-      addOns: draft.addOns || null,
-      notes: draft.notes || null,
-    });
+    await patchMut.mutateAsync(draftToServicePatch(draft));
     setEditing(false);
   }
 
-  const included = (service.whatsIncluded ?? "").split("\n").filter(Boolean);
-  const addOns = (service.addOns ?? "").split("\n").filter(Boolean);
+  const included = service.whatsIncluded ?? [];
+  const addOns = service.addOns ?? [];
   const notes = (service.notes ?? "").split("\n").filter(Boolean);
   const icon = service.icon ?? CATEGORY_ICONS[service.category ?? ""] ?? "🔧";
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-      {/* Card header */}
       <div className="p-5 flex items-start gap-4">
         <div className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-2xl flex-shrink-0">
           {icon}
@@ -331,26 +338,17 @@ function ServiceCard({ service, onSaved, onDeleted }: {
               >
                 <Save className="w-3 h-3" /> Save
               </button>
-              <button
-                onClick={() => setEditing(false)}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
-              >
+              <button onClick={() => setEditing(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
                 <X className="w-4 h-4" />
               </button>
             </>
           ) : (
             <>
-              <button
-                onClick={startEdit}
-                className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors"
-                title="Edit"
-              >
+              <button onClick={startEdit} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors" title="Edit">
                 <Edit2 className="w-4 h-4" />
               </button>
               <button
-                onClick={() => {
-                  if (confirm(`Delete "${service.name}"? This cannot be undone.`)) deleteMut.mutate();
-                }}
+                onClick={() => { if (confirm(`Delete "${service.name}"? This cannot be undone.`)) deleteMut.mutate(); }}
                 disabled={deleteMut.isPending}
                 className="p-1.5 rounded-lg hover:bg-red-50 text-red-500 transition-colors disabled:opacity-40"
                 title="Delete"
@@ -369,7 +367,6 @@ function ServiceCard({ service, onSaved, onDeleted }: {
         </div>
       </div>
 
-      {/* Pricing summary strip */}
       {(service.basePrice || service.priceMin) && !editing && (
         <div className="px-5 pb-3 flex flex-wrap gap-4">
           {service.basePrice && (
@@ -393,7 +390,6 @@ function ServiceCard({ service, onSaved, onDeleted }: {
         </div>
       )}
 
-      {/* Expanded detail / edit */}
       {(expanded || editing) && (
         <div className="border-t border-gray-100">
           {editing ? (
@@ -454,19 +450,7 @@ function AddServiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
     mutationFn: () => postService({
       name: draft.name,
       slug: draft.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
-      description: draft.description || null,
-      category: draft.category || null,
-      icon: draft.icon || null,
-      pricingType: draft.pricingType || null,
-      basePrice: draft.basePrice || null,
-      priceMin: draft.priceMin || null,
-      priceMax: draft.priceMax || null,
-      unit: draft.unit || null,
-      priceDisplay: draft.priceDisplay || null,
-      priceNote: draft.priceNote || null,
-      whatsIncluded: draft.whatsIncluded || null,
-      addOns: draft.addOns || null,
-      notes: draft.notes || null,
+      ...draftToServicePatch(draft),
       active: true,
     }),
     onSuccess: () => {
@@ -482,9 +466,7 @@ function AddServiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
             <Plus className="w-5 h-5 text-blue-600" /> Add New Service
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><X className="w-5 h-5" /></button>
         </div>
         <div className="px-6 pb-6">
           <EditForm draft={draft} setDraft={setDraft} />
@@ -503,9 +485,7 @@ function AddServiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
               Cancel
             </button>
           </div>
-          {mut.error && (
-            <p className="mt-2 text-sm text-red-600">Failed to create service. Please try again.</p>
-          )}
+          {mut.error && <p className="mt-2 text-sm text-red-600">Failed to create service. Please try again.</p>}
         </div>
       </div>
     </div>
@@ -541,7 +521,6 @@ export default function PricingGuide() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center">
@@ -584,7 +563,6 @@ export default function PricingGuide() {
         </div>
       </div>
 
-      {/* Summary strip */}
       {services.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
@@ -606,7 +584,6 @@ export default function PricingGuide() {
         </div>
       )}
 
-      {/* Loading / error */}
       {isLoading && (
         <div className="flex justify-center py-12">
           <div className="w-7 h-7 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
@@ -614,7 +591,6 @@ export default function PricingGuide() {
       )}
       {error && <p className="text-red-600 text-sm">Failed to load services. Please refresh.</p>}
 
-      {/* Services by category */}
       <div className="space-y-8">
         {Object.entries(byCategory).map(([cat, catServices]) => (
           <div key={cat}>
@@ -625,12 +601,7 @@ export default function PricingGuide() {
             </div>
             <div className="space-y-3">
               {catServices.map(s => (
-                <ServiceCard
-                  key={s.id}
-                  service={s}
-                  onSaved={() => {}}
-                  onDeleted={() => {}}
-                />
+                <ServiceCard key={s.id} service={s} onSaved={() => {}} onDeleted={() => {}} />
               ))}
             </div>
           </div>
@@ -644,12 +615,8 @@ export default function PricingGuide() {
         )}
       </div>
 
-      {/* Add modal */}
       {showAdd && (
-        <AddServiceModal
-          onClose={() => setShowAdd(false)}
-          onCreated={() => setShowAdd(false)}
-        />
+        <AddServiceModal onClose={() => setShowAdd(false)} onCreated={() => setShowAdd(false)} />
       )}
     </div>
   );

@@ -5,17 +5,29 @@ import { eq, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+function parseJsonbArray(value: unknown): string[] | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try { return JSON.parse(value); } catch { return null; }
+  }
+  return null;
+}
+
 function parseServiceBody(body: Record<string, unknown>): Record<string, unknown> {
-  const fields = [
+  const textFields = [
     "name", "slug", "description", "category", "icon", "pricingType",
     "basePrice", "priceMin", "priceMax", "unit",
-    "priceDisplay", "priceNote", "whatsIncluded", "addOns", "notes",
-    "sortOrder", "active",
+    "priceDisplay", "priceNote", "notes",
+    "sortOrder",
   ] as const;
   const updates: Record<string, unknown> = {};
-  for (const f of fields) {
+  for (const f of textFields) {
     if (body[f] !== undefined) updates[f] = body[f];
   }
+  if (body["active"] !== undefined) updates["active"] = body["active"];
+  if (body["addOns"] !== undefined) updates["addOns"] = parseJsonbArray(body["addOns"]);
+  if (body["whatsIncluded"] !== undefined) updates["whatsIncluded"] = parseJsonbArray(body["whatsIncluded"]);
   return updates;
 }
 

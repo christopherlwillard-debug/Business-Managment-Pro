@@ -77,23 +77,31 @@ export function Services() {
 
                   {/* Whats Included & Add-ons */}
                   <div className="space-y-6 mt-auto pt-6 border-t border-gray-100">
-                    {service.whatsIncluded && (
+                    {service.whatsIncluded && service.whatsIncluded.length > 0 && (
                       <div>
                         <h4 className="text-xs font-bold text-gray-900 uppercase tracking-widest mb-3 flex items-center gap-2">
                           <CheckCircle2 className="w-4 h-4 text-secondary" />
                           What's Included
                         </h4>
-                        <p className="text-sm text-gray-600 pl-6">{service.whatsIncluded}</p>
+                        <ul className="space-y-1 pl-6">
+                          {service.whatsIncluded.map((item, i) => (
+                            <li key={i} className="text-sm text-gray-600">{item}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                     
-                    {service.addOns && (
+                    {service.addOns && service.addOns.length > 0 && (
                       <div>
                         <h4 className="text-xs font-bold text-gray-900 uppercase tracking-widest mb-3 flex items-center gap-2">
                           <Plus className="w-4 h-4 text-primary" />
                           Available Add-ons
                         </h4>
-                        <p className="text-sm text-gray-600 pl-6">{service.addOns}</p>
+                        <ul className="space-y-1 pl-6">
+                          {service.addOns.map((item, i) => (
+                            <li key={i} className="text-sm text-gray-600">{item}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                   </div>
