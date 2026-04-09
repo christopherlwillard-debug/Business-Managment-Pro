@@ -3,7 +3,7 @@ import {
   useListEstimates, useListClients,
   useCreateEstimate, useUpdateEstimate, useDeleteEstimate, useConvertEstimateToJob,
   getListEstimatesQueryKey,
-  Estimate, CreateEstimateRequest,
+  Estimate, CreateEstimateRequest, CreateEstimateRequestStatus,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -186,7 +186,7 @@ function EstimateModal({
       notes: notes || null,
       markupPercent: markup ? parseFloat(markup) : null,
       contingencyPercent: cont ? parseFloat(cont) : null,
-      status: (initial?.status as any) ?? "draft",
+      status: (initial?.status ?? "draft") as CreateEstimateRequestStatus,
       lineItems: lines.map(l => ({
         category: l.category,
         description: l.description,
@@ -511,7 +511,7 @@ export default function Estimates() {
         notes: est.notes ?? null,
         markupPercent: est.markupPercent ?? null,
         contingencyPercent: est.contingencyPercent ?? null,
-        status: status as any,
+        status: status as CreateEstimateRequestStatus,
         lineItems,
       },
     });
@@ -542,7 +542,7 @@ export default function Estimates() {
 
   const filtered = filterStatus === "all" ? estimates : estimates.filter(e => e.status === filterStatus);
 
-  const totals = useMemo(() => ({
+  const totals = useMemo<Record<string, number>>(() => ({
     all:   estimates.length,
     draft: estimates.filter(e => e.status === "draft").length,
     sent:  estimates.filter(e => e.status === "sent").length,
@@ -601,7 +601,7 @@ export default function Estimates() {
               onClick={() => setFilterStatus(s)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${filterStatus === s ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
             >
-              {s === "all" ? `All (${totals.all})` : `${s} (${(totals as any)[s]})`}
+              {s === "all" ? `All (${totals.all})` : `${s} (${totals[s] ?? 0})`}
             </button>
           ))}
         </div>
@@ -631,10 +631,16 @@ export default function Estimates() {
               {/* Card header */}
               <div className="p-5 flex-1">
                 <div className="flex items-start justify-between gap-2 mb-3">
-                  <StatusMenu
-                    current={est.status}
-                    onChange={s => handleStatusChange(est, s)}
-                  />
+                  {canEdit("estimates") ? (
+                    <StatusMenu
+                      current={est.status}
+                      onChange={s => handleStatusChange(est, s)}
+                    />
+                  ) : (
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${STATUS_STYLES[est.status] ?? "bg-gray-100 text-gray-700"}`}>
+                      {est.status}
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground">{formatDate(est.createdAt)}</span>
                 </div>
 
