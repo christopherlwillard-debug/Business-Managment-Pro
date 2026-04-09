@@ -287,11 +287,17 @@ export function PlumbingCalculator({ onClose, onUseNumbers }: PlumbingCalculator
                 </div>
               )}
               {addOns.filter(a => parseFloat(a.amount) > 0 && a.label.trim()).map(addon => (
-                <div key={addon.id} className="flex items-center justify-between py-1.5 text-sm">
-                  <span className="text-gray-300 truncate mr-4">{addon.label || "Add-on"}</span>
-                  <span className="font-semibold shrink-0">${fmt(parseFloat(addon.amount) || 0)}</span>
+                <div key={addon.id} className="flex items-center justify-between py-1 text-sm pl-3">
+                  <span className="text-gray-400 truncate mr-4 text-xs">{addon.label}</span>
+                  <span className="font-medium text-gray-300 shrink-0">${fmt(parseFloat(addon.amount) || 0)}</span>
                 </div>
               ))}
+              {calc.addOnTotal > 0 && (
+                <div className="flex items-center justify-between py-1.5 text-sm">
+                  <span className="text-gray-300">Add-ons</span>
+                  <span className="font-semibold">${fmt(calc.addOnTotal)}</span>
+                </div>
+              )}
               <div className="border-t border-gray-700 pt-3 mt-2">
                 <div className="flex items-center justify-between py-2">
                   <span className="font-bold text-amber-400 text-base">TOTAL ESTIMATE</span>
