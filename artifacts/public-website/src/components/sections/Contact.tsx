@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { useServices, useContact } from "@/hooks/api";
-import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { CheckCircle2, Loader2, Send, Phone, Mail, MapPin, Clock } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface FormValues {
@@ -73,7 +73,47 @@ export function Contact() {
             <p className="text-xl text-gray-600 mb-8 leading-relaxed font-medium">
               Ready to start your next project? Tell us what you need, and we'll get back to you with an honest quote and a timeline you can count on.
             </p>
-            <div className="bg-gray-50 p-8 border-l-4 border-secondary mt-12">
+            {/* Business contact info */}
+            <div className="space-y-4 mb-10">
+              <a href="tel:+12707993703" className="flex items-center gap-3 text-gray-700 hover:text-primary transition-colors group">
+                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full group-hover:bg-primary/20 transition-colors">
+                  <Phone className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Call or Text</div>
+                  <div className="font-bold text-gray-900">(270) 799-3703</div>
+                </div>
+              </a>
+              <a href="mailto:willardsgeneralcontracting@gmail.com" className="flex items-center gap-3 text-gray-700 hover:text-primary transition-colors group">
+                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full group-hover:bg-primary/20 transition-colors">
+                  <Mail className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Email</div>
+                  <div className="font-bold text-gray-900 text-sm">willardsgeneralcontracting@gmail.com</div>
+                </div>
+              </a>
+              <div className="flex items-center gap-3 text-gray-700">
+                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full">
+                  <MapPin className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Service Area</div>
+                  <div className="font-bold text-gray-900">Owensboro, KY & Surrounding Areas</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-gray-700">
+                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full">
+                  <Clock className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Hours</div>
+                  <div className="font-bold text-gray-900">Mon–Sat, 7am–6pm</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-8 border-l-4 border-secondary">
               <h3 className="text-xl font-bold uppercase tracking-wide text-gray-900 mb-4">The Willard's Way</h3>
               <ul className="space-y-4 text-gray-600 font-medium">
                 {[
