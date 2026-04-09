@@ -18,7 +18,7 @@ export function Services() {
           <h2 className="text-4xl md:text-5xl font-black text-gray-900 uppercase tracking-tight mb-4">Our Services</h2>
           <div className="w-24 h-2 bg-primary mx-auto mb-6"></div>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto font-medium">
-            From ground up to finish work, we handle it all with the same dedication to quality.
+            Once your manufactured home is delivered and placed, we handle the critical final stages that make it truly yours — seamlessly and professionally.
           </p>
         </div>
 

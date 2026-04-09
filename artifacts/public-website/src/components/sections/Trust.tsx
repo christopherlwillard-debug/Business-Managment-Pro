@@ -8,24 +8,24 @@ export function Trust() {
 
       <div className="container mx-auto px-4 md:px-6 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-          
+
           {/* Left: Text Content */}
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 font-bold text-sm tracking-widest uppercase mb-6 border border-white/20">
               Why Willard's
             </div>
-            
+
             <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tight mb-6 leading-tight">
-              We build it right, <br/>
-              <span className="text-primary">because our name</span> <br/>
-              is on it.
+              We don't leave until<br />
+              your home is<br />
+              <span className="text-primary">move-in ready.</span>
             </h2>
-            
+
             <p className="text-lg md:text-xl text-gray-300 mb-8 leading-relaxed font-medium">
-              We're not some faceless corporation. We're your neighbors right here in Owensboro. When we take on a job, we treat your property with the respect it deserves, and we don't cut corners. 
+              At Willard's General Contracting, we specialize in completing the final stages of manufactured home installation. We handle the critical finish work that transforms a manufactured unit into a polished, comfortable, move-in-ready home.
             </p>
             <p className="text-lg md:text-xl text-gray-300 mb-10 leading-relaxed font-medium">
-              Straight talk, fair prices, and hard work. That's the Willard's guarantee.
+              From seamless interior marriage lines and exterior siding to final plumbing connections and thorough inspections, we focus on the details that matter most. We treat every project as if it were our own — with honesty, care, and a commitment to quality that lasts for years.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -34,8 +34,8 @@ export function Trust() {
                   <MapPin className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">Local & Proud</h4>
-                  <p className="text-sm text-gray-400">Serving Owensboro and the surrounding counties.</p>
+                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">Specialized Experts</h4>
+                  <p className="text-sm text-gray-400">We focus exclusively on manufactured home finishing and set completion.</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -43,8 +43,8 @@ export function Trust() {
                   <Hammer className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">Tough Jobs</h4>
-                  <p className="text-sm text-gray-400">We don't back down from hard work.</p>
+                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">Precision Craftsmanship</h4>
+                  <p className="text-sm text-gray-400">Seamless marriage lines, clean trim, texture blending, and paint touch-ups that look factory-perfect.</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -52,8 +52,8 @@ export function Trust() {
                   <BadgeCheck className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">Quality First</h4>
-                  <p className="text-sm text-gray-400">Materials and craftsmanship you can rely on.</p>
+                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">Reliable & Professional</h4>
+                  <p className="text-sm text-gray-400">On-time work you can trust from a veteran-owned local business.</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -61,30 +61,30 @@ export function Trust() {
                   <Clock className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">On Time</h4>
-                  <p className="text-sm text-gray-400">We show up when we say we will. Period.</p>
+                  <h4 className="font-bold uppercase tracking-wide text-lg mb-1">Homeowner Focused</h4>
+                  <p className="text-sm text-gray-400">We don't leave until your home is move-in ready and meets the highest standards.</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right: Big Stat / Image block */}
+          {/* Right: Veteran Owned block */}
           <div className="relative">
             <div className="aspect-square bg-gray-900 border-8 border-white/10 relative overflow-hidden flex items-center justify-center">
               <div className="absolute inset-0 bg-primary/20 mix-blend-multiply"></div>
-              {/* Abstract structural graphic */}
               <div className="text-center p-12 relative z-10">
-                <h3 className="text-6xl md:text-8xl font-black text-white uppercase tracking-tighter mb-4 opacity-90">100%</h3>
-                <div className="w-16 h-2 bg-primary mx-auto mb-6"></div>
-                <p className="text-2xl md:text-3xl font-bold uppercase tracking-widest text-gray-300">Commitment</p>
-                <p className="mt-4 text-gray-400 font-medium">To every single job.</p>
+                <p className="text-xs font-bold tracking-widest uppercase text-gray-400 mb-3">Proudly</p>
+                <h3 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter mb-2 opacity-90 leading-none">Veteran<br />Owned</h3>
+                <div className="w-16 h-2 bg-primary mx-auto my-5"></div>
+                <p className="text-xl md:text-2xl font-bold uppercase tracking-widest text-gray-300 mb-2">U.S. Marine Corps</p>
+                <p className="mt-3 text-gray-400 font-medium leading-relaxed">Service-connected disabled veteran.<br />Military discipline in every project.</p>
               </div>
             </div>
-            
+
             {/* Accent block */}
             <div className="absolute -bottom-8 -left-8 w-48 h-48 bg-primary z-0 hidden lg:block"></div>
           </div>
-          
+
         </div>
       </div>
     </section>
