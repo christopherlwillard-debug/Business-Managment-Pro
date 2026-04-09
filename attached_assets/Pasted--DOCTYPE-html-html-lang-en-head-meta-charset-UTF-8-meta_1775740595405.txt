@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧰 Trim Estimate Tool (Per Room)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        body {
+            font-family: 'Inter', system_ui, sans-serif;
+        }
+        .calculator-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        input[type="number"] {
+            appearance: none;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen">
+    <div class="max-w-2xl mx-auto p-4">
+        <!-- Header -->
+        <div class="flex items-center gap-3 mb-8">
+            <div class="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-3xl shadow-inner">🧰</div>
+            <div>
+                <h1 class="text-3xl font-semibold tracking-tight">Trim Estimate Tool</h1>
+                <p class="text-zinc-400 text-lg">Per Room • Baseboard + Crown Moulding</p>
+            </div>
+        </div>
+
+        <div class="space-y-8">
+            <!-- 1. Room Measurements -->
+            <div class="calculator-card bg-zinc-900 rounded-3xl p-6 border border-zinc-800">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        📏 1. Room Measurements
+                    </h2>
+                    <div onclick="resetSection(1)" class="text-xs px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-2xl cursor-pointer transition-colors">Reset</div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm text-zinc-400 mb-1">Room Length (ft)</label>
+                        <input id="length" type="number" step="0.1" value="20" 
+                               oninput="calculate()"
+                               class="w-full bg-zinc-800 border border-zinc-700 focus:border-amber-500 rounded-2xl px-4 py-3 text-2xl font-medium text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-zinc-400 mb-1">Room Width (ft)</label>
+                        <input id="width" type="number" step="0.1" value="15" 
+                               oninput="calculate()"
+                               class="w-full bg-zinc-800 border border-zinc-700 focus:border-amber-500 rounded-2xl px-4 py-3 text-2xl font-medium text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-zinc-400 mb-1">Ceiling Height (ft)</label>
+                        <input id="ceiling" type="number" step="0.1" value="9" 
+                               oninput="calculate()"
+                               class="w-full bg-zinc-800 border border-zinc-700 focus:border-amber-500 rounded-2xl px-4 py-3 text-2xl font-medium text-white">
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-zinc-950 rounded-2xl p-5 border border-zinc-700">
+                    <div class="flex justify-between items-center text-sm">
+                        <div class="text-zinc-400">Perimeter = (Length × 2) + (Width × 2)</div>
+                        <div id="perimeter-display" class="font-mono text-3xl font-semibold text-amber-400">70 ft</div>
+                    </div>
+                    <div class="h-px bg-zinc-700 my-4"></div>
+                    <div class="flex justify-between items-baseline">
+                        <div class="text-zinc-400">Total Linear Feet</div>
+                        <div id="linear-feet-display" class="font-mono text-4xl font-bold text-white">70 ft</div>
+                    </div>
+                    <p class="text-xs text-zinc-500 mt-1">Baseboard + Crown moulding (perimeter approximation)</p>
+                </div>
+            </div>
+
+            <!-- 2. Select Trim Type -->
+            <div class="calculator-card bg-zinc-900 rounded-3xl p-6 border border-zinc-800">
+                <h2 class="text-xl font-semibold flex items-center gap-2 mb-4">🪵 2. Select Trim Type</h2>
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <!-- Baseboard -->
+                    <div>
+                        <label class="block text-sm font-medium text-zinc-400 mb-3">Baseboard Rate</label>
+                        <select id="base_type" onchange="setBaseRate()" 
+                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white mb-3">
+                            <option value="basic">Basic (3–5”) → $6–$10/ft</option>
+                            <option value="standard" selected>Standard (5–7”) → $10–$15/ft</option>
+                            <option value="large">Large (7”+) → $15–$25/ft</option>
+                        </select>
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-400 text-sm">$</span>
+                            <input id="base_rate" type="number" step="0.01" value="12.5" 
+                                   oninput="calculate()"
+                                   class="flex-1 bg-zinc-800 border border-zinc-700 focus:border-amber-500 rounded-2xl px-4 py-3 text-2xl font-medium">
+                            <span class="text-zinc-400 text-sm font-medium">/ft</span>
+                        </div>
+                        <p id="base_chosen" class="text-xs text-emerald-400 mt-2">Standard • $12.50/ft chosen</p>
+                    </div>
+
+                    <!-- Crown -->
+                    <div>
+                        <label class="block text-sm font-medium text-zinc-400 mb-3">Crown Moulding Rate</label>
+                        <select id="crown_type" onchange="setCrownRate()" 
+                                class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-white mb-3">
+                            <option value="basic">Basic → $10–$15/ft</option>
+                            <option value="standard" selected>Standard → $15–$22/ft</option>
+                            <option value="large">Large / сложные cuts → $22–$35+/ft</option>
+                        </select>
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-400 text-sm">$</span>
+                            <input id="crown_rate" type="number" step="0.01" value="18.5" 
+                                   oninput="calculate()"
+                                   class="flex-1 bg-zinc-800 border border-zinc-700 focus:border-amber-500 rounded-2xl px-4 py-3 text-2xl font-medium">
+                            <span class="text-zinc-400 text-sm font-medium">/ft</span>
+                        </div>
+                        <p id="crown_chosen" class="text-xs text-emerald-400 mt-2">Standard • $18.50/ft chosen</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Add-Ons -->
+            <div class="calculator-card bg-zinc-900 rounded-3xl p-6 border border-zinc-800">
+                <h2 class="text-xl font-semibold flex items-center gap-2 mb-4">➕ 3. Add-Ons</h2>
+                
+                <div class="space-y-5">
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1">
+                            <label class="text-zinc-400 text-sm">Outside Corners</label>
+                            <input id="outside_num" type="number" value="4" min="0" 
+                                   oninput="calculate()" class="w-20 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-center">
+                        </div>
+                        <div class="text-2xl text-zinc-400">×</div>
+                        <div class="flex-1">
+                            <label class="text-zinc-400 text-sm">$ per corner</label>
+                            <div class="flex items-center">
+                                <span class="text-zinc-400">$</span>
+                                <input id="outside_price" type="number" step="1" value="20" 
+                                       oninput="calculate()" class="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1">
+                            <label class="text-zinc-400 text-sm">Non-90° Angles</label>
+                            <input id="non90_num" type="number" value="0" min="0" 
+                                   oninput="calculate()" class="w-20 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2 text-center">
+                        </div>
+                        <div class="text-2xl text-zinc-400">×</div>
+                        <div class="flex-1">
+                            <label class="text-zinc-400 text-sm">$ per angle</label>
+                            <div class="flex items-center">
+                                <span class="text-zinc-400">$</span>
+                                <input id="non90_price" type="number" step="1" value="37.5" 
+                                       oninput="calculate()" class="flex-1 bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between bg-zinc-950 rounded-2xl p-4 border border-zinc-700">
+                        <div class="flex items-center gap-3">
+                            <input id="vaulted" type="checkbox" checked onclick="calculate()" class="w-5 h-5 accent-amber-500">
+                            <label class="text-sm font-medium">Vaulted Ceiling</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-zinc-400">+</span>
+                            <input id="vault_pct" type="number" step="1" value="30" min="20" max="40" 
+                                   oninput="calculate()" class="w-16 bg-zinc-800 border border-zinc-700 rounded-2xl px-3 py-1 text-center">%
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-zinc-400 mb-1">Wall/Ceiling Repairs ($)</label>
+                            <input id="repairs" type="number" step="1" value="0" 
+                                   oninput="calculate()" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-xl">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-zinc-400 mb-1">Demo/Removal ($)</label>
+                            <input id="demo" type="number" step="1" value="0" 
+                                   oninput="calculate()" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-4 py-3 text-xl">
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-zinc-700 flex justify-between text-sm">
+                        <span class="text-zinc-400">Add-On Total</span>
+                        <span id="addons-total-display" class="font-mono text-3xl font-semibold text-white">$0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Finishing Options -->
+            <div class="calculator-card bg-zinc-900 rounded-3xl p-6 border border-zinc-800">
+                <h2 class="text-xl font-semibold flex items-center gap-2 mb-4">🎨 4. Finishing Options</h2>
+                
+                <div class="grid grid-cols-3 gap-3">
+                    <button onclick="setFinish(0)" 
+                            class="finish-btn px-4 py-6 rounded-2xl border-2 border-transparent hover:border-zinc-700 flex flex-col items-center data-[active=true]:border-amber-500 data-[active=true]:bg-amber-500/10">
+                        <span class="text-2xl mb-1">🚪</span>
+                        <span class="text-sm font-medium">Install Only</span>
+                        <span class="text-xs text-zinc-400">$0/ft</span>
+                    </button>
+                    <button onclick="setFinish(3)" 
+                            class="finish-btn px-4 py-6 rounded-2xl border-2 border-transparent hover:border-zinc-700 flex flex-col items-center data-[active=true]:border-amber-500 data-[active=true]:bg-amber-500/10">
+                        <span class="text-2xl mb-1">🪚</span>
+                        <span class="text-sm font-medium">Caulk + Fill</span>
+                        <span class="text-xs text-zinc-400">$2–$4/ft</span>
+                    </button>
+                    <button onclick="setFinish(5.5)" 
+                            class="finish-btn px-4 py-6 rounded-2xl border-2 border-transparent hover:border-zinc-700 flex flex-col items-center data-[active=true]:border-amber-500 data-[active=true]:bg-amber-500/10">
+                        <span class="text-2xl mb-1">🎨</span>
+                        <span class="text-sm font-medium">Full Paint Finish</span>
+                        <span class="text-xs text-zinc-400">$4–$7/ft</span>
+                    </button>
+                </div>
+
+                <div class="mt-6 flex items-center gap-3 bg-zinc-950 rounded-2xl p-4">
+                    <span class="text-zinc-400">Finish Rate</span>
+                    <div class="flex-1"></div>
+                    <span class="text-zinc-400">$</span>
+                    <input id="finish_rate" type="number" step="0.01" value="5.5" 
+                           oninput="calculate()" class="w-28 bg-transparent font-mono text-3xl font-bold focus:outline-none">
+                    <span class="text-zinc-400">/ft</span>
+                </div>
+            </div>
+
+            <!-- 5. Material Cost -->
+            <div class="calculator-card bg-zinc-900 rounded-3xl p-6 border border-zinc-800">
+                <h2 class="text-xl font-semibold flex items-center gap-2 mb-4">🧱 5. Material Cost (with markup)</h2>
+                <div class="flex items-center gap-4">
+                    <span class="text-4xl">$</span>
+                    <input id="materials" type="number" step="1" value="450" 
+                           oninput="calculate()" 
+                           class="flex-1 bg-zinc-800 border border-zinc-700 rounded-3xl px-6 py-6 text-5xl font-semibold text-white focus:outline-none focus:border-amber-500">
+                </div>
+            </div>
+
+            <!-- Live Results -->
+            <div class="calculator-card bg-gradient-to-br from-zinc-900 to-zinc-800 rounded-3xl p-8 border border-amber-500/30 shadow-2xl">
+                <h2 class="text-xl font-semibold mb-6 flex items-center gap-2">
+                    💰 6. Labor &amp; 7. Total Estimate
+                </h2>
+
+                <div class="space-y-6">
+                    <!-- Labor Breakdown -->
+                    <div class="grid grid-cols-3 gap-6 text-center">
+                        <div class="bg-black/30 rounded-2xl p-4">
+                            <div class="text-xs tracking-widest text-amber-400">BASEBOARD LABOR</div>
+                            <div id="base-labor-display" class="font-mono text-3xl font-bold">$875.00</div>
+                            <div class="text-xs text-zinc-500">Linear ft × rate</div>
+                        </div>
+                        <div class="bg-black/30 rounded-2xl p-4">
+                            <div class="text-xs tracking-widest text-amber-400">CROWN LABOR</div>
+                            <div id="crown-labor-display" class="font-mono text-3xl font-bold">$1,295.00</div>
+                            <div class="text-xs text-zinc-500">Linear ft × rate</div>
+                        </div>
+                        <div class="bg-black/30 rounded-2xl p-4">
+                            <div class="text-xs tracking-widest text-amber-400">FINISHING</div>
+                            <div id="finish-labor-display" class="font-mono text-3xl font-bold">$385.00</div>
+                            <div class="text-xs text-zinc-500">Linear ft × rate</div>
+                        </div>
+                    </div>
+
+                    <!-- Totals -->
+                    <div class="bg-black/40 rounded-3xl p-6">
+                        <div class="flex justify-between py-2 border-b border-zinc-700">
+                            <span class="font-medium">Baseboard Labor</span>
+                            <span id="base-labor-final" class="font-mono">$875</span>
+                        </div>
+                        <div class="flex justify-between py-2 border-b border-zinc-700">
+                            <span class="font-medium">Crown Labor</span>
+                            <span id="crown-labor-final" class="font-mono">$1,295</span>
+                        </div>
+                        <div class="flex justify-between py-2 border-b border-zinc-700">
+                            <span class="font-medium">Finishing</span>
+                            <span id="finish-labor-final" class="font-mono">$385</span>
+                        </div>
+                        <div class="flex justify-between py-2 border-b border-zinc-700">
+                            <span class="font-medium">Materials</span>
+                            <span id="materials-final" class="font-mono">$450</span>
+                        </div>
+                        <div class="flex justify-between py-2 border-b border-amber-400/30 font-semibold">
+                            <span>Add-Ons</span>
+                            <span id="addons-final" class="font-mono">$160</span>
+                        </div>
+                        
+                        <div class="pt-6 flex justify-between items-baseline">
+                            <span class="text-lg">SUBTOTAL</span>
+                            <span id="subtotal-display" class="font-mono text-4xl font-bold">$3,165</span>
+                        </div>
+
+                        <div class="flex justify-between text-sm text-zinc-400 mt-2">
+                            <span>Minimum Charge Adjustment (if needed)</span>
+                            <span id="adjustment-display" class="font-medium text-emerald-400">$0</span>
+                        </div>
+
+                        <div class="mt-8 pt-6 border-t border-amber-400 flex justify-between items-end">
+                            <div>
+                                <span class="text-xs uppercase tracking-widest text-amber-400">✅ FINAL PRICE</span>
+                                <div id="final-price-display" class="font-mono text-6xl font-black text-white">$3,200</div>
+                            </div>
+                            <div class="text-right">
+                                <div onclick="copyEstimate()" 
+                                     class="inline-flex items-center gap-1 text-xs bg-white text-black px-5 py-3 rounded-3xl font-semibold cursor-pointer hover:bg-amber-400 transition-colors">
+                                    📋 Copy Quote
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Version -->
+                    <div class="text-xs bg-zinc-950/80 border border-dashed border-zinc-600 rounded-2xl p-4">
+                        <div class="font-medium mb-1">⚡ Quick Version (Fast Quote)</div>
+                        <div id="quick-version-display" class="font-mono text-lg text-amber-300">
+                            70 ft × ($12.50 + $18.50 + $5.50) + $450 + $160 = $3,200
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pro Notes -->
+        <div class="mt-12 text-xs text-zinc-400 bg-zinc-900 rounded-3xl p-6 border border-zinc-800">
+            <h3 class="font-semibold text-amber-400 mb-3">💡 Pro Notes</h3>
+            <ul class="space-y-2">
+                <li>• Always round up to the nearest $50–$100</li>
+                <li>• Minimum per room: $400–$600 (auto-applied above)</li>
+                <li>• Charge extra for small/tight rooms or complex layouts</li>
+                <li>• Don’t include paint unless clearly selected</li>
+                <li>• Vaulted ceilings add complexity to cuts and access</li>
+                <li class="text-emerald-400">Built live for you — changes update instantly</li>
+            </ul>
+        </div>
+
+        <div class="text-center text-zinc-500 text-xs mt-8 flex items-center justify-center gap-4">
+            <div>Made for Wilzard 📍 Owensboro, KY</div>
+            <div class="w-px h-3 bg-zinc-600"></div>
+            <div>Save this page to your phone home screen for instant estimates</div>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind script already loaded via CDN
+        function initTailwind() {
+            // No extra config needed — CDN works with standard classes
+        }
+
+        // Set default baseboard rate based on type
+        function setBaseRate() {
+            const type = document.getElementById('base_type').value;
+            const rateInput = document.getElementById('base_rate');
+            if (type === 'basic') rateInput.value = 8;
+            else if (type === 'standard') rateInput.value = 12.5;
+            else if (type === 'large') rateInput.value = 20;
+            document.getElementById('base_chosen').innerHTML = 
+                `${document.getElementById('base_type').selectedOptions[0].text.split('→')[0].trim()} • $${rateInput.value}/ft chosen`;
+            calculate();
+        }
+
+        // Set default crown rate based on type
+        function setCrownRate() {
+            const type = document.getElementById('crown_type').value;
+            const rateInput = document.getElementById('crown_rate');
+            if (type === 'basic') rateInput.value = 12.5;
+            else if (type === 'standard') rateInput.value = 18.5;
+            else if (type === 'large') rateInput.value = 28.5;
+            document.getElementById('crown_chosen').innerHTML = 
+                `${document.getElementById('crown_type').selectedOptions[0].text.split('→')[0].trim()} • $${rateInput.value}/ft chosen`;
+            calculate();
+        }
+
+        // Set finish rate from buttons
+        function setFinish(rate) {
+            document.getElementById('finish_rate').value = rate;
+            // Highlight active button
+            document.querySelectorAll('.finish-btn').forEach(btn => {
+                btn.dataset.active = (parseFloat(btn.getAttribute('onclick').match(/\d+\.?\d*/)[0]) === rate);
+            });
+            calculate();
+        }
+
+        // Main calculation engine
+        function calculate() {
+            // Get inputs
+            const length = parseFloat(document.getElementById('length').value) || 0;
+            const width = parseFloat(document.getElementById('width').value) || 0;
+            const linearFeet = 2 * (length + width);
+
+            // Display linear feet
+            document.getElementById('perimeter-display').textContent = `${linearFeet} ft`;
+            document.getElementById('linear-feet-display').textContent = `${linearFeet} ft`;
+
+            // Rates
+            const baseRate = parseFloat(document.getElementById('base_rate').value) || 0;
+            const crownRate = parseFloat(document.getElementById('crown_rate').value) || 0;
+            const finishRate = parseFloat(document.getElementById('finish_rate').value) || 0;
+
+            // Base calculations
+            let baseLabor = linearFeet * baseRate;
+            let crownLabor = linearFeet * crownRate;
+            let finishLabor = linearFeet * finishRate;
+            let trimLabor = baseLabor + crownLabor + finishLabor;
+
+            // Vaulted ceiling multiplier
+            const vaulted = document.getElementById('vaulted').checked;
+            const vaultPct = parseFloat(document.getElementById('vault_pct').value) || 30;
+            if (vaulted) {
+                trimLabor = trimLabor * (1 + vaultPct / 100);
+            }
+
+            // Add-ons
+            const outsideNum = parseFloat(document.getElementById('outside_num').value) || 0;
+            const outsidePrice = parseFloat(document.getElementById('outside_price').value) || 20;
+            const non90Num = parseFloat(document.getElementById('non90_num').value) || 0;
+            const non90Price = parseFloat(document.getElementById('non90_price').value) || 37.5;
+            const repairs = parseFloat(document.getElementById('repairs').value) || 0;
+            const demo = parseFloat(document.getElementById('demo').value) || 0;
+
+            const addonsTotal = (outsideNum * outsidePrice) + (non90Num * non90Price) + repairs + demo;
+
+            // Materials
+            const materials = parseFloat(document.getElementById('materials').value) || 0;
+
+            // Subtotal
+            const subtotal = trimLabor + addonsTotal + materials;
+
+            // Final price logic
+            const minCharge = 500; // Pro note default
+            let roundedSubtotal = Math.ceil(subtotal / 50) * 50;
+            const finalPrice = Math.max(roundedSubtotal, minCharge);
+            const adjustment = finalPrice - subtotal;
+
+            // Update all displays
+            document.getElementById('base-labor-display').textContent = `$${(baseLabor).toFixed(0)}`;
+            document.getElementById('crown-labor-display').textContent = `$${(crownLabor).toFixed(0)}`;
+            document.getElementById('finish-labor-display').textContent = `$${(finishLabor).toFixed(0)}`;
+
+            document.getElementById('base-labor-final').textContent = `$${(baseLabor).toFixed(0)}`;
+            document.getElementById('crown-labor-final').textContent = `$${(crownLabor).toFixed(0)}`;
+            document.getElementById('finish-labor-final').textContent = `$${(finishLabor).toFixed(0)}`;
+            document.getElementById('materials-final').textContent = `$${(materials).toFixed(0)}`;
+            document.getElementById('addons-final').textContent = `$${(addonsTotal).toFixed(0)}`;
+
+            document.getElementById('subtotal-display').textContent = `$${(subtotal).toFixed(0)}`;
+            document.getElementById('adjustment-display').textContent = adjustment > 0 ? `+$${(adjustment).toFixed(0)}` : '$0';
+            document.getElementById('final-price-display').innerHTML = 
+                `$${(finalPrice).toFixed(0)}<span class="text-base font-normal text-zinc-400 ml-2">incl. round-up</span>`;
+
+            document.getElementById('addons-total-display').textContent = `$${(addonsTotal).toFixed(0)}`;
+
+            // Quick version
+            const quickTotal = linearFeet * (baseRate + crownRate + finishRate) + materials + addonsTotal;
+            document.getElementById('quick-version-display').innerHTML = 
+                `${linearFeet} ft × ($${baseRate} + $${crownRate} + $${finishRate}) + $${materials} + $${addonsTotal} = <span class="font-bold">$${(quickTotal).toFixed(0)}</span>`;
+        }
+
+        // Reset a single section
+        function resetSection(section) {
+            if (section === 1) {
+                document.getElementById('length').value = 20;
+                document.getElementById('width').value = 15;
+                document.getElementById('ceiling').value = 9;
+            }
+            calculate();
+        }
+
+        // Copy full estimate to clipboard
+        function copyEstimate() {
+            const length = document.getElementById('length').value;
+            const width = document.getElementById('width').value;
+            const lf = (2 * (parseFloat(length) + parseFloat(width))).toFixed(0);
+            const final = document.getElementById('final-price-display').textContent.replace(/[^0-9]/g, '');
+            
+            const text = `🧰 Trim Estimate\n` +
+                        `Room: ${length}×${width} ft (${lf} linear ft)\n` +
+                        `Baseboard: ${document.getElementById('base_chosen').innerText}\n` +
+                        `Crown: ${document.getElementById('crown_chosen').innerText}\n` +
+                        `Finishing: $${document.getElementById('finish_rate').value}/ft\n` +
+                        `✅ FINAL PRICE: $${final}\n\n` +
+                        `📍 Generated in Owensboro, KY • Ready to send to customer!`;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                const original = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                setTimeout(() => { btn.innerHTML = original; }, 2000);
+            });
+        }
+
+        // Initialize everything
+        window.onload = function() {
+            initTailwind();
+            // Set initial finish button active
+            document.querySelectorAll('.finish-btn').forEach((btn, i) => {
+                if (i === 2) btn.dataset.active = 'true';
+            });
+            // Run first calculation
+            calculate();
+            
+            // Make all number inputs update instantly
+            console.log('%c✅ Trim Estimate Tool ready for Wilzard!', 'color:#fbbf24; font-family:monospace; font-size:11px');
+        };
+    </script>
+</body>
+</html>
