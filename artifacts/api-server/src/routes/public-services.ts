@@ -5,7 +5,21 @@ import { eq, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-router.get("/", async (req: Request, res: Response): Promise<void> => {
+function parseServiceBody(body: Record<string, unknown>): Record<string, unknown> {
+  const fields = [
+    "name", "slug", "description", "category", "icon", "pricingType",
+    "basePrice", "priceMin", "priceMax", "unit",
+    "priceDisplay", "priceNote", "whatsIncluded", "addOns", "notes",
+    "sortOrder", "active",
+  ] as const;
+  const updates: Record<string, unknown> = {};
+  for (const f of fields) {
+    if (body[f] !== undefined) updates[f] = body[f];
+  }
+  return updates;
+}
+
+router.get("/", async (_req: Request, res: Response): Promise<void> => {
   try {
     const services = await db
       .select()
@@ -18,20 +32,24 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+router.post("/", async (req: Request, res: Response): Promise<void> => {
+  const { name, slug } = req.body ?? {};
+  if (!name || !slug) { res.status(400).json({ error: "name and slug are required" }); return; }
+  const updates = parseServiceBody(req.body ?? {});
+  try {
+    const [service] = await db.insert(servicesTable).values(updates as typeof servicesTable.$inferInsert).returning();
+    res.status(201).json(service);
+  } catch (err) {
+    console.error("public-services POST error", err);
+    res.status(500).json({ error: "Failed to create service" });
+  }
+});
+
 router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { name, description, icon, priceDisplay, priceNote, whatsIncluded, addOns, sortOrder, active } = req.body ?? {};
-  const updates: Record<string, unknown> = {};
-  if (name !== undefined) updates.name = name;
-  if (description !== undefined) updates.description = description;
-  if (icon !== undefined) updates.icon = icon;
-  if (priceDisplay !== undefined) updates.priceDisplay = priceDisplay;
-  if (priceNote !== undefined) updates.priceNote = priceNote;
-  if (whatsIncluded !== undefined) updates.whatsIncluded = whatsIncluded;
-  if (addOns !== undefined) updates.addOns = addOns;
-  if (sortOrder !== undefined) updates.sortOrder = sortOrder;
-  if (active !== undefined) updates.active = active;
+  const updates = parseServiceBody(req.body ?? {});
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No fields to update" }); return; }
   try {
     const [service] = await db
       .update(servicesTable)
@@ -43,6 +61,19 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
   } catch (err) {
     console.error("public-services PATCH error", err);
     res.status(500).json({ error: "Failed to update service" });
+  }
+});
+
+router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const [deleted] = await db.delete(servicesTable).where(eq(servicesTable.id, id)).returning();
+    if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("public-services DELETE error", err);
+    res.status(500).json({ error: "Failed to delete service" });
   }
 });
 
