@@ -1,5 +1,5 @@
 -- Task #92: Public marketing website
--- Creates portfolio_photos, inquiries, and public_services tables
+-- Creates portfolio_photos, inquiries, and services tables
 
 CREATE TABLE IF NOT EXISTS "portfolio_photos" (
   "id" serial PRIMARY KEY NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS "inquiries" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "public_services" (
+CREATE TABLE IF NOT EXISTS "services" (
   "id" serial PRIMARY KEY NOT NULL,
   "name" text NOT NULL,
   "slug" text NOT NULL UNIQUE,

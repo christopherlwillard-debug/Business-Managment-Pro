@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { db } from "@workspace/db";
-import { publicServicesTable, portfolioPhotosTable, inquiriesTable } from "@workspace/db/schema";
+import { servicesTable, portfolioPhotosTable, inquiriesTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 
@@ -12,9 +12,9 @@ router.get("/public/services", async (req: Request, res: Response): Promise<void
   try {
     const services = await db
       .select()
-      .from(publicServicesTable)
-      .where(eq(publicServicesTable.active, true))
-      .orderBy(asc(publicServicesTable.sortOrder));
+      .from(servicesTable)
+      .where(eq(servicesTable.active, true))
+      .orderBy(asc(servicesTable.sortOrder));
     res.json(services);
   } catch (err) {
     console.error("public/services error", err);

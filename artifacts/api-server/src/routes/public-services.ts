@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { publicServicesTable } from "@workspace/db/schema";
+import { servicesTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -9,8 +9,8 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
   try {
     const services = await db
       .select()
-      .from(publicServicesTable)
-      .orderBy(asc(publicServicesTable.sortOrder));
+      .from(servicesTable)
+      .orderBy(asc(servicesTable.sortOrder));
     res.json(services);
   } catch (err) {
     console.error("public-services GET error", err);
@@ -34,9 +34,9 @@ router.patch("/:id", async (req: Request, res: Response): Promise<void> => {
   if (active !== undefined) updates.active = active;
   try {
     const [service] = await db
-      .update(publicServicesTable)
+      .update(servicesTable)
       .set(updates)
-      .where(eq(publicServicesTable.id, id))
+      .where(eq(servicesTable.id, id))
       .returning();
     if (!service) { res.status(404).json({ error: "Not found" }); return; }
     res.json(service);

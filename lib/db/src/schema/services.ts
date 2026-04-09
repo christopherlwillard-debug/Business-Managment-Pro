@@ -1,8 +1,6 @@
 import { pgTable, serial, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
-export const publicServicesTable = pgTable("public_services", {
+export const servicesTable = pgTable("services", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
@@ -17,6 +15,5 @@ export const publicServicesTable = pgTable("public_services", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertPublicServiceSchema = createInsertSchema(publicServicesTable).omit({ id: true, createdAt: true });
-export type InsertPublicService = z.infer<typeof insertPublicServiceSchema>;
-export type PublicService = typeof publicServicesTable.$inferSelect;
+export type Service = typeof servicesTable.$inferSelect;
+export type InsertService = typeof servicesTable.$inferInsert;

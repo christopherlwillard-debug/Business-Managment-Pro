@@ -21,4 +21,4 @@ export * from "./access-requests";
 export * from "./other-income";
 export * from "./portfolio-photos";
 export * from "./inquiries";
-export * from "./public-services";
+export * from "./services";
