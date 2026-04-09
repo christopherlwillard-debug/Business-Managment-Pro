@@ -44,9 +44,10 @@ export function usePortfolio() {
 interface ContactData {
   name: string;
   phone?: string;
-  bestContactMethod?: string;
+  email?: string;
   service?: string;
   message: string;
+  bestTime?: string;
 }
 
 export function useContact() {

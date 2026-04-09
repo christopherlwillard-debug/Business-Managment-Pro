@@ -99,6 +99,20 @@ export function Services() {
                   </div>
                 </div>
                 
+                {/* Get a Quote CTA */}
+                <div className="px-8 pb-6">
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent("prefill-contact", { detail: { service: service.name } }));
+                      const contactEl = document.querySelector("#contact");
+                      if (contactEl) contactEl.scrollIntoView({ behavior: "smooth" });
+                    }}
+                    className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-wider text-sm hover:bg-primary transition-colors duration-200 group-hover:bg-primary"
+                  >
+                    Get a Quote for This Service
+                  </button>
+                </div>
+
                 {/* Bottom decorative bar */}
                 <div className="h-1 w-full bg-gray-200 group-hover:bg-primary transition-colors duration-300"></div>
               </div>

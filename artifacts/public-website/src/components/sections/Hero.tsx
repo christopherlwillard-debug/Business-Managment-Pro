@@ -52,7 +52,7 @@ export function Hero() {
               size="lg" 
               variant="outline"
               onClick={() => {
-                document.querySelector("#services")?.scrollIntoView({ behavior: "smooth" });
+                document.querySelector("#portfolio")?.scrollIntoView({ behavior: "smooth" });
               }}
               className="w-full sm:w-auto border-2 border-gray-900 text-gray-900 font-bold rounded-none px-8 py-7 text-lg uppercase tracking-wider hover:bg-gray-100"
             >

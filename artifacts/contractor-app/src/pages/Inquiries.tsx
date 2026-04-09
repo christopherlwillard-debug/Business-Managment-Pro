@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Inbox, Mail, MailOpen, User, Phone, MessageSquare, Briefcase, Clock, Trash2 } from "lucide-react";
+import { Inbox, Mail, MailOpen, AtSign, Phone, MessageSquare, Briefcase, Clock, Trash2 } from "lucide-react";
 
 interface Inquiry {
   id: number;
   name: string;
   phone: string | null;
-  bestContactMethod: string | null;
+  email: string | null;
   service: string | null;
   message: string | null;
+  bestTime: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -186,24 +187,30 @@ export default function Inquiries() {
                 <div className="grid grid-cols-2 gap-4">
                   {selected.phone && (
                     <div className="flex items-center gap-2 text-sm">
-                      <Phone className="w-4 h-4 text-muted-foreground" />
+                      <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span>{selected.phone}</span>
                     </div>
                   )}
-                  {selected.bestContactMethod && (
+                  {selected.email && (
                     <div className="flex items-center gap-2 text-sm">
-                      <User className="w-4 h-4 text-muted-foreground" />
-                      <span>{selected.bestContactMethod}</span>
+                      <AtSign className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="truncate">{selected.email}</span>
                     </div>
                   )}
                   {selected.service && (
                     <div className="flex items-center gap-2 text-sm">
-                      <Briefcase className="w-4 h-4 text-muted-foreground" />
+                      <Briefcase className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span>{selected.service}</span>
                     </div>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock className="w-4 h-4" />
+                  {selected.bestTime && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span>Best time: {selected.bestTime}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground col-span-2">
+                    <Clock className="w-4 h-4 flex-shrink-0" />
                     <span>{formatDate(selected.createdAt)}</span>
                   </div>
                 </div>
@@ -220,20 +227,32 @@ export default function Inquiries() {
                   </div>
                 )}
 
-                {selected.phone && (
-                  <div className="pt-2 border-t border-border flex gap-3">
-                    <a
-                      href={`tel:${selected.phone}`}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
-                    >
-                      <Phone className="w-4 h-4" /> Call
-                    </a>
-                    <a
-                      href={`sms:${selected.phone}`}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
-                    >
-                      <MessageSquare className="w-4 h-4" /> Text
-                    </a>
+                {(selected.phone || selected.email) && (
+                  <div className="pt-2 border-t border-border flex gap-3 flex-wrap">
+                    {selected.phone && (
+                      <a
+                        href={`tel:${selected.phone}`}
+                        className="flex-1 min-w-[100px] flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
+                      >
+                        <Phone className="w-4 h-4" /> Call
+                      </a>
+                    )}
+                    {selected.phone && (
+                      <a
+                        href={`sms:${selected.phone}`}
+                        className="flex-1 min-w-[100px] flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+                      >
+                        <MessageSquare className="w-4 h-4" /> Text
+                      </a>
+                    )}
+                    {selected.email && (
+                      <a
+                        href={`mailto:${selected.email}`}
+                        className="flex-1 min-w-[100px] flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+                      >
+                        <AtSign className="w-4 h-4" /> Email
+                      </a>
+                    )}
                   </div>
                 )}
               </div>

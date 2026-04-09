@@ -1,12 +1,13 @@
 import { useForm } from "react-hook-form";
 import { useServices, useContact } from "@/hooks/api";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface FormValues {
   name: string;
   phone: string;
-  bestContactMethod: string;
+  email: string;
+  bestTime: string;
   service: string;
   message: string;
 }
@@ -20,23 +21,28 @@ export function Contact() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
-    defaultValues: {
-      name: "",
-      phone: "",
-      bestContactMethod: "",
-      service: "",
-      message: "",
-    },
+    defaultValues: { name: "", phone: "", email: "", bestTime: "", service: "", message: "" },
   });
+
+  useEffect(() => {
+    function handlePrefill(e: Event) {
+      const detail = (e as CustomEvent<{ service: string }>).detail;
+      if (detail?.service) setValue("service", detail.service);
+    }
+    window.addEventListener("prefill-contact", handlePrefill);
+    return () => window.removeEventListener("prefill-contact", handlePrefill);
+  }, [setValue]);
 
   const onSubmit = async (values: FormValues) => {
     try {
       await contactMutation.mutateAsync({
         name: values.name,
         phone: values.phone || undefined,
-        bestContactMethod: values.bestContactMethod || undefined,
+        email: values.email || undefined,
+        bestTime: values.bestTime || undefined,
         service: values.service || undefined,
         message: values.message,
       });
@@ -51,6 +57,7 @@ export function Contact() {
     "w-full bg-white/5 border border-white/20 text-white placeholder:text-gray-500 px-4 h-12 focus:outline-none focus:border-primary transition-colors";
   const labelCls = "block text-gray-300 uppercase tracking-wider text-xs font-bold mb-1.5";
   const errorCls = "mt-1 text-xs text-red-400 font-medium";
+  const selectCls = inputCls + " bg-gray-800 border border-white/20";
 
   return (
     <section id="contact" className="py-24 bg-white border-t border-gray-200">
@@ -105,7 +112,7 @@ export function Contact() {
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 {/* Name */}
                 <div>
                   <label className={labelCls}>Full Name *</label>
@@ -117,8 +124,8 @@ export function Contact() {
                   {errors.name && <p className={errorCls}>{errors.name.message}</p>}
                 </div>
 
-                {/* Phone + Contact Method */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Phone + Email */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
                     <label className={labelCls}>Phone Number</label>
                     <input
@@ -129,32 +136,38 @@ export function Contact() {
                     />
                   </div>
                   <div>
-                    <label className={labelCls}>Best Way to Reach You</label>
-                    <select
-                      {...register("bestContactMethod")}
-                      className={inputCls + " bg-gray-800 border border-white/20"}
-                    >
-                      <option value="">Select method</option>
-                      <option value="Call me">Call me</option>
-                      <option value="Text me">Text me</option>
-                      <option value="Email me">Email me</option>
-                    </select>
+                    <label className={labelCls}>Email Address</label>
+                    <input
+                      {...register("email")}
+                      placeholder="you@email.com"
+                      type="email"
+                      className={inputCls}
+                    />
                   </div>
                 </div>
 
-                {/* Service */}
-                <div>
-                  <label className={labelCls}>Interested Service</label>
-                  <select
-                    {...register("service")}
-                    className={inputCls + " bg-gray-800 border border-white/20"}
-                  >
-                    <option value="">What do you need help with?</option>
-                    {services?.map((s) => (
-                      <option key={s.id} value={s.name}>{s.name}</option>
-                    ))}
-                    <option value="Other">Other / Not sure</option>
-                  </select>
+                {/* Service + Best time */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className={labelCls}>Interested Service</label>
+                    <select {...register("service")} className={selectCls}>
+                      <option value="">What do you need help with?</option>
+                      {services?.map((s) => (
+                        <option key={s.id} value={s.name}>{s.name}</option>
+                      ))}
+                      <option value="Other">Other / Not sure</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Best Time to Call</label>
+                    <select {...register("bestTime")} className={selectCls}>
+                      <option value="">Any time</option>
+                      <option value="Morning (8am–12pm)">Morning (8am–12pm)</option>
+                      <option value="Afternoon (12pm–5pm)">Afternoon (12pm–5pm)</option>
+                      <option value="Evening (5pm–8pm)">Evening (5pm–8pm)</option>
+                      <option value="Weekends only">Weekends only</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Message */}
@@ -166,7 +179,7 @@ export function Contact() {
                       minLength: { value: 10, message: "Please provide a bit more detail" },
                     })}
                     placeholder="Tell us a bit about what you're looking to get done..."
-                    className={inputCls + " h-auto min-h-[120px] py-3 resize-y"}
+                    className={inputCls + " h-auto min-h-[110px] py-3 resize-y"}
                     rows={4}
                   />
                   {errors.message && <p className={errorCls}>{errors.message.message}</p>}

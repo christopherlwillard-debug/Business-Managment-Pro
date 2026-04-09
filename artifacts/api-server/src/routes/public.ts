@@ -63,7 +63,7 @@ router.get("/public/portfolio-image/*path", async (req: Request, res: Response):
 });
 
 router.post("/public/contact", async (req: Request, res: Response): Promise<void> => {
-  const { name, phone, bestContactMethod, service, message } = req.body ?? {};
+  const { name, phone, email, service, message, bestTime } = req.body ?? {};
   if (!name || !message) {
     res.status(400).json({ error: "Name and message are required" });
     return;
@@ -71,8 +71,16 @@ router.post("/public/contact", async (req: Request, res: Response): Promise<void
   try {
     const [inquiry] = await db
       .insert(inquiriesTable)
-      .values({ name, phone: phone ?? null, bestContactMethod: bestContactMethod ?? null, service: service ?? null, message })
+      .values({
+        name,
+        phone: phone || null,
+        email: email || null,
+        service: service || null,
+        message,
+        bestTime: bestTime || null,
+      })
       .returning();
+    console.log(`New inquiry from ${name} (${email ?? phone ?? "no contact"}) re: ${service ?? "general"}`);
     res.status(201).json({ success: true, id: inquiry.id });
   } catch (err) {
     console.error("public/contact error", err);
