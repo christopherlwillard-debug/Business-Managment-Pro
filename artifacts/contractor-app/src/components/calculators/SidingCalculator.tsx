@@ -46,6 +46,7 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
   const [winRate, setWinRate] = useState(100);
   const [doorQty, setDoorQty] = useState(0);
   const [doorRate, setDoorRate] = useState(137.5);
+  const [copied, setCopied] = useState(false);
 
   const [tearoff, setTearoff]   = useState(false);
   const [tearRate, setTearRate] = useState(1.50);
@@ -157,7 +158,10 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
       lines.push(`  Materials (raw $${fmt(calc.rawMat)} + 40% markup): $${fmt(matTotal)}`);
     }
     lines.push("", `Subtotal: $${fmt(subtotal)}`, `Final Price: $${fmt(final)}`, "");
-    navigator.clipboard.writeText(lines.join("\n")).catch(() => undefined);
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => undefined);
   }
 
   const hasStructure = calc.w > 0 && calc.l > 0 && calc.h > 0;
@@ -422,9 +426,13 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
           <button
             type="button"
             onClick={copyQuote}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+            className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-sm font-semibold transition-colors ${
+              copied
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
           >
-            <Copy className="w-4 h-4" /> Copy Quote
+            <Copy className="w-4 h-4" /> {copied ? "Copied!" : "Copy Quote"}
           </button>
           <div className="flex gap-3">
             <button
