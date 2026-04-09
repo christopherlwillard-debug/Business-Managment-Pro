@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { SidingCalculator } from "@/components/calculators/SidingCalculator";
 import { FlooringCalculator } from "@/components/calculators/FlooringCalculator";
+import { PlumbingCalculator } from "@/components/calculators/PlumbingCalculator";
 
 // ─── Trade templates ──────────────────────────────────────────────────────────
 const TRADE_TEMPLATES: Record<string, Array<{ category: string; description: string; quantity: number; unit: string; unitCost: number }>> = {
@@ -149,6 +150,7 @@ function EstimateModal({
   const [templateApplied, setTemplateApplied] = useState(false);
   const [showSidingCalc, setShowSidingCalc] = useState(false);
   const [showFlooringCalc, setShowFlooringCalc] = useState(false);
+  const [showPlumbingCalc, setShowPlumbingCalc] = useState(false);
 
   const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
   const markupAmt = markup ? subtotal * (parseFloat(markup) / 100) : 0;
@@ -288,6 +290,15 @@ function EstimateModal({
                   className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
                 >
                   <Calculator className="w-3.5 h-3.5" /> Open Flooring Calculator
+                </button>
+              )}
+              {jobType === "Plumbing" && (
+                <button
+                  type="button"
+                  onClick={() => setShowPlumbingCalc(true)}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
+                >
+                  <Calculator className="w-3.5 h-3.5" /> Open Plumbing Calculator
                 </button>
               )}
             </div>
@@ -475,6 +486,23 @@ function EstimateModal({
       {showFlooringCalc && (
         <FlooringCalculator
           onClose={() => setShowFlooringCalc(false)}
+          onUseNumbers={calcLines => {
+            setLines(calcLines.map(l => ({
+              category: l.category,
+              description: l.description,
+              quantity: String(l.quantity),
+              unit: l.unit,
+              unitCost: String(l.unitCost),
+            })));
+            setTemplateApplied(true);
+          }}
+        />
+      )}
+
+      {/* Plumbing calculator overlay */}
+      {showPlumbingCalc && (
+        <PlumbingCalculator
+          onClose={() => setShowPlumbingCalc(false)}
           onUseNumbers={calcLines => {
             setLines(calcLines.map(l => ({
               category: l.category,
