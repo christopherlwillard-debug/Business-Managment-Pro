@@ -47,8 +47,9 @@ function ceil50(n: number): number {
 }
 
 export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
-  const [roomLength, setRoomLength] = useState("20");
-  const [roomWidth, setRoomWidth]   = useState("15");
+  const [roomLength, setRoomLength]   = useState("20");
+  const [roomWidth, setRoomWidth]     = useState("15");
+  const [ceilingHeight, setCeilingHeight] = useState("9");
 
   const [baseTier, setBaseTier]    = useState<BaseTier>("standard");
   const [baseRate, setBaseRate]    = useState(BASE_TIERS["standard"].default);
@@ -90,31 +91,34 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
     const wid = parseFloat(roomWidth)  || 0;
     const linearFeet = 2 * (len + wid);
 
-    let baseLabor  = linearFeet * baseRate;
-    let crownLabor = linearFeet * crownRate;
+    let baseLabor   = linearFeet * baseRate;
+    let crownLabor  = linearFeet * crownRate;
     let finishLabor = linearFeet * finishRate;
-    let trimLabor  = baseLabor + crownLabor + finishLabor;
+    let trimLabor   = baseLabor + crownLabor + finishLabor;
 
-    if (vaulted) {
+    if (vaulted && trimLabor > 0) {
       const mult = 1 + (vaultPct / 100);
-      const scaled = trimLabor * mult;
-      const vaultedDelta = scaled - trimLabor;
-      baseLabor  += baseLabor  / trimLabor * vaultedDelta;
-      crownLabor += crownLabor / trimLabor * vaultedDelta;
-      finishLabor += finishLabor / trimLabor * vaultedDelta;
-      trimLabor = scaled;
+      const vaultedDelta = trimLabor * mult - trimLabor;
+      baseLabor   += (baseLabor   / trimLabor) * vaultedDelta;
+      crownLabor  += (crownLabor  / trimLabor) * vaultedDelta;
+      finishLabor += (finishLabor / trimLabor) * vaultedDelta;
+      trimLabor    = trimLabor * mult;
+    } else if (vaulted && trimLabor === 0) {
+      // All rates are 0 — nothing to scale, leave as-is
     }
 
-    const cornersAmt = outsideCorners * outsidePrice;
-    const anglesAmt  = non90Count * non90Price;
+    const cornersAmt  = outsideCorners * outsidePrice;
+    const anglesAmt   = non90Count * non90Price;
     const addOnsTotal = cornersAmt + anglesAmt + repairs + demo;
 
-    const subtotal    = trimLabor + addOnsTotal + materials;
-    const rounded     = ceil50(subtotal);
-    const finalPrice  = Math.max(rounded, 500);
-    const adjustment  = finalPrice - subtotal;
+    const subtotal   = trimLabor + addOnsTotal + materials;
+    const rounded    = ceil50(subtotal);
+    const finalPrice = Math.max(rounded, 500);
+    const adjustment = finalPrice - subtotal;
 
-    const quickFormula = `${fmtInt(linearFeet)} ft × ($${baseRate} + $${crownRate} + $${finishRate})${addOnsTotal > 0 ? ` + $${fmtInt(addOnsTotal)}` : ""}${materials > 0 ? ` + $${fmtInt(materials)}` : ""} = $${fmtInt(finalPrice)}`;
+    // Quick formula shows raw computed total (before round-up/min), matching HTML tool
+    const rawTotal = linearFeet * (baseRate + crownRate + finishRate) + addOnsTotal + materials;
+    const quickFormula = `${fmtInt(linearFeet)} ft × ($${baseRate} + $${crownRate} + $${finishRate})${addOnsTotal > 0 ? ` + $${fmtInt(addOnsTotal)}` : ""}${materials > 0 ? ` + $${fmtInt(materials)}` : ""} = $${fmtInt(rawTotal)}`;
 
     return {
       linearFeet,
@@ -124,7 +128,7 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
       quickFormula,
     };
   }, [
-    roomLength, roomWidth,
+    roomLength, roomWidth, ceilingHeight,
     baseRate, crownRate, finishRate,
     vaulted, vaultPct,
     outsideCorners, outsidePrice, non90Count, non90Price,
@@ -134,7 +138,7 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
   function handleCopyQuote() {
     const text = [
       "🧰 Trim Work Estimate",
-      `Room: ${roomLength}×${roomWidth} ft (${fmtInt(calc.linearFeet)} linear ft)`,
+      `Room: ${roomLength}×${roomWidth} ft, ${ceilingHeight} ft ceiling (${fmtInt(calc.linearFeet)} linear ft)`,
       `Baseboard: ${BASE_TIERS[baseTier].label} @ $${baseRate}/ft`,
       `Crown Moulding: ${CROWN_TIERS[crownTier].label} @ $${crownRate}/ft`,
       `Finishing: ${FINISH_OPTIONS[finishOption].label} @ $${finishRate}/ft`,
@@ -289,7 +293,7 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
             <h3 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
               <span>📏</span> 1. Room Measurements
             </h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">Length (ft)</label>
                 <input
@@ -305,6 +309,15 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
                   type="number" step="0.1" min="0"
                   value={roomWidth}
                   onChange={e => setRoomWidth(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Ceiling Height (ft)</label>
+                <input
+                  type="number" step="0.1" min="0"
+                  value={ceilingHeight}
+                  onChange={e => setCeilingHeight(e.target.value)}
                   className={inputCls}
                 />
               </div>
