@@ -275,7 +275,6 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center text-xl">🧰</div>
             <div>
               <h2 className="font-bold text-white text-base">Trim Work Calculator</h2>
               <p className="text-xs text-zinc-400">Baseboard + Crown Moulding • Per Room</p>

@@ -28,14 +28,6 @@ interface Service {
   active: boolean;
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  Carpentry: "🪵",
-  Exterior: "🏠",
-  Flooring: "🔲",
-  Plumbing: "🔧",
-  HVAC: "❄️",
-};
-
 async function fetchServices(): Promise<Service[]> {
   const res = await fetch(`${BASE}/api/public-services`);
   if (!res.ok) throw new Error("Failed to load");
@@ -142,7 +134,6 @@ interface EditDraft {
   name: string;
   description: string;
   category: string;
-  icon: string;
   pricingType: string;
   basePrice: string;
   priceMin: string;
@@ -157,7 +148,7 @@ interface EditDraft {
 
 function emptyDraft(): EditDraft {
   return {
-    name: "", description: "", category: "", icon: "",
+    name: "", description: "", category: "",
     pricingType: "flat", basePrice: "", priceMin: "", priceMax: "",
     unit: "", priceDisplay: "", priceNote: "",
     whatsIncluded: "", addOns: "", notes: "",
@@ -169,7 +160,6 @@ function serviceToDraft(s: Service): EditDraft {
     name: s.name,
     description: s.description ?? "",
     category: s.category ?? "",
-    icon: s.icon ?? "",
     pricingType: s.pricingType ?? "flat",
     basePrice: s.basePrice ?? "",
     priceMin: s.priceMin ?? "",
@@ -188,7 +178,6 @@ function draftToServicePatch(draft: EditDraft): Partial<Service> {
     name: draft.name || undefined,
     description: draft.description || null,
     category: draft.category || null,
-    icon: draft.icon || null,
     pricingType: draft.pricingType || null,
     basePrice: draft.basePrice || null,
     priceMin: draft.priceMin || null,
@@ -242,7 +231,6 @@ function EditForm({ draft, setDraft }: EditFormProps) {
     <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t pt-4">
       {field("Service Name", "name")}
       {field("Category", "category", { placeholder: "Carpentry, Plumbing, Flooring…" })}
-      {field("Icon Emoji", "icon", { placeholder: "🔧" })}
       {field("Unit", "unit", { placeholder: "LF, SF, Job, Platform…" })}
       {field("Pricing Type", "pricingType", { placeholder: "flat, per_sqft, per_lf…" })}
       {field("Base / Flat Price", "basePrice", { type: "number", placeholder: "1000" })}
@@ -304,14 +292,9 @@ function ServiceCard({ service, onSaved, onDeleted }: {
   const included = service.whatsIncluded ?? [];
   const addOns = service.addOns ?? [];
   const notes = (service.notes ?? "").split("\n").filter(Boolean);
-  const icon = service.icon ?? CATEGORY_ICONS[service.category ?? ""] ?? "🔧";
-
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
       <div className="p-5 flex items-start gap-4">
-        <div className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-2xl flex-shrink-0">
-          {icon}
-        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-bold text-gray-900 text-base">{service.name}</h3>
@@ -598,7 +581,6 @@ export default function PricingGuide() {
         {Object.entries(byCategory).map(([cat, catServices]) => (
           <div key={cat}>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-lg">{CATEGORY_ICONS[cat] ?? "🔧"}</span>
               <h2 className="text-sm font-bold text-gray-600 uppercase tracking-wide">{cat}</h2>
               <div className="flex-1 border-t border-gray-200" />
             </div>

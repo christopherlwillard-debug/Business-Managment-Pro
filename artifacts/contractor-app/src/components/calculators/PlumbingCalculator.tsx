@@ -143,7 +143,6 @@ export function PlumbingCalculator({ onClose, onUseNumbers }: PlumbingCalculator
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🔧</span>
             <div>
               <h2 className="text-lg font-bold text-gray-900">Plumbing Calculator</h2>
               <p className="text-xs text-gray-500">Flat-rate drop model · $1,000 base + $125/drop after 2</p>

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Images, Upload, Trash2, Eye, EyeOff, X, Plus, ChevronUp, ChevronDown } from "lucide-react";
+import { Images, Upload, Trash2, Eye, EyeOff, X, ChevronUp, ChevronDown, Pencil, Check } from "lucide-react";
 
 interface PortfolioPhoto {
   id: number;
@@ -35,6 +35,9 @@ export default function Portfolio() {
   const [uploadCaption, setUploadCaption] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editCat, setEditCat] = useState("");
+  const [editCaption, setEditCaption] = useState("");
 
   const { data: photos = [], isLoading } = useQuery<PortfolioPhoto[]>({
     queryKey: ["/api/portfolio-photos"],
@@ -55,6 +58,12 @@ export default function Portfolio() {
   const reorderMut = useMutation({
     mutationFn: ({ id, sortOrder }: { id: number; sortOrder: number }) =>
       apiFetch(`/portfolio-photos/${id}`, { method: "PATCH", body: JSON.stringify({ sortOrder }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/portfolio-photos"] }),
+  });
+
+  const editMut = useMutation({
+    mutationFn: ({ id, category, caption }: { id: number; category: string | null; caption: string | null }) =>
+      apiFetch(`/portfolio-photos/${id}`, { method: "PATCH", body: JSON.stringify({ category, caption }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/portfolio-photos"] }),
   });
 
@@ -176,66 +185,92 @@ export default function Portfolio() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {filtered.map((photo, idx) => (
-            <div
-              key={photo.id}
-              className={`relative group rounded-xl overflow-hidden bg-muted aspect-square border ${
-                photo.active ? "border-border" : "border-dashed border-muted-foreground/40 opacity-60"
-              }`}
-            >
-              <img
-                src={`${base}/api/storage/objects${photo.url.replace(/^\/objects/, "")}`}
-                alt={photo.caption ?? "Portfolio photo"}
-                className="w-full h-full object-cover"
-                onClick={() => setLightbox(photo)}
-              />
-              {/* Category badge */}
-              {photo.category && (
-                <span className="absolute top-2 left-2 text-[10px] font-bold bg-black/60 text-white px-2 py-0.5 rounded-full">
-                  {photo.category}
-                </span>
-              )}
-              {/* Action overlay */}
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                <button
+            <div key={photo.id} className="flex flex-col gap-1">
+              {/* Photo card */}
+              <div
+                className={`relative group rounded-xl overflow-hidden bg-muted aspect-square border ${
+                  photo.active ? "border-border" : "border-dashed border-muted-foreground/40 opacity-60"
+                }`}
+              >
+                <img
+                  src={`${base}/api/storage/objects${photo.url.replace(/^\/objects/, "")}`}
+                  alt={photo.caption ?? "Portfolio photo"}
+                  className="w-full h-full object-cover"
                   onClick={() => setLightbox(photo)}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                  title="View"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => toggleMut.mutate({ id: photo.id, active: !photo.active })}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                  title={photo.active ? "Hide from site" : "Show on site"}
-                >
-                  {photo.active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={() => idx > 0 && reorderMut.mutate({ id: photo.id, sortOrder: (photo.sortOrder ?? 0) - 1 })}
-                  disabled={idx === 0}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors disabled:opacity-30"
-                  title="Move up"
-                >
-                  <ChevronUp className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => idx < filtered.length - 1 && reorderMut.mutate({ id: photo.id, sortOrder: (photo.sortOrder ?? 0) + 1 })}
-                  disabled={idx === filtered.length - 1}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors disabled:opacity-30"
-                  title="Move down"
-                >
-                  <ChevronDown className="w-4 h-4" />
-                </button>
+                />
+                {/* Category badge */}
+                {photo.category && (
+                  <span className="absolute top-2 left-2 text-[10px] font-bold bg-black/60 text-white px-2 py-0.5 rounded-full">
+                    {photo.category}
+                  </span>
+                )}
+                {/* Action overlay (hover on desktop) */}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                  <button onClick={() => setLightbox(photo)} className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors" title="View">
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => toggleMut.mutate({ id: photo.id, active: !photo.active })} className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors" title={photo.active ? "Hide from site" : "Show on site"}>
+                    {photo.active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                  <button onClick={() => idx > 0 && reorderMut.mutate({ id: photo.id, sortOrder: (photo.sortOrder ?? 0) - 1 })} disabled={idx === 0} className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors disabled:opacity-30" title="Move up">
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => idx < filtered.length - 1 && reorderMut.mutate({ id: photo.id, sortOrder: (photo.sortOrder ?? 0) + 1 })} disabled={idx === filtered.length - 1} className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors disabled:opacity-30" title="Move down">
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => { if (confirm("Delete this photo permanently?")) deleteMut.mutate(photo.id); }} className="p-2 bg-red-500/80 hover:bg-red-600 rounded-full text-white transition-colors" title="Delete">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Always-visible edit button row */}
+              {editingId === photo.id ? (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-2 space-y-1.5">
+                  <select
+                    value={editCat}
+                    onChange={e => setEditCat(e.target.value)}
+                    className="w-full border border-border rounded-lg px-2 py-1 text-xs bg-background"
+                  >
+                    {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  <input
+                    type="text"
+                    value={editCaption}
+                    onChange={e => setEditCaption(e.target.value)}
+                    placeholder="Caption (optional)"
+                    className="w-full border border-border rounded-lg px-2 py-1 text-xs bg-background"
+                  />
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => {
+                        editMut.mutate({ id: photo.id, category: editCat || null, caption: editCaption || null });
+                        setEditingId(null);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-medium"
+                    >
+                      <Check className="w-3 h-3" /> Save
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="px-2 py-1 text-xs text-muted-foreground hover:bg-muted rounded-lg"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
                 <button
                   onClick={() => {
-                    if (confirm("Delete this photo permanently?")) deleteMut.mutate(photo.id);
+                    setEditingId(photo.id);
+                    setEditCat(photo.category ?? CATEGORIES[0]);
+                    setEditCaption(photo.caption ?? "");
                   }}
-                  className="p-2 bg-red-500/80 hover:bg-red-600 rounded-full text-white transition-colors"
-                  title="Delete"
+                  className="flex items-center justify-center gap-1 w-full py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Pencil className="w-3 h-3" /> Edit category / caption
                 </button>
-              </div>
+              )}
             </div>
           ))}
         </div>
