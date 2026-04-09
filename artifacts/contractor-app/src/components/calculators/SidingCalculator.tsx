@@ -146,8 +146,8 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
       `  End walls: ${fmtSF(endWallSF)} SF | Long walls: ${fmtSF(longWallSF)} SF | Total: ${fmtSF(totalSF)} SF`,
       "",
       `Labor Tier: ${LABOR_TIERS[tier].label} (${LABOR_TIERS[tier].range})`,
-      `  End wall labor:  $${fmt(endLaborAmt)}`,
-      `  Long wall labor: $${fmt(longLaborAmt)}`,
+      `  End walls:  per end $${fmt((endWallSF / 2) * laborRate)}  |  both ends $${fmt(endLaborAmt)}`,
+      `  Long walls: per side $${fmt((longWallSF / 2) * laborRate)}  |  both sides $${fmt(longLaborAmt)}`,
     ];
     if (winQty > 0) lines.push(`  Window surcharge (${winQty} @ $${fmt(winRate)}): $${fmt(winQty * winRate)}`);
     if (doorQty > 0) lines.push(`  Door surcharge (${doorQty} @ $${fmt(doorRate)}): $${fmt(doorQty * doorRate)}`);
@@ -257,16 +257,25 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
               />
             </div>
             {hasStructure && (
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: `End Walls (${fmtSF(calc.endWallSF)} SF × $${laborRate}/SF)`, value: calc.endLaborAmt },
-                  { label: `Long Walls (${fmtSF(calc.longWallSF)} SF × $${laborRate}/SF)`, value: calc.longLaborAmt },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-blue-50 rounded-lg px-3 py-2">
-                    <div className="text-[10px] text-blue-600 font-semibold">{label}</div>
-                    <div className="text-sm font-bold text-blue-800">${fmt(value)}</div>
+              <div className="space-y-2">
+                {/* End walls breakdown */}
+                <div className="bg-blue-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-blue-500 font-bold uppercase tracking-wider mb-1">End Walls</div>
+                  <div className="grid grid-cols-2 gap-x-4 text-xs text-blue-700">
+                    <div>Per end: <span className="font-bold">${fmt((calc.endWallSF / 2) * laborRate)}</span></div>
+                    <div>Both ends: <span className="font-bold">${fmt(calc.endLaborAmt)}</span></div>
+                    <div className="col-span-2 text-[10px] text-blue-400 mt-0.5">{fmtSF(calc.endWallSF / 2)} SF/end × $${laborRate} × 2</div>
                   </div>
-                ))}
+                </div>
+                {/* Long walls breakdown */}
+                <div className="bg-blue-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-blue-500 font-bold uppercase tracking-wider mb-1">Long Walls</div>
+                  <div className="grid grid-cols-2 gap-x-4 text-xs text-blue-700">
+                    <div>Per side: <span className="font-bold">${fmt(calc.longWallSF * laborRate / 2)}</span></div>
+                    <div>Both sides: <span className="font-bold">${fmt(calc.longLaborAmt)}</span></div>
+                    <div className="col-span-2 text-[10px] text-blue-400 mt-0.5">{fmtSF(calc.longWallSF / 2)} SF/side × $${laborRate} × 2</div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
