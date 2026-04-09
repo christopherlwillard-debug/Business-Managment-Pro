@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { useServices, useContact } from "@/hooks/api";
-import { CheckCircle2, Loader2, Send, Phone, Mail, MapPin, Clock } from "lucide-react";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface FormValues {
@@ -61,77 +61,10 @@ export function Contact() {
 
   return (
     <section id="contact" className="py-24 bg-white border-t border-gray-200">
-      <div className="container mx-auto px-4 md:px-6 max-w-6xl">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+      <div className="container mx-auto px-4 md:px-6 max-w-2xl">
 
-          {/* Left: Info */}
-          <div>
-            <h2 className="text-4xl md:text-5xl font-black text-gray-900 uppercase tracking-tight mb-4">
-              Let's Get to Work.
-            </h2>
-            <div className="w-24 h-2 bg-primary mb-8" />
-            <p className="text-xl text-gray-600 mb-8 leading-relaxed font-medium">
-              Ready to start your next project? Tell us what you need, and we'll get back to you with an honest quote and a timeline you can count on.
-            </p>
-            {/* Business contact info */}
-            <div className="space-y-4 mb-10">
-              <a href="tel:+12707993703" className="flex items-center gap-3 text-gray-700 hover:text-primary transition-colors group">
-                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full group-hover:bg-primary/20 transition-colors">
-                  <Phone className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Call or Text</div>
-                  <div className="font-bold text-gray-900">(270) 799-3703</div>
-                </div>
-              </a>
-              <a href="mailto:willardsgeneralcontracting@gmail.com" className="flex items-center gap-3 text-gray-700 hover:text-primary transition-colors group">
-                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full group-hover:bg-primary/20 transition-colors">
-                  <Mail className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Email</div>
-                  <div className="font-bold text-gray-900 text-sm">willardsgeneralcontracting@gmail.com</div>
-                </div>
-              </a>
-              <div className="flex items-center gap-3 text-gray-700">
-                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full">
-                  <MapPin className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Service Area</div>
-                  <div className="font-bold text-gray-900">Owensboro, KY & Surrounding Areas</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 text-gray-700">
-                <div className="w-10 h-10 bg-primary/10 flex items-center justify-center rounded-full">
-                  <Clock className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wider text-gray-400 font-bold">Hours</div>
-                  <div className="font-bold text-gray-900">Mon–Sat, 7am–6pm</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-8 border-l-4 border-secondary">
-              <h3 className="text-xl font-bold uppercase tracking-wide text-gray-900 mb-4">The Willard's Way</h3>
-              <ul className="space-y-4 text-gray-600 font-medium">
-                {[
-                  "Free, no-obligation estimates on all jobs.",
-                  "Clear communication from start to finish.",
-                  "Respect for your property and your time.",
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {/* Right: Form */}
-          <div className="bg-gray-900 p-8 md:p-10 text-white shadow-2xl relative">
+        {/* Form */}
+        <div className="bg-gray-900 p-8 md:p-10 text-white shadow-2xl relative">
             <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
             <h3 className="text-2xl font-black uppercase tracking-wider mb-8">Request a Quote</h3>
 
@@ -247,8 +180,6 @@ export function Contact() {
                 </button>
               </form>
             )}
-          </div>
-
         </div>
       </div>
     </section>
