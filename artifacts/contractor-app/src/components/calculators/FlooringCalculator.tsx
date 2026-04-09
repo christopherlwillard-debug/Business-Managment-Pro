@@ -171,6 +171,10 @@ export function FlooringCalculator({ onClose, onUseNumbers }: FlooringCalculator
     if (calc.stairAmt > 0) {
       lines.push({ category: "Labor", description: "Stair Installation", quantity: stairQty, unit: "EA", unitCost: stairRate });
     }
+    const adjustment = calc.final - calc.subtotal;
+    if (adjustment > 0.005) {
+      lines.push({ category: "Other", description: "Rounding Adjustment (to nearest $50)", quantity: 1, unit: "LOT", unitCost: adjustment });
+    }
     return lines;
   }
 

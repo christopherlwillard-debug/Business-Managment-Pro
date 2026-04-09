@@ -241,6 +241,17 @@ export function TrimCalculator({ onClose, onUseNumbers }: TrimCalculatorProps) {
       });
     }
 
+    const adjustment = calc.finalPrice - calc.subtotal;
+    if (adjustment > 0.005) {
+      lines.push({
+        category: "Other",
+        description: "Rounding Adjustment (to nearest $50)",
+        quantity: 1,
+        unit: "LOT",
+        unitCost: adjustment,
+      });
+    }
+
     onUseNumbers(lines);
     onClose();
   }

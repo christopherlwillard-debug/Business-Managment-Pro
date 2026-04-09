@@ -135,6 +135,10 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
     if (calc.matTotal > 0) {
       lines.push({ category: "Material", description: "Siding Materials (w/ 40% markup)", quantity: 1, unit: "LOT", unitCost: calc.matTotal });
     }
+    const adjustment = calc.final - calc.subtotal;
+    if (adjustment > 0.005) {
+      lines.push({ category: "Other", description: "Rounding Adjustment (to nearest $50)", quantity: 1, unit: "LOT", unitCost: adjustment });
+    }
     return lines;
   }
 
