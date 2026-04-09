@@ -226,7 +226,7 @@ function AdminApp() {
           <PublicServices />
         </Route>
         <Route path="/pricing-guide">
-          <PricingGuide />
+          <PermissionGuard ownerOnly><PricingGuide /></PermissionGuard>
         </Route>
         <Route component={NotFound} />
       </Switch>

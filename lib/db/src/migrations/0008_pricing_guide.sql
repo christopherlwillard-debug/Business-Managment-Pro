@@ -1,0 +1,163 @@
+-- Task #91: Services & Pricing Guide
+-- Extends the services table with richer pricing and reference fields
+-- Seeds all 5 core services with complete pricing data
+
+ALTER TABLE "services"
+  ADD COLUMN IF NOT EXISTS "category" text,
+  ADD COLUMN IF NOT EXISTS "pricing_type" text,
+  ADD COLUMN IF NOT EXISTS "base_price" numeric(10,2),
+  ADD COLUMN IF NOT EXISTS "price_min" numeric(10,2),
+  ADD COLUMN IF NOT EXISTS "price_max" numeric(10,2),
+  ADD COLUMN IF NOT EXISTS "unit" text,
+  ADD COLUMN IF NOT EXISTS "notes" text;
+
+-- Seed / upsert all core services
+INSERT INTO "services" (
+  "name", "slug", "description", "category", "icon",
+  "pricing_type", "base_price", "price_min", "price_max", "unit",
+  "price_display", "price_note", "whats_included", "add_ons", "notes",
+  "sort_order", "active"
+) VALUES
+(
+  'Trim Work',
+  'trim-work',
+  'Interior and exterior trim installation including baseboards, crown molding, casing, and custom millwork. Pricing varies by profile size and finish option.',
+  'Carpentry',
+  '🪵',
+  'per_lf',
+  NULL,
+  6.00,
+  35.00,
+  'LF',
+  '$6–$35/LF depending on profile',
+  'Baseboard $6–$25/LF · Crown $10–$35+/LF · Finishing add-ons extra',
+  'Labor & installation
+Material sourcing assistance
+Clean-up',
+  'Caulk & fill (+$2–$4/LF)
+Full paint (+$4–$7/LF)
+Outside corners
+Non-90° angles
+Vaulted ceilings
+Repairs
+Demo',
+  'Baseboard: Basic 3–5" $6–$10/LF, Standard 5–7" $10–$15/LF, Large 7"+ $15–$25/LF
+Crown: Basic $10–$15/LF, Standard $15–$22/LF, Large $22–$35+/LF',
+  1,
+  true
+),
+(
+  'Siding',
+  'siding',
+  'Vinyl, fiber cement, and wood siding installation and replacement. Labor-only pricing; materials sourced and marked up separately.',
+  'Exterior',
+  '🏠',
+  'per_sqft',
+  NULL,
+  1.00,
+  3.00,
+  'SF',
+  '$1–$3/SF labor only',
+  'Materials priced separately with 40% markup. Tear-off extra.',
+  'Installation labor
+Flashing & wrap integration
+Clean-up',
+  'Window surcharges: $50–$150 ea
+Door surcharges: $75–$200 ea
+Tear-off & disposal: $1–$2+/SF
+Materials (40% markup applied)',
+  'Standard Double Wide reference: 36W × 90L × 13.6H ft
+End walls: 489.6 SF each | Long walls: 1,224 SF each | Total: ~3,427 SF',
+  2,
+  true
+),
+(
+  'Flooring',
+  'flooring',
+  'Carpet, laminate, LVP, hardwood, and tile installation for residential and commercial. Full-install or labor-only pricing available.',
+  'Flooring',
+  '🔲',
+  'per_sqft',
+  NULL,
+  3.00,
+  25.00,
+  'SF',
+  '$3–$25/SF installed (type & mode vary)',
+  'Labor-only available at $1.50–$8/SF. Add-ons priced separately.',
+  'Sub-floor prep (basic)
+Installation
+Transitions & trim (basic)',
+  'Subfloor repair (flat quoted)
+Old floor removal: $0.50–$2/SF
+Underlayment: $0.25–$0.75/SF
+Transitions: $25–$75 each
+Stairs: $40–$100 each',
+  'Carpet: $3–$7/SF | Laminate: $4–$9/SF | LVP/Sheet Vinyl: $4–$10/SF (labor $1.50–$5)
+Hardwood: $6–$25/SF (mid $8–$15) | Tile: $7–$20+/SF',
+  3,
+  true
+),
+(
+  'Plumbing',
+  'plumbing',
+  'Flat-rate drop model for rough-in plumbing. Base covers trip, setup, city sewer tie-in, and first 2 drops.',
+  'Plumbing',
+  '🔧',
+  'flat',
+  1000.00,
+  1000.00,
+  NULL,
+  'Job',
+  '$1,000 base + $125/drop after 2nd',
+  'Formula: $1,000 + max(0, drops−2) × $125',
+  'Trip & job-site setup
+Main city sewer tie-in
+First 2 drops
+Basic fittings & pipe allowance
+Pressure testing
+Clean-up',
+  'Additional drops (3rd+): +$125 each
+Crossover check: +$50
+Hook-up (if needed): +$50
+Custom add-ons quoted separately',
+  '2 drops → $1,000 | 4 drops → $1,250 | 9 drops → $1,875 | 10 drops → $2,000',
+  4,
+  true
+),
+(
+  'AC Platform',
+  'ac-platform',
+  'Custom AC unit platforms and equipment pads built to code for residential HVAC installations.',
+  'HVAC',
+  '❄️',
+  'flat',
+  550.00,
+  550.00,
+  NULL,
+  'Platform',
+  '$550 flat',
+  'Standard residential platform. Custom sizes quoted separately.',
+  'Framing & decking
+Code-compliant build
+Unit placement',
+  'Custom sizing (quoted)
+Rooftop access (quoted)',
+  'Standard residential AC unit platform. Additional add-ons TBD pending Willard input.',
+  5,
+  true
+)
+ON CONFLICT ("slug") DO UPDATE SET
+  "description"    = EXCLUDED."description",
+  "category"       = EXCLUDED."category",
+  "icon"           = EXCLUDED."icon",
+  "pricing_type"   = EXCLUDED."pricing_type",
+  "base_price"     = EXCLUDED."base_price",
+  "price_min"      = EXCLUDED."price_min",
+  "price_max"      = EXCLUDED."price_max",
+  "unit"           = EXCLUDED."unit",
+  "price_display"  = EXCLUDED."price_display",
+  "price_note"     = EXCLUDED."price_note",
+  "whats_included" = EXCLUDED."whats_included",
+  "add_ons"        = EXCLUDED."add_ons",
+  "notes"          = EXCLUDED."notes",
+  "sort_order"     = EXCLUDED."sort_order";

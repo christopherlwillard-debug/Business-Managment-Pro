@@ -182,6 +182,6 @@ router.use("/other-income", sectionGuard("invoices"), otherIncomeRouter);
 router.use(storageRouter);
 router.use("/portfolio-photos", portfolioPhotosRouter);
 router.use("/inquiries", inquiriesRouter);
-router.use("/public-services", publicServicesRouter);
+router.use("/public-services", requireOwnerForWrites, publicServicesRouter);
 
 export default router;
