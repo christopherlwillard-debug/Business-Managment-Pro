@@ -179,7 +179,7 @@ router.use("/1099s", sectionGuard("subcontractors"), form1099sRouter);
 router.use("/team", teamRouter);
 router.use("/other-income", sectionGuard("invoices"), otherIncomeRouter);
 router.use(storageRouter);
-router.use("/portfolio-photos", requireOwner, portfolioPhotosRouter);
-router.use("/inquiries", requireOwner, inquiriesRouter);
+router.use("/portfolio-photos", portfolioPhotosRouter);
+router.use("/inquiries", inquiriesRouter);
 
 export default router;

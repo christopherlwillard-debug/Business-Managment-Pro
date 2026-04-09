@@ -215,10 +215,10 @@ function AdminApp() {
           <PermissionGuard ownerOnly><Materials /></PermissionGuard>
         </Route>
         <Route path="/portfolio">
-          <PermissionGuard ownerOnly><Portfolio /></PermissionGuard>
+          <Portfolio />
         </Route>
         <Route path="/inquiries">
-          <PermissionGuard ownerOnly><Inquiries /></PermissionGuard>
+          <Inquiries />
         </Route>
         <Route component={NotFound} />
       </Switch>

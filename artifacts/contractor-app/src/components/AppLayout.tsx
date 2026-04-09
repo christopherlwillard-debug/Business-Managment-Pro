@@ -47,8 +47,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors" },
     { name: "Clients", href: "/clients", icon: Users, feature: "clients", section: "clients" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true },
-    { name: "Portfolio", href: "/portfolio", icon: Images, feature: null, section: null, ownerOnly: true },
-    { name: "Inquiries", href: "/inquiries", icon: Inbox, feature: null, section: null, ownerOnly: true },
+    { name: "Portfolio", href: "/portfolio", icon: Images, feature: null, section: null },
+    { name: "Inquiries", href: "/inquiries", icon: Inbox, feature: null, section: null },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
   ];
@@ -56,6 +56,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navigation = allNavItems.filter((item) => {
     if (item.ownerOnly && !isOwner) return false;
     if (!isOwner) {
+      if (item.feature === null && item.section === null && !item.ownerOnly) return true;
       if (item.section !== null && !canView(item.section)) return false;
       return item.section !== null;
     }
