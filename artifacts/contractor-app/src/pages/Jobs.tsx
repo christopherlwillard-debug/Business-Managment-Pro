@@ -711,7 +711,7 @@ const STATUS_BADGE: Record<string, string> = {
   lost:  "bg-red-100 text-red-700",
 };
 
-function JobEstimatesPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+function JobEstimatesPanel({ job, onClose, onLoadIntoInvoice }: { job: Job; onClose: () => void; onLoadIntoInvoice?: (estimate: Estimate) => void }) {
   const qc = useQueryClient();
   const { canEdit } = useUserPermissions();
   const createMut = useCreateEstimate();
@@ -804,14 +804,25 @@ function JobEstimatesPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_BADGE[est.status] ?? "bg-gray-100 text-gray-600"}`}>
                     {est.status}
                   </span>
-                  {canEdit("estimates") && (
-                    <button
-                      onClick={() => setEditEst(est)}
-                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-muted/50"
-                    >
-                      <Edit2 className="w-3 h-3" /> Edit
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {onLoadIntoInvoice && (
+                      <button
+                        onClick={() => { onLoadIntoInvoice(est); onClose(); }}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-0.5 rounded-lg border border-blue-200 hover:bg-blue-50"
+                        title="Copy estimate line items into a new invoice"
+                      >
+                        <FileText className="w-3 h-3" /> Invoice
+                      </button>
+                    )}
+                    {canEdit("estimates") && (
+                      <button
+                        onClick={() => setEditEst(est)}
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-muted/50"
+                      >
+                        <Edit2 className="w-3 h-3" /> Edit
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="font-semibold text-sm text-foreground">{est.title}</p>
                 {est.lineItems && est.lineItems.length > 0 && (
@@ -859,7 +870,7 @@ function JobEstimatesPanel({ job, onClose }: { job: Job; onClose: () => void }) 
 
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount,
+  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, onLoadEstimateIntoInvoice,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -869,6 +880,7 @@ function JobCard({
   logCount: number;
   lastLogDate?: string;
   materialListCount: number;
+  onLoadEstimateIntoInvoice?: (job: Job, estimate: Estimate) => void;
 }) {
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
@@ -999,7 +1011,13 @@ function JobCard({
         <JobMaterialsPanel job={job} onClose={() => setMaterialsPanelOpen(false)} />
       )}
       {estimatesPanelOpen && (
-        <JobEstimatesPanel job={job} onClose={() => setEstimatesPanelOpen(false)} />
+        <JobEstimatesPanel
+          job={job}
+          onClose={() => setEstimatesPanelOpen(false)}
+          onLoadIntoInvoice={onLoadEstimateIntoInvoice
+            ? (est) => onLoadEstimateIntoInvoice(job, est)
+            : undefined}
+        />
       )}
     </>
   );
@@ -1607,6 +1625,41 @@ export default function Jobs() {
     } finally { setInvoiceFetching(false); }
   }
 
+  async function handleLoadEstimateIntoInvoice(job: Job, estimate: Estimate) {
+    const lineItems = (estimate.lineItems ?? []).map((li) => ({
+      description: li.description,
+      quantity: li.quantity,
+      unitPrice: li.unitCost,
+    }));
+    const draft: InvoiceDraft = {
+      clientId: job.clientId ?? null,
+      clientName: job.clientName ?? null,
+      clientEmail: null,
+      clientAddress: null,
+      clientPhone: null,
+      clientCity: null,
+      clientState: null,
+      clientZip: null,
+      jobId: job.id,
+      jobTitle: job.title,
+      locationName: job.locationName ?? null,
+      city: job.city ?? null,
+      state: job.state ?? null,
+      lineItems,
+    };
+    try {
+      await fetch(`${BASE}/api/estimates/${estimate.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...estimate, status: "won" }),
+      });
+      queryClient.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+    } catch { /* non-fatal */ }
+    setInvoiceDraftData(draft);
+    setSelectedExistingInvoice(null);
+    setInvoiceEditorOpen(true);
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1676,7 +1729,8 @@ export default function Jobs() {
                       onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                       onMarkCompleted={handleMarkCompleted}
                       logCount={jobLogs.length} lastLogDate={lastLog?.date}
-                      materialListCount={materialListCountByJob[job.id] ?? 0} />
+                      materialListCount={materialListCountByJob[job.id] ?? 0}
+                      onLoadEstimateIntoInvoice={handleLoadEstimateIntoInvoice} />
                   );
                 })}
               </div>
@@ -1707,7 +1761,8 @@ export default function Jobs() {
                         onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                         onMarkCompleted={handleMarkCompleted}
                         logCount={jobLogs.length} lastLogDate={lastLog?.date}
-                        materialListCount={materialListCountByJob[job.id] ?? 0} />
+                        materialListCount={materialListCountByJob[job.id] ?? 0}
+                        onLoadEstimateIntoInvoice={handleLoadEstimateIntoInvoice} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">

@@ -549,6 +549,97 @@ function ComplianceItemForm({
   );
 }
 
+// ─── Tax Spend Planner ────────────────────────────────────────────────────────
+function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
+  netProfit: number;
+  estimatedTaxes: { owensboroOccTax: number; kyStateTax: number; federalSETax: number; totalEstimated: number };
+}) {
+  const [targetTax, setTargetTax] = useState(String(Math.round(estimatedTaxes.totalEstimated * 0.5)));
+
+  const KY_RATE = 0.04;
+  const FED_RATE = 0.9235 * 0.153;
+  const COMBINED_RATE = KY_RATE + FED_RATE;
+
+  const fixedTax = estimatedTaxes.owensboroOccTax;
+  const currentIncomeTax = estimatedTaxes.kyStateTax + estimatedTaxes.federalSETax;
+  const currentTotal = estimatedTaxes.totalEstimated;
+
+  const target = Math.max(0, parseFloat(targetTax) || 0);
+  const minAchievable = fixedTax;
+  const clampedTarget = Math.max(target, minAchievable);
+
+  const targetIncomeTax = Math.max(0, clampedTarget - fixedTax);
+  const targetNetProfit = COMBINED_RATE > 0 ? targetIncomeTax / COMBINED_RATE : 0;
+  const spendingNeeded = Math.max(0, netProfit - targetNetProfit);
+  const taxSavings = Math.max(0, currentTotal - clampedTarget);
+  const canReachTarget = target >= minAchievable;
+
+  return (
+    <div className="bg-card border border-amber-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="px-5 py-3 bg-amber-50/80 border-b border-amber-200 flex items-center gap-2">
+        <DollarSign className="w-4 h-4 text-amber-600" />
+        <span className="font-semibold text-sm text-amber-900">Tax Spend Planner</span>
+        <span className="text-xs text-amber-700/70 ml-1">— How much to spend to hit your target tax bill</span>
+      </div>
+      <div className="p-5 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-muted/30 rounded-xl p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Current Tax Bill</p>
+            <p className="text-xl font-bold text-amber-700">{formatCurrency(currentTotal)}</p>
+          </div>
+          <div className="bg-muted/30 rounded-xl p-3">
+            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">I want to owe</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">$</span>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={targetTax}
+                onChange={e => setTargetTax(e.target.value)}
+                className="w-full pl-7 pr-3 py-1.5 border border-border rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400 bg-background"
+              />
+            </div>
+          </div>
+        </div>
+
+        {!canReachTarget ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            <strong>Note:</strong> Your Owensboro Occupational Tax ({formatCurrency(fixedTax)}) is based on gross revenue earned in Owensboro — it can't be reduced by spending more. The lowest you can bring your total bill to is <strong>{formatCurrency(minAchievable)}</strong>.
+          </div>
+        ) : spendingNeeded < 1 ? (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 font-medium">
+            You're already at or below your target. Your current deductible expenses have your tax bill where you want it.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <p className="text-xs text-blue-700 font-semibold uppercase tracking-wider mb-1">Additional Deductible Spending Needed</p>
+              <p className="text-3xl font-black text-blue-800">{formatCurrency(spendingNeeded)}</p>
+              <p className="text-xs text-blue-600 mt-1">Spend this on deductible business expenses to bring your tax bill from {formatCurrency(currentTotal)} down to {formatCurrency(clampedTarget)}</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-muted/40 rounded-lg p-2">
+                <p className="text-muted-foreground">Tax savings</p>
+                <p className="font-bold text-emerald-700">{formatCurrency(taxSavings)}</p>
+              </div>
+              <div className="bg-muted/40 rounded-lg p-2">
+                <p className="text-muted-foreground">SE + KY rate</p>
+                <p className="font-bold text-foreground">{(COMBINED_RATE * 100).toFixed(1)}¢/dollar</p>
+              </div>
+              <div className="bg-muted/40 rounded-lg p-2">
+                <p className="text-muted-foreground">Income tax left</p>
+                <p className="font-bold text-foreground">{formatCurrency(currentIncomeTax - taxSavings)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        <p className="text-[11px] text-muted-foreground italic">Estimate only. Every deductible dollar you spend reduces net profit, saving ~{(COMBINED_RATE * 100).toFixed(1)} cents in federal SE + KY state tax. Consult a tax professional for your specific situation.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
 type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income";
@@ -667,6 +758,11 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
           </div>
         ))}
       </div>
+
+      {/* Tax Spend Planner */}
+      {data.estimatedTaxes && netProfit > 0 && (
+        <TaxSpendPlanner netProfit={netProfit} estimatedTaxes={data.estimatedTaxes} />
+      )}
 
       {/* Module cards grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

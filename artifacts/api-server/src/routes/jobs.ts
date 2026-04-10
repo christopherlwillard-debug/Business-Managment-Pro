@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable } from "@workspace/db/schema";
 import { eq, and, count } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 
@@ -314,6 +314,7 @@ router.delete("/:id", async (req, res) => {
       await tx.delete(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id));
       await tx.delete(expensesTable).where(eq(expensesTable.jobId, id));
       await tx.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id));
+      await tx.update(estimatesTable).set({ jobId: null }).where(eq(estimatesTable.jobId, id));
       await tx.delete(jobsTable).where(eq(jobsTable.id, id));
     });
     res.status(204).send();
