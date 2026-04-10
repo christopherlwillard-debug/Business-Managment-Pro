@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
+import { useLocation } from "wouter";
 import { ArrowRight, HardHat, ShieldCheck, Ruler } from "lucide-react";
 
 export function Hero() {
+  const [, setLocation] = useLocation();
+
   const scrollToContact = () => {
     const element = document.querySelector("#contact");
     if (element) {
@@ -52,9 +55,7 @@ export function Hero() {
             <Button
               size="lg"
               variant="outline"
-              onClick={() => {
-                document.querySelector("#portfolio")?.scrollIntoView({ behavior: "smooth" });
-              }}
+              onClick={() => setLocation("/our-work")}
               className="w-full sm:w-auto border-2 border-gray-900 text-gray-900 font-bold rounded-none px-8 py-7 text-lg uppercase tracking-wider hover:bg-gray-100"
             >
               View Our Work

@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Menu, X } from "lucide-react";
 import logoUrl from "@assets/IMG_3827_1775756333117.jpeg";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [location, setLocation] = useLocation();
+
+  const isHome = location === "/";
 
   useEffect(() => {
     const handleScroll = () => {
@@ -14,28 +18,43 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const navLinks = [
-    { name: "Services", href: "#services" },
-    { name: "Why Us", href: "#trust" },
-    { name: "Portfolio", href: "#portfolio" },
-  ];
-
-  const scrollTo = (href: string) => {
+  const scrollTo = (sectionId: string) => {
     setMobileMenuOpen(false);
-    const element = document.querySelector(href);
+    if (!isHome) {
+      setLocation("/");
+      setTimeout(() => {
+        const element = document.querySelector(sectionId);
+        if (element) {
+          const offset = 80;
+          const bodyRect = document.body.getBoundingClientRect().top;
+          const elementRect = element.getBoundingClientRect().top;
+          const offsetPosition = elementRect - bodyRect - offset;
+          window.scrollTo({ top: offsetPosition, behavior: "smooth" });
+        }
+      }, 100);
+      return;
+    }
+    const element = document.querySelector(sectionId);
     if (element) {
       const offset = 80;
       const bodyRect = document.body.getBoundingClientRect().top;
       const elementRect = element.getBoundingClientRect().top;
-      const elementPosition = elementRect - bodyRect;
-      const offsetPosition = elementPosition - offset;
-
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth"
-      });
+      const offsetPosition = elementRect - bodyRect - offset;
+      window.scrollTo({ top: offsetPosition, behavior: "smooth" });
     }
   };
+
+  const goHome = () => {
+    setMobileMenuOpen(false);
+    setLocation("/");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const navItems = [
+    { name: "Services", action: () => scrollTo("#services") },
+    { name: "Why Us", action: () => scrollTo("#trust") },
+    { name: "Our Work", action: () => { setMobileMenuOpen(false); setLocation("/our-work"); } },
+  ];
 
   return (
     <nav
@@ -48,7 +67,7 @@ export function Navbar() {
           {/* Logo */}
           <a
             href="#"
-            onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            onClick={(e) => { e.preventDefault(); goHome(); }}
             className="flex items-center gap-3 group"
           >
             <img 
@@ -65,13 +84,17 @@ export function Navbar() {
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-8">
             <div className="flex items-center gap-6">
-              {navLinks.map((link) => (
+              {navItems.map((item) => (
                 <button
-                  key={link.name}
-                  onClick={() => scrollTo(link.href)}
-                  className="text-sm font-semibold text-gray-700 hover:text-primary transition-colors uppercase tracking-wide"
+                  key={item.name}
+                  onClick={item.action}
+                  className={`text-sm font-semibold transition-colors uppercase tracking-wide ${
+                    item.name === "Our Work" && location === "/our-work"
+                      ? "text-primary"
+                      : "text-gray-700 hover:text-primary"
+                  }`}
                 >
-                  {link.name}
+                  {item.name}
                 </button>
               ))}
             </div>
@@ -91,13 +114,13 @@ export function Navbar() {
       {/* Mobile Nav */}
       {mobileMenuOpen && (
         <div className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-gray-100 shadow-xl py-4 flex flex-col">
-          {navLinks.map((link) => (
+          {navItems.map((item) => (
             <button
-              key={link.name}
-              onClick={() => scrollTo(link.href)}
+              key={item.name}
+              onClick={item.action}
               className="px-6 py-4 text-left text-base font-semibold text-gray-800 border-b border-gray-50 uppercase tracking-wide hover:bg-gray-50"
             >
-              {link.name}
+              {item.name}
             </button>
           ))}
         </div>
