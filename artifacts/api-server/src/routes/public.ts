@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { db } from "@workspace/db";
-import { servicesTable, portfolioPhotosTable, inquiriesTable } from "@workspace/db/schema";
+import { servicesTable, portfolioPhotosTable, inquiriesTable, featuredClientsTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 
@@ -100,6 +100,63 @@ router.post("/public/contact", async (req: Request, res: Response): Promise<void
   } catch (err) {
     console.error("public/contact error", err);
     res.status(500).json({ error: "Failed to submit inquiry" });
+  }
+});
+
+router.get("/public/featured-clients", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const clients = await db
+      .select()
+      .from(featuredClientsTable)
+      .where(eq(featuredClientsTable.active, true))
+      .orderBy(asc(featuredClientsTable.sortOrder), asc(featuredClientsTable.createdAt));
+    res.json(clients);
+  } catch (err) {
+    console.error("public/featured-clients error", err);
+    res.status(500).json({ error: "Failed to load featured clients" });
+  }
+});
+
+router.get("/public/client-logo/*path", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const raw = req.params.path;
+    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    const objectPath = `/objects/${wildcardPath}`;
+
+    const activeClients = await db
+      .select({ logoUrl: featuredClientsTable.logoUrl })
+      .from(featuredClientsTable)
+      .where(eq(featuredClientsTable.active, true));
+
+    const isAllowed = activeClients.some(c => {
+      if (!c.logoUrl) return false;
+      const normalized = c.logoUrl.replace(/^\/objects\//, "");
+      return normalized === wildcardPath;
+    });
+
+    if (!isAllowed) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+    console.error("public/client-logo error", error);
+    res.status(500).json({ error: "Failed to serve image" });
   }
 });
 

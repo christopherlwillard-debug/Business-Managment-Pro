@@ -43,6 +43,7 @@ import publicRouter from "./public";
 import portfolioPhotosRouter from "./portfolio-photos";
 import inquiriesRouter from "./inquiries";
 import publicServicesRouter from "./public-services";
+import featuredClientsRouter from "./featured-clients";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -183,5 +184,6 @@ router.use(storageRouter);
 router.use("/portfolio-photos", portfolioPhotosRouter);
 router.use("/inquiries", inquiriesRouter);
 router.use("/public-services", requireOwnerForWrites, publicServicesRouter);
+router.use("/featured-clients", requireOwnerForWrites, featuredClientsRouter);
 
 export default router;

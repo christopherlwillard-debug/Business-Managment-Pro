@@ -1,17 +1,19 @@
 import { useState, useEffect } from "react";
-import { Globe, Images, Inbox } from "lucide-react";
+import { Globe, Images, Inbox, Building2 } from "lucide-react";
 import { PortfolioTab } from "./Portfolio";
 import { InquiriesTab } from "./Inquiries";
 import { WebsiteServicesTab } from "./PublicServices";
+import { FeaturedClientsTab } from "./FeaturedClientsTab";
 
-type Tab = "portfolio" | "inquiries" | "services";
+type Tab = "portfolio" | "inquiries" | "services" | "clients";
 
-const VALID_TABS: Tab[] = ["portfolio", "inquiries", "services"];
+const VALID_TABS: Tab[] = ["portfolio", "inquiries", "services", "clients"];
 
 const TABS: { id: Tab; label: string; icon: typeof Globe }[] = [
   { id: "portfolio", label: "Portfolio", icon: Images },
   { id: "inquiries", label: "Inquiries", icon: Inbox },
   { id: "services", label: "Services", icon: Globe },
+  { id: "clients", label: "Clients", icon: Building2 },
 ];
 
 function hashToTab(hash: string): Tab {
@@ -41,7 +43,7 @@ export default function Website() {
           <Globe className="w-6 h-6 text-primary" /> Website
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage your public website — portfolio, inquiries, and listed services.
+          Manage your public website — portfolio, inquiries, services, and featured clients.
         </p>
       </div>
 
@@ -65,6 +67,7 @@ export default function Website() {
       {activeTab === "portfolio" && <PortfolioTab />}
       {activeTab === "inquiries" && <InquiriesTab />}
       {activeTab === "services" && <WebsiteServicesTab />}
+      {activeTab === "clients" && <FeaturedClientsTab />}
     </div>
   );
 }

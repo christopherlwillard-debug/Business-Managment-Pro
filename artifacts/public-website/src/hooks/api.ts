@@ -50,6 +50,26 @@ interface ContactData {
   bestTime?: string;
 }
 
+interface FeaturedClient {
+  id: number;
+  name: string;
+  logoUrl: string | null;
+  websiteUrl: string | null;
+  sortOrder: number | null;
+  active: boolean;
+}
+
+export function useFeaturedClients() {
+  return useQuery<FeaturedClient[]>({
+    queryKey: ["featured-clients"],
+    queryFn: async () => {
+      const res = await fetch("/api/public/featured-clients");
+      if (!res.ok) throw new Error("Failed to fetch featured clients");
+      return res.json();
+    },
+  });
+}
+
 export function useContact() {
   return useMutation({
     mutationFn: async (data: ContactData) => {
