@@ -760,7 +760,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
       </div>
 
       {/* Tax Spend Planner */}
-      {data.estimatedTaxes && netProfit > 0 && (
+      {data.estimatedTaxes && (
         <TaxSpendPlanner netProfit={netProfit} estimatedTaxes={data.estimatedTaxes} />
       )}
 
