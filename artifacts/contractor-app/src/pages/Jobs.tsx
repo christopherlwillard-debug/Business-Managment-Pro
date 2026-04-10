@@ -1647,14 +1647,6 @@ export default function Jobs() {
       state: job.state ?? null,
       lineItems,
     };
-    try {
-      await fetch(`${BASE}/api/estimates/${estimate.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...estimate, status: "won" }),
-      });
-      queryClient.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
-    } catch { /* non-fatal */ }
     setInvoiceDraftData(draft);
     setSelectedExistingInvoice(null);
     setInvoiceEditorOpen(true);
