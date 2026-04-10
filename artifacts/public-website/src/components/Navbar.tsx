@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import logoUrl from "@assets/IMG_3827_1775756333117.jpeg";
 
 export function Navbar() {
@@ -76,12 +75,6 @@ export function Navbar() {
                 </button>
               ))}
             </div>
-            <Button 
-              onClick={() => scrollTo("#contact")}
-              className="bg-primary hover:bg-primary/90 text-white font-bold rounded-none px-6 py-6 uppercase tracking-wider"
-            >
-              Get a Quote
-            </Button>
           </div>
 
           {/* Mobile Menu Toggle */}
@@ -107,14 +100,6 @@ export function Navbar() {
               {link.name}
             </button>
           ))}
-          <div className="p-6">
-            <Button 
-              onClick={() => scrollTo("#contact")}
-              className="w-full bg-primary hover:bg-primary/90 text-white font-bold rounded-none py-6 uppercase tracking-wider"
-            >
-              Get a Free Quote
-            </Button>
-          </div>
         </div>
       )}
     </nav>

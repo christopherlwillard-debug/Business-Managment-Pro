@@ -6,11 +6,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 export function Services() {
   const { data: services, isLoading, error } = useServices();
 
-  function scrollToContact() {
-    const el = document.querySelector("#contact");
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-  }
-
   return (
     <section id="services" className="py-24 bg-white">
       <div className="container mx-auto px-4 md:px-6">
@@ -69,18 +64,6 @@ export function Services() {
           </div>
         )}
 
-        {/* Single bottom CTA */}
-        <div className="text-center mt-14">
-          <p className="text-gray-500 mb-5 text-base font-medium">
-            Ready to start your project? We'd love to hear from you.
-          </p>
-          <button
-            onClick={scrollToContact}
-            className="inline-flex items-center gap-2 px-8 py-4 bg-primary text-white font-black uppercase tracking-wider text-sm hover:bg-secondary transition-colors duration-200"
-          >
-            Request a Quote →
-          </button>
-        </div>
       </div>
     </section>
   );
