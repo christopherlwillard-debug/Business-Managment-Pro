@@ -49,34 +49,26 @@ export function Services() {
               const items = service.whatsIncluded ?? [];
               const visible = items.slice(0, MAX_VISIBLE);
               const overflow = items.length - MAX_VISIBLE;
-              const hasItems = visible.length > 0;
 
               return (
                 <div
                   key={service.id}
                   className="group border border-gray-200 bg-white hover:border-primary hover:shadow-md transition-all duration-300 p-6 flex flex-col gap-4"
                 >
-                  {/* Icon */}
                   {service.icon && (
                     <div className="text-3xl w-12 h-12 flex items-center justify-center bg-gray-50 border border-gray-100 flex-shrink-0">
                       {service.icon}
                     </div>
                   )}
-
-                  {/* Name */}
                   <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight leading-tight group-hover:text-primary transition-colors duration-200">
                     {service.name}
                   </h3>
-
-                  {/* Description */}
                   {service.description && (
                     <p className="text-gray-500 text-sm leading-relaxed">
                       {service.description}
                     </p>
                   )}
-
-                  {/* What's Included — vertical list */}
-                  {hasItems && (
+                  {visible.length > 0 && (
                     <ul className="space-y-2">
                       {visible.map((item, idx) => (
                         <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
