@@ -46,6 +46,24 @@ pool.query(\`
   .catch(e => { console.error('other_income migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Idempotent migration: create featured_clients table (Task #104)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS \"featured_clients\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"name\" text NOT NULL,
+    \"logo_url\" text,
+    \"website_url\" text,
+    \"sort_order\" integer DEFAULT 0,
+    \"active\" boolean DEFAULT true NOT NULL,
+    \"created_at\" timestamp DEFAULT now() NOT NULL
+  )
+\`).then(() => { console.log('featured_clients table ensured'); pool.end(); })
+  .catch(e => { console.error('featured_clients migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Idempotent migration: add 'invited' to access_requests status check constraint (Task #54)
 (cd lib/db && node -e "
 const { Pool } = require('pg');
