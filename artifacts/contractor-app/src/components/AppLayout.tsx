@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
-  Calculator, HardHat, Users,
+  HardHat, Users,
   Settings, Menu, X, BookOpen, LogOut, Package, Images, Inbox, Globe, Tag,
   type LucideIcon,
 } from "lucide-react";
@@ -41,7 +41,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const allNavItems: NavItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null, section: null, ownerOnly: true },
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs" },
-    { name: "Estimates", href: "/estimates", icon: Calculator, feature: "estimates", section: "estimates" },
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors" },

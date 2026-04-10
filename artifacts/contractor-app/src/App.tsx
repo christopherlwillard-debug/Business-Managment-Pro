@@ -13,7 +13,6 @@ import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
 import Expenses from "./pages/Expenses";
 import Mileage from "./pages/Mileage";
-import Estimates from "./pages/Estimates";
 import Subcontractors from "./pages/Subcontractors";
 import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
@@ -108,7 +107,6 @@ function AccessRejectedScreen() {
 
 const SECTION_ROUTES: { section: SectionKey; href: string }[] = [
   { section: "jobs", href: "/jobs" },
-  { section: "estimates", href: "/estimates" },
   { section: "expenses", href: "/expenses" },
   { section: "mileage", href: "/mileage" },
   { section: "clients", href: "/clients" },
@@ -197,9 +195,6 @@ function AdminApp() {
         </Route>
         <Route path="/mileage">
           <PermissionGuard section="mileage"><Mileage /></PermissionGuard>
-        </Route>
-        <Route path="/estimates">
-          <PermissionGuard section="estimates"><Estimates /></PermissionGuard>
         </Route>
         <Route path="/subcontractors">
           <PermissionGuard section="subcontractors"><Subcontractors /></PermissionGuard>

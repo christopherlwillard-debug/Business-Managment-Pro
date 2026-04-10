@@ -124,19 +124,21 @@ export function EstimateModal({
   initial,
   prelinkedJobId,
   prelinkedJobTitle,
+  prelinkedClientId,
   onClose,
   onSave,
 }: {
   initial?: Estimate;
   prelinkedJobId?: number;
   prelinkedJobTitle?: string;
+  prelinkedClientId?: number;
   onClose: () => void;
   onSave: (req: CreateEstimateRequest) => void;
 }) {
   const { data: clients = [] } = useListClients();
 
   const [title, setTitle]     = useState(initial?.title ?? "");
-  const [clientId, setClientId] = useState<string>(String(initial?.clientId ?? ""));
+  const [clientId, setClientId] = useState<string>(String(initial?.clientId ?? prelinkedClientId ?? ""));
   const [jobType, setJobType] = useState(initial?.jobType ?? "");
   const [notes, setNotes]     = useState(initial?.notes ?? "");
   const [markup, setMarkup]   = useState(String(initial?.markupPercent ?? ""));
@@ -248,17 +250,26 @@ export function EstimateModal({
                 placeholder="e.g. Johnson Kitchen Remodel"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Client</label>
-              <select
-                value={clientId}
-                onChange={e => setClientId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-              >
-                <option value="">— No client —</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+            {prelinkedClientId ? (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Client</label>
+                <div className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-700">
+                  {clients.find(c => c.id === prelinkedClientId)?.name ?? "Linked to job"}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Client</label>
+                <select
+                  value={clientId}
+                  onChange={e => setClientId(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                >
+                  <option value="">— No client —</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Job Type / Trade</label>
               <div className="flex gap-2">

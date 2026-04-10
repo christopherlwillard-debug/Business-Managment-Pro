@@ -851,6 +851,7 @@ function JobEstimatesPanel({ job, onClose, onLoadIntoInvoice }: { job: Job; onCl
         <EstimateModal
           prelinkedJobId={job.id}
           prelinkedJobTitle={job.title}
+          prelinkedClientId={job.clientId ?? undefined}
           onClose={() => setShowModal(false)}
           onSave={handleCreate}
         />
