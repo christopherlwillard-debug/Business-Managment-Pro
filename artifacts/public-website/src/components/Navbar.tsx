@@ -21,17 +21,7 @@ export function Navbar() {
   const scrollTo = (sectionId: string) => {
     setMobileMenuOpen(false);
     if (!isHome) {
-      setLocation("/");
-      setTimeout(() => {
-        const element = document.querySelector(sectionId);
-        if (element) {
-          const offset = 80;
-          const bodyRect = document.body.getBoundingClientRect().top;
-          const elementRect = element.getBoundingClientRect().top;
-          const offsetPosition = elementRect - bodyRect - offset;
-          window.scrollTo({ top: offsetPosition, behavior: "smooth" });
-        }
-      }, 100);
+      window.location.href = `/${sectionId}`;
       return;
     }
     const element = document.querySelector(sectionId);
@@ -47,7 +37,6 @@ export function Navbar() {
   const goHome = () => {
     setMobileMenuOpen(false);
     setLocation("/");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const navItems = [
