@@ -32,7 +32,7 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export default function Inquiries() {
+export function InquiriesTab() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
   const [selected, setSelected] = useState<Inquiry | null>(null);
@@ -267,3 +267,4 @@ export default function Inquiries() {
     </div>
   );
 }
+export default InquiriesTab;

@@ -18,9 +18,7 @@ import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
 import Materials from "./pages/Materials";
-import Portfolio from "./pages/Portfolio";
-import Inquiries from "./pages/Inquiries";
-import PublicServices from "./pages/PublicServices";
+import Website from "./pages/Website";
 import PricingGuide from "./pages/PricingGuide";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
@@ -211,14 +209,8 @@ function AdminApp() {
         <Route path="/materials">
           <PermissionGuard ownerOnly><Materials /></PermissionGuard>
         </Route>
-        <Route path="/portfolio">
-          <Portfolio />
-        </Route>
-        <Route path="/inquiries">
-          <Inquiries />
-        </Route>
-        <Route path="/website-services">
-          <PublicServices />
+        <Route path="/website">
+          <Website />
         </Route>
         <Route path="/pricing-guide">
           <PermissionGuard ownerOnly><PricingGuide /></PermissionGuard>

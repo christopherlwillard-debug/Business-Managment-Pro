@@ -27,7 +27,7 @@ async function apiFetch(path: string, options?: RequestInit) {
   return res.json();
 }
 
-export default function Portfolio() {
+export function PortfolioTab() {
   const qc = useQueryClient();
   const [lightbox, setLightbox] = useState<PortfolioPhoto | null>(null);
   const [filterCat, setFilterCat] = useState<string>("All");
@@ -303,3 +303,4 @@ export default function Portfolio() {
     </div>
   );
 }
+export default PortfolioTab;

@@ -178,7 +178,7 @@ function AddServiceForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-export default function PublicServices() {
+export function WebsiteServicesTab() {
   const { data: services = [], isLoading, error } = useQuery<PublicService[]>({
     queryKey: ["public-services"],
     queryFn: fetchServices,
@@ -226,3 +226,4 @@ export default function PublicServices() {
     </div>
   );
 }
+export default WebsiteServicesTab;
