@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Globe, Images, Inbox } from "lucide-react";
 import { PortfolioTab } from "./Portfolio";
 import { InquiriesTab } from "./Inquiries";
@@ -6,24 +6,31 @@ import { WebsiteServicesTab } from "./PublicServices";
 
 type Tab = "portfolio" | "inquiries" | "services";
 
+const VALID_TABS: Tab[] = ["portfolio", "inquiries", "services"];
+
 const TABS: { id: Tab; label: string; icon: typeof Globe }[] = [
   { id: "portfolio", label: "Portfolio", icon: Images },
   { id: "inquiries", label: "Inquiries", icon: Inbox },
   { id: "services", label: "Services", icon: Globe },
 ];
 
-function getInitialTab(): Tab {
-  const hash = window.location.hash.replace("#", "");
-  return (["portfolio", "inquiries", "services"] as Tab[]).includes(hash as Tab)
-    ? (hash as Tab)
-    : "portfolio";
+function hashToTab(hash: string): Tab {
+  const val = hash.replace("#", "");
+  return VALID_TABS.includes(val as Tab) ? (val as Tab) : "portfolio";
 }
 
 export default function Website() {
-  const [activeTab, setActiveTab] = useState<Tab>(getInitialTab);
+  const [activeTab, setActiveTab] = useState<Tab>(() => hashToTab(window.location.hash));
+
+  useEffect(() => {
+    function onHashChange() {
+      setActiveTab(hashToTab(window.location.hash));
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   function switchTab(tab: Tab) {
-    setActiveTab(tab);
     window.location.hash = tab;
   }
 

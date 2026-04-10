@@ -112,6 +112,15 @@ const SECTION_ROUTES: { section: SectionKey; href: string }[] = [
   { section: "invoices", href: "/accounting" },
 ];
 
+function LegacyRedirect({ to, hash }: { to: string; hash: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    window.location.hash = hash;
+    setLocation(to);
+  }, []);
+  return null;
+}
+
 function HomeRoute() {
   const { isOwner, permissions } = useUserPermissions();
   const [, setLocation] = useLocation();
@@ -211,6 +220,15 @@ function AdminApp() {
         </Route>
         <Route path="/website">
           <Website />
+        </Route>
+        <Route path="/portfolio">
+          <LegacyRedirect to="/website" hash="portfolio" />
+        </Route>
+        <Route path="/inquiries">
+          <LegacyRedirect to="/website" hash="inquiries" />
+        </Route>
+        <Route path="/website-services">
+          <LegacyRedirect to="/website" hash="services" />
         </Route>
         <Route path="/pricing-guide">
           <PermissionGuard ownerOnly><PricingGuide /></PermissionGuard>
