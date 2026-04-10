@@ -805,7 +805,7 @@ function JobEstimatesPanel({ job, onClose, onLoadIntoInvoice }: { job: Job; onCl
                     {est.status}
                   </span>
                   <div className="flex items-center gap-1">
-                    {onLoadIntoInvoice && (
+                    {onLoadIntoInvoice && canEdit("invoices") && (
                       <button
                         onClick={() => { onLoadIntoInvoice(est); onClose(); }}
                         className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-0.5 rounded-lg border border-blue-200 hover:bg-blue-50"
