@@ -68,8 +68,8 @@ export function Services() {
                     {service.name}
                   </h3>
 
-                  {/* Description — only show if no whatsIncluded list */}
-                  {!hasItems && service.description && (
+                  {/* Description */}
+                  {service.description && (
                     <p className="text-gray-500 text-sm leading-relaxed">
                       {service.description}
                     </p>
