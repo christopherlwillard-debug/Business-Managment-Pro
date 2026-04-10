@@ -16,7 +16,7 @@ export function Clients() {
           <div className="w-12 h-1 bg-primary mx-auto mt-4" />
         </div>
 
-        <div className="flex flex-wrap justify-center items-center gap-10 md:gap-16">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10 md:gap-12 items-center justify-items-center">
           {clients.map(client => {
             const inner = client.logoUrl ? (
               <img
