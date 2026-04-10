@@ -116,7 +116,7 @@ function LegacyRedirect({ to, hash }: { to: string; hash: string }) {
   const [, setLocation] = useLocation();
   useEffect(() => {
     window.location.hash = hash;
-    setLocation(to);
+    setLocation(to, { replace: true });
   }, []);
   return null;
 }
