@@ -250,7 +250,7 @@ export function EstimateModal({
                 placeholder="e.g. Johnson Kitchen Remodel"
               />
             </div>
-            {prelinkedClientId ? (
+            {prelinkedClientId && !initial ? (
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Client</label>
                 <div className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-700">
