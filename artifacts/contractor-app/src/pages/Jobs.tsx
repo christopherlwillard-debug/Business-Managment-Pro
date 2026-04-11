@@ -1627,7 +1627,7 @@ export default function Jobs() {
     } finally { setInvoiceFetching(false); }
   }
 
-  function handleLoadEstimateIntoInvoice(job: Job, estimates: Estimate[]) {
+  function handleLoadAllEstimatesIntoInvoice(job: Job, estimates: Estimate[]) {
     const lineItems = estimates.flatMap((estimate) =>
       (estimate.lineItems ?? []).map((li) => ({
         description: estimates.length > 1
@@ -1728,7 +1728,7 @@ export default function Jobs() {
                       onMarkCompleted={handleMarkCompleted}
                       logCount={jobLogs.length} lastLogDate={lastLog?.date}
                       materialListCount={materialListCountByJob[job.id] ?? 0}
-                      onLoadEstimateIntoInvoice={handleLoadEstimateIntoInvoice} />
+                      onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice} />
                   );
                 })}
               </div>
@@ -1760,7 +1760,7 @@ export default function Jobs() {
                         onMarkCompleted={handleMarkCompleted}
                         logCount={jobLogs.length} lastLogDate={lastLog?.date}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
-                        onLoadEstimateIntoInvoice={handleLoadEstimateIntoInvoice} />
+                        onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
