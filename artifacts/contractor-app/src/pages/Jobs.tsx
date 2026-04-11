@@ -1628,16 +1628,11 @@ export default function Jobs() {
   }
 
   function handleLoadAllEstimatesIntoInvoice(job: Job, estimates: Estimate[]) {
-    const lineItems = estimates.flatMap((estimate) => {
-      const markupFactor = estimate.subtotal > 0 ? estimate.total / estimate.subtotal : 1;
-      return (estimate.lineItems ?? []).map((li) => ({
-        description: estimates.length > 1
-          ? `${estimate.title} — ${li.description}`
-          : li.description,
-        quantity: li.quantity,
-        unitPrice: li.unitCost * markupFactor,
-      }));
-    });
+    const lineItems = estimates.map((estimate) => ({
+      description: estimate.title,
+      quantity: 1,
+      unitPrice: estimate.total,
+    }));
     const draft: InvoiceDraft = {
       clientId: job.clientId ?? null,
       clientName: job.clientName ?? null,
