@@ -711,7 +711,7 @@ const STATUS_BADGE: Record<string, string> = {
   lost:  "bg-red-100 text-red-700",
 };
 
-function JobEstimatesPanel({ job, onClose, onLoadIntoInvoice }: { job: Job; onClose: () => void; onLoadIntoInvoice?: (estimate: Estimate) => void }) {
+function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; onClose: () => void; onLoadAllIntoInvoice?: (estimates: Estimate[]) => void }) {
   const qc = useQueryClient();
   const { canEdit } = useUserPermissions();
   const createMut = useCreateEstimate();
@@ -767,11 +767,21 @@ function JobEstimatesPanel({ job, onClose, onLoadIntoInvoice }: { job: Job; onCl
 
         {/* Summary */}
         {estimates.length > 0 && (
-          <div className="px-5 py-3 border-b border-border/50 bg-muted/20 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">{estimates.length} estimate{estimates.length !== 1 ? "s" : ""}</span>
-            <span className="text-sm font-bold text-amber-600 flex items-center gap-1">
-              <DollarSign className="w-3.5 h-3.5" />{formatCurrency(totalLinked).replace("$", "")}
-            </span>
+          <div className="px-5 py-3 border-b border-border/50 bg-muted/20 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs text-muted-foreground flex-shrink-0">{estimates.length} estimate{estimates.length !== 1 ? "s" : ""}</span>
+              <span className="text-sm font-bold text-amber-600 flex items-center gap-1 flex-shrink-0">
+                <DollarSign className="w-3.5 h-3.5" />{formatCurrency(totalLinked).replace("$", "")}
+              </span>
+            </div>
+            {onLoadAllIntoInvoice && canEdit("invoices") && (
+              <button
+                onClick={() => { onLoadAllIntoInvoice(estimates); onClose(); }}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
+              >
+                <FileText className="w-3 h-3" /> Create Invoice
+              </button>
+            )}
           </div>
         )}
 
@@ -805,15 +815,6 @@ function JobEstimatesPanel({ job, onClose, onLoadIntoInvoice }: { job: Job; onCl
                     {est.status}
                   </span>
                   <div className="flex items-center gap-1">
-                    {onLoadIntoInvoice && canEdit("invoices") && (
-                      <button
-                        onClick={() => { onLoadIntoInvoice(est); onClose(); }}
-                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-0.5 rounded-lg border border-blue-200 hover:bg-blue-50"
-                        title="Copy estimate line items into a new invoice"
-                      >
-                        <FileText className="w-3 h-3" /> Invoice
-                      </button>
-                    )}
                     {canEdit("estimates") && (
                       <button
                         onClick={() => setEditEst(est)}
@@ -881,7 +882,7 @@ function JobCard({
   logCount: number;
   lastLogDate?: string;
   materialListCount: number;
-  onLoadEstimateIntoInvoice?: (job: Job, estimate: Estimate) => void;
+  onLoadEstimateIntoInvoice?: (job: Job, estimates: Estimate[]) => void;
 }) {
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
@@ -1015,8 +1016,8 @@ function JobCard({
         <JobEstimatesPanel
           job={job}
           onClose={() => setEstimatesPanelOpen(false)}
-          onLoadIntoInvoice={onLoadEstimateIntoInvoice
-            ? (est) => onLoadEstimateIntoInvoice(job, est)
+          onLoadAllIntoInvoice={onLoadEstimateIntoInvoice
+            ? (ests) => onLoadEstimateIntoInvoice(job, ests)
             : undefined}
         />
       )}
@@ -1626,12 +1627,16 @@ export default function Jobs() {
     } finally { setInvoiceFetching(false); }
   }
 
-  async function handleLoadEstimateIntoInvoice(job: Job, estimate: Estimate) {
-    const lineItems = (estimate.lineItems ?? []).map((li) => ({
-      description: li.description,
-      quantity: li.quantity,
-      unitPrice: li.unitCost,
-    }));
+  function handleLoadEstimateIntoInvoice(job: Job, estimates: Estimate[]) {
+    const lineItems = estimates.flatMap((estimate) =>
+      (estimate.lineItems ?? []).map((li) => ({
+        description: estimates.length > 1
+          ? `${estimate.title} — ${li.description}`
+          : li.description,
+        quantity: li.quantity,
+        unitPrice: li.unitCost,
+      }))
+    );
     const draft: InvoiceDraft = {
       clientId: job.clientId ?? null,
       clientName: job.clientName ?? null,
