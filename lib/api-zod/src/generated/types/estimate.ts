@@ -22,5 +22,6 @@ export interface Estimate {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: EstimateLineItem[];
+  businessLine?: string | null;
   createdAt: string;
 }
