@@ -322,7 +322,7 @@ export function InvoiceEditorDialog({
     }
   }
 
-  const logoUrl: string | null  = s?.logoUrl ?? null;
+  const logoUrl: string | null  = (form.businessLine === "asphalt_sealing" ? (s?.dbaLogoUrl ?? s?.logoUrl) : s?.logoUrl) ?? null;
   const logoSize: string        = s?.invoiceLogoSize     ?? "medium";
   const logoPos: string         = s?.invoiceLogoPosition ?? "top-left";
   const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;

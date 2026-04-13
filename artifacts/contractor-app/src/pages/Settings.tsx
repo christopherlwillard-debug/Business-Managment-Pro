@@ -962,7 +962,7 @@ export default function Settings() {
         mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
       });
       setLogoUrl(s.logoUrl ?? null);
-      setDbaLogoUrl((s as any).dbaLogoUrl ?? null);
+      setDbaLogoUrl(s.dbaLogoUrl ?? null);
       const feat: Record<string, boolean> = {};
       FEATURE_OPTIONS.forEach(f => {
         feat[f.key] = Array.isArray(s.enabledFeatures) ? s.enabledFeatures.includes(f.key) : true;
