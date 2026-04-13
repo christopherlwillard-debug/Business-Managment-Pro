@@ -8,13 +8,15 @@ import { wrapAsync } from "./guards";
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-function normalizeDate(raw: string | number | undefined): string {
-  if (!raw) return new Date().toISOString().slice(0, 10);
+function normalizeDate(raw: string | number | undefined): string | null {
+  if (!raw && raw !== 0) return null;
   if (typeof raw === "number") {
     const d = XLSX.SSF.parse_date_code(raw);
     if (d) return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+    return null;
   }
   const s = String(raw).trim();
+  if (!s) return null;
   const mmddyyyy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (mmddyyyy) {
     const [, m, d, y] = mmddyyyy;
@@ -29,7 +31,7 @@ function normalizeDate(raw: string | number | undefined): string {
   }
   const parsed = new Date(s);
   if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  return new Date().toISOString().slice(0, 10);
+  return null;
 }
 
 function normalizeAmount(raw: unknown): number {
@@ -75,6 +77,7 @@ function parseCSVTransactions(buffer: Buffer): ParsedTransaction[] {
     if (!description) continue;
 
     const date = normalizeDate(rawDate as string | number);
+    if (!date) continue;
 
     let amount = 0;
     let transactionType: "debit" | "credit" = "debit";
@@ -259,6 +262,11 @@ router.patch("/transactions/:id", wrapAsync(async (req, res) => {
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const { status, matchedExpenseId, matchedInvoiceId, matchedOtherIncomeId } = req.body;
+  const ALLOWED_STATUSES = ["unmatched", "matched", "ignored"];
+  if (status !== undefined && !ALLOWED_STATUSES.includes(status)) {
+    res.status(400).json({ error: `Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}` });
+    return;
+  }
   const updates: Partial<typeof bankTransactionsTable.$inferInsert> = {};
 
   if (status !== undefined) updates.status = status;
