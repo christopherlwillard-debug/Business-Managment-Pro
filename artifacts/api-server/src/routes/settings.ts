@@ -67,6 +67,50 @@ router.delete("/logo", async (_req, res) => {
   }
 });
 
+router.post("/dba-logo", logoUpload.single("logo"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+    const objectPath = await objectStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      "uploads/logos",
+      req.file.originalname
+    );
+    const servingUrl = toServingUrl(objectPath)!;
+
+    let [s] = await db.select().from(settingsTable).limit(1);
+    if (!s) {
+      [s] = await db.insert(settingsTable).values({ dbaLogoUrl: objectPath } as any).returning();
+    } else {
+      if (s.dbaLogoUrl && s.dbaLogoUrl.startsWith("/objects/")) {
+        try { await objectStorage.deleteObject(s.dbaLogoUrl); } catch { /* ignore */ }
+      }
+      [s] = await db.update(settingsTable).set({ dbaLogoUrl: objectPath, updatedAt: new Date() }).where(eq(settingsTable.id, s.id)).returning();
+    }
+    res.json({ dbaLogoUrl: servingUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to upload DBA logo" });
+  }
+});
+
+router.delete("/dba-logo", async (_req, res) => {
+  try {
+    let [s] = await db.select().from(settingsTable).limit(1);
+    if (s?.dbaLogoUrl) {
+      if (s.dbaLogoUrl.startsWith("/objects/")) {
+        try { await objectStorage.deleteObject(s.dbaLogoUrl); } catch { /* ignore */ }
+      }
+      await db.update(settingsTable).set({ dbaLogoUrl: null, updatedAt: new Date() }).where(eq(settingsTable.id, s.id));
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to remove DBA logo" });
+  }
+});
+
 // ── Settings ───────────────────────────────────────────────────────────────────
 const DEFAULT_SETTINGS = {
   companyName: null,
@@ -77,6 +121,7 @@ const DEFAULT_SETTINGS = {
   companyPhone: null,
   companyEmail: null,
   logoUrl: null,
+  dbaLogoUrl: null,
   entityType: null,
   ein: null,
   defaultTaxRate: null,
@@ -116,6 +161,7 @@ function format(s: any) {
   return {
     ...s,
     logoUrl: toServingUrl(s.logoUrl),
+    dbaLogoUrl: toServingUrl(s.dbaLogoUrl),
     defaultTaxRate: s.defaultTaxRate ? parseFloat(s.defaultTaxRate) : null,
     lateFeePercent: s.lateFeePercent ? parseFloat(s.lateFeePercent) : null,
     mileageRate: s.mileageRate ? parseFloat(s.mileageRate) : 0.725,

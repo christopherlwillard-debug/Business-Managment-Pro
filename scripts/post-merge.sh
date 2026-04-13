@@ -244,3 +244,12 @@ pool.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS business_line text')
   .then(() => { console.log('expenses.business_line and other_income.business_line ensured'); pool.end(); })
   .catch(e => { console.error('expenses/other_income business_line migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #123: add dba_logo_url column to settings
+node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS dba_logo_url text')
+  .then(() => { console.log('settings.dba_logo_url ensured'); pool.end(); })
+  .catch(e => { console.error('dba_logo_url migration error:', e.message); pool.end(); process.exit(1); });
+")

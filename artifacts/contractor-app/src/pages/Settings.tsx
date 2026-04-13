@@ -649,9 +649,10 @@ function InvoiceLogoPreview({
 
 // ─── Logo drop zone ───────────────────────────────────────────────────────────
 function LogoUpload({
-  logoUrl, onUploaded, onRemoved,
+  logoUrl, onUploaded, onRemoved, uploadPath = "/api/settings/logo", deletePath = "/api/settings/logo", responseKey = "logoUrl",
 }: {
   logoUrl: string | null; onUploaded: (url: string) => void; onRemoved: () => void;
+  uploadPath?: string; deletePath?: string; responseKey?: string;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -667,11 +668,11 @@ function LogoUpload({
     try {
       const form = new FormData();
       form.append("logo", file);
-      const res = await fetch(`${BASE}/api/settings/logo`, { method: "POST", body: form });
+      const res = await fetch(`${BASE}${uploadPath}`, { method: "POST", body: form });
       if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
-      const { logoUrl: url } = await res.json();
+      const data = await res.json();
       setLogoImgError(false);
-      onUploaded(url);
+      onUploaded(data[responseKey]);
     } catch (err: any) {
       setError(err.message || "Upload failed");
     } finally {
@@ -689,7 +690,7 @@ function LogoUpload({
   async function handleRemove() {
     setUploading(true);
     try {
-      await fetch(`${BASE}/api/settings/logo`, { method: "DELETE" });
+      await fetch(`${BASE}${deletePath}`, { method: "DELETE" });
       onRemoved();
     } finally {
       setUploading(false);
@@ -925,6 +926,7 @@ export default function Settings() {
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [dbaLogoUrl, setDbaLogoUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
@@ -960,6 +962,7 @@ export default function Settings() {
         mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
       });
       setLogoUrl(s.logoUrl ?? null);
+      setDbaLogoUrl((s as any).dbaLogoUrl ?? null);
       const feat: Record<string, boolean> = {};
       FEATURE_OPTIONS.forEach(f => {
         feat[f.key] = Array.isArray(s.enabledFeatures) ? s.enabledFeatures.includes(f.key) : true;
@@ -1154,6 +1157,25 @@ export default function Settings() {
                   logoUrl={logoUrl}
                   onUploaded={url => { setLogoUrl(url); queryClient.invalidateQueries(); }}
                   onRemoved={() => { setLogoUrl(null); queryClient.invalidateQueries(); }}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <ImagePlus className="w-5 h-5 text-primary" /> DBA Logo — Willard's Asphalt Sealing
+                </CardTitle>
+                <CardDescription>Used on invoices and estimates when the Asphalt Sealing business line is selected. Falls back to the main logo if not set.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <LogoUpload
+                  logoUrl={dbaLogoUrl}
+                  onUploaded={url => { setDbaLogoUrl(url); queryClient.invalidateQueries(); }}
+                  onRemoved={() => { setDbaLogoUrl(null); queryClient.invalidateQueries(); }}
+                  uploadPath="/api/settings/dba-logo"
+                  deletePath="/api/settings/dba-logo"
+                  responseKey="dbaLogoUrl"
                 />
               </CardContent>
             </Card>

@@ -607,6 +607,7 @@ export interface AppSettings {
   companyPhone?: string | null;
   companyEmail?: string | null;
   logoUrl?: string | null;
+  dbaLogoUrl?: string | null;
   defaultTaxRate?: number | null;
   defaultPaymentTerms?: string | null;
   lateFeePercent?: number | null;

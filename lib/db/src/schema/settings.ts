@@ -12,6 +12,7 @@ export const settingsTable = pgTable("settings", {
   companyPhone: text("company_phone"),
   companyEmail: text("company_email"),
   logoUrl: text("logo_url"),
+  dbaLogoUrl: text("dba_logo_url"),
   defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }),
   defaultPaymentTerms: text("default_payment_terms"),
   lateFeePercent: numeric("late_fee_percent", { precision: 5, scale: 2 }),
