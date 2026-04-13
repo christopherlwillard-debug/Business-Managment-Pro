@@ -40,12 +40,12 @@ interface EstimatedTaxPaymentRow {
   createdAt: Date;
 }
 
-function nextBusinessDay(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  if (day === 0) d.setDate(d.getDate() + 1);
-  else if (day === 6) d.setDate(d.getDate() + 2);
-  return d;
+function nextBusinessDay(d: Date): Date {
+  const result = new Date(d);
+  const day = result.getUTCDay();
+  if (day === 6) result.setUTCDate(result.getUTCDate() + 2);
+  else if (day === 0) result.setUTCDate(result.getUTCDate() + 1);
+  return result;
 }
 
 function isoDate(d: Date): string {
@@ -53,7 +53,9 @@ function isoDate(d: Date): string {
 }
 
 function formatDueDate(d: Date): string {
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString("en-US", {
+    year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
+  });
 }
 
 function getQuarterDueDates(year: number, quarter: number): { dueDate: Date; label: string } {
@@ -76,11 +78,13 @@ const QUARTER_DEFS = [
   { quarter: 4, label: "Q4", period: "Sep – Dec" },
 ];
 
-async function computeTaxData(year: number): Promise<{
+interface YearTaxData {
   netProfit: number;
   fullYearFederalTax: number;
   fullYearKyTax: number;
-}> {
+}
+
+async function computeTaxData(year: number): Promise<YearTaxData> {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
 
@@ -101,11 +105,9 @@ async function computeTaxData(year: number): Promise<{
   const mileageDeduction = mileageResult[0]?.totalDeduction ? parseFloat(mileageResult[0].totalDeduction as string) : 0;
 
   const netProfit = Math.max(0, (paidRevenue + otherIncomeSum) - totalExpenses - mileageDeduction);
-
   const selfEmploymentTax = netProfit * 0.9235 * 0.153;
   const seDeduction = selfEmploymentTax * 0.5;
-  const taxableIncome = Math.max(0, netProfit - seDeduction);
-  const incomeTax = taxableIncome * 0.22;
+  const incomeTax = Math.max(0, netProfit - seDeduction) * 0.22;
   const fullYearFederalTax = selfEmploymentTax + incomeTax;
   const fullYearKyTax = netProfit * 0.04;
 
@@ -116,17 +118,21 @@ async function computeTaxData(year: number): Promise<{
 router.get("/", wrapAsync(async (req, res) => {
   const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
 
-  const [payments, taxData] = await Promise.all([
+  const [payments, currentYearData, priorYearData] = await Promise.all([
     db.select().from(estimatedTaxPaymentsTable).where(eq(estimatedTaxPaymentsTable.year, year)),
     computeTaxData(year),
+    computeTaxData(year - 1),
   ]);
 
-  const { fullYearFederalTax, fullYearKyTax } = taxData;
+  const { fullYearFederalTax, fullYearKyTax } = currentYearData;
 
-  const fullYearFederalPerQ = fullYearFederalTax / 4;
-  const fullYearKyPerQ = fullYearKyTax / 4;
-  const safeHarborFederalPerQ = (fullYearFederalTax * 0.9) / 4;
-  const safeHarborKyPerQ = (fullYearKyTax * 0.9) / 4;
+  const optionA_Federal = priorYearData.fullYearFederalTax > 0 ? priorYearData.fullYearFederalTax / 4 : null;
+  const optionA_Ky = priorYearData.fullYearKyTax > 0 ? priorYearData.fullYearKyTax / 4 : null;
+  const optionB_Federal = (fullYearFederalTax * 0.9) / 4;
+  const optionB_Ky = (fullYearKyTax * 0.9) / 4;
+
+  const safeHarborFederalPerQ = optionA_Federal !== null ? Math.min(optionA_Federal, optionB_Federal) : optionB_Federal;
+  const safeHarborKyPerQ = optionA_Ky !== null ? Math.min(optionA_Ky, optionB_Ky) : optionB_Ky;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -154,11 +160,11 @@ router.get("/", wrapAsync(async (req, res) => {
     const { dueDate, label } = getQuarterDueDates(year, qDef.quarter);
     const isOverdue = dueDate < today;
 
-    const recommendedTotal = fullYearFederalPerQ + fullYearKyPerQ;
+    const recommendedTotal = fullYearFederalTax / 4 + fullYearKyTax / 4;
     const safeHarborTotal = safeHarborFederalPerQ + safeHarborKyPerQ;
 
     let status: QuarterInfo["status"] = "due";
-    if (totalPaid >= safeHarborTotal && safeHarborTotal > 0) status = "paid";
+    if (safeHarborTotal > 0 && totalPaid >= safeHarborTotal) status = "paid";
     else if (totalPaid > 0) status = "partial";
     else if (isOverdue) status = "overdue";
 
@@ -168,8 +174,8 @@ router.get("/", wrapAsync(async (req, res) => {
       federalDueDateLabel: label,
       kyDueDate: isoDate(dueDate),
       kyDueDateLabel: label,
-      recommendedFederal: fullYearFederalPerQ,
-      recommendedKy: fullYearKyPerQ,
+      recommendedFederal: fullYearFederalTax / 4,
+      recommendedKy: fullYearKyTax / 4,
       recommendedTotal,
       safeHarborFederal: safeHarborFederalPerQ,
       safeHarborKy: safeHarborKyPerQ,
@@ -183,22 +189,25 @@ router.get("/", wrapAsync(async (req, res) => {
     };
   });
 
+  const totalSafeHarbor = (safeHarborFederalPerQ + safeHarborKyPerQ) * 4;
   const totalRecommended = fullYearFederalTax + fullYearKyTax;
-  const totalSafeHarbor = totalRecommended * 0.9;
   const totalPaidYtd = rows.reduce((s, p) => s + p.amountPaid, 0);
+  const priorYearAvailable = priorYearData.netProfit > 0;
 
   res.json({
     year,
     quarters,
     payments: rows,
-    safeHarborMethod: "current-year-90-percent",
+    safeHarborMethod: priorYearAvailable ? "min-prior-year-and-90pct-current" : "current-year-90-percent",
+    priorYearAvailable,
     summary: {
-      netProfit: taxData.netProfit,
+      netProfit: currentYearData.netProfit,
+      priorYearNetProfit: priorYearData.netProfit,
       fullYearFederalTax,
       fullYearKyTax,
       totalRecommended,
       totalSafeHarbor,
-      safeHarborPerQuarter: totalSafeHarbor / 4,
+      safeHarborPerQuarter: safeHarborFederalPerQ + safeHarborKyPerQ,
       totalPaid: totalPaidYtd,
       remaining: Math.max(0, totalSafeHarbor - totalPaidYtd),
     },

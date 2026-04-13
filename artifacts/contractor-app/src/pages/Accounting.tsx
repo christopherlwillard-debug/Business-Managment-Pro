@@ -131,8 +131,10 @@ interface QuarterlyTaxResponse {
   quarters: QuarterData[];
   payments: TaxPaymentRow[];
   safeHarborMethod: string;
+  priorYearAvailable: boolean;
   summary: {
     netProfit: number;
+    priorYearNetProfit: number;
     fullYearFederalTax: number;
     fullYearKyTax: number;
     totalRecommended: number;
@@ -1871,7 +1873,7 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
               {/* Summary bar */}
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: "Annual Recommended", value: formatCurrency(totalRec), sub: `${formatCurrency(summary!.safeHarborPerQuarter)}/quarter (90% safe harbor)`, color: "text-foreground" },
+                  { label: "Safe Harbor Total", value: formatCurrency(totalRec), sub: `${formatCurrency(summary!.safeHarborPerQuarter)}/qtr · ${data.priorYearAvailable ? "prior-yr + 90% current" : "90% current-yr estimate"}`, color: "text-foreground" },
                   { label: "Total Paid", value: formatCurrency(totalPaid), sub: `${data.payments.length} payment${data.payments.length !== 1 ? "s" : ""} logged`, color: "text-emerald-600" },
                   { label: "Remaining", value: formatCurrency(remaining), sub: remaining > 0 ? "Still owed this year" : "Fully paid", color: remaining > 0 ? "text-amber-600" : "text-emerald-600" },
                 ].map(tile => (
@@ -2085,7 +2087,7 @@ const STATUS_SORT_ORDER: Record<UnifiedStatus, number> = {
 };
 
 function TaxCalendarTab({ year }: { year: number }) {
-  const { canEdit } = useUserPermissions();
+  const { canEdit, isOwner } = useUserPermissions();
   const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn: googleSignIn } = useGoogleAuth();
   const { toast } = useToast();
   const storageKey = `ky-filing-statuses-${year}`;
@@ -2281,7 +2283,7 @@ function TaxCalendarTab({ year }: { year: number }) {
 
   return (
     <div className="space-y-6">
-      <QuarterlyTaxTracker year={year} />
+      {isOwner && <QuarterlyTaxTracker year={year} />}
 
       {/* Add Item form */}
       {(showForm || editTarget) && (
