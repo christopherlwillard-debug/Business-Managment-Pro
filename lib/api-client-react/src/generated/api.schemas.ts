@@ -269,6 +269,7 @@ export interface Expense {
   notes?: string | null;
   recurringExpenseId?: number | null;
   createdAt: string;
+  excludeFromNetProfit?: boolean | null;
 }
 
 export interface CreateExpenseRequest {
@@ -280,6 +281,7 @@ export interface CreateExpenseRequest {
   jobId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
+  excludeFromNetProfit?: boolean | null;
 }
 
 export type RecurringExpenseFrequency =
@@ -629,6 +631,9 @@ export interface DashboardStats {
   recentJobs: Job[];
   recentInvoices: Invoice[];
   monthlyRevenue: DashboardStatsMonthlyRevenueItem[];
+  operationalNetProfit?: number;
+  excludedFromProfit?: number;
+  excludedExpenseCount?: number;
 }
 
 export type ComplianceReportSubcontractor1099AlertsItem = {

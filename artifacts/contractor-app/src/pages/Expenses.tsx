@@ -1265,6 +1265,7 @@ export default function Expenses() {
     setVendor("");
     setCategory(CATEGORIES[0]);
     setSubcontractorId("");
+    setExcludeFromNetProfit(false);
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1536,7 +1537,7 @@ export default function Expenses() {
                                               notes: editingRow.notes || undefined,
                                               receiptUrl: exp.receiptUrl,
                                               excludeFromNetProfit: editingRow.excludeFromNetProfit,
-                                            } as any,
+                                            },
                                           });
                                           if (editReceiptFile) {
                                             await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
@@ -1568,7 +1569,7 @@ export default function Expenses() {
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</span>
-                                    {(exp as any).excludeFromNetProfit && (
+                                    {exp.excludeFromNetProfit && (
                                       <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
                                         <EyeOff className="w-2.5 h-2.5" /> Write-off
                                       </span>
@@ -1641,7 +1642,7 @@ export default function Expenses() {
                                             vendor: exp.vendor ?? "",
                                             jobId: exp.jobId ? String(exp.jobId) : "",
                                             notes: exp.notes ?? "",
-                                            excludeFromNetProfit: (exp as any).excludeFromNetProfit ?? false,
+                                            excludeFromNetProfit: exp.excludeFromNetProfit ?? false,
                                           }); }}
                                           className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
                                           <Pencil className="w-4 h-4" />
