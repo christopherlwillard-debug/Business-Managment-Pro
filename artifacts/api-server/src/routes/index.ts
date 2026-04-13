@@ -39,11 +39,6 @@ import form1099sRouter from "./form-1099s";
 import teamRouter from "./team";
 import otherIncomeRouter from "./other-income";
 import storageRouter from "./storage";
-import publicRouter from "./public";
-import portfolioPhotosRouter from "./portfolio-photos";
-import inquiriesRouter from "./inquiries";
-import publicServicesRouter from "./public-services";
-import featuredClientsRouter from "./featured-clients";
 import routeStopsRouter from "./route-stops";
 import prospectsRouter from "./prospects";
 import estimatedTaxPaymentsRouter from "./estimated-tax-payments";
@@ -152,8 +147,6 @@ router.use(healthRouter);
 router.use(authRouter);
 
 router.use("/portal", portalRouter);
-router.use(publicRouter);
-
 router.use(requireAuth);
 router.use(requireAccess);
 
@@ -186,10 +179,6 @@ router.use("/1099s", sectionGuard("subcontractors"), form1099sRouter);
 router.use("/team", teamRouter);
 router.use("/other-income", sectionGuard("invoices"), otherIncomeRouter);
 router.use(storageRouter);
-router.use("/portfolio-photos", portfolioPhotosRouter);
-router.use("/inquiries", inquiriesRouter);
-router.use("/public-services", requireOwnerForWrites, publicServicesRouter);
-router.use("/featured-clients", requireOwnerForWrites, featuredClientsRouter);
 router.use("/route-stops", requireOwner, routeStopsRouter);
 router.use("/prospects", requireOwner, prospectsRouter);
 router.use("/estimated-tax-payments", requireOwner, estimatedTaxPaymentsRouter);

@@ -18,7 +18,6 @@ import Clients from "./pages/Clients";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
 import Materials from "./pages/Materials";
-import Website from "./pages/Website";
 import PricingGuide from "./pages/PricingGuide";
 import RoutePlanner from "./pages/RoutePlanner";
 import Prospects from "./pages/Prospects";
@@ -220,18 +219,6 @@ function AdminApp() {
         </Route>
         <Route path="/materials">
           <PermissionGuard ownerOnly><Materials /></PermissionGuard>
-        </Route>
-        <Route path="/website">
-          <Website />
-        </Route>
-        <Route path="/portfolio">
-          <LegacyRedirect to="/website" hash="portfolio" />
-        </Route>
-        <Route path="/inquiries">
-          <LegacyRedirect to="/website" hash="inquiries" />
-        </Route>
-        <Route path="/website-services">
-          <LegacyRedirect to="/website" hash="services" />
         </Route>
         <Route path="/pricing-guide">
           <PermissionGuard ownerOnly><PricingGuide /></PermissionGuard>
