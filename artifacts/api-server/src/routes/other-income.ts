@@ -7,9 +7,10 @@ const router = Router();
 
 const VALID_PAYMENT_METHODS = ["cash", "check", "bank_transfer", "other"] as const;
 type PaymentMethod = typeof VALID_PAYMENT_METHODS[number];
+const VALID_BUSINESS_LINES = ["general_contracting", "asphalt_sealing"] as const;
 
-function parseBody(body: any): { amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null } | null {
-  const { amount, date, description, source, paymentMethod, city, state, notes } = body ?? {};
+function parseBody(body: any): { amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null; businessLine?: string | null } | null {
+  const { amount, date, description, source, paymentMethod, city, state, notes, businessLine } = body ?? {};
   if (!amount || isNaN(parseFloat(String(amount)))) return null;
   if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   if (!description || typeof description !== "string" || description.trim() === "") return null;
@@ -23,6 +24,7 @@ function parseBody(body: any): { amount: string; date: string; description: stri
     city: city ? String(city).trim() || null : null,
     state: state ? String(state).trim() || null : null,
     notes: notes ? String(notes).trim() || null : null,
+    businessLine: VALID_BUSINESS_LINES.includes(businessLine) ? businessLine : null,
   };
 }
 

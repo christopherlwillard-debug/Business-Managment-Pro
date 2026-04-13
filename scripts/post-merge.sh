@@ -234,3 +234,13 @@ pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS business_line text')
   .then(() => { console.log('invoices.business_line and estimates.business_line ensured'); pool.end(); })
   .catch(e => { console.error('business_line migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #118: add business_line column to expenses and other_income
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS business_line text')
+  .then(() => pool.query('ALTER TABLE other_income ADD COLUMN IF NOT EXISTS business_line text'))
+  .then(() => { console.log('expenses.business_line and other_income.business_line ensured'); pool.end(); })
+  .catch(e => { console.error('expenses/other_income business_line migration error:', e.message); pool.end(); process.exit(1); });
+")

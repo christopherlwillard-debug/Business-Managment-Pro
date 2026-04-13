@@ -1194,8 +1194,9 @@ export default function Expenses() {
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
   const [excludeFromNetProfit, setExcludeFromNetProfit] = useState(false);
+  const [businessLine, setBusinessLine]               = useState<"general_contracting" | "asphalt_sealing">("general_contracting");
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
-  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean} | null>(null);
+  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; businessLine: string} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
   const [editLightboxImgError, setEditLightboxImgError] = useState(false);
@@ -1290,6 +1291,7 @@ export default function Expenses() {
     setCategory(CATEGORIES[0]);
     setSubcontractorId("");
     setExcludeFromNetProfit(false);
+    setBusinessLine("general_contracting");
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1309,6 +1311,7 @@ export default function Expenses() {
           jobId:          fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
           subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
           excludeFromNetProfit,
+          businessLine,
         },
       });
 
@@ -1325,6 +1328,7 @@ export default function Expenses() {
       setVendor("");
       setSubcontractorId("");
       setExcludeFromNetProfit(false);
+      setBusinessLine("general_contracting");
       refetch();
     } catch {
       setUploadError("Failed to save expense. Please try again.");
@@ -1561,6 +1565,7 @@ export default function Expenses() {
                                               notes: editingRow.notes || undefined,
                                               receiptUrl: exp.receiptUrl,
                                               excludeFromNetProfit: editingRow.excludeFromNetProfit,
+                                              businessLine: editingRow.businessLine || null,
                                             },
                                           });
                                           if (editReceiptFile) {
@@ -1667,6 +1672,7 @@ export default function Expenses() {
                                             jobId: exp.jobId ? String(exp.jobId) : "",
                                             notes: exp.notes ?? "",
                                             excludeFromNetProfit: exp.excludeFromNetProfit ?? false,
+                                            businessLine: (exp as any).businessLine ?? "general_contracting",
                                           }); }}
                                           className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
                                           <Pencil className="w-4 h-4" />
@@ -1804,6 +1810,34 @@ export default function Expenses() {
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Optional notes"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Business Line</label>
+              <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
+                <button
+                  type="button"
+                  onClick={() => setBusinessLine("general_contracting")}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    businessLine === "general_contracting"
+                      ? "bg-white text-gray-800 shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  General Contracting
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBusinessLine("asphalt_sealing")}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    businessLine === "asphalt_sealing"
+                      ? "bg-amber-500 text-white shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Asphalt Sealing
+                </button>
+              </div>
             </div>
 
             <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-border bg-muted/30">

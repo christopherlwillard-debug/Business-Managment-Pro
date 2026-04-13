@@ -13,6 +13,7 @@ export const otherIncomeTable = pgTable("other_income", {
   city: text("city"),
   state: text("state"),
   notes: text("notes"),
+  businessLine: text("business_line"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

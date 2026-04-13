@@ -191,6 +191,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         jobState: jobsTable.state,
         clientName: clientsTable.name,
         invoiceNumber: invoicesTable.invoiceNumber,
+        businessLine: invoicesTable.businessLine,
       })
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
@@ -350,6 +351,33 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       w9OnFile: s.w9OnFile,
     }));
 
+    const BL_LABELS: Record<string, string> = {
+      general_contracting: "General Contracting",
+      asphalt_sealing: "Asphalt Sealing (DBA)",
+    };
+    const blKeys = ["general_contracting", "asphalt_sealing"] as const;
+    const byBusinessLine = blKeys.map(bl => {
+      const blInvoices = invoices.filter(i => (i.businessLine ?? "general_contracting") === bl);
+      const blOther = otherIncomeRows.filter(o => (o.businessLine ?? "general_contracting") === bl);
+      const blExpenses = nonMileageExpenses.filter(e => (e.businessLine ?? "general_contracting") === bl);
+      const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      return {
+        businessLine: bl,
+        label: BL_LABELS[bl] ?? bl,
+        invoiceCount: blInvoices.length,
+        invoiceGross,
+        invoicePaid,
+        otherIncome: otherSum,
+        totalRevenue: invoiceGross + otherSum,
+        collectedRevenue: invoicePaid + otherSum,
+        expenses: expSum,
+        netProfit: (invoicePaid + otherSum) - expSum,
+      };
+    });
+
     res.json({
       year,
       summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum },
@@ -360,6 +388,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       subcontractor1099,
       invoiceRecords: allRecords,
       otherIncomeRows,
+      byBusinessLine,
     });
   } catch (err) {
     console.error(err);

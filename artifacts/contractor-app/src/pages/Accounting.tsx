@@ -7,7 +7,7 @@ import {
   Download, FileText, BarChart3, AlertTriangle, Calendar, ExternalLink,
   ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
   Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell,
-  FileCheck, X, ChevronRight, Home,
+  FileCheck, X, ChevronRight, Home, PieChart,
   Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive,
 } from "lucide-react";
 import { useScheduleCReport } from "@workspace/api-client-react";
@@ -741,7 +741,7 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
 
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
-type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income";
+type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income" | "business_line";
 
 function OverviewTab({ data, year }: { data: any; year: number }) {
   const [openModule, setOpenModule] = useState<ModuleKey | null>(null);
@@ -753,17 +753,17 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   const createOI = useCreateOtherIncome(year);
   const updateOI = useUpdateOtherIncome(year);
   const deleteOI = useDeleteOtherIncome(year);
-  const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; city: string; state: string; notes: string }>>(null);
+  const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; city: string; state: string; notes: string; businessLine: string }>>(null);
   const [oiSaving, setOiSaving] = useState(false);
 
   const { canEdit } = useUserPermissions();
 
   function openAddOI() {
-    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "" });
+    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "general_contracting" });
     setOpenModule("other_income");
   }
   function openEditOI(row: any) {
-    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "" });
+    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "", businessLine: row.businessLine ?? "general_contracting" });
     setOpenModule("other_income");
   }
   async function handleSaveOI(e: React.FormEvent) {
@@ -771,7 +771,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     if (!oiForm) return;
     setOiSaving(true);
     try {
-      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", city: oiForm.city || null, state: oiForm.state || null, notes: oiForm.notes || null };
+      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", city: oiForm.city || null, state: oiForm.state || null, notes: oiForm.notes || null, businessLine: oiForm.businessLine || "general_contracting" };
       if (oiForm.id) { await updateOI.mutateAsync({ id: oiForm.id, ...payload }); }
       else { await createOI.mutateAsync(payload); }
       setOiForm(null);
@@ -830,6 +830,11 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
       key: "other_income", label: "Other Income", icon: DollarSign,
       stat: otherIncomeTotal > 0 ? formatCurrency(otherIncomeTotal) : "$0",
       statLabel: `${otherIncomeRows.length} entr${otherIncomeRows.length !== 1 ? "ies" : "y"} · Non-invoice income`, color: "text-teal-600",
+    },
+    {
+      key: "business_line", label: "DBA Revenue Split", icon: PieChart,
+      stat: data?.byBusinessLine?.length > 0 ? `${data.byBusinessLine.length} lines` : "No data",
+      statLabel: "General Contracting vs Asphalt Sealing", color: "text-blue-600",
     },
   ];
 
@@ -1337,6 +1342,33 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                   onChange={e => setOiForm(f => f ? { ...f, notes: e.target.value } : f)}
                 />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Business Line</label>
+                <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setOiForm(f => f ? { ...f, businessLine: "general_contracting" } : f)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                      (oiForm.businessLine ?? "general_contracting") === "general_contracting"
+                        ? "bg-white text-gray-800 shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    General Contracting
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOiForm(f => f ? { ...f, businessLine: "asphalt_sealing" } : f)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                      oiForm.businessLine === "asphalt_sealing"
+                        ? "bg-amber-500 text-white shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Asphalt Sealing
+                  </button>
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button type="button" onClick={() => setOiForm(null)}
                   className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted transition-colors">
@@ -1423,6 +1455,68 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
               )}
             </>
           ) : null}
+        </div>
+      )}
+
+      {openModule === "business_line" && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-3 bg-blue-50/60 dark:bg-blue-900/10 border-b border-border flex items-center gap-2">
+            <PieChart className="w-4 h-4 text-blue-600" />
+            <span className="font-semibold text-sm text-foreground">DBA Revenue Split — {year}</span>
+            <span className="text-xs text-muted-foreground ml-1">General Contracting vs Willard's Asphalt Sealing</span>
+          </div>
+          {(!data?.byBusinessLine || data.byBusinessLine.length === 0) ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              <PieChart className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              No business-line data yet. Tag expenses and income entries with a business line to see this report.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                  <tr>
+                    <th className="px-5 py-3 text-left">Business Line</th>
+                    <th className="px-5 py-3 text-right">Invoice Revenue</th>
+                    <th className="px-5 py-3 text-right">Other Income</th>
+                    <th className="px-5 py-3 text-right">Total Revenue</th>
+                    <th className="px-5 py-3 text-right">Expenses</th>
+                    <th className="px-5 py-3 text-right">Net Profit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {(data.byBusinessLine as any[]).map((row: any) => {
+                    const label = row.businessLine === "asphalt_sealing" ? "Asphalt Sealing" : "General Contracting";
+                    const color = row.businessLine === "asphalt_sealing" ? "text-amber-600" : "text-blue-600";
+                    const net = parseFloat(row.netProfit ?? 0);
+                    return (
+                      <tr key={row.businessLine} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-5 py-3">
+                          <span className={`font-semibold ${color}`}>{label}</span>
+                        </td>
+                        <td className="px-5 py-3 text-right font-medium">{formatCurrency(parseFloat(row.invoiceGross ?? 0))}</td>
+                        <td className="px-5 py-3 text-right text-teal-600">{formatCurrency(parseFloat(row.otherIncome ?? 0))}</td>
+                        <td className="px-5 py-3 text-right font-semibold">{formatCurrency(parseFloat(row.totalRevenue ?? 0))}</td>
+                        <td className="px-5 py-3 text-right text-red-600">{formatCurrency(parseFloat(row.expenses ?? 0))}</td>
+                        <td className={`px-5 py-3 text-right font-bold ${net >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          {formatCurrency(net)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
+                  <tr>
+                    <td className="px-5 py-3 text-foreground">Combined Total</td>
+                    <td className="px-5 py-3 text-right">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.invoiceGross ?? 0), 0))}</td>
+                    <td className="px-5 py-3 text-right text-teal-600">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.otherIncome ?? 0), 0))}</td>
+                    <td className="px-5 py-3 text-right">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.totalRevenue ?? 0), 0))}</td>
+                    <td className="px-5 py-3 text-right text-red-600">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.expenses ?? 0), 0))}</td>
+                    <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.netProfit ?? 0), 0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

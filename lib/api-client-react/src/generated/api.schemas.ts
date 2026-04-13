@@ -272,6 +272,7 @@ export interface Expense {
   recurringExpenseId?: number | null;
   createdAt: string;
   excludeFromNetProfit?: boolean | null;
+  businessLine?: string | null;
 }
 
 export interface CreateExpenseRequest {
@@ -285,6 +286,7 @@ export interface CreateExpenseRequest {
   receiptUrl?: string | null;
   notes?: string | null;
   excludeFromNetProfit?: boolean | null;
+  businessLine?: string | null;
 }
 
 export type RecurringExpenseFrequency =
