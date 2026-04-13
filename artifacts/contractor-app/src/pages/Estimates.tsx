@@ -10,13 +10,81 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   Calculator, FileText, Plus, Trash2, Edit2, X,
-  ChevronRight, Check, Briefcase, DollarSign, Layers,
+  ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
 } from "lucide-react";
 import { TrimCalculator } from "@/components/calculators/TrimCalculator";
 import { SidingCalculator } from "@/components/calculators/SidingCalculator";
 import { FlooringCalculator } from "@/components/calculators/FlooringCalculator";
 import { PlumbingCalculator } from "@/components/calculators/PlumbingCalculator";
 import { AsphaltCalculator } from "@/components/calculators/AsphaltCalculator";
+
+// ─── Asphalt Sealing Proposal template seed data ─────────────────────────────
+const ASPHALT_SEALING_PROPOSAL = {
+  jobType: "Asphalt Sealing",
+  notes: `PAYMENT TERMS: 50% deposit required before work begins. Remaining balance due upon project completion. We accept cash, check, and all major credit cards.\n\nWARRANTY: Workmanship is warranted for 1 year from the date of service. Sealer manufacturer's warranty applies to materials. Warranty is void if surface is damaged by traffic within 24 hours of application.\n\nSCOPE NOTES: Price is based on surface area provided. Any additional cracks, potholes, or damage found on-site will be quoted separately before work proceeds. Driveways should be clear of vehicles and debris on the day of service.\n\nEXCLUSIONS: Structural repairs, removal of oil stains deeper than surface level, and landscaping disturbance are not included unless specifically listed above.`,
+  lineItems: [
+    { category: "Labor", description: "Surface preparation — sweep, blow clean, remove debris", quantity: 1, unit: "LOT", unitCost: 0 },
+    { category: "Labor", description: "Crack filling — clean and fill existing cracks", quantity: 1, unit: "LOT", unitCost: 0 },
+    { category: "Material", description: "Crack filler material", quantity: 1, unit: "LOT", unitCost: 0 },
+    { category: "Labor", description: "Sealer application — 1 coat (squeegee & brush method)", quantity: 1000, unit: "SF", unitCost: 0.18 },
+    { category: "Material", description: "Coal tar / asphalt-based sealer", quantity: 1, unit: "LOT", unitCost: 0 },
+    { category: "Labor", description: "Edges and borders — hand-brush detail work", quantity: 1, unit: "LOT", unitCost: 0 },
+    { category: "Labor", description: "Cleanup and site restoration", quantity: 1, unit: "LOT", unitCost: 0 },
+  ],
+} as const;
+
+type EstimateTemplate = "blank" | "asphalt_sealing_proposal";
+
+// ─── Template picker modal ────────────────────────────────────────────────────
+function TemplatePicker({ onSelect, onClose }: {
+  onSelect: (template: EstimateTemplate) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Calculator className="w-5 h-5 text-amber-500" />
+            <h2 className="text-lg font-bold text-gray-900">New Estimate</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-sm text-gray-500 mb-4">Choose a starting point for your estimate:</p>
+          <div className="space-y-3">
+            <button
+              onClick={() => onSelect("blank")}
+              className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-gray-200 hover:border-amber-400 hover:bg-amber-50 transition-all text-left group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-gray-100 group-hover:bg-amber-100 flex items-center justify-center shrink-0 transition-colors">
+                <FileText className="w-5 h-5 text-gray-500 group-hover:text-amber-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900 text-sm">Blank Estimate</p>
+                <p className="text-xs text-gray-500 mt-0.5">Start from scratch with empty line items and no preset values.</p>
+              </div>
+            </button>
+            <button
+              onClick={() => onSelect("asphalt_sealing_proposal")}
+              className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-gray-200 hover:border-gray-700 hover:bg-gray-50 transition-all text-left group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-gray-100 group-hover:bg-gray-700 flex items-center justify-center shrink-0 transition-colors">
+                <ClipboardList className="w-5 h-5 text-gray-500 group-hover:text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900 text-sm">Asphalt Sealing Proposal</p>
+                <p className="text-xs text-gray-500 mt-0.5">Pre-filled with standard scope of work: surface prep, crack fill, sealer coat, edges, and cleanup. Business line set to Asphalt Sealing. Includes standard payment terms and warranty language.</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Trade templates ──────────────────────────────────────────────────────────
 const TRADE_TEMPLATES: Record<string, Array<{ category: string; description: string; quantity: number; unit: string; unitCost: number }>> = {
@@ -130,6 +198,7 @@ export function EstimateModal({
   prelinkedJobId,
   prelinkedJobTitle,
   prelinkedClientId,
+  fromTemplate,
   onClose,
   onSave,
 }: {
@@ -137,18 +206,23 @@ export function EstimateModal({
   prelinkedJobId?: number;
   prelinkedJobTitle?: string;
   prelinkedClientId?: number;
+  fromTemplate?: EstimateTemplate;
   onClose: () => void;
   onSave: (req: CreateEstimateRequest) => void;
 }) {
   const { data: clients = [] } = useListClients();
 
+  const seedData = fromTemplate === "asphalt_sealing_proposal" ? ASPHALT_SEALING_PROPOSAL : null;
+
   const [title, setTitle]     = useState(initial?.title ?? "");
   const [clientId, setClientId] = useState<string>(String(initial?.clientId ?? prelinkedClientId ?? ""));
-  const [jobType, setJobType] = useState(initial?.jobType ?? "");
-  const [notes, setNotes]     = useState(initial?.notes ?? "");
+  const [jobType, setJobType] = useState(initial?.jobType ?? seedData?.jobType ?? "");
+  const [notes, setNotes]     = useState(initial?.notes ?? seedData?.notes ?? "");
   const [markup, setMarkup]   = useState(String(initial?.markupPercent ?? ""));
   const [cont, setCont]       = useState(String(initial?.contingencyPercent ?? ""));
-  const [businessLine, setBusinessLine] = useState<string>(initial?.businessLine ?? "general_contracting");
+  const [businessLine, setBusinessLine] = useState<string>(
+    initial?.businessLine ?? (fromTemplate === "asphalt_sealing_proposal" ? "asphalt_sealing" : "general_contracting")
+  );
   const [lines, setLines]     = useState<DraftLine[]>(
     initial?.lineItems?.length
       ? initial.lineItems.map(l => ({
@@ -158,9 +232,17 @@ export function EstimateModal({
           unit: l.unit ?? "HR",
           unitCost: String(l.unitCost),
         }))
-      : [emptyLine()]
+      : seedData?.lineItems.length
+        ? seedData.lineItems.map(l => ({
+            category: l.category,
+            description: l.description,
+            quantity: String(l.quantity),
+            unit: l.unit,
+            unitCost: String(l.unitCost),
+          }))
+        : [emptyLine()]
   );
-  const [templateApplied, setTemplateApplied] = useState(false);
+  const [templateApplied, setTemplateApplied] = useState(fromTemplate === "asphalt_sealing_proposal");
   const [showTrimCalc, setShowTrimCalc]     = useState(false);
   const [showSidingCalc, setShowSidingCalc] = useState(false);
   const [showFlooringCalc, setShowFlooringCalc] = useState(false);
@@ -271,6 +353,15 @@ export function EstimateModal({
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          {/* Template banner */}
+          {fromTemplate === "asphalt_sealing_proposal" && (
+            <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gray-800 text-white text-sm font-medium">
+              <ClipboardList className="w-4 h-4 shrink-0 text-gray-300" />
+              <span>Starting from: <span className="font-bold text-white">Asphalt Sealing Proposal</span></span>
+              <span className="ml-auto text-xs text-gray-400 font-normal">All fields are editable</span>
+            </div>
+          )}
 
           {/* Basic info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -672,6 +763,8 @@ export default function Estimates() {
   const convertMut  = useConvertEstimateToJob();
 
   const [modal, setModal]         = useState<"create" | number | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState<EstimateTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [converting, setConverting] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -759,7 +852,7 @@ export default function Estimates() {
         </div>
         {canEdit("estimates") && (
           <button
-            onClick={() => setModal("create")}
+            onClick={() => setShowTemplatePicker(true)}
             className="flex items-center justify-center px-4 py-2.5 rounded-xl font-semibold bg-amber-500 text-white hover:bg-amber-600 shadow-md transition-all hover:shadow-lg active:scale-95 text-sm"
           >
             <Calculator className="w-4 h-4 mr-2" /> Build Estimate
@@ -925,11 +1018,24 @@ export default function Estimates() {
         )}
       </div>
 
+      {/* Template picker */}
+      {showTemplatePicker && (
+        <TemplatePicker
+          onSelect={template => {
+            setActiveTemplate(template);
+            setShowTemplatePicker(false);
+            setModal("create");
+          }}
+          onClose={() => setShowTemplatePicker(false)}
+        />
+      )}
+
       {/* Modals */}
       {modal === "create" && (
         <EstimateModal
-          onClose={() => setModal(null)}
-          onSave={handleCreate}
+          fromTemplate={activeTemplate ?? undefined}
+          onClose={() => { setModal(null); setActiveTemplate(null); }}
+          onSave={async req => { await handleCreate(req); setActiveTemplate(null); }}
         />
       )}
       {typeof modal === "number" && editingEstimate && (
