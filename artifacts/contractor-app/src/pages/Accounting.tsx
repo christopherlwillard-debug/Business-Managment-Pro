@@ -2798,6 +2798,20 @@ interface ParsedPreviewRow {
   suggestedMatchId: number | null;
 }
 
+interface ManualMatchCandidate {
+  id: number;
+  label: string;
+  date: string;
+  amount: number;
+  type: "expense" | "invoice" | "other_income";
+}
+
+function formatMonth(dateStr: string): string {
+  const [y, m] = dateStr.split("-");
+  const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 function ReconcileTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -2813,6 +2827,11 @@ function ReconcileTab() {
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [updatingTxId, setUpdatingTxId] = useState<number | null>(null);
+
+  const [linkPanelTxId, setLinkPanelTxId] = useState<number | null>(null);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkCandidates, setLinkCandidates] = useState<ManualMatchCandidate[]>([]);
+  const [linkLoading, setLinkLoading] = useState(false);
 
   const { data: batches = [], isLoading: batchesLoading } = useQuery<ReconcileBatch[]>({
     queryKey: ["reconcile-batches"],
@@ -2907,6 +2926,77 @@ function ReconcileTab() {
     } finally {
       setUpdatingTxId(null);
     }
+  }
+
+  async function openLinkPanel(tx: ReconcileTx) {
+    if (linkPanelTxId === tx.id) { setLinkPanelTxId(null); return; }
+    setLinkPanelTxId(tx.id);
+    setLinkSearch("");
+    setLinkLoading(true);
+    setLinkCandidates([]);
+    try {
+      const candidates: ManualMatchCandidate[] = [];
+      if (tx.transactionType === "debit") {
+        const r = await fetch(`${BASE}/api/expenses`, { credentials: "include" });
+        if (r.ok) {
+          const data = await r.json();
+          for (const e of (data.expenses ?? data)) {
+            candidates.push({
+              id: e.id,
+              label: e.description || e.vendor || `Expense #${e.id}`,
+              date: e.date ?? "",
+              amount: parseFloat(e.amount ?? "0"),
+              type: "expense",
+            });
+          }
+        }
+      } else {
+        const [invR, oiR] = await Promise.all([
+          fetch(`${BASE}/api/invoices`, { credentials: "include" }),
+          fetch(`${BASE}/api/other-income`, { credentials: "include" }),
+        ]);
+        if (invR.ok) {
+          const data = await invR.json();
+          for (const inv of (data.invoices ?? data)) {
+            if (inv.status !== "paid") continue;
+            candidates.push({
+              id: inv.id,
+              label: `Invoice #${inv.invoiceNumber ?? inv.id} — ${inv.clientName ?? ""}`,
+              date: inv.issueDate ?? "",
+              amount: parseFloat(inv.total ?? "0"),
+              type: "invoice",
+            });
+          }
+        }
+        if (oiR.ok) {
+          const data = await oiR.json();
+          for (const oi of (data.otherIncome ?? data)) {
+            candidates.push({
+              id: oi.id,
+              label: oi.source || oi.description || `Income #${oi.id}`,
+              date: oi.date ?? "",
+              amount: parseFloat(oi.amount ?? "0"),
+              type: "other_income",
+            });
+          }
+        }
+      }
+      candidates.sort((a, b) => Math.abs(a.amount - tx.amount) - Math.abs(b.amount - tx.amount));
+      setLinkCandidates(candidates);
+    } catch {
+      toast({ title: "Could not load records", variant: "destructive" });
+    } finally {
+      setLinkLoading(false);
+    }
+  }
+
+  async function applyManualLink(tx: ReconcileTx, candidate: ManualMatchCandidate) {
+    const payload =
+      candidate.type === "expense" ? { matchedExpenseId: candidate.id } :
+      candidate.type === "invoice" ? { matchedInvoiceId: candidate.id } :
+      { matchedOtherIncomeId: candidate.id };
+    await patchTx(tx.id, payload);
+    setLinkPanelTxId(null);
   }
 
   const selectedBatch = batches.find(b => b.id === selectedBatchId);
@@ -3137,116 +3227,198 @@ function ReconcileTab() {
                 <div className="text-sm text-muted-foreground text-center py-8">No transactions found.</div>
               )}
 
-              {!txLoading && transactions.length > 0 && (
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="overflow-x-auto max-h-[60vh]">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 sticky top-0 z-10">
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Date</th>
-                          <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Description</th>
-                          <th className="px-3 py-2 text-right text-xs text-muted-foreground font-medium">Amount</th>
-                          <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Status</th>
-                          <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Match</th>
-                          <th className="px-3 py-2 text-right text-xs text-muted-foreground font-medium">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {transactions.map(tx => (
-                          <tr key={tx.id} className="border-t border-border/50 hover:bg-muted/20">
-                            <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{tx.date}</td>
-                            <td className="px-3 py-2 max-w-[200px]">
-                              <span className="block truncate text-xs">{tx.description}</span>
-                            </td>
-                            <td className={`px-3 py-2 text-right font-mono text-xs font-semibold whitespace-nowrap ${tx.transactionType === "credit" ? "text-emerald-600" : "text-foreground"}`}>
-                              {tx.transactionType === "credit" ? "+" : "-"}{formatCurrency(tx.amount)}
-                            </td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${statusColor[tx.status] ?? "text-muted-foreground bg-muted/50"}`}>
-                                {tx.status}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              {tx.matchedExpenseId && <span className="text-[10px] text-emerald-700">Expense #{tx.matchedExpenseId}</span>}
-                              {tx.matchedInvoiceId && <span className="text-[10px] text-emerald-700">Invoice #{tx.matchedInvoiceId}</span>}
-                              {tx.matchedOtherIncomeId && <span className="text-[10px] text-emerald-700">Income #{tx.matchedOtherIncomeId}</span>}
-                              {!tx.matchedExpenseId && !tx.matchedInvoiceId && !tx.matchedOtherIncomeId && tx.suggestedMatchType && tx.status === "unmatched" && (
-                                <span className="text-[10px] text-amber-600">Suggested: {tx.suggestedMatchType} #{tx.suggestedMatchId}</span>
-                              )}
-                              {!tx.matchedExpenseId && !tx.matchedInvoiceId && !tx.matchedOtherIncomeId && !tx.suggestedMatchType && (
-                                <span className="text-[10px] text-muted-foreground">—</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-1 justify-end">
-                                {tx.status === "unmatched" && tx.suggestedMatchType && (
-                                  <button
-                                    onClick={() => {
-                                      const payload =
-                                        tx.suggestedMatchType === "expense" ? { matchedExpenseId: tx.suggestedMatchId } :
-                                        tx.suggestedMatchType === "invoice" ? { matchedInvoiceId: tx.suggestedMatchId } :
-                                        { matchedOtherIncomeId: tx.suggestedMatchId };
-                                      patchTx(tx.id, payload);
-                                    }}
-                                    disabled={updatingTxId === tx.id}
-                                    title="Accept suggested match"
-                                    className="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
-                                  >
-                                    {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                                    Accept
-                                  </button>
-                                )}
-                                {tx.status === "matched" && (
-                                  <button
-                                    onClick={() => patchTx(tx.id, { status: "unmatched", matchedExpenseId: null, matchedInvoiceId: null, matchedOtherIncomeId: null })}
-                                    disabled={updatingTxId === tx.id}
-                                    title="Clear match"
-                                    className="inline-flex items-center h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
-                                  >
-                                    {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
-                                  </button>
-                                )}
-                                {tx.status === "unmatched" && tx.transactionType === "debit" && (
-                                  <a
-                                    href={`${BASE}/expenses?prefill_amount=${tx.amount}&prefill_date=${tx.date}&prefill_desc=${encodeURIComponent(tx.description)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    title="Create new expense from this transaction"
-                                    className="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
-                                  >
-                                    <Plus className="w-3 h-3" />Expense
-                                  </a>
-                                )}
-                                {tx.status !== "ignored" && (
-                                  <button
-                                    onClick={() => patchTx(tx.id, { status: "ignored" })}
-                                    disabled={updatingTxId === tx.id}
-                                    title="Ignore this transaction"
-                                    className="inline-flex items-center h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
-                                  >
-                                    {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <EyeOff className="w-3 h-3" />}
-                                  </button>
-                                )}
-                                {tx.status === "ignored" && (
-                                  <button
-                                    onClick={() => patchTx(tx.id, { status: "unmatched" })}
-                                    disabled={updatingTxId === tx.id}
-                                    title="Restore"
-                                    className="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                                  >
-                                    {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
-                                    Restore
-                                  </button>
-                                )}
-                              </div>
-                            </td>
+              {!txLoading && transactions.length > 0 && (() => {
+                const grouped = transactions.reduce<Record<string, ReconcileTx[]>>((acc, tx) => {
+                  const mo = tx.date.slice(0, 7);
+                  if (!acc[mo]) acc[mo] = [];
+                  acc[mo].push(tx);
+                  return acc;
+                }, {});
+                const months = Object.keys(grouped).sort();
+                const filteredCandidates = linkCandidates.filter(c => {
+                  const q = linkSearch.toLowerCase();
+                  return !q || c.label.toLowerCase().includes(q) || String(c.amount).includes(q);
+                });
+                return (
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <div className="overflow-x-auto max-h-[60vh]">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50 sticky top-0 z-10">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Date</th>
+                            <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Description</th>
+                            <th className="px-3 py-2 text-right text-xs text-muted-foreground font-medium">Amount</th>
+                            <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Status</th>
+                            <th className="px-3 py-2 text-left text-xs text-muted-foreground font-medium">Match</th>
+                            <th className="px-3 py-2 text-right text-xs text-muted-foreground font-medium">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {months.map(mo => (
+                            <>
+                              <tr key={`mo-${mo}`} className="bg-muted/30 border-t border-border/50">
+                                <td colSpan={6} className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                  {formatMonth(mo)}
+                                  <span className="ml-2 font-normal normal-case">
+                                    {grouped[mo].filter(t => t.status === "matched").length}/{grouped[mo].length} matched
+                                  </span>
+                                </td>
+                              </tr>
+                              {grouped[mo].map(tx => (
+                                <>
+                                  <tr key={tx.id} className={`border-t border-border/50 hover:bg-muted/20 ${linkPanelTxId === tx.id ? "bg-primary/5" : ""}`}>
+                                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{tx.date}</td>
+                                    <td className="px-3 py-2 max-w-[180px]">
+                                      <span className="block truncate text-xs">{tx.description}</span>
+                                    </td>
+                                    <td className={`px-3 py-2 text-right font-mono text-xs font-semibold whitespace-nowrap ${tx.transactionType === "credit" ? "text-emerald-600" : "text-foreground"}`}>
+                                      {tx.transactionType === "credit" ? "+" : "-"}{formatCurrency(tx.amount)}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${statusColor[tx.status] ?? "text-muted-foreground bg-muted/50"}`}>
+                                        {tx.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 max-w-[140px]">
+                                      {tx.matchedExpenseId && <span className="text-[10px] text-emerald-700 truncate block">Expense #{tx.matchedExpenseId}</span>}
+                                      {tx.matchedInvoiceId && <span className="text-[10px] text-emerald-700 truncate block">Invoice #{tx.matchedInvoiceId}</span>}
+                                      {tx.matchedOtherIncomeId && <span className="text-[10px] text-emerald-700 truncate block">Income #{tx.matchedOtherIncomeId}</span>}
+                                      {!tx.matchedExpenseId && !tx.matchedInvoiceId && !tx.matchedOtherIncomeId && tx.suggestedMatchType && tx.status === "unmatched" && (
+                                        <span className="text-[10px] text-amber-600 truncate block">Suggested: {tx.suggestedMatchType} #{tx.suggestedMatchId}</span>
+                                      )}
+                                      {!tx.matchedExpenseId && !tx.matchedInvoiceId && !tx.matchedOtherIncomeId && !tx.suggestedMatchType && (
+                                        <span className="text-[10px] text-muted-foreground">—</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex items-center gap-1 justify-end flex-wrap">
+                                        {tx.status === "unmatched" && tx.suggestedMatchType && (
+                                          <button
+                                            onClick={() => {
+                                              const payload =
+                                                tx.suggestedMatchType === "expense" ? { matchedExpenseId: tx.suggestedMatchId } :
+                                                tx.suggestedMatchType === "invoice" ? { matchedInvoiceId: tx.suggestedMatchId } :
+                                                { matchedOtherIncomeId: tx.suggestedMatchId };
+                                              patchTx(tx.id, payload);
+                                            }}
+                                            disabled={updatingTxId === tx.id}
+                                            title="Accept suggested match"
+                                            className="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                                          >
+                                            {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                                            Accept
+                                          </button>
+                                        )}
+                                        {tx.status === "unmatched" && (
+                                          <button
+                                            onClick={() => openLinkPanel(tx)}
+                                            title="Manually link to existing record"
+                                            className={`inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium transition-colors ${linkPanelTxId === tx.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"}`}
+                                          >
+                                            <Paperclip className="w-3 h-3" />Link
+                                          </button>
+                                        )}
+                                        {tx.status === "matched" && (
+                                          <button
+                                            onClick={() => patchTx(tx.id, { status: "unmatched", matchedExpenseId: null, matchedInvoiceId: null, matchedOtherIncomeId: null })}
+                                            disabled={updatingTxId === tx.id}
+                                            title="Clear match"
+                                            className="inline-flex items-center h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
+                                          >
+                                            {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                                          </button>
+                                        )}
+                                        {tx.status === "unmatched" && tx.transactionType === "debit" && (
+                                          <a
+                                            href={`${BASE}/expenses?prefill_amount=${tx.amount}&prefill_date=${tx.date}&prefill_desc=${encodeURIComponent(tx.description)}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            title="Create new expense from this transaction"
+                                            className="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                                          >
+                                            <Plus className="w-3 h-3" />Expense
+                                          </a>
+                                        )}
+                                        {tx.status !== "ignored" && (
+                                          <button
+                                            onClick={() => patchTx(tx.id, { status: "ignored" })}
+                                            disabled={updatingTxId === tx.id}
+                                            title="Ignore this transaction"
+                                            className="inline-flex items-center h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
+                                          >
+                                            {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <EyeOff className="w-3 h-3" />}
+                                          </button>
+                                        )}
+                                        {tx.status === "ignored" && (
+                                          <button
+                                            onClick={() => patchTx(tx.id, { status: "unmatched" })}
+                                            disabled={updatingTxId === tx.id}
+                                            title="Restore"
+                                            className="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                                          >
+                                            {updatingTxId === tx.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
+                                            Restore
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                  {linkPanelTxId === tx.id && (
+                                    <tr key={`link-${tx.id}`} className="bg-primary/5 border-t border-primary/20">
+                                      <td colSpan={6} className="px-4 py-3">
+                                        <div className="space-y-2">
+                                          <div className="flex items-center gap-2">
+                                            <p className="text-xs font-medium text-foreground">
+                                              Link to existing {tx.transactionType === "debit" ? "expense" : "invoice or income"} record
+                                            </p>
+                                            <button onClick={() => setLinkPanelTxId(null)} className="ml-auto text-muted-foreground hover:text-foreground">
+                                              <X className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                          <input
+                                            type="text"
+                                            value={linkSearch}
+                                            onChange={e => setLinkSearch(e.target.value)}
+                                            placeholder="Search by description or amount…"
+                                            className="w-full h-8 px-3 rounded-md border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                                          />
+                                          {linkLoading && <p className="text-xs text-muted-foreground animate-pulse">Loading records…</p>}
+                                          {!linkLoading && filteredCandidates.length === 0 && (
+                                            <p className="text-xs text-muted-foreground">No matching records found.</p>
+                                          )}
+                                          {!linkLoading && filteredCandidates.length > 0 && (
+                                            <div className="rounded-md border border-border overflow-hidden max-h-40 overflow-y-auto bg-background">
+                                              {filteredCandidates.slice(0, 30).map(c => (
+                                                <button
+                                                  key={`${c.type}-${c.id}`}
+                                                  onClick={() => applyManualLink(tx, c)}
+                                                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs hover:bg-muted/60 border-b border-border/50 last:border-0 text-left transition-colors"
+                                                >
+                                                  <span className="truncate max-w-[60%]">{c.label}</span>
+                                                  <span className="flex items-center gap-2 text-muted-foreground flex-shrink-0 ml-2">
+                                                    <span className="font-mono">{formatCurrency(c.amount)}</span>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${c.type === "expense" ? "bg-red-50 text-red-600" : c.type === "invoice" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}>
+                                                      {c.type.replace("_", " ")}
+                                                    </span>
+                                                  </span>
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </>
+                              ))}
+                            </>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>
