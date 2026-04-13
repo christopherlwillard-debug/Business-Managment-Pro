@@ -105,44 +105,14 @@ export default function Assets() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [formFile, setFormFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formFileInputRef = useRef<HTMLInputElement>(null);
   const uploadAssetRef = useRef<number | null>(null);
 
   const { data: assets = [], isLoading } = useQuery<Asset[]>({
     queryKey: ["assets"],
     queryFn: fetchAssets,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (data: object) =>
-      fetch(api("/api/assets"), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }).then(r => r.json()),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["assets"] });
-      closeForm();
-      toast({ title: "Asset added" });
-    },
-    onError: () => toast({ title: "Failed to save asset", variant: "destructive" }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: object }) =>
-      fetch(api(`/api/assets/${id}`), {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }).then(r => r.json()),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["assets"] });
-      closeForm();
-      toast({ title: "Asset updated" });
-    },
-    onError: () => toast({ title: "Failed to update asset", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -158,12 +128,14 @@ export default function Assets() {
   function openAdd() {
     setEditAsset(null);
     setForm(emptyForm());
+    setFormFile(null);
     setShowForm(true);
   }
 
   function openEdit(a: Asset) {
     setEditAsset(a);
     setForm(assetToForm(a));
+    setFormFile(null);
     setShowForm(true);
   }
 
@@ -171,10 +143,24 @@ export default function Assets() {
     setShowForm(false);
     setEditAsset(null);
     setForm(emptyForm());
+    setFormFile(null);
+    if (formFileInputRef.current) formFileInputRef.current.value = "";
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function uploadReceiptFile(assetId: number, file: File) {
+    const fd = new FormData();
+    fd.append("receipt", file);
+    const r = await fetch(api(`/api/assets/${assetId}/receipt`), {
+      method: "POST",
+      credentials: "include",
+      body: fd,
+    });
+    if (!r.ok) throw new Error("Upload failed");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setIsSaving(true);
     const payload = {
       name: form.name.trim(),
       assetType: form.assetType,
@@ -190,12 +176,44 @@ export default function Assets() {
     };
     if (!payload.name || !payload.purchaseDate || isNaN(payload.purchasePrice)) {
       toast({ title: "Name, purchase date, and purchase price are required", variant: "destructive" });
+      setIsSaving(false);
       return;
     }
-    if (editAsset) {
-      updateMutation.mutate({ id: editAsset.id, data: payload });
-    } else {
-      createMutation.mutate(payload);
+    const fileToUpload = formFile;
+    try {
+      if (editAsset) {
+        const r = await fetch(api(`/api/assets/${editAsset.id}`), {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) { toast({ title: "Failed to update asset", variant: "destructive" }); return; }
+        const updated = await r.json();
+        if (fileToUpload) {
+          try { await uploadReceiptFile(updated.id, fileToUpload); } catch { toast({ title: "Asset saved but receipt upload failed", variant: "destructive" }); }
+        }
+        queryClient.invalidateQueries({ queryKey: ["assets"] });
+        closeForm();
+        toast({ title: "Asset updated" });
+      } else {
+        const r = await fetch(api("/api/assets"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) { toast({ title: "Failed to save asset", variant: "destructive" }); return; }
+        const created = await r.json();
+        if (fileToUpload) {
+          try { await uploadReceiptFile(created.id, fileToUpload); } catch { toast({ title: "Asset saved but receipt upload failed", variant: "destructive" }); }
+        }
+        queryClient.invalidateQueries({ queryKey: ["assets"] });
+        closeForm();
+        toast({ title: "Asset added" });
+      }
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -242,7 +260,7 @@ export default function Assets() {
   );
   const s179Total = s179Assets.reduce((s, a) => s + a.purchasePrice, 0);
 
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const [isSaving, setIsSaving] = useState(false);
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => (CURRENT_YEAR - i).toString());
 
@@ -479,7 +497,7 @@ export default function Assets() {
               <span>{fmt(s179Total)}</span>
             </div>
           </div>
-          <p className="text-xs text-amber-700">The 2025 Section 179 deduction limit is $1,220,000. Consult your accountant for eligibility and phase-out rules.</p>
+          <p className="text-xs text-amber-700">The IRS Section 179 deduction limit changes each year — consult your accountant to confirm the limit and phase-out rules for {selectedYear}.</p>
         </div>
       )}
 
@@ -618,6 +636,23 @@ export default function Assets() {
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                     placeholder="Optional"
                   />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-foreground mb-1">Receipt / Photo</label>
+                  <input
+                    ref={formFileInputRef}
+                    type="file"
+                    accept="image/*,.pdf,.heic,.heif"
+                    onChange={e => setFormFile(e.target.files?.[0] ?? null)}
+                    className="w-full text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                  />
+                  {formFile && (
+                    <p className="text-xs text-muted-foreground mt-1">Selected: {formFile.name}</p>
+                  )}
+                  {editAsset?.receiptUrl && !formFile && (
+                    <p className="text-xs text-muted-foreground mt-1">Current receipt on file — select a file to replace it</p>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">
