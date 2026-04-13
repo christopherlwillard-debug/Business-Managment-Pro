@@ -354,12 +354,21 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const BL_LABELS: Record<string, string> = {
       general_contracting: "General Contracting",
       asphalt_sealing: "Asphalt Sealing (DBA)",
+      untagged: "Untagged",
     };
-    const blKeys = ["general_contracting", "asphalt_sealing"] as const;
+    const KNOWN_BL = ["general_contracting", "asphalt_sealing"];
+    const blKeys = ["general_contracting", "asphalt_sealing", "untagged"] as const;
     const byBusinessLine = blKeys.map(bl => {
-      const blInvoices = invoices.filter(i => (i.businessLine ?? "general_contracting") === bl);
-      const blOther = otherIncomeRows.filter(o => (o.businessLine ?? "general_contracting") === bl);
-      const blExpenses = nonMileageExpenses.filter(e => (e.businessLine ?? "general_contracting") === bl);
+      let blInvoices, blOther, blExpenses;
+      if (bl === "untagged") {
+        blInvoices = invoices.filter(i => !i.businessLine || !KNOWN_BL.includes(i.businessLine));
+        blOther = otherIncomeRows.filter(o => !o.businessLine || !KNOWN_BL.includes(o.businessLine));
+        blExpenses = nonMileageExpenses.filter(e => !e.businessLine || !KNOWN_BL.includes(e.businessLine));
+      } else {
+        blInvoices = invoices.filter(i => i.businessLine === bl);
+        blOther = otherIncomeRows.filter(o => o.businessLine === bl);
+        blExpenses = nonMileageExpenses.filter(e => e.businessLine === bl);
+      }
       const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);

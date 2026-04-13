@@ -759,11 +759,11 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   const { canEdit } = useUserPermissions();
 
   function openAddOI() {
-    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "general_contracting" });
+    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "" });
     setOpenModule("other_income");
   }
   function openEditOI(row: any) {
-    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "", businessLine: row.businessLine ?? "general_contracting" });
+    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "", businessLine: row.businessLine ?? "" });
     setOpenModule("other_income");
   }
   async function handleSaveOI(e: React.FormEvent) {
@@ -771,7 +771,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     if (!oiForm) return;
     setOiSaving(true);
     try {
-      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", city: oiForm.city || null, state: oiForm.state || null, notes: oiForm.notes || null, businessLine: oiForm.businessLine || "general_contracting" };
+      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", city: oiForm.city || null, state: oiForm.state || null, notes: oiForm.notes || null, businessLine: oiForm.businessLine || null };
       if (oiForm.id) { await updateOI.mutateAsync({ id: oiForm.id, ...payload }); }
       else { await createOI.mutateAsync(payload); }
       setOiForm(null);
@@ -833,8 +833,10 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     },
     {
       key: "business_line", label: "DBA Revenue Split", icon: PieChart,
-      stat: data?.byBusinessLine?.length > 0 ? `${data.byBusinessLine.length} lines` : "No data",
-      statLabel: "General Contracting vs Asphalt Sealing", color: "text-blue-600",
+      stat: data?.byBusinessLine?.length > 0
+        ? formatCurrency((data.byBusinessLine as any[]).filter((r: any) => r.businessLine === "asphalt_sealing").reduce((s: number, r: any) => s + parseFloat(r.totalRevenue ?? 0), 0))
+        : "$0",
+      statLabel: "Asphalt Sealing revenue · GC vs DBA split", color: "text-blue-600",
     },
   ];
 
@@ -1343,14 +1345,25 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Business Line</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Business Line <span className="font-normal">(optional)</span></label>
                 <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setOiForm(f => f ? { ...f, businessLine: "" } : f)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                      !oiForm.businessLine
+                        ? "bg-white text-gray-800 shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Untagged
+                  </button>
                   <button
                     type="button"
                     onClick={() => setOiForm(f => f ? { ...f, businessLine: "general_contracting" } : f)}
                     className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                      (oiForm.businessLine ?? "general_contracting") === "general_contracting"
-                        ? "bg-white text-gray-800 shadow-sm"
+                      oiForm.businessLine === "general_contracting"
+                        ? "bg-blue-600 text-white shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -1485,8 +1498,8 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {(data.byBusinessLine as any[]).map((row: any) => {
-                    const label = row.businessLine === "asphalt_sealing" ? "Asphalt Sealing" : "General Contracting";
-                    const color = row.businessLine === "asphalt_sealing" ? "text-amber-600" : "text-blue-600";
+                    const label = row.businessLine === "asphalt_sealing" ? "Asphalt Sealing (DBA)" : row.businessLine === "general_contracting" ? "General Contracting" : "Untagged";
+                    const color = row.businessLine === "asphalt_sealing" ? "text-amber-600" : row.businessLine === "general_contracting" ? "text-blue-600" : "text-muted-foreground";
                     const net = parseFloat(row.netProfit ?? 0);
                     return (
                       <tr key={row.businessLine} className="hover:bg-muted/20 transition-colors">
