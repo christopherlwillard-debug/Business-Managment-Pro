@@ -1166,6 +1166,30 @@ export default function Expenses() {
   const [importOpen,   setImportOpen]                 = useState(false);
   const [receiptFile, setReceiptFile]                 = useState<File | null>(null);
   const [uploadError, setUploadError]                 = useState("");
+
+  const [prefillAmount, setPrefillAmount]             = useState("");
+  const [prefillDate,   setPrefillDate]               = useState("");
+  const [prefillDesc,   setPrefillDesc]               = useState("");
+  const [prefillKey,    setPrefillKey]                = useState(0);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pa = params.get("prefill_amount");
+    const pd = params.get("prefill_date");
+    const pDesc = params.get("prefill_desc");
+    if (pa || pd || pDesc) {
+      setPrefillAmount(pa ?? "");
+      setPrefillDate(pd ?? "");
+      setPrefillDesc(pDesc ?? "");
+      setPrefillKey(k => k + 1);
+      setIsDialogOpen(true);
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("prefill_amount");
+      clean.searchParams.delete("prefill_date");
+      clean.searchParams.delete("prefill_desc");
+      window.history.replaceState({}, "", clean.toString());
+    }
+  }, []);
   const [vendor, setVendor]                           = useState("");
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
@@ -1678,12 +1702,20 @@ export default function Expenses() {
         />
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={open => { setIsDialogOpen(open); if (!open) setReceiptFile(null); }}>
+      <Dialog open={isDialogOpen} onOpenChange={open => {
+        setIsDialogOpen(open);
+        if (!open) {
+          setReceiptFile(null);
+          setPrefillAmount("");
+          setPrefillDate("");
+          setPrefillDesc("");
+        }
+      }}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="text-2xl font-display">Log Expense</DialogTitle>
           </DialogHeader>
-          <form id="expense-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
+          <form key={prefillKey} id="expense-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Amount *</label>
@@ -1691,6 +1723,7 @@ export default function Expenses() {
                   <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
                   <input
                     name="amount" type="number" step="0.01" required min="0"
+                    defaultValue={prefillAmount}
                     className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                     placeholder="0.00"
                   />
@@ -1699,7 +1732,7 @@ export default function Expenses() {
               <div>
                 <label className="block text-sm font-medium mb-1">Date *</label>
                 <input
-                  name="date" type="date" required defaultValue={localDateString()}
+                  name="date" type="date" required defaultValue={prefillDate || localDateString()}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                 />
               </div>
@@ -1709,6 +1742,7 @@ export default function Expenses() {
               <label className="block text-sm font-medium mb-1">Description *</label>
               <input
                 name="description" required
+                defaultValue={prefillDesc}
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="e.g. Lumber for framing"
               />
