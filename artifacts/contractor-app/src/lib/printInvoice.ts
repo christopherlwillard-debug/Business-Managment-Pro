@@ -28,6 +28,7 @@ export interface PrintableInvoice {
   taxAmount?: number | null;
   total: number;
   notes?: string | null;
+  businessLine?: string | null;
 }
 
 export interface PrintableSettings {
@@ -66,7 +67,11 @@ function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): s
   const logoPx = settings.logoSize === "small" ? 64 : settings.logoSize === "large" ? 160 : 100;
   const logoPos = settings.logoPosition ?? "top-left";
 
-  const hasContact = !!(settings.companyName || settings.companyAddress || settings.companyCity ||
+  const displayCompanyName = inv.businessLine === "asphalt_sealing"
+    ? `${settings.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
+    : (settings.companyName ?? null);
+
+  const hasContact = !!(displayCompanyName || settings.companyAddress || settings.companyCity ||
     settings.companyState || settings.companyZip || settings.companyPhone || settings.companyEmail);
 
   const logoHtml = settings.logoAbsoluteUrl
@@ -76,8 +81,8 @@ function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): s
        </div>`;
 
   const contactLines: string[] = [];
-  if (!settings.logoAbsoluteUrl && settings.companyName) {
-    contactLines.push(`<div style="font-weight:700;font-size:15px;color:#1f2937;margin-bottom:4px;">${esc(settings.companyName)}</div>`);
+  if (!settings.logoAbsoluteUrl && displayCompanyName) {
+    contactLines.push(`<div style="font-weight:700;font-size:15px;color:#1f2937;margin-bottom:4px;">${esc(displayCompanyName)}</div>`);
   }
   if (settings.companyAddress)
     contactLines.push(`<div>${esc(settings.companyAddress)}</div>`);

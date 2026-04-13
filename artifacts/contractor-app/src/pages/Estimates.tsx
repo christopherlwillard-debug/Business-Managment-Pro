@@ -148,6 +148,7 @@ export function EstimateModal({
   const [notes, setNotes]     = useState(initial?.notes ?? "");
   const [markup, setMarkup]   = useState(String(initial?.markupPercent ?? ""));
   const [cont, setCont]       = useState(String(initial?.contingencyPercent ?? ""));
+  const [businessLine, setBusinessLine] = useState<string>(initial?.businessLine ?? "general_contracting");
   const [lines, setLines]     = useState<DraftLine[]>(
     initial?.lineItems?.length
       ? initial.lineItems.map(l => ({
@@ -214,6 +215,7 @@ export function EstimateModal({
         unit: l.unit || null,
         unitCost: parseFloat(l.unitCost) || 0,
       })),
+      businessLine: businessLine || null,
     };
     const jobId = prelinkedJobId ?? (initial as Estimate & { jobId?: number })?.jobId ?? null;
     if (jobId) (req as Record<string, unknown>).jobId = jobId;
@@ -237,6 +239,31 @@ export function EstimateModal({
                 {prelinkedJobTitle ?? (initial as Estimate & { jobTitle?: string })?.jobTitle}
               </span>
             )}
+            {/* Business Line pill toggle */}
+            <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 rounded-lg ml-2">
+              <button
+                type="button"
+                onClick={() => setBusinessLine("general_contracting")}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  businessLine !== "asphalt_sealing"
+                    ? "bg-white text-gray-800 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                General Contracting
+              </button>
+              <button
+                type="button"
+                onClick={() => setBusinessLine("asphalt_sealing")}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  businessLine === "asphalt_sealing"
+                    ? "bg-amber-500 text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Asphalt Sealing
+              </button>
+            </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5" />
@@ -682,6 +709,7 @@ export default function Estimates() {
         contingencyPercent: est.contingencyPercent ?? null,
         status: status as CreateEstimateRequestStatus,
         lineItems,
+        businessLine: est.businessLine ?? null,
       },
     });
     invalidate();

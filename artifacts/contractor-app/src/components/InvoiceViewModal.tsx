@@ -82,6 +82,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
       taxAmount,
       total,
       notes: invoice.notes,
+      businessLine: invoice.businessLine ?? null,
     };
   }
 
@@ -119,6 +120,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         taxAmount,
         total,
         notes: invoice.notes,
+        businessLine: invoice.businessLine ?? null,
       },
       {
         companyName,

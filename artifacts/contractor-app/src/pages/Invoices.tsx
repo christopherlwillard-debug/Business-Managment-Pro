@@ -61,7 +61,8 @@ function InvoiceBuilder({
   attachments: InvoiceAttachment[]; onAttachmentsChange: (a: InvoiceAttachment[]) => void;
   pendingMaterialList: MaterialList | null;
   onPendingMaterialListChange: (list: MaterialList | null) => void;
-}) {
+})
+ {
   const [showClientDrop, setShowClientDrop] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showNewListDialog, setShowNewListDialog] = useState(false);
@@ -98,7 +99,10 @@ function InvoiceBuilder({
   }
 
   const s = settings ?? {};
-  const companyName    = s.companyName    || "";
+  const baseCompanyName = s.companyName || "";
+  const companyName    = form.businessLine === "asphalt_sealing"
+    ? `${baseCompanyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
+    : baseCompanyName;
   const companyEmail   = s.companyEmail   || "";
   const companyPhone   = s.companyPhone   || "";
   const companyAddress = s.companyAddress || "";
@@ -145,7 +149,34 @@ function InvoiceBuilder({
 
       {/* Action bar */}
       <div className="flex items-center justify-between px-6 pt-4 pb-3 border-b border-gray-100 bg-white flex-shrink-0">
-        <h2 className="text-lg font-bold text-gray-900">New Invoice</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-bold text-gray-900">New Invoice</h2>
+          {/* Business Line pill toggle */}
+          <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setField("businessLine", "general_contracting")}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                form.businessLine !== "asphalt_sealing"
+                  ? "bg-white text-gray-800 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              General Contracting
+            </button>
+            <button
+              type="button"
+              onClick={() => setField("businessLine", "asphalt_sealing")}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                form.businessLine === "asphalt_sealing"
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Asphalt Sealing
+            </button>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={onCancel}
             className="px-4 py-2 rounded-xl text-sm text-gray-500 hover:bg-gray-100 transition-colors">
@@ -688,6 +719,7 @@ export default function Invoices() {
     city: "", state: "KY", locationName: "", notes: "", terms: "Net 30",
     clientEmail: "", clientPhone: "", clientAddress: "", 
     clientCity: "", clientState: "", clientZip: "", clientNotes: "",
+    businessLine: "general_contracting",
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
   const [invoiceAttachments, setInvoiceAttachments] = useState<InvoiceAttachment[]>([]);
@@ -719,6 +751,7 @@ export default function Invoices() {
       clientEmail: "", clientPhone: "", clientAddress: "", 
       clientCity: "", clientState: "", clientZip: "", clientNotes: "", 
       locationName: "",
+      businessLine: "general_contracting",
     });
     setLineItems([emptyLine()]);
     setInvoiceAttachments([]);
@@ -760,6 +793,7 @@ export default function Invoices() {
             .filter(l => l.description.trim())
             .map(l => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice })),
           attachments: invoiceAttachments,
+          businessLine: form.businessLine || undefined,
         },
       });
 

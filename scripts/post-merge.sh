@@ -141,3 +141,13 @@ pool.query(\`
 }).then(() => { console.log('prospects constraints ensured'); pool.end(); })
   .catch(e => { console.error('prospects migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #120: add business_line column to invoices and estimates
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS business_line text')
+  .then(() => pool.query('ALTER TABLE estimates ADD COLUMN IF NOT EXISTS business_line text'))
+  .then(() => { console.log('invoices.business_line and estimates.business_line ensured'); pool.end(); })
+  .catch(e => { console.error('business_line migration error:', e.message); pool.end(); process.exit(1); });
+")

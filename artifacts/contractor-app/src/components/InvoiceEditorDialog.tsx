@@ -45,6 +45,7 @@ interface InvoiceFormState {
   clientState: string;
   clientZip: string;
   clientNotes: string;
+  businessLine: string;
 }
 
 interface InvoiceEditorDialogProps {
@@ -95,6 +96,7 @@ export function InvoiceEditorDialog({
         clientState: existingInvoice.clientState ?? "",
         clientZip: existingInvoice.clientZip ?? "",
         clientNotes: existingInvoice.clientNotes ?? "",
+        businessLine: existingInvoice.businessLine ?? "general_contracting",
       };
     }
     return {
@@ -116,6 +118,7 @@ export function InvoiceEditorDialog({
       clientState: initialData?.clientState ?? "",
       clientZip: initialData?.clientZip ?? "",
       clientNotes: "",
+      businessLine: "general_contracting",
     };
   }
 
@@ -249,6 +252,7 @@ export function InvoiceEditorDialog({
         taxAmount: taxRateNum ? taxAmount : null,
         total,
         notes: form.notes || null,
+        businessLine: form.businessLine || null,
       },
       {
         companyName,
@@ -301,6 +305,7 @@ export function InvoiceEditorDialog({
           .filter(l => l.description.trim())
           .map(l => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice })),
         attachments,
+        businessLine: form.businessLine || undefined,
       };
       if (isEdit) {
         await updateInvoice.mutateAsync({ id: existingInvoice.id, data: payload });
@@ -322,7 +327,10 @@ export function InvoiceEditorDialog({
   const logoPos: string         = s?.invoiceLogoPosition ?? "top-left";
   const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const companyName    = s?.companyName    || "";
+  const baseCompanyName = s?.companyName || "";
+  const companyName    = form.businessLine === "asphalt_sealing"
+    ? `${baseCompanyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
+    : baseCompanyName;
   const companyEmail   = s?.companyEmail   || "";
   const companyPhone   = s?.companyPhone   || "";
   const companyAddress = s?.companyAddress || "";
@@ -344,9 +352,36 @@ export function InvoiceEditorDialog({
         <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
           {/* Action bar */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 flex-shrink-0">
-            <h2 className="text-base font-bold text-gray-900">
-              {isEdit ? `Edit Invoice ${existingInvoice.invoiceNumber}` : "New Invoice"}
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-bold text-gray-900">
+                {isEdit ? `Edit Invoice ${existingInvoice.invoiceNumber}` : "New Invoice"}
+              </h2>
+              {/* Business Line pill toggle */}
+              <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setField("businessLine", "general_contracting")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    form.businessLine !== "asphalt_sealing"
+                      ? "bg-white text-gray-800 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  General Contracting
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setField("businessLine", "asphalt_sealing")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    form.businessLine === "asphalt_sealing"
+                      ? "bg-amber-500 text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Asphalt Sealing
+                </button>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => onOpenChange(false)}
                 className="px-4 py-1.5 rounded-xl text-sm text-gray-500 hover:bg-gray-100 transition-colors">

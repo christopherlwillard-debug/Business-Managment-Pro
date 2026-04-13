@@ -69,7 +69,7 @@ router.get("/by-job/:jobId", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, businessLine } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     const { subtotal, total } = calcTotals(lineItems, markupPercent, contingencyPercent);
 
@@ -83,6 +83,7 @@ router.post("/", async (req, res) => {
       jobType, notes,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId || null,
+      businessLine: businessLine || null,
     }).returning();
 
     let clientName = null;
@@ -116,7 +117,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, businessLine } = req.body;
     const { subtotal, total } = calcTotals(lineItems, markupPercent, contingencyPercent);
 
     await db.update(estimatesTable).set({
@@ -128,6 +129,7 @@ router.put("/:id", async (req, res) => {
       jobType, notes,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId !== undefined ? (jobId || null) : undefined,
+      ...(businessLine !== undefined ? { businessLine: businessLine || null } : {}),
     }).where(eq(estimatesTable.id, id));
 
     const [e] = await db.select({ ...estimatesTable, clientName: clientsTable.name }).from(estimatesTable).leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id)).where(eq(estimatesTable.id, id));

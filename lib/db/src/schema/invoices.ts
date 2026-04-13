@@ -24,6 +24,7 @@ export const invoicesTable = pgTable("invoices", {
   terms: text("terms"),
   lineItems: jsonb("line_items").default("[]"),
   attachments: jsonb("attachments").default("[]"),
+  businessLine: text("business_line"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

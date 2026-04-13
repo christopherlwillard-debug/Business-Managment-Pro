@@ -27,6 +27,7 @@ export interface InvoicePdfData {
   taxAmount?: number | null;
   total: number;
   notes?: string | null;
+  businessLine?: string | null;
 }
 
 export interface InvoicePdfSettings {
@@ -72,7 +73,9 @@ export function generateInvoicePdf(invoice: InvoicePdfData, settings: InvoicePdf
   y = 14;
 
   // ── Company block (left) + INVOICE label (right) ─────────────────────────────
-  const companyName = settings.companyName || "";
+  const companyName = invoice.businessLine === "asphalt_sealing"
+    ? `${settings.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
+    : (settings.companyName || "");
   const cityLine = [settings.companyCity, settings.companyState, settings.companyZip].filter(Boolean).join(", ");
 
   if (companyName) {

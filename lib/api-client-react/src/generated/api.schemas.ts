@@ -206,6 +206,7 @@ export interface Invoice {
   terms?: string | null;
   lineItems?: InvoiceLineItem[];
   attachments?: InvoiceAttachment[] | null;
+  businessLine?: string | null;
   createdAt: string;
 }
 
@@ -240,6 +241,7 @@ export interface CreateInvoiceRequest {
   state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
   attachments?: InvoiceAttachment[] | null;
+  businessLine?: string | null;
 }
 
 export interface TaxReportRow {
@@ -509,6 +511,7 @@ export interface Estimate {
   lineItems?: EstimateLineItem[];
   jobId?: number | null;
   jobTitle?: string | null;
+  businessLine?: string | null;
   createdAt: string;
 }
 
@@ -541,6 +544,7 @@ export interface CreateEstimateRequest {
   notes?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
   jobId?: number | null;
+  businessLine?: string | null;
 }
 
 export interface DailyLog {
