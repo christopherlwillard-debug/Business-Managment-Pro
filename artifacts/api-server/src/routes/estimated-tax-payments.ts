@@ -84,9 +84,10 @@ interface YearTaxData {
   fullYearKyTax: number;
 }
 
-async function computeTaxData(year: number): Promise<YearTaxData> {
+async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
   const startDate = `${year}-01-01`;
-  const endDate = `${year}-12-31`;
+  const today = new Date().toISOString().slice(0, 10);
+  const endDate = ytd ? (today < `${year}-12-31` ? today : `${year}-12-31`) : `${year}-12-31`;
 
   const [invoicesResult, expensesResult, mileageResult, otherIncomeResult] = await Promise.all([
     db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
@@ -118,9 +119,10 @@ async function computeTaxData(year: number): Promise<YearTaxData> {
 router.get("/", wrapAsync(async (req, res) => {
   const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
 
+  const currentCalendarYear = new Date().getFullYear();
   const [payments, currentYearData, priorYearData] = await Promise.all([
     db.select().from(estimatedTaxPaymentsTable).where(eq(estimatedTaxPaymentsTable.year, year)),
-    computeTaxData(year),
+    computeTaxData(year, year === currentCalendarYear),
     computeTaxData(year - 1),
   ]);
 

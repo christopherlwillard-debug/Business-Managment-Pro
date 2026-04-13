@@ -1786,6 +1786,7 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
   const createPayment = useCreateTaxPayment(year);
   const updatePayment = useUpdateTaxPayment(year);
   const deletePayment = useDeleteTaxPayment(year);
+  const { toast } = useToast();
 
   const [isOpen, setIsOpen] = useState(true);
   const [logFormQuarter, setLogFormQuarter] = useState<number | null>(null);
@@ -1825,13 +1826,18 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
       }
       setLogFormQuarter(null);
       setEditPayment(null);
-    } catch {}
-    finally { setSaving(false); }
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to save payment. Please try again.", variant: "destructive" });
+    } finally { setSaving(false); }
   }
 
   async function handleDelete(id: number) {
     if (!confirm("Delete this payment record?")) return;
-    await deletePayment.mutateAsync(id);
+    try {
+      await deletePayment.mutateAsync(id);
+    } catch {
+      toast({ title: "Error", description: "Failed to delete payment. Please try again.", variant: "destructive" });
+    }
   }
 
   const summary = data?.summary;
@@ -1883,6 +1889,15 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
                     <p className="text-[11px] text-muted-foreground">{tile.sub}</p>
                   </div>
                 ))}
+              </div>
+
+              <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/20 rounded-xl px-3.5 py-2.5">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  {data.priorYearAvailable
+                    ? `Safe harbor = smaller of 25% of prior-year (${year - 1}) tax liability or 90% of ${year} estimated tax — per quarter.`
+                    : `Safe harbor = 90% of estimated ${year} tax (no prior-year data). Add ${year - 1} invoices/expenses to enable prior-year comparison.`}
+                </span>
               </div>
 
               {summary!.netProfit === 0 && (
