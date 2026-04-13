@@ -1285,7 +1285,7 @@ export default function Expenses() {
           jobId:          fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
           subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
           excludeFromNetProfit,
-        } as any,
+        },
       });
 
       if (receiptFile && expense.id) {

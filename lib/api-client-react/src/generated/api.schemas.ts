@@ -279,6 +279,7 @@ export interface CreateExpenseRequest {
   date: string;
   vendor?: string | null;
   jobId?: number | null;
+  subcontractorId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
   excludeFromNetProfit?: boolean | null;
