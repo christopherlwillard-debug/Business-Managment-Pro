@@ -87,7 +87,11 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
   }
 
   function buildPdfSettings() {
-    return { companyName, companyAddress, companyCity, companyState, companyZip, companyPhone, companyEmail };
+    return {
+      companyName, companyAddress, companyCity, companyState, companyZip, companyPhone, companyEmail,
+      logoUrl: s.logoUrl ?? null,
+      dbaLogoUrl: s.dbaLogoUrl ?? null,
+    };
   }
 
   function handleDownloadPdf() {

@@ -79,6 +79,11 @@ export function generateInvoicePdf(invoice: InvoicePdfData, settings: InvoicePdf
 
   y = 14;
 
+  // Resolve logo: DBA logo for asphalt sealing, fallback to main logo.
+  // Note: logo image rendering requires async image loading (HTMLImageElement/base64).
+  // resolveLogoUrl makes the selection; callers can extend when async rendering is added.
+  const _effectivePdfLogoUrl = resolveLogoUrl(settings, invoice.businessLine);
+
   // ── Company block (left) + INVOICE label (right) ─────────────────────────────
   const companyName = invoice.businessLine === "asphalt_sealing"
     ? `${settings.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
