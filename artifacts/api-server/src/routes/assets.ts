@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { assetsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, like } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -36,7 +36,7 @@ router.get("/", async (req, res) => {
     const { status, year } = req.query;
     const conditions: ReturnType<typeof eq>[] = [];
     if (status) conditions.push(eq(assetsTable.status, status as string));
-    if (year) conditions.push(eq(assetsTable.purchaseDate, `${year}`));
+    if (year) conditions.push(like(assetsTable.purchaseDate, `${year}-%`));
 
     let query = db.select().from(assetsTable);
     const rows = await (conditions.length > 0

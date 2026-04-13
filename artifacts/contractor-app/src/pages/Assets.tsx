@@ -231,16 +231,14 @@ export default function Assets() {
   }
 
   const filtered = assets.filter(a => filterStatus === "all" || a.status === filterStatus);
-  const totalValue = assets.filter(a => a.status === "active").reduce((s, a) => s + a.purchasePrice, 0);
+  const totalValue = assets.reduce((s, a) => s + a.purchasePrice, 0);
   const activeCount = assets.filter(a => a.status === "active").length;
   const soldCount = assets.filter(a => a.status === "sold").length;
   const retiredCount = assets.filter(a => a.status === "retired").length;
 
-  const yearNum = parseInt(selectedYear);
   const s179Assets = assets.filter(a =>
     a.section179Eligible &&
-    a.purchaseDate?.startsWith(selectedYear) &&
-    a.status !== "sold"
+    a.purchaseDate?.startsWith(selectedYear)
   );
   const s179Total = s179Assets.reduce((s, a) => s + a.purchasePrice, 0);
 
@@ -278,7 +276,7 @@ export default function Assets() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card border border-border rounded-xl p-4 space-y-1">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide">
-            <DollarSign className="w-3.5 h-3.5" /> Active Value
+            <DollarSign className="w-3.5 h-3.5" /> Total Asset Value
           </div>
           <div className="text-2xl font-bold text-foreground">{fmt(totalValue)}</div>
         </div>
