@@ -48,6 +48,7 @@ import routeStopsRouter from "./route-stops";
 import prospectsRouter from "./prospects";
 import estimatedTaxPaymentsRouter from "./estimated-tax-payments";
 import bankReconciliationRouter from "./bank-reconciliation";
+import assetsRouter from "./assets";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -193,5 +194,6 @@ router.use("/route-stops", requireOwner, routeStopsRouter);
 router.use("/prospects", requireOwner, prospectsRouter);
 router.use("/estimated-tax-payments", requireOwner, estimatedTaxPaymentsRouter);
 router.use("/bank-reconciliation", requireOwner, bankReconciliationRouter);
+router.use("/assets", requireOwner, assetsRouter);
 
 export default router;

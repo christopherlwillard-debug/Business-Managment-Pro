@@ -198,6 +198,33 @@ pool.query(\`
   .catch(e => { console.error('bank reconciliation migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Task #116: create assets table
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS \"assets\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"name\" text NOT NULL,
+    \"asset_type\" text NOT NULL DEFAULT 'Other',
+    \"purchase_date\" text NOT NULL,
+    \"purchase_price\" numeric(12, 2) NOT NULL,
+    \"vendor\" text,
+    \"serial_number\" text,
+    \"notes\" text,
+    \"receipt_url\" text,
+    \"section_179_eligible\" boolean NOT NULL DEFAULT false,
+    \"status\" text NOT NULL DEFAULT 'active',
+    \"sale_date\" text,
+    \"sale_price\" numeric(12, 2),
+    \"created_at\" timestamp DEFAULT now() NOT NULL,
+    CONSTRAINT assets_status_check CHECK (status IN ('active', 'sold', 'retired')),
+    CONSTRAINT assets_type_check CHECK (asset_type IN ('Vehicle', 'Equipment', 'Tool', 'Trailer', 'Other'))
+  )
+\`).then(() => { console.log('assets table ensured'); pool.end(); })
+  .catch(e => { console.error('assets migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Task #120: add business_line column to invoices and estimates
 (cd lib/db && node -e "
 const { Pool } = require('pg');

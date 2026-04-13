@@ -92,3 +92,4 @@ export * from "./uploadFileBody";
 export * from "./uploadUrlRequest";
 export * from "./uploadUrlResponse";
 export * from "./routeStop";
+export * from "./asset";
