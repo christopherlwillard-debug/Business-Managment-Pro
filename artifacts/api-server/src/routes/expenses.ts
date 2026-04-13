@@ -74,12 +74,13 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
 
     const [expense] = await db.insert(expensesTable).values({
       description, amount: amount.toString(), category, date,
-      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes
+      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
+      excludeFromNetProfit: excludeFromNetProfit === true,
     }).returning();
 
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, expense.id));
@@ -105,11 +106,12 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit } = req.body;
 
     const [updated] = await db.update(expensesTable).set({
       description, amount: amount?.toString(), category, date,
-      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes
+      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
+      ...(excludeFromNetProfit !== undefined && { excludeFromNetProfit: excludeFromNetProfit === true }),
     }).where(eq(expensesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 

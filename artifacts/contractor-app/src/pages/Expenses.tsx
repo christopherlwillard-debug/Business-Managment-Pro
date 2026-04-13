@@ -11,7 +11,7 @@ import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
-  RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download,
+  RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
@@ -1169,8 +1169,9 @@ export default function Expenses() {
   const [vendor, setVendor]                           = useState("");
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
+  const [excludeFromNetProfit, setExcludeFromNetProfit] = useState(false);
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
-  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string} | null>(null);
+  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
   const [editLightboxImgError, setEditLightboxImgError] = useState(false);
@@ -1282,7 +1283,8 @@ export default function Expenses() {
           notes:          fd.get("notes") as string || undefined,
           jobId:          fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
           subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
-        },
+          excludeFromNetProfit,
+        } as any,
       });
 
       if (receiptFile && expense.id) {
@@ -1297,6 +1299,7 @@ export default function Expenses() {
       setReceiptFile(null);
       setVendor("");
       setSubcontractorId("");
+      setExcludeFromNetProfit(false);
       refetch();
     } catch {
       setUploadError("Failed to save expense. Please try again.");
@@ -1505,6 +1508,17 @@ export default function Expenses() {
                                       onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
                                       placeholder="Notes" />
+                                    <label className="flex items-center gap-1.5 cursor-pointer mt-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={editingRow.excludeFromNetProfit}
+                                        onChange={e => setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }))}
+                                        className="w-3 h-3 accent-amber-500"
+                                      />
+                                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                        <EyeOff className="w-2.5 h-2.5" /> Write-off
+                                      </span>
+                                    </label>
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                     <div className="flex items-center justify-center gap-1.5">
@@ -1521,7 +1535,8 @@ export default function Expenses() {
                                               jobId: editingRow.jobId ? parseInt(editingRow.jobId) : undefined,
                                               notes: editingRow.notes || undefined,
                                               receiptUrl: exp.receiptUrl,
-                                            },
+                                              excludeFromNetProfit: editingRow.excludeFromNetProfit,
+                                            } as any,
                                           });
                                           if (editReceiptFile) {
                                             await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
@@ -1553,6 +1568,11 @@ export default function Expenses() {
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</span>
+                                    {(exp as any).excludeFromNetProfit && (
+                                      <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
+                                        <EyeOff className="w-2.5 h-2.5" /> Write-off
+                                      </span>
+                                    )}
                                     {exp.recurringExpenseId && (
                                       <button
                                         type="button"
@@ -1621,6 +1641,7 @@ export default function Expenses() {
                                             vendor: exp.vendor ?? "",
                                             jobId: exp.jobId ? String(exp.jobId) : "",
                                             notes: exp.notes ?? "",
+                                            excludeFromNetProfit: (exp as any).excludeFromNetProfit ?? false,
                                           }); }}
                                           className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
                                           <Pencil className="w-4 h-4" />
@@ -1748,6 +1769,23 @@ export default function Expenses() {
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Optional notes"
               />
+            </div>
+
+            <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-border bg-muted/30">
+              <button
+                type="button"
+                onClick={() => setExcludeFromNetProfit(v => !v)}
+                className={`mt-0.5 flex-shrink-0 w-10 h-6 rounded-full transition-colors relative ${excludeFromNetProfit ? "bg-amber-500" : "bg-muted-foreground/30"}`}
+                aria-pressed={excludeFromNetProfit}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${excludeFromNetProfit ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  <EyeOff className="w-3.5 h-3.5 text-amber-500" /> Exclude from net profit view
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Still counts for taxes — only hidden from the dashboard profit card</p>
+              </div>
             </div>
 
             <div className="pt-2 border-t border-dashed border-border">

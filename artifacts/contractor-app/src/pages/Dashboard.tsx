@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert, CheckCircle2, Clock } from "lucide-react";
+import { Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert, CheckCircle2, Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { Link } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -62,11 +62,21 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title={`Total Revenue (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} trend="+12.5%" />
-        <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} trend="-2.4%" />
-        <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} trend="+2" />
+        <MetricCard title={`Total Revenue (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} />
+        <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} />
+        <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} />
         <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} />
       </div>
+
+      {/* Operational Net Profit card */}
+      {stats.operationalNetProfit !== undefined && (
+        <NetProfitCard
+          operationalNetProfit={stats.operationalNetProfit}
+          excludedFromProfit={stats.excludedFromProfit ?? 0}
+          excludedCount={stats.excludedExpenseCount ?? 0}
+          periodLabel={periodLabel}
+        />
+      )}
 
       {/* Compliance Summary Widget — always visible */}
       <Card className={`shadow-md border-border/50 ${
@@ -205,6 +215,45 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+function NetProfitCard({ operationalNetProfit, excludedFromProfit, excludedCount, periodLabel }: {
+  operationalNetProfit: number;
+  excludedFromProfit: number;
+  excludedCount: number;
+  periodLabel: string;
+}) {
+  const isPositive = operationalNetProfit >= 0;
+  return (
+    <Card className={`shadow-md border-border/50 border-l-4 ${isPositive ? "border-l-emerald-500" : "border-l-red-500"}`}>
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-muted-foreground">Net Profit — Operational ({periodLabel})</p>
+            <p className={cn("text-3xl font-display font-bold tracking-tight mt-1", isPositive ? "text-emerald-600" : "text-red-600")}>
+              {formatCurrency(operationalNetProfit)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Revenue minus operational expenses
+              {excludedCount > 0 && (
+                <span className="ml-1 text-amber-600 font-medium">
+                  · {excludedCount} write-off{excludedCount !== 1 ? "s" : ""} excluded ({formatCurrency(excludedFromProfit)})
+                </span>
+              )}
+            </p>
+          </div>
+          <div className={cn("p-3 rounded-xl flex-shrink-0", isPositive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
+            {isPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+          </div>
+        </div>
+        {excludedCount > 0 && (
+          <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/50">
+            Total expenses including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - excludedFromProfit)}</span> net profit
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

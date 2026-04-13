@@ -19,4 +19,7 @@ export interface DashboardStats {
   recentJobs: Job[];
   recentInvoices: Invoice[];
   monthlyRevenue: DashboardStatsMonthlyRevenueItem[];
+  operationalNetProfit?: number;
+  excludedFromProfit?: number;
+  excludedExpenseCount?: number;
 }

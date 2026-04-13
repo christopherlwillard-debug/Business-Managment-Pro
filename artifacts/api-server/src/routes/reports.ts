@@ -49,8 +49,13 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const overdueInvoices = allInvoices.filter(i => i.status === "overdue").length;
     // Exclude auto-created mileage expense entries — mileage deduction is tracked
     // separately via mileageLogsTable to avoid double-counting in net profit.
-    const totalExpenses = allExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const nonMileageExpenses = allExpenses.filter(e => e.category !== "mileage");
+    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const excludedFromProfit = nonMileageExpenses
+      .filter(e => e.excludeFromNetProfit)
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const mileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfit) - mileageDeduction;
     const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
@@ -74,6 +79,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       });
     }
 
+    const excludedExpenseCount = nonMileageExpenses.filter(e => e.excludeFromNetProfit).length;
+
     res.json({
       totalRevenue,
       pendingInvoices,
@@ -83,6 +90,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       ytdMiles,
       ytdMileageRate,
       overdueInvoices,
+      operationalNetProfit,
+      excludedFromProfit,
+      excludedExpenseCount,
       recentJobs: recentJobsRows.map(j => ({ ...j, createdAt: j.createdAt.toISOString() })),
       recentInvoices: recentInvoicesRows.map(i => ({
         ...i,

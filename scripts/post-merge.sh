@@ -75,3 +75,12 @@ pool.query(\`
 \`).then(() => { console.log('access_requests_status_check updated'); pool.end(); })
   .catch(e => { console.error('Status constraint migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #110: add exclude_from_net_profit column to expenses
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS exclude_from_net_profit boolean NOT NULL DEFAULT false')
+  .then(() => { console.log('expenses.exclude_from_net_profit ensured'); pool.end(); })
+  .catch(e => { console.error('exclude_from_net_profit migration error:', e.message); pool.end(); process.exit(1); });
+")

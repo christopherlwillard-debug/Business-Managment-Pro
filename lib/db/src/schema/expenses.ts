@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { jobsTable } from "./jobs";
@@ -16,6 +16,7 @@ export const expensesTable = pgTable("expenses", {
   receiptUrl: text("receipt_url"),
   notes: text("notes"),
   recurringExpenseId: integer("recurring_expense_id").references(() => recurringExpensesTable.id, { onDelete: "set null" }),
+  excludeFromNetProfit: boolean("exclude_from_net_profit").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
