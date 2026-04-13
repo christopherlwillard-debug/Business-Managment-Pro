@@ -91,3 +91,4 @@ export * from "./uploadExpenseReceiptBody";
 export * from "./uploadFileBody";
 export * from "./uploadUrlRequest";
 export * from "./uploadUrlResponse";
+export * from "./routeStop";

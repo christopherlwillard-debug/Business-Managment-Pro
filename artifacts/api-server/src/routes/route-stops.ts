@@ -1,14 +1,21 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { routeStopsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { routeStopsTable, type RouteStop as RouteStopRow } from "@workspace/db/schema";
+import { eq, and, gte, lte, SQL } from "drizzle-orm";
 
 const router = Router();
+
+function formatStop(s: RouteStopRow) {
+  return {
+    ...s,
+    createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
+  };
+}
 
 router.get("/", async (req, res) => {
   try {
     const { date, startDate, endDate } = req.query;
-    const conditions: any[] = [];
+    const conditions: SQL<unknown>[] = [];
     if (date) conditions.push(eq(routeStopsTable.scheduledDate, date as string));
     if (startDate) conditions.push(gte(routeStopsTable.scheduledDate, startDate as string));
     if (endDate) conditions.push(lte(routeStopsTable.scheduledDate, endDate as string));
@@ -28,7 +35,10 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder } = req.body;
+    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder } = req.body as {
+      title?: string; address: string; lat?: number; lng?: number; notes?: string;
+      scheduledDate?: string; status?: string; estimatedDurationMinutes?: number; sortOrder?: number;
+    };
     if (!address) return res.status(400).json({ error: "Address is required" });
 
     const [stop] = await db.insert(routeStopsTable).values({
@@ -53,9 +63,13 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder } = req.body;
+    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder } = req.body as {
+      title?: string | null; address?: string; lat?: number | null; lng?: number | null;
+      notes?: string | null; scheduledDate?: string | null; status?: string;
+      estimatedDurationMinutes?: number; sortOrder?: number;
+    };
 
-    const updates: Record<string, any> = {};
+    const updates: Partial<RouteStopRow> = {};
     if (title !== undefined) updates.title = title || null;
     if (address !== undefined) updates.address = address;
     if (lat !== undefined) updates.lat = lat;
@@ -85,12 +99,5 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete route stop" });
   }
 });
-
-function formatStop(s: any) {
-  return {
-    ...s,
-    createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
-  };
-}
 
 export default router;

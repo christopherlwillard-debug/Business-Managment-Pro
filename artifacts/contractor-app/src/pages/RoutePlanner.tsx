@@ -7,14 +7,20 @@ import {
   MapPin, Plus, Trash2, ChevronUp, ChevronDown, Route,
   Clock, Calendar,
   Loader2, ChevronLeft, ChevronRight, Navigation,
-  Edit2, X, Save
+  Edit2, X, Save, GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, parseISO, startOfWeek, endOfWeek, addMonths, subMonths } from "date-fns";
+import {
+  format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
+  isToday, parseISO, startOfWeek, endOfWeek, addMonths, subMonths,
+} from "date-fns";
 
-/* ── Fix Leaflet default marker icon in Vite/webpack builds ─────────────── */
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+/* ── Fix Leaflet default marker icon without `any` ───────────────────────── */
+type IconDefaultWithGetUrl = typeof L.Icon.Default & {
+  prototype: { _getIconUrl?: () => string };
+};
+delete (L.Icon.Default as IconDefaultWithGetUrl).prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -40,11 +46,22 @@ interface RouteStop {
 
 type StopStatus = RouteStop["status"];
 
+type ViewMode = "day" | "week";
+
+interface EditFormState {
+  title: string;
+  address: string;
+  notes: string;
+  scheduledDate: string;
+  estimatedDurationMinutes: number;
+  status: StopStatus;
+}
+
 const STATUS_CONFIG: Record<StopStatus, { label: string; color: string; bg: string; mapColor: string }> = {
-  prospect:  { label: "Prospect",  color: "text-blue-700",  bg: "bg-blue-100 border-blue-300",   mapColor: "#3B82F6" },
-  scheduled: { label: "Scheduled", color: "text-amber-700", bg: "bg-amber-100 border-amber-300",  mapColor: "#F59E0B" },
+  prospect:  { label: "Prospect",  color: "text-blue-700",    bg: "bg-blue-100 border-blue-300",       mapColor: "#3B82F6" },
+  scheduled: { label: "Scheduled", color: "text-amber-700",   bg: "bg-amber-100 border-amber-300",     mapColor: "#F59E0B" },
   completed: { label: "Done",      color: "text-emerald-700", bg: "bg-emerald-100 border-emerald-300", mapColor: "#10B981" },
-  skipped:   { label: "Skipped",   color: "text-gray-500",   bg: "bg-gray-100 border-gray-300",   mapColor: "#9CA3AF" },
+  skipped:   { label: "Skipped",   color: "text-gray-500",    bg: "bg-gray-100 border-gray-300",       mapColor: "#9CA3AF" },
 };
 
 /* ── API helpers ────────────────────────────────────────────────────────── */
@@ -56,7 +73,7 @@ async function apiFetch(path: string, options?: RequestInit) {
   });
   if (!res.ok) throw new Error(await res.text());
   if (res.status === 204) return null;
-  return res.json();
+  return res.json() as Promise<RouteStop | RouteStop[] | null>;
 }
 
 /* ── Geocoding via Nominatim ────────────────────────────────────────────── */
@@ -64,7 +81,7 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=us`;
     const res = await fetch(url, { headers: { "Accept-Language": "en", "User-Agent": "WillardsContractingApp/1.0" } });
-    const data = await res.json();
+    const data = await res.json() as Array<{ lat: string; lon: string }>;
     if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
   } catch { /* geocoding failed silently */ }
   return null;
@@ -110,17 +127,19 @@ async function fetchOsrmRoute(stops: RouteStop[]): Promise<{ coords: [number, nu
     const waypoints = geo.map(s => `${s.lng},${s.lat}`).join(";");
     const url = `https://router.project-osrm.org/route/v1/driving/${waypoints}?overview=full&geometries=geojson`;
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    const data = await res.json();
+    const data = await res.json() as { code: string; routes: Array<{ geometry: { coordinates: number[][] }; duration: number }> };
     if (data.code !== "Ok") return null;
     const route = data.routes[0];
-    const coords: [number, number][] = route.geometry.coordinates.map(([lng, lat]: number[]) => [lat, lng] as [number, number]);
+    const coords: [number, number][] = route.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]);
     return { coords, durationSecs: route.duration };
   } catch { return null; }
 }
 
 /* ── Custom colored map marker ──────────────────────────────────────────── */
 function makeIcon(color: string, label?: string | number) {
-  const text = label !== undefined ? `<span style="position:absolute;top:0;left:0;width:100%;height:75%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:white;">${label}</span>` : "";
+  const text = label !== undefined
+    ? `<span style="position:absolute;top:0;left:0;width:100%;height:75%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:white;">${label}</span>`
+    : "";
   return L.divIcon({
     className: "",
     html: `<div style="width:28px;height:36px;position:relative;">
@@ -184,37 +203,46 @@ export default function RoutePlanner() {
   const qc = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [calMonth, setCalMonth] = useState<Date>(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null);
   const [routeDuration, setRouteDuration] = useState<number | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizedOrder, setOptimizedOrder] = useState<RouteStop[] | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [addressSearch, setAddressSearch] = useState("");
   const [geocoding, setGeocoding] = useState(false);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<EditFormState>({
     title: "",
     address: "",
     notes: "",
     scheduledDate: format(new Date(), "yyyy-MM-dd"),
     estimatedDurationMinutes: 60,
-    status: "scheduled" as StopStatus,
+    status: "scheduled",
   });
-  const [editForm, setEditForm] = useState<Partial<typeof form>>({});
+  const [editForm, setEditForm] = useState<Partial<EditFormState>>({});
 
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
+
+  /* ── Week range for week view ────────────────────────────────────────── */
+  const weekStart = format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
+  const weekEnd = format(endOfWeek(selectedDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
 
   /* ── Fetch all stops ─────────────────────────────────────────────────── */
   const { data: allStops = [], isLoading } = useQuery<RouteStop[]>({
     queryKey: ["/api/route-stops"],
-    queryFn: () => apiFetch("/route-stops"),
+    queryFn: () => apiFetch("/route-stops") as Promise<RouteStop[]>,
   });
 
-  const dayStops = allStops.filter(s => s.scheduledDate === selectedDateStr);
-  const displayStops = optimizedOrder ?? dayStops;
+  /* ── Filter stops for current view ──────────────────────────────────── */
+  const viewStops = viewMode === "day"
+    ? allStops.filter(s => s.scheduledDate === selectedDateStr)
+    : allStops.filter(s => s.scheduledDate && s.scheduledDate >= weekStart && s.scheduledDate <= weekEnd);
 
-  /* ── Count stops per day (for calendar badges) ──────────────────────── */
+  const displayStops = optimizedOrder ?? viewStops;
+
+  /* ── Count stops per day (calendar badges) ──────────────────────────── */
   const stopCounts: Record<string, number> = {};
   allStops.forEach(s => {
     if (s.scheduledDate) stopCounts[s.scheduledDate] = (stopCounts[s.scheduledDate] ?? 0) + 1;
@@ -222,26 +250,56 @@ export default function RoutePlanner() {
 
   /* ── Mutations ───────────────────────────────────────────────────────── */
   const createStop = useMutation({
-    mutationFn: (data: object) => apiFetch("/route-stops", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/route-stops"] }); setShowAddForm(false); setOptimizedOrder(null); setRouteCoords(null); resetForm(); },
+    mutationFn: (data: Partial<EditFormState> & { lat?: number | null; lng?: number | null }) =>
+      apiFetch("/route-stops", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      setShowAddForm(false);
+      setOptimizedOrder(null);
+      setRouteCoords(null);
+      resetForm();
+    },
     onError: () => toast({ title: "Failed to add stop", variant: "destructive" }),
   });
 
   const updateStop = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: object }) => apiFetch(`/route-stops/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/route-stops"] }); setEditingId(null); setOptimizedOrder(null); setRouteCoords(null); },
+    mutationFn: ({ id, data }: { id: number; data: Partial<EditFormState> & { lat?: number | null; lng?: number | null; sortOrder?: number } }) =>
+      apiFetch(`/route-stops/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      setEditingId(null);
+      setOptimizedOrder(null);
+      setRouteCoords(null);
+    },
     onError: () => toast({ title: "Failed to update stop", variant: "destructive" }),
   });
 
   const deleteStop = useMutation({
     mutationFn: (id: number) => apiFetch(`/route-stops/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/route-stops"] }); setOptimizedOrder(null); setRouteCoords(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      setOptimizedOrder(null);
+      setRouteCoords(null);
+    },
     onError: () => toast({ title: "Failed to delete stop", variant: "destructive" }),
   });
 
   function resetForm() {
     setForm({ title: "", address: "", notes: "", scheduledDate: selectedDateStr, estimatedDurationMinutes: 60, status: "scheduled" });
-    setAddressSearch("");
+  }
+
+  /* ── Persist sort order to backend ──────────────────────────────────── */
+  async function persistSortOrder(ordered: RouteStop[]) {
+    try {
+      await Promise.all(
+        ordered.map((stop, i) =>
+          apiFetch(`/route-stops/${stop.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: i }) })
+        )
+      );
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+    } catch {
+      toast({ title: "Order saved locally — couldn't sync to server", variant: "destructive" });
+    }
   }
 
   /* ── Geocode then create stop ────────────────────────────────────────── */
@@ -256,12 +314,12 @@ export default function RoutePlanner() {
 
   /* ── Optimize route ──────────────────────────────────────────────────── */
   async function handleOptimize() {
-    if (dayStops.length < 2) {
+    if (viewStops.length < 2) {
       toast({ title: "Need at least 2 stops to optimize" });
       return;
     }
     setIsOptimizing(true);
-    const ordered = optimizeRoute(dayStops);
+    const ordered = optimizeRoute(viewStops);
     setOptimizedOrder(ordered);
 
     const route = await fetchOsrmRoute(ordered);
@@ -274,18 +332,49 @@ export default function RoutePlanner() {
     }
     setIsOptimizing(false);
 
+    await persistSortOrder(ordered);
+
     const geoCount = ordered.filter(s => s.lat && s.lng).length;
-    toast({ title: `Route optimized — ${ordered.length} stops${route ? `, ~${Math.round(route.durationSecs / 60)} min drive` : ""}`, description: geoCount < ordered.length ? `${ordered.length - geoCount} stop(s) couldn't be geocoded` : undefined });
+    toast({
+      title: `Route optimized — ${ordered.length} stops${route ? `, ~${Math.round(route.durationSecs / 60)} min drive` : ""}`,
+      description: geoCount < ordered.length ? `${ordered.length - geoCount} stop(s) couldn't be geocoded` : undefined,
+    });
   }
 
-  /* ── Reorder helpers ─────────────────────────────────────────────────── */
-  function moveStop(idx: number, dir: -1 | 1) {
-    const arr = [...(optimizedOrder ?? dayStops)];
+  /* ── Manual reorder (up/down) + persist ─────────────────────────────── */
+  async function moveStop(idx: number, dir: -1 | 1) {
+    const arr = [...(optimizedOrder ?? viewStops)];
     const newIdx = idx + dir;
     if (newIdx < 0 || newIdx >= arr.length) return;
     [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
     setOptimizedOrder(arr);
     setRouteCoords(null);
+    await persistSortOrder(arr);
+  }
+
+  /* ── Drag-to-reorder handlers ────────────────────────────────────────── */
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>, idx: number) {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(idx));
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>, idx: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(idx);
+  }
+
+  async function handleDrop(e: React.DragEvent<HTMLDivElement>, dropIdx: number) {
+    e.preventDefault();
+    const dragIdx = parseInt(e.dataTransfer.getData("text/plain"));
+    setDragOverIdx(null);
+    if (isNaN(dragIdx) || dragIdx === dropIdx) return;
+    const arr = [...(optimizedOrder ?? viewStops)];
+    const [removed] = arr.splice(dragIdx, 1);
+    arr.splice(dropIdx, 0, removed);
+    setOptimizedOrder(arr);
+    setRouteCoords(null);
+    await persistSortOrder(arr);
   }
 
   /* ── Calendar month grid ─────────────────────────────────────────────── */
@@ -304,6 +393,8 @@ export default function RoutePlanner() {
     : [37.7719, -87.1111];
 
   const totalEstDuration = displayStops.reduce((sum, s) => sum + (s.estimatedDurationMinutes ?? 60), 0);
+
+  const viewLabel = viewMode === "day" ? format(selectedDate, "EEEE, MMM d") : `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "MMM d")}`;
 
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-130px)] gap-0 -m-4 sm:-m-6 lg:-m-8 overflow-hidden">
@@ -358,15 +449,37 @@ export default function RoutePlanner() {
           </div>
         </div>
 
-        {/* Selected day header + stats */}
+        {/* View mode toggle + day header + stats */}
         <div className="px-4 py-3 border-b border-border bg-muted/30">
+          {/* Day / Week toggle */}
+          <div className="flex rounded-lg border border-border overflow-hidden mb-2 text-xs font-medium">
+            <button
+              onClick={() => { setViewMode("day"); setOptimizedOrder(null); setRouteCoords(null); }}
+              className={cn(
+                "flex-1 py-1.5 transition-colors",
+                viewMode === "day" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
+              )}
+            >
+              Day
+            </button>
+            <button
+              onClick={() => { setViewMode("week"); setOptimizedOrder(null); setRouteCoords(null); }}
+              className={cn(
+                "flex-1 py-1.5 transition-colors",
+                viewMode === "week" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
+              )}
+            >
+              Week
+            </button>
+          </div>
+
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-foreground">{format(selectedDate, "EEEE, MMM d")}</p>
+              <p className="text-sm font-semibold text-foreground">{viewLabel}</p>
               <p className="text-xs text-muted-foreground">
                 {displayStops.length} stop{displayStops.length !== 1 ? "s" : ""}
                 {displayStops.length > 0 && ` · ~${Math.round(totalEstDuration / 60 * 10) / 10}h est.`}
-                {routeDuration && ` · ~${Math.round(routeDuration / 60)} min drive`}
+                {routeDuration != null && ` · ~${Math.round(routeDuration / 60)} min drive`}
               </p>
             </div>
             <div className="flex gap-2">
@@ -377,7 +490,7 @@ export default function RoutePlanner() {
               )}
               <button
                 onClick={handleOptimize}
-                disabled={isOptimizing || dayStops.length < 2}
+                disabled={isOptimizing || viewStops.length < 2}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {isOptimizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
@@ -387,7 +500,7 @@ export default function RoutePlanner() {
           </div>
         </div>
 
-        {/* Add stop form */}
+        {/* Add stop button / form */}
         {showAddForm ? (
           <form onSubmit={handleAddStop} className="px-4 py-3 border-b border-border bg-muted/20 space-y-2">
             <div className="flex items-center justify-between mb-1">
@@ -474,8 +587,8 @@ export default function RoutePlanner() {
           ) : displayStops.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-4">
               <MapPin className="w-8 h-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">No stops on {format(selectedDate, "MMM d")}</p>
-              <p className="text-xs text-muted-foreground/70">Click "Add Stop" to schedule a location for this day</p>
+              <p className="text-sm text-muted-foreground">No stops {viewMode === "day" ? `on ${format(selectedDate, "MMM d")}` : `this week`}</p>
+              <p className="text-xs text-muted-foreground/70">Click "Add Stop" to schedule a location</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -486,6 +599,7 @@ export default function RoutePlanner() {
                   idx={idx}
                   total={displayStops.length}
                   isEditing={editingId === stop.id}
+                  isDragOver={dragOverIdx === idx}
                   editForm={editForm}
                   onEdit={() => {
                     setEditingId(stop.id);
@@ -501,7 +615,9 @@ export default function RoutePlanner() {
                   onCancelEdit={() => setEditingId(null)}
                   onSaveEdit={async () => {
                     setGeocoding(true);
-                    const coords = editForm.address !== stop.address ? await geocodeAddress(editForm.address ?? stop.address) : { lat: stop.lat, lng: stop.lng };
+                    const coords = editForm.address !== stop.address
+                      ? await geocodeAddress(editForm.address ?? stop.address)
+                      : { lat: stop.lat, lng: stop.lng };
                     setGeocoding(false);
                     updateStop.mutate({ id: stop.id, data: { ...editForm, lat: coords?.lat ?? stop.lat, lng: coords?.lng ?? stop.lng } });
                   }}
@@ -510,6 +626,10 @@ export default function RoutePlanner() {
                   onDelete={() => deleteStop.mutate(stop.id)}
                   onMoveUp={() => moveStop(idx, -1)}
                   onMoveDown={() => moveStop(idx, 1)}
+                  onDragStart={e => handleDragStart(e, idx)}
+                  onDragOver={e => handleDragOver(e, idx)}
+                  onDrop={e => handleDrop(e, idx)}
+                  onDragEnd={() => setDragOverIdx(null)}
                   isSaving={updateStop.isPending}
                   geocoding={geocoding}
                   isOptimized={!!optimizedOrder}
@@ -534,12 +654,10 @@ export default function RoutePlanner() {
           />
           <MapFitter stops={displayStops.filter(s => s.lat && s.lng)} />
 
-          {/* Route polyline */}
           {routeCoords && routeCoords.length > 1 && (
             <Polyline positions={routeCoords} color="#1B3F8C" weight={4} opacity={0.75} dashArray="8 4" />
           )}
 
-          {/* Stop markers */}
           {displayStops.map((stop, idx) => {
             if (!stop.lat || !stop.lng) return null;
             const cfg = STATUS_CONFIG[stop.status];
@@ -570,7 +688,6 @@ export default function RoutePlanner() {
             );
           })}
 
-          {/* Non-geocoded stops warning */}
           {displayStops.some(s => !s.lat || !s.lng) && (
             <div className="absolute bottom-4 right-4 z-[1000] bg-white/90 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg shadow-md flex items-center gap-2 pointer-events-none">
               <MapPin className="w-3 h-3" />
@@ -599,21 +716,32 @@ interface StopCardProps {
   idx: number;
   total: number;
   isEditing: boolean;
-  editForm: Partial<{ title: string; address: string; notes: string; scheduledDate: string; estimatedDurationMinutes: number; status: StopStatus }>;
+  isDragOver: boolean;
+  editForm: Partial<EditFormState>;
   onEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
-  onEditFormChange: (patch: object) => void;
+  onEditFormChange: (patch: Partial<EditFormState>) => void;
   onStatusChange: (status: StopStatus) => void;
   onDelete: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
   isSaving: boolean;
   geocoding: boolean;
   isOptimized: boolean;
 }
 
-function StopCard({ stop, idx, total, isEditing, editForm, onEdit, onCancelEdit, onSaveEdit, onEditFormChange, onStatusChange, onDelete, onMoveUp, onMoveDown, isSaving, geocoding, isOptimized }: StopCardProps) {
+function StopCard({
+  stop, idx, total, isEditing, isDragOver, editForm,
+  onEdit, onCancelEdit, onSaveEdit, onEditFormChange, onStatusChange,
+  onDelete, onMoveUp, onMoveDown,
+  onDragStart, onDragOver, onDrop, onDragEnd,
+  isSaving, geocoding, isOptimized,
+}: StopCardProps) {
   const cfg = STATUS_CONFIG[stop.status];
 
   if (isEditing) {
@@ -649,7 +777,7 @@ function StopCard({ stop, idx, total, isEditing, editForm, onEdit, onCancelEdit,
         </div>
         <select
           value={editForm.status ?? stop.status}
-          onChange={e => onEditFormChange({ status: e.target.value })}
+          onChange={e => onEditFormChange({ status: e.target.value as StopStatus })}
           className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary"
         >
           {(Object.keys(STATUS_CONFIG) as StopStatus[]).map(s => (
@@ -681,8 +809,24 @@ function StopCard({ stop, idx, total, isEditing, editForm, onEdit, onCancelEdit,
   }
 
   return (
-    <div className={cn("px-4 py-3 hover:bg-muted/20 transition-colors", stop.status === "completed" && "opacity-60")}>
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={cn(
+        "px-4 py-3 transition-colors cursor-grab active:cursor-grabbing",
+        stop.status === "completed" && "opacity-60",
+        isDragOver ? "bg-primary/10 border-t-2 border-primary" : "hover:bg-muted/20"
+      )}
+    >
       <div className="flex items-start gap-2">
+        {/* Drag handle */}
+        <div className="flex-shrink-0 flex flex-col items-center gap-0.5 pt-0.5">
+          <GripVertical className="w-4 h-4 text-muted-foreground/50" />
+        </div>
+
         {/* Order number */}
         {isOptimized && (
           <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold mt-0.5">
@@ -723,10 +867,10 @@ function StopCard({ stop, idx, total, isEditing, editForm, onEdit, onCancelEdit,
 
         {/* Actions */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button onClick={onMoveUp} disabled={idx === 0} className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+          <button onClick={onMoveUp} disabled={idx === 0} className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors" title="Move up">
             <ChevronUp className="w-3.5 h-3.5" />
           </button>
-          <button onClick={onMoveDown} disabled={idx === total - 1} className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+          <button onClick={onMoveDown} disabled={idx === total - 1} className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors" title="Move down">
             <ChevronDown className="w-3.5 h-3.5" />
           </button>
           <button onClick={onEdit} className="p-1 text-muted-foreground hover:text-amber-500 transition-colors" title="Edit">
@@ -739,14 +883,16 @@ function StopCard({ stop, idx, total, isEditing, editForm, onEdit, onCancelEdit,
       </div>
 
       {/* Quick status toggle row */}
-      <div className="flex gap-1 mt-2">
+      <div className="flex gap-1 mt-2 ml-6">
         {(Object.keys(STATUS_CONFIG) as StopStatus[]).map(s => (
           <button
             key={s}
             onClick={() => onStatusChange(s)}
             className={cn(
               "flex-1 py-0.5 rounded text-[9px] font-semibold border transition-colors",
-              stop.status === s ? `${STATUS_CONFIG[s].bg} ${STATUS_CONFIG[s].color}` : "border-border text-muted-foreground hover:border-primary/40"
+              stop.status === s
+                ? `${STATUS_CONFIG[s].bg} ${STATUS_CONFIG[s].color}`
+                : "border-border text-muted-foreground hover:border-primary/40"
             )}
           >
             {STATUS_CONFIG[s].label}
