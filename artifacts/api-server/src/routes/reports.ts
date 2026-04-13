@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, paymentsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, sum, count, ne } from "drizzle-orm";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, desc, sum, ne } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
@@ -422,20 +422,20 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const startDate = `${year}-01-01`;
     const endDate   = `${year}-12-31`;
 
-    const [invRows, expRows, mileRows, payRows, otherRows] = await Promise.all([
+    const [invRows, expRows, mileRows, otherRows] = await Promise.all([
       db.select({ status: invoicesTable.status, total: invoicesTable.total })
         .from(invoicesTable)
         .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-      db.select({ category: expensesTable.category, amount: sum(expensesTable.amount) })
+      db.select({
+        category: expensesTable.category,
+        amount: expensesTable.amount,
+        excludeFromNetProfit: expensesTable.excludeFromNetProfit,
+      })
         .from(expensesTable)
-        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage")))
-        .groupBy(expensesTable.category),
+        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"))),
       db.select({ totalMiles: sum(mileageLogsTable.miles), totalDed: sum(mileageLogsTable.deductionAmount) })
         .from(mileageLogsTable)
         .where(and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
-      db.select({ total: sum(paymentsTable.amount) })
-        .from(paymentsTable)
-        .where(eq(paymentsTable.year, year)),
       db.select({ amount: otherIncomeTable.amount })
         .from(otherIncomeTable)
         .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
@@ -445,16 +445,15 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue  = grossReceipts + otherIncome;
 
+    const normalExpenses = expRows.filter(e => !e.excludeFromNetProfit);
+    const writtenOffExpenses = expRows.filter(e => e.excludeFromNetProfit);
+    const writeoffsTotal = writtenOffExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+
     const buckets: Record<string, number> = {};
-    for (const e of expRows) {
+    for (const e of normalExpenses) {
       const cat = e.category || "Other";
       const key = PL_CATEGORY_MAP[cat] ?? "other";
-      buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount as string ?? "0");
-    }
-
-    const subPayments = payRows[0]?.total ? parseFloat(payRows[0].total as string) : 0;
-    if (subPayments > 0) {
-      buckets["contractLabor"] = (buckets["contractLabor"] ?? 0) + subPayments;
+      buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount ?? "0");
     }
 
     const cogs = buckets["cogs"] ?? 0;
@@ -462,8 +461,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
 
     const operatingExpenses: { label: string; key: string; amount: number }[] = [];
     for (const [key, label] of Object.entries(PL_OPEX_LABELS)) {
-      const amt = buckets[key] ?? 0;
-      operatingExpenses.push({ label, key, amount: amt });
+      operatingExpenses.push({ label, key, amount: buckets[key] ?? 0 });
     }
 
     const totalOperatingExpenses = operatingExpenses.reduce((s, x) => s + x.amount, 0);
@@ -482,7 +480,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       operatingExpenses,
       totalOperatingExpenses,
       netOperatingIncome,
-      deductions: { mileageDeduction, totalMiles, mileageRate },
+      deductions: { mileageDeduction, totalMiles, mileageRate, writeoffsTotal },
       netProfit,
     });
   } catch (err) {

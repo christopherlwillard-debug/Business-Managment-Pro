@@ -1454,7 +1454,7 @@ interface ProfitLossReport {
   operatingExpenses: { label: string; key: string; amount: number }[];
   totalOperatingExpenses: number;
   netOperatingIncome: number;
-  deductions: { mileageDeduction: number; totalMiles: number; mileageRate: number };
+  deductions: { mileageDeduction: number; totalMiles: number; mileageRate: number; writeoffsTotal: number };
   netProfit: number;
 }
 
@@ -1523,12 +1523,15 @@ function ProfitLossTab({ year }: { year: number }) {
     const section = (title: string) =>
       `<div style="margin-top:20px;margin-bottom:4px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:#1e293b;color:#fff;padding:3px 6px;border-radius:3px;display:inline-block">${title}</div>`;
 
-    const opexRows = report.operatingExpenses.filter(e => e.amount > 0)
+    const opexRows = report.operatingExpenses
       .map(e => row(e.label, e.amount, { indent: true })).join("");
     const mileLabel = `Mileage Deduction (${report.deductions.totalMiles.toFixed(0)} mi \u00d7 $${report.deductions.mileageRate.toFixed(3)}/mi)`;
+    const writeoffRow = report.deductions.writeoffsTotal > 0
+      ? row("Write-offs Excluded from Profit", report.deductions.writeoffsTotal, { indent: true })
+      : "";
     const isLoss = report.netProfit < 0;
 
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>Profit & Loss — ${report.year}</title><style>body{font-family:Arial,sans-serif;padding:48px;padding-top:88px;line-height:1.5;max-width:700px;margin:0 auto}.header{text-align:center;margin-bottom:24px}.header h1{font-size:20px;margin:0 0 4px}.header p{margin:0;color:#64748b;font-size:13px}.top-bar{position:fixed;top:max(14px,env(safe-area-inset-top,14px));left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;z-index:9999;pointer-events:none}.top-bar button{pointer-events:all;background:rgba(0,0,0,.78);color:#fff;border:none;padding:8px 18px;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.01em}.net-profit{text-align:center;margin-top:20px;padding:16px;border-radius:8px;background:${isLoss ? "#fef2f2" : "#f0fdf4"};border:2px solid ${isLoss ? "#fca5a5" : "#86efac"}}.net-profit .label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:${isLoss ? "#991b1b" : "#166534"}}.net-profit .value{font-size:28px;font-weight:800;color:${isLoss ? "#dc2626" : "#16a34a"}}.footer{margin-top:36px;padding-top:12px;border-top:1px solid #e5e7eb;text-align:center;color:#94a3b8;font-size:11px}@media print{.top-bar{display:none}}</style></head><body><div class="top-bar"><button onclick="window.close()">&#8592; Back</button><button onclick="window.print()">&#128438; Print / PDF</button></div><div class="header"><h1>Willard's General Contracting LLC</h1><p>Profit &amp; Loss Statement — January 1, ${report.year} – December 31, ${report.year}</p><p style="font-size:11px;color:#94a3b8">Cash Basis &bull; Prepared by BuildPro</p></div>${section("Revenue")}${row("Gross Receipts (Paid Invoices)", report.revenue.grossReceipts, { indent: true })}${report.revenue.otherIncome > 0 ? row("Other Income", report.revenue.otherIncome, { indent: true }) : ""}${row("Total Revenue", report.revenue.grossRevenue, { subtotal: true })}${section("Cost of Goods Sold")}${row("Materials", report.cogs.materials, { indent: true })}${row("Total COGS", report.cogs.total, { subtotal: true })}${row("Gross Profit", report.grossProfit, { subtotal: true })}${section("Operating Expenses")}${opexRows}${row("Total Operating Expenses", report.totalOperatingExpenses, { subtotal: true })}${row("Net Operating Income", report.netOperatingIncome, { subtotal: true })}${section("Other Deductions")}${row(mileLabel, report.deductions.mileageDeduction, { indent: true })}<div class="net-profit"><div class="label">${isLoss ? "Net Loss" : "Net Profit"}</div><div class="value">${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(report.netProfit))}</div></div><div class="footer">Willard's General Contracting LLC &bull; ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro</div></body></html>`);
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>Profit & Loss — ${report.year}</title><style>body{font-family:Arial,sans-serif;padding:48px;padding-top:88px;line-height:1.5;max-width:700px;margin:0 auto}.header{text-align:center;margin-bottom:24px}.header h1{font-size:20px;margin:0 0 4px}.header p{margin:0;color:#64748b;font-size:13px}.top-bar{position:fixed;top:max(14px,env(safe-area-inset-top,14px));left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;z-index:9999;pointer-events:none}.top-bar button{pointer-events:all;background:rgba(0,0,0,.78);color:#fff;border:none;padding:8px 18px;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.01em}.net-profit{text-align:center;margin-top:20px;padding:16px;border-radius:8px;background:${isLoss ? "#fef2f2" : "#f0fdf4"};border:2px solid ${isLoss ? "#fca5a5" : "#86efac"}}.net-profit .label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:${isLoss ? "#991b1b" : "#166534"}}.net-profit .value{font-size:28px;font-weight:800;color:${isLoss ? "#dc2626" : "#16a34a"}}.footer{margin-top:36px;padding-top:12px;border-top:1px solid #e5e7eb;text-align:center;color:#94a3b8;font-size:11px}@media print{.top-bar{display:none}}</style></head><body><div class="top-bar"><button onclick="window.close()">&#8592; Back</button><button onclick="window.print()">&#128438; Print / PDF</button></div><div class="header"><h1>Willard's General Contracting LLC</h1><p>Profit &amp; Loss Statement — January 1, ${report.year} – December 31, ${report.year}</p><p style="font-size:11px;color:#94a3b8">Cash Basis &bull; Prepared by BuildPro</p></div>${section("Revenue")}${row("Gross Receipts (Paid Invoices)", report.revenue.grossReceipts, { indent: true })}${report.revenue.otherIncome > 0 ? row("Other Income", report.revenue.otherIncome, { indent: true }) : ""}${row("Total Revenue", report.revenue.grossRevenue, { subtotal: true })}${section("Cost of Goods Sold")}${row("Materials", report.cogs.materials, { indent: true })}${row("Total COGS", report.cogs.total, { subtotal: true })}${row("Gross Profit", report.grossProfit, { subtotal: true })}${section("Operating Expenses")}${opexRows}${row("Total Operating Expenses", report.totalOperatingExpenses, { subtotal: true })}${row("Net Operating Income", report.netOperatingIncome, { subtotal: true })}${section("Other Deductions")}${row(mileLabel, report.deductions.mileageDeduction, { indent: true })}${writeoffRow}<div class="net-profit"><div class="label">${isLoss ? "Net Loss" : "Net Profit"}</div><div class="value">${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(report.netProfit))}</div></div><div class="footer">Willard's General Contracting LLC &bull; ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro</div></body></html>`);
     printWindow.document.close();
   }
 
@@ -1576,12 +1579,9 @@ function ProfitLossTab({ year }: { year: number }) {
               <PLRow label="Gross Profit" amount={report.grossProfit} bold highlight separator />
 
               <PLSection title="Operating Expenses" />
-              {report.operatingExpenses.filter(e => e.amount > 0).map(e => (
+              {report.operatingExpenses.map(e => (
                 <PLRow key={e.key} label={e.label} amount={e.amount} indent />
               ))}
-              {report.operatingExpenses.every(e => e.amount === 0) && (
-                <p className="text-sm text-muted-foreground italic py-1 pl-6">No operating expenses recorded for {year}.</p>
-              )}
               <PLRow label="Total Operating Expenses" amount={report.totalOperatingExpenses} bold separator />
 
               <PLRow label="Net Operating Income" amount={report.netOperatingIncome} bold highlight separator />
@@ -1592,6 +1592,13 @@ function ProfitLossTab({ year }: { year: number }) {
                 amount={report.deductions.mileageDeduction}
                 indent
               />
+              {report.deductions.writeoffsTotal > 0 && (
+                <PLRow
+                  label="Write-offs Excluded from Profit"
+                  amount={report.deductions.writeoffsTotal}
+                  indent
+                />
+              )}
 
               <div className={`mt-4 rounded-xl p-4 border-2 ${report.netProfit < 0 ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
                 <div className="flex items-center justify-between">
