@@ -92,6 +92,96 @@ function useDeleteOtherIncome(year: number) {
   });
 }
 
+const QUARTERLY_TAX_API = `${BASE}/api/estimated-tax-payments`;
+
+interface TaxPaymentRow {
+  id: number;
+  year: number;
+  quarter: number;
+  level: string;
+  amountPaid: number;
+  paidDate: string | null;
+  paymentMethod: string | null;
+  notes: string | null;
+}
+
+interface QuarterData {
+  quarter: number;
+  label: string;
+  period: string;
+  dueDateLabel: string;
+  recommendedFederal: number;
+  recommendedKy: number;
+  recommendedTotal: number;
+  totalPaidFederal: number;
+  totalPaidKy: number;
+  totalPaidCombined: number;
+  totalPaid: number;
+  payments: TaxPaymentRow[];
+  status: "paid" | "partial" | "due" | "overdue";
+}
+
+interface QuarterlyTaxResponse {
+  year: number;
+  quarters: QuarterData[];
+  payments: TaxPaymentRow[];
+  summary: {
+    recommendedPerQuarter: number;
+    recommendedFederalPerQ: number;
+    recommendedKyPerQ: number;
+    totalRecommended: number;
+    totalPaid: number;
+    remaining: number;
+    netProfit: number;
+  };
+}
+
+function useQuarterlyTaxData(year: number) {
+  return useQuery<QuarterlyTaxResponse>({
+    queryKey: ["quarterly-taxes", year],
+    queryFn: async () => {
+      const res = await fetch(`${QUARTERLY_TAX_API}?year=${year}`);
+      if (!res.ok) throw new Error("Failed to load quarterly tax data");
+      return res.json();
+    },
+  });
+}
+
+function useCreateTaxPayment(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { year: number; quarter: number; level: string; amountPaid: string; paidDate: string; paymentMethod: string; notes: string }) => {
+      const res = await fetch(QUARTERLY_TAX_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error("Failed to save");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["quarterly-taxes", year] }),
+  });
+}
+
+function useUpdateTaxPayment(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; amountPaid?: string; paidDate?: string; paymentMethod?: string; notes?: string; level?: string }) => {
+      const res = await fetch(`${QUARTERLY_TAX_API}/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["quarterly-taxes", year] }),
+  });
+}
+
+function useDeleteTaxPayment(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${QUARTERLY_TAX_API}/${id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to delete");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["quarterly-taxes", year] }),
+  });
+}
+
 async function fetchAccounting(year: number) {
   const res = await fetch(`${BASE}/api/reports/accounting?year=${year}`);
   if (!res.ok) throw new Error("Failed to load accounting data");
@@ -1650,6 +1740,298 @@ function ScheduleCTab({ year }: { year: number }) {
   );
 }
 
+// ─── Quarterly Estimated Tax Tracker ─────────────────────────────────────────
+
+const PAYMENT_METHOD_OPTIONS = [
+  { value: "irs_direct_pay", label: "IRS Direct Pay" },
+  { value: "eftps", label: "EFTPS" },
+  { value: "check", label: "Check / Money Order" },
+  { value: "ky_direct", label: "KY One Stop Portal" },
+  { value: "other", label: "Other" },
+];
+
+const LEVEL_OPTIONS = [
+  { value: "federal", label: "Federal (IRS)" },
+  { value: "state", label: "KY State" },
+  { value: "combined", label: "Combined" },
+];
+
+function quarterStatusBadge(status: QuarterData["status"]) {
+  switch (status) {
+    case "paid": return { label: "Paid", cls: "bg-emerald-100 text-emerald-700" };
+    case "partial": return { label: "Partial", cls: "bg-blue-100 text-blue-700" };
+    case "overdue": return { label: "Overdue", cls: "bg-red-100 text-red-700" };
+    default: return { label: "Due", cls: "bg-amber-100 text-amber-700" };
+  }
+}
+
+function formatPaidDate(d: string | null) {
+  if (!d) return "—";
+  const [y, m, day] = d.split("-");
+  return new Date(parseInt(y), parseInt(m) - 1, parseInt(day))
+    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function QuarterlyTaxTracker({ year }: { year: number }) {
+  const { data, isLoading } = useQuarterlyTaxData(year);
+  const createPayment = useCreateTaxPayment(year);
+  const updatePayment = useUpdateTaxPayment(year);
+  const deletePayment = useDeleteTaxPayment(year);
+
+  const [isOpen, setIsOpen] = useState(true);
+  const [logFormQuarter, setLogFormQuarter] = useState<number | null>(null);
+  const [editPayment, setEditPayment] = useState<TaxPaymentRow | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [form, setForm] = useState({ amount: "", level: "federal", paymentMethod: "irs_direct_pay", paidDate: todayStr, notes: "" });
+
+  function openLog(quarter: number) {
+    setEditPayment(null);
+    setForm({ amount: "", level: "federal", paymentMethod: "irs_direct_pay", paidDate: todayStr, notes: "" });
+    setLogFormQuarter(prev => prev === quarter ? null : quarter);
+  }
+
+  function openEdit(payment: TaxPaymentRow) {
+    setLogFormQuarter(payment.quarter);
+    setEditPayment(payment);
+    setForm({
+      amount: String(payment.amountPaid),
+      level: payment.level,
+      paymentMethod: payment.paymentMethod ?? "irs_direct_pay",
+      paidDate: payment.paidDate ?? todayStr,
+      notes: payment.notes ?? "",
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.amount || !logFormQuarter) return;
+    setSaving(true);
+    try {
+      if (editPayment) {
+        await updatePayment.mutateAsync({ id: editPayment.id, amountPaid: form.amount, paidDate: form.paidDate, paymentMethod: form.paymentMethod, notes: form.notes, level: form.level });
+      } else {
+        await createPayment.mutateAsync({ year, quarter: logFormQuarter, level: form.level, amountPaid: form.amount, paidDate: form.paidDate, paymentMethod: form.paymentMethod, notes: form.notes });
+      }
+      setLogFormQuarter(null);
+      setEditPayment(null);
+    } catch {}
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm("Delete this payment record?")) return;
+    await deletePayment.mutateAsync(id);
+  }
+
+  const summary = data?.summary;
+  const totalPaid = summary?.totalPaid ?? 0;
+  const totalRec = summary?.totalRecommended ?? 0;
+  const remaining = summary?.remaining ?? 0;
+
+  return (
+    <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => setIsOpen(v => !v)}
+        className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-green-100 text-green-700 flex items-center justify-center flex-shrink-0">
+            <DollarSign className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="font-semibold text-sm text-foreground">Quarterly Estimated Tax Payments</span>
+            <span className="hidden sm:inline text-xs text-muted-foreground ml-2">IRS Form 1040-ES · KY Form 740-ES</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {data && totalRec > 0 && (
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${totalPaid >= totalRec ? "bg-emerald-100 text-emerald-700" : remaining > 0 ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"}`}>
+              {formatCurrency(totalPaid)} of {formatCurrency(totalRec)} paid
+            </span>
+          )}
+          {isOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-border p-5 space-y-5">
+          {isLoading && <div className="text-center py-8 text-muted-foreground text-sm animate-pulse">Loading…</div>}
+
+          {data && (
+            <>
+              {/* Summary bar */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Annual Recommended", value: formatCurrency(totalRec), sub: `${formatCurrency(summary!.recommendedPerQuarter)}/quarter`, color: "text-foreground" },
+                  { label: "Total Paid", value: formatCurrency(totalPaid), sub: `${data.payments.length} payment${data.payments.length !== 1 ? "s" : ""} logged`, color: "text-emerald-600" },
+                  { label: "Remaining", value: formatCurrency(remaining), sub: remaining > 0 ? "Still owed this year" : "Fully paid", color: remaining > 0 ? "text-amber-600" : "text-emerald-600" },
+                ].map(tile => (
+                  <div key={tile.label} className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{tile.label}</p>
+                    <p className={`text-lg font-display font-bold ${tile.color}`}>{tile.value}</p>
+                    <p className="text-[11px] text-muted-foreground">{tile.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {summary!.netProfit === 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded-xl px-4 py-3">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  No income data for {year} yet. Recommended amounts will appear once invoices or other income are recorded.
+                </div>
+              )}
+
+              {/* Quarter cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {data.quarters.map(q => {
+                  const badge = quarterStatusBadge(q.status);
+                  const isLogging = logFormQuarter === q.quarter;
+                  const borderCls = q.status === "paid" ? "border-emerald-200" : q.status === "overdue" ? "border-red-200" : q.status === "partial" ? "border-blue-200" : "border-border";
+
+                  return (
+                    <div key={q.quarter} className={`rounded-xl border ${borderCls} overflow-hidden`}>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="font-semibold text-sm text-foreground">{q.label} — {q.period}</span>
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Calendar className="w-3 h-3" />
+                              Due: {q.dueDateLabel}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => openLog(q.quarter)}
+                            className={`flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${isLogging ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary hover:bg-primary/20"}`}
+                          >
+                            <Plus className="w-3 h-3" />
+                            Log Payment
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                          <div className="bg-muted/30 rounded-lg px-2.5 py-2">
+                            <p className="text-muted-foreground mb-0.5">Federal (IRS)</p>
+                            <p className="font-semibold text-foreground">{formatCurrency(q.recommendedFederal)} rec.</p>
+                            {q.totalPaidFederal > 0 && <p className="text-emerald-600 font-medium">{formatCurrency(q.totalPaidFederal)} paid</p>}
+                          </div>
+                          <div className="bg-muted/30 rounded-lg px-2.5 py-2">
+                            <p className="text-muted-foreground mb-0.5">KY State</p>
+                            <p className="font-semibold text-foreground">{formatCurrency(q.recommendedKy)} rec.</p>
+                            {q.totalPaidKy > 0 && <p className="text-emerald-600 font-medium">{formatCurrency(q.totalPaidKy)} paid</p>}
+                          </div>
+                        </div>
+
+                        {q.payments.length > 0 && (
+                          <div className="space-y-1.5">
+                            {q.payments.map(p => (
+                              <div key={p.id} className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-xs font-semibold text-emerald-800">{formatCurrency(p.amountPaid)}</span>
+                                  <span className="text-xs text-muted-foreground ml-1.5">{LEVEL_OPTIONS.find(l => l.value === p.level)?.label}</span>
+                                  {p.paidDate && <span className="text-xs text-muted-foreground ml-1.5">· {formatPaidDate(p.paidDate)}</span>}
+                                  {p.paymentMethod && <span className="text-xs text-muted-foreground ml-1.5">· {PAYMENT_METHOD_OPTIONS.find(m => m.value === p.paymentMethod)?.label}</span>}
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <button onClick={() => openEdit(p)} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                  <button onClick={() => handleDelete(p.id)} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {isLogging && (
+                        <div className="border-t border-border bg-muted/20 p-4">
+                          <form onSubmit={handleSubmit} className="space-y-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-semibold text-foreground">{editPayment ? "Edit Payment" : "Log Payment"}</span>
+                              <button type="button" onClick={() => { setLogFormQuarter(null); setEditPayment(null); }} className="text-muted-foreground hover:text-foreground">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className={cl}>Amount Paid *</label>
+                                <div className="relative">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                                  <input type="number" min="0.01" step="0.01" required className={ci + " pl-6"} placeholder="0.00"
+                                    value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div>
+                                <label className={cl}>Date Paid</label>
+                                <input type="date" className={ci} value={form.paidDate} onChange={e => setForm(f => ({ ...f, paidDate: e.target.value }))} />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className={cl}>Applies To</label>
+                                <select className={ci} value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value }))}>
+                                  {LEVEL_OPTIONS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className={cl}>Payment Method</label>
+                                <select className={ci} value={form.paymentMethod} onChange={e => setForm(f => ({ ...f, paymentMethod: e.target.value }))}>
+                                  {PAYMENT_METHOD_OPTIONS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            <div>
+                              <label className={cl}>Notes (optional)</label>
+                              <input className={ci} placeholder="Confirmation number, etc." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={() => { setLogFormQuarter(null); setEditPayment(null); }}
+                                className="px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted rounded-lg transition-colors">
+                                Cancel
+                              </button>
+                              <button type="submit" disabled={saving}
+                                className="px-4 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors">
+                                {saving ? "Saving…" : editPayment ? "Update" : "Save Payment"}
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex gap-3">
+                <a href="https://www.irs.gov/payments/direct-pay" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors">
+                  <ExternalLink className="w-3 h-3" /> IRS Direct Pay
+                </a>
+                <a href="https://onestop.ky.gov" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 text-xs font-medium transition-colors">
+                  <ExternalLink className="w-3 h-3" /> KY One Stop
+                </a>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground italic">
+                Federal recommended includes estimated SE tax + ~22% income tax estimate. KY state is 4% flat rate. Recommendations are based on {year} YTD net profit — consult a CPA for exact amounts.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Tax Calendar & Compliance — unified sorted list ────────────────────────
 
 type UnifiedStatus = "overdue" | "due-soon" | "upcoming" | "filed" | "na" | "no-date";
@@ -1886,6 +2268,8 @@ function TaxCalendarTab({ year }: { year: number }) {
 
   return (
     <div className="space-y-6">
+      <QuarterlyTaxTracker year={year} />
+
       {/* Add Item form */}
       {(showForm || editTarget) && (
         <div className="bg-white rounded-2xl border border-amber-200 shadow-lg p-5">

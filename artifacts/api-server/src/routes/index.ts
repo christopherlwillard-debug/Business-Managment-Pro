@@ -46,6 +46,7 @@ import publicServicesRouter from "./public-services";
 import featuredClientsRouter from "./featured-clients";
 import routeStopsRouter from "./route-stops";
 import prospectsRouter from "./prospects";
+import estimatedTaxPaymentsRouter from "./estimated-tax-payments";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -189,5 +190,6 @@ router.use("/public-services", requireOwnerForWrites, publicServicesRouter);
 router.use("/featured-clients", requireOwnerForWrites, featuredClientsRouter);
 router.use("/route-stops", requireOwner, routeStopsRouter);
 router.use("/prospects", requireOwner, prospectsRouter);
+router.use("/estimated-tax-payments", requireOwner, estimatedTaxPaymentsRouter);
 
 export default router;
