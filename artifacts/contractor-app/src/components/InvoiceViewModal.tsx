@@ -2,7 +2,7 @@ import { useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
 import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
-import { downloadInvoicePdf, invoicePdfToBase64 } from "@/lib/generateInvoicePdf";
+import { downloadInvoicePdf, invoicePdfToBase64, resolveLogoUrl, fetchLogoDataUri } from "@/lib/generateInvoicePdf";
 import {
   FileText, Trash2, X,
   Building2, MapPin, Printer, Download, Mail, Phone,
@@ -94,8 +94,12 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     };
   }
 
-  function handleDownloadPdf() {
-    downloadInvoicePdf(buildPdfData(), buildPdfSettings());
+  async function handleDownloadPdf() {
+    const pdfData = buildPdfData();
+    const pdfSettings = buildPdfSettings();
+    const effectiveRelUrl = resolveLogoUrl(pdfSettings, invoice.businessLine);
+    const logoDataUri = await fetchLogoDataUri(effectiveRelUrl ? `${window.location.origin}${base}${effectiveRelUrl}` : null);
+    downloadInvoicePdf(pdfData, { ...pdfSettings, logoDataUri });
   }
 
   function handlePrint() {
@@ -170,7 +174,10 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         notes: invoice.notes ?? undefined,
         customMessage: gmailMessage.trim() || undefined,
       });
-      const pdfBase64 = invoicePdfToBase64(buildPdfData(), buildPdfSettings());
+      const pdfSettings = buildPdfSettings();
+      const effectiveRelUrl = resolveLogoUrl(pdfSettings, invoice.businessLine);
+      const logoDataUri = await fetchLogoDataUri(effectiveRelUrl ? `${window.location.origin}${base}${effectiveRelUrl}` : null);
+      const pdfBase64 = invoicePdfToBase64(buildPdfData(), { ...pdfSettings, logoDataUri });
       const pdfFilename = `Invoice-${invoice.invoiceNumber}.pdf`;
       await sendViaGmail({
         token,

@@ -40,11 +40,29 @@ export interface InvoicePdfSettings {
   companyEmail?: string | null;
   logoUrl?: string | null;
   dbaLogoUrl?: string | null;
+  logoDataUri?: string | null;
 }
 
 export function resolveLogoUrl(settings: InvoicePdfSettings, businessLine?: string | null): string | null {
   if (businessLine === "asphalt_sealing") return settings.dbaLogoUrl ?? settings.logoUrl ?? null;
   return settings.logoUrl ?? null;
+}
+
+export async function fetchLogoDataUri(absoluteUrl: string | null): Promise<string | null> {
+  if (!absoluteUrl) return null;
+  try {
+    const resp = await fetch(absoluteUrl);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -79,10 +97,15 @@ export function generateInvoicePdf(invoice: InvoicePdfData, settings: InvoicePdf
 
   y = 14;
 
-  // Resolve logo: DBA logo for asphalt sealing, fallback to main logo.
-  // Note: logo image rendering requires async image loading (HTMLImageElement/base64).
-  // resolveLogoUrl makes the selection; callers can extend when async rendering is added.
-  const _effectivePdfLogoUrl = resolveLogoUrl(settings, invoice.businessLine);
+  // ── Logo (top-right, if pre-fetched data URI provided by caller) ─────────────
+  if (settings.logoDataUri) {
+    const logoMaxW = 28;
+    const logoMaxH = 16;
+    const fmt = (settings.logoDataUri.match(/data:image\/(\w+)/)?.[1] ?? "png").toUpperCase();
+    try {
+      doc.addImage(settings.logoDataUri, fmt, pageW - margin - logoMaxW, 5, logoMaxW, logoMaxH);
+    } catch { /* skip if format unsupported */ }
+  }
 
   // ── Company block (left) + INVOICE label (right) ─────────────────────────────
   const companyName = invoice.businessLine === "asphalt_sealing"

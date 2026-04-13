@@ -246,7 +246,7 @@ pool.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS business_line text')
 ")
 
 # Task #123: add dba_logo_url column to settings
-node -e "
+(cd lib/db && node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS dba_logo_url text')
