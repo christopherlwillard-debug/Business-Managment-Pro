@@ -68,7 +68,7 @@ function useCreateOtherIncome(year: number) {
       if (!res.ok) throw new Error("Failed to create");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); qc.invalidateQueries({ queryKey: ["profit-loss", year] }); },
   });
 }
 
@@ -80,7 +80,7 @@ function useUpdateOtherIncome(year: number) {
       if (!res.ok) throw new Error("Failed to update");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); qc.invalidateQueries({ queryKey: ["profit-loss", year] }); },
   });
 }
 
@@ -88,7 +88,7 @@ function useDeleteOtherIncome(year: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => { const res = await fetch(`${OTHER_INCOME_API}/${id}`, { method: "DELETE" }); if (!res.ok && res.status !== 204) throw new Error("Failed to delete"); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["other-income", year] }); qc.invalidateQueries({ queryKey: ["accounting", year] }); qc.invalidateQueries({ queryKey: ["profit-loss", year] }); },
   });
 }
 
