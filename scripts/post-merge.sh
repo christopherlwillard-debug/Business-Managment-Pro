@@ -106,3 +106,38 @@ pool.query(\`
 \`).then(() => { console.log('route_stops table ensured'); pool.end(); })
   .catch(e => { console.error('route_stops migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #121: create prospects table with check constraints
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS \"prospects\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"address\" text NOT NULL,
+    \"property_type\" text NOT NULL DEFAULT 'Other',
+    \"estimated_sqft\" integer,
+    \"rough_quote\" numeric(12, 2),
+    \"contact_name\" text,
+    \"contact_phone\" text,
+    \"notes\" text,
+    \"status\" text NOT NULL DEFAULT 'cold',
+    \"linked_estimate_id\" integer REFERENCES estimates(id),
+    \"created_at\" timestamp DEFAULT now() NOT NULL,
+    \"updated_at\" timestamp DEFAULT now() NOT NULL,
+    CONSTRAINT prospects_status_check CHECK (status IN ('cold', 'contacted', 'quoted', 'won', 'lost')),
+    CONSTRAINT prospects_property_type_check CHECK (property_type IN ('Church', 'Retail', 'Apartment', 'Industrial', 'Other'))
+  )
+\`).then(() => {
+  console.log('prospects table ensured');
+  return pool.query(\`
+    ALTER TABLE prospects DROP CONSTRAINT IF EXISTS prospects_status_check;
+    ALTER TABLE prospects ADD CONSTRAINT prospects_status_check
+      CHECK (status IN ('cold', 'contacted', 'quoted', 'won', 'lost'));
+    ALTER TABLE prospects DROP CONSTRAINT IF EXISTS prospects_property_type_check;
+    ALTER TABLE prospects ADD CONSTRAINT prospects_property_type_check
+      CHECK (property_type IN ('Church', 'Retail', 'Apartment', 'Industrial', 'Other'));
+  \`);
+}).then(() => { console.log('prospects constraints ensured'); pool.end(); })
+  .catch(e => { console.error('prospects migration error:', e.message); pool.end(); process.exit(1); });
+")

@@ -872,3 +872,58 @@ export const GetDashboardStatsPeriod = {
 export type UploadFileBody = {
   file?: Blob;
 };
+
+export type ProspectStatus = (typeof ProspectStatus)[keyof typeof ProspectStatus];
+
+export const ProspectStatus = {
+  cold: "cold",
+  contacted: "contacted",
+  quoted: "quoted",
+  won: "won",
+  lost: "lost",
+} as const;
+
+export type ProspectPropertyType =
+  (typeof ProspectPropertyType)[keyof typeof ProspectPropertyType];
+
+export const ProspectPropertyType = {
+  Church: "Church",
+  Retail: "Retail",
+  Apartment: "Apartment",
+  Industrial: "Industrial",
+  Other: "Other",
+} as const;
+
+export interface Prospect {
+  id: number;
+  address: string;
+  propertyType: ProspectPropertyType;
+  estimatedSqft?: number | null;
+  roughQuote?: number | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  notes?: string | null;
+  status: ProspectStatus;
+  linkedEstimateId?: number | null;
+  linkedEstimateNumber?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProspectRequest {
+  address: string;
+  propertyType?: ProspectPropertyType;
+  estimatedSqft?: number | null;
+  roughQuote?: number | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  notes?: string | null;
+  status?: ProspectStatus;
+  linkedEstimateId?: number | null;
+}
+
+export type UpdateProspectRequest = Partial<CreateProspectRequest>;
+
+export type ListProspectsParams = {
+  status?: ProspectStatus;
+};

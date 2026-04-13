@@ -21,6 +21,7 @@ import Materials from "./pages/Materials";
 import Website from "./pages/Website";
 import PricingGuide from "./pages/PricingGuide";
 import RoutePlanner from "./pages/RoutePlanner";
+import Prospects from "./pages/Prospects";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
 import NotFound from "./pages/not-found";
 
@@ -236,6 +237,9 @@ function AdminApp() {
         </Route>
         <Route path="/route-planner">
           <PermissionGuard ownerOnly><RoutePlanner /></PermissionGuard>
+        </Route>
+        <Route path="/prospects">
+          <PermissionGuard ownerOnly><Prospects /></PermissionGuard>
         </Route>
         <Route component={NotFound} />
       </Switch>

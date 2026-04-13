@@ -45,6 +45,7 @@ import inquiriesRouter from "./inquiries";
 import publicServicesRouter from "./public-services";
 import featuredClientsRouter from "./featured-clients";
 import routeStopsRouter from "./route-stops";
+import prospectsRouter from "./prospects";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -187,5 +188,6 @@ router.use("/inquiries", inquiriesRouter);
 router.use("/public-services", requireOwnerForWrites, publicServicesRouter);
 router.use("/featured-clients", requireOwnerForWrites, featuredClientsRouter);
 router.use("/route-stops", requireOwner, routeStopsRouter);
+router.use("/prospects", requireOwner, prospectsRouter);
 
 export default router;

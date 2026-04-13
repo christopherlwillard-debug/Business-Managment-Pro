@@ -24,3 +24,4 @@ export * from "./inquiries";
 export * from "./services";
 export * from "./featured-clients";
 export * from "./route-stops";
+export * from "./prospects";
