@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, paymentsTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, desc, sum, count, ne } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
@@ -364,6 +364,130 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to generate accounting report" });
+  }
+});
+
+const PL_CATEGORY_MAP: Record<string, "cogs" | "advertising" | "carTruck" | "contractLabor" | "insurance" | "professionalFees" | "officeExpense" | "rent" | "repairs" | "supplies" | "utilities" | "depreciation" | "other"> = {
+  "Materials":             "cogs",
+  "Advertising":           "advertising",
+  "Fuel/Travel":           "carTruck",
+  "Subcontractor":         "contractLabor",
+  "Insurance":             "insurance",
+  "Professional Services": "professionalFees",
+  "Office/Admin":          "officeExpense",
+  "Rent/Lease":            "rent",
+  "Repairs/Maintenance":   "repairs",
+  "Tools/Equipment":       "supplies",
+  "Utilities":             "utilities",
+  "Other":                 "other",
+  "materials":             "cogs",
+  "advertising":           "advertising",
+  "marketing":             "advertising",
+  "fuel":                  "carTruck",
+  "labor":                 "contractLabor",
+  "subcontractor":         "contractLabor",
+  "insurance":             "insurance",
+  "professional-services": "professionalFees",
+  "accounting":            "professionalFees",
+  "legal":                 "professionalFees",
+  "office-supplies":       "officeExpense",
+  "office supplies":       "officeExpense",
+  "rent":                  "rent",
+  "supplies":              "supplies",
+  "tools":                 "supplies",
+  "repairs":               "repairs",
+  "maintenance":           "repairs",
+  "utilities":             "utilities",
+  "depreciation":          "depreciation",
+};
+
+const PL_OPEX_LABELS: Record<string, string> = {
+  advertising:      "Advertising",
+  carTruck:         "Fuel / Travel",
+  contractLabor:    "Contract Labor (Subcontractors)",
+  depreciation:     "Depreciation & Section 179",
+  insurance:        "Insurance",
+  officeExpense:    "Office / Admin",
+  professionalFees: "Legal & Professional Services",
+  rent:             "Rent / Lease",
+  repairs:          "Repairs & Maintenance",
+  supplies:         "Tools & Equipment / Supplies",
+  utilities:        "Utilities",
+  other:            "Other Expenses",
+};
+
+router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
+  try {
+    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
+    const startDate = `${year}-01-01`;
+    const endDate   = `${year}-12-31`;
+
+    const [invRows, expRows, mileRows, payRows, otherRows] = await Promise.all([
+      db.select({ status: invoicesTable.status, total: invoicesTable.total })
+        .from(invoicesTable)
+        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
+      db.select({ category: expensesTable.category, amount: sum(expensesTable.amount) })
+        .from(expensesTable)
+        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage")))
+        .groupBy(expensesTable.category),
+      db.select({ totalMiles: sum(mileageLogsTable.miles), totalDed: sum(mileageLogsTable.deductionAmount) })
+        .from(mileageLogsTable)
+        .where(and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
+      db.select({ total: sum(paymentsTable.amount) })
+        .from(paymentsTable)
+        .where(eq(paymentsTable.year, year)),
+      db.select({ amount: otherIncomeTable.amount })
+        .from(otherIncomeTable)
+        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
+    ]);
+
+    const grossReceipts = invRows.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+    const grossRevenue  = grossReceipts + otherIncome;
+
+    const buckets: Record<string, number> = {};
+    for (const e of expRows) {
+      const cat = e.category || "Other";
+      const key = PL_CATEGORY_MAP[cat] ?? "other";
+      buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount as string ?? "0");
+    }
+
+    const subPayments = payRows[0]?.total ? parseFloat(payRows[0].total as string) : 0;
+    if (subPayments > 0) {
+      buckets["contractLabor"] = (buckets["contractLabor"] ?? 0) + subPayments;
+    }
+
+    const cogs = buckets["cogs"] ?? 0;
+    const grossProfit = grossRevenue - cogs;
+
+    const operatingExpenses: { label: string; key: string; amount: number }[] = [];
+    for (const [key, label] of Object.entries(PL_OPEX_LABELS)) {
+      const amt = buckets[key] ?? 0;
+      operatingExpenses.push({ label, key, amount: amt });
+    }
+
+    const totalOperatingExpenses = operatingExpenses.reduce((s, x) => s + x.amount, 0);
+    const netOperatingIncome = grossProfit - totalOperatingExpenses;
+
+    const totalMiles = mileRows[0]?.totalMiles ? parseFloat(mileRows[0].totalMiles as string) : 0;
+    const mileageDeduction = mileRows[0]?.totalDed ? parseFloat(mileRows[0].totalDed as string) : 0;
+    const mileageRate = getIrsMileageRate(year);
+    const netProfit = netOperatingIncome - mileageDeduction;
+
+    res.json({
+      year,
+      revenue: { grossReceipts, otherIncome, grossRevenue },
+      cogs: { materials: cogs, total: cogs },
+      grossProfit,
+      operatingExpenses,
+      totalOperatingExpenses,
+      netOperatingIncome,
+      deductions: { mileageDeduction, totalMiles, mileageRate },
+      netProfit,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate profit & loss report" });
   }
 });
 
