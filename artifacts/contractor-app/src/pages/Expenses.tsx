@@ -1548,6 +1548,28 @@ export default function Expenses() {
                                         <EyeOff className="w-2.5 h-2.5" /> Write-off
                                       </span>
                                     </label>
+                                    <div className="flex items-center gap-0.5 mt-1">
+                                      {[
+                                        { val: "", label: "—" },
+                                        { val: "general_contracting", label: "GC" },
+                                        { val: "asphalt_sealing", label: "AS" },
+                                      ].map(({ val, label }) => (
+                                        <button
+                                          key={val}
+                                          type="button"
+                                          title={val === "" ? "Untagged" : val === "general_contracting" ? "General Contracting" : "Asphalt Sealing"}
+                                          onClick={() => setEditingRow(r => r && ({ ...r, businessLine: val }))}
+                                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                                            editingRow.businessLine === val
+                                              ? val === "asphalt_sealing" ? "bg-amber-500 text-white" : val === "general_contracting" ? "bg-blue-600 text-white" : "bg-muted text-foreground"
+                                              : "text-muted-foreground hover:bg-muted"
+                                          }`}
+                                        >
+                                          {label}
+                                        </button>
+                                      ))}
+                                      <span className="text-[10px] text-muted-foreground ml-0.5">Line</span>
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                     <div className="flex items-center justify-center gap-1.5">

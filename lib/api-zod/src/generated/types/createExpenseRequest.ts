@@ -17,4 +17,5 @@ export interface CreateExpenseRequest {
   receiptUrl?: string | null;
   notes?: string | null;
   excludeFromNetProfit?: boolean | null;
+  businessLine?: string | null;
 }

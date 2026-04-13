@@ -20,4 +20,5 @@ export interface Expense {
   recurringExpenseId?: number | null;
   createdAt: string;
   excludeFromNetProfit?: boolean | null;
+  businessLine?: string | null;
 }
