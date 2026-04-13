@@ -1,0 +1,33 @@
+Here's what the document surfaces that isn't in the app yet — broken into what I think is actually worth building:
+
+1. Asphalt Sealing Bid Calculator
+The document gives you a very specific, battle-tested pricing formula that belongs as a dedicated calculator alongside the flooring, plumbing, siding, and trim ones. It would handle:
+
+Square footage input (or multi-section: length × width per section)
+Auto-tier pricing (small/medium/large lot brackets)
+Material cost estimate vs. your charge — shows profit per job
+Add-ons: crack repair by linear foot, second coat, oil stain treatment
+Output that pushes directly into an estimate as line items
+This is the single highest-value addition from the document.
+
+2. DBA Brand Switching on Invoices & Estimates
+The document makes clear that paperwork must read "Willard's General Contracting LLC, DBA Willard's Asphalt Sealing" on asphalt jobs — but plain Willard's General Contracting on everything else. Right now invoices only use the one business name. This was planned as tasks #112/#113 but never started.
+
+What it adds:
+
+Per-estimate/invoice toggle: General Contracting vs. Asphalt Sealing branding
+Correct legal name format on PDFs
+Logo/header switching per business line
+3. Commercial Prospect Pipeline
+The document's "drive the zones, write down 10–20 properties, call next morning" workflow needs a place to live. The Route Planner handles the mapping side, but there's no structured pipeline for:
+
+Logging a property (address, type: church/retail/apartment/industrial)
+Estimated sq footage and rough quote
+Contact name / follow-up notes
+Status: Cold → Contacted → Quoted → Won / Lost
+Link to an estimate when you quote
+This is separate from the Clients CRM because these are prospects you haven't won yet, with property-type context specific to asphalt.
+
+4. Asphalt Sealing Proposal Template
+The document gives a complete proposal structure (scope of work checklist, pricing, add-ons, terms, signature line). This could be a specialized estimate type that pre-fills the standard asphalt scope items and uses the DBA branding automatically, saving time on every quote.
+
