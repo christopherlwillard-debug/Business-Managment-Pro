@@ -99,6 +99,7 @@ interface TaxPaymentRow {
   year: number;
   quarter: number;
   level: string;
+  amountDue: number | null;
   amountPaid: number;
   paidDate: string | null;
   paymentMethod: string | null;
@@ -109,10 +110,14 @@ interface QuarterData {
   quarter: number;
   label: string;
   period: string;
-  dueDateLabel: string;
+  federalDueDateLabel: string;
+  kyDueDateLabel: string;
   recommendedFederal: number;
   recommendedKy: number;
   recommendedTotal: number;
+  safeHarborFederal: number;
+  safeHarborKy: number;
+  safeHarborTotal: number;
   totalPaidFederal: number;
   totalPaidKy: number;
   totalPaidCombined: number;
@@ -125,14 +130,16 @@ interface QuarterlyTaxResponse {
   year: number;
   quarters: QuarterData[];
   payments: TaxPaymentRow[];
+  safeHarborMethod: string;
   summary: {
-    recommendedPerQuarter: number;
-    recommendedFederalPerQ: number;
-    recommendedKyPerQ: number;
+    netProfit: number;
+    fullYearFederalTax: number;
+    fullYearKyTax: number;
     totalRecommended: number;
+    totalSafeHarbor: number;
+    safeHarborPerQuarter: number;
     totalPaid: number;
     remaining: number;
-    netProfit: number;
   };
 }
 
@@ -1827,7 +1834,7 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
 
   const summary = data?.summary;
   const totalPaid = summary?.totalPaid ?? 0;
-  const totalRec = summary?.totalRecommended ?? 0;
+  const totalRec = summary?.totalSafeHarbor ?? 0;
   const remaining = summary?.remaining ?? 0;
 
   return (
@@ -1864,7 +1871,7 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
               {/* Summary bar */}
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: "Annual Recommended", value: formatCurrency(totalRec), sub: `${formatCurrency(summary!.recommendedPerQuarter)}/quarter`, color: "text-foreground" },
+                  { label: "Annual Recommended", value: formatCurrency(totalRec), sub: `${formatCurrency(summary!.safeHarborPerQuarter)}/quarter (90% safe harbor)`, color: "text-foreground" },
                   { label: "Total Paid", value: formatCurrency(totalPaid), sub: `${data.payments.length} payment${data.payments.length !== 1 ? "s" : ""} logged`, color: "text-emerald-600" },
                   { label: "Remaining", value: formatCurrency(remaining), sub: remaining > 0 ? "Still owed this year" : "Fully paid", color: remaining > 0 ? "text-amber-600" : "text-emerald-600" },
                 ].map(tile => (
@@ -1899,9 +1906,15 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
                               <span className="font-semibold text-sm text-foreground">{q.label} — {q.period}</span>
                               <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Calendar className="w-3 h-3" />
-                              Due: {q.dueDateLabel}
+                            <div className="space-y-0.5 mt-0.5">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Calendar className="w-3 h-3" />
+                                <span className="font-medium">Federal:</span> {q.federalDueDateLabel}
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Calendar className="w-3 h-3" />
+                                <span className="font-medium">KY:</span> {q.kyDueDateLabel}
+                              </div>
                             </div>
                           </div>
                           <button
@@ -1916,12 +1929,12 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
                         <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                           <div className="bg-muted/30 rounded-lg px-2.5 py-2">
                             <p className="text-muted-foreground mb-0.5">Federal (IRS)</p>
-                            <p className="font-semibold text-foreground">{formatCurrency(q.recommendedFederal)} rec.</p>
+                            <p className="font-semibold text-foreground">{formatCurrency(q.safeHarborFederal)} safe harbor</p>
                             {q.totalPaidFederal > 0 && <p className="text-emerald-600 font-medium">{formatCurrency(q.totalPaidFederal)} paid</p>}
                           </div>
                           <div className="bg-muted/30 rounded-lg px-2.5 py-2">
-                            <p className="text-muted-foreground mb-0.5">KY State</p>
-                            <p className="font-semibold text-foreground">{formatCurrency(q.recommendedKy)} rec.</p>
+                            <p className="text-muted-foreground mb-0.5">KY State (740-ES)</p>
+                            <p className="font-semibold text-foreground">{formatCurrency(q.safeHarborKy)} safe harbor</p>
                             {q.totalPaidKy > 0 && <p className="text-emerald-600 font-medium">{formatCurrency(q.totalPaidKy)} paid</p>}
                           </div>
                         </div>

@@ -5,6 +5,7 @@ export const estimatedTaxPaymentsTable = pgTable("estimated_tax_payments", {
   year: integer("year").notNull(),
   quarter: integer("quarter").notNull(),
   level: text("level").notNull().default("federal"),
+  amountDue: numeric("amount_due", { precision: 12, scale: 2 }),
   amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }),
   paidDate: text("paid_date"),
   paymentMethod: text("payment_method"),

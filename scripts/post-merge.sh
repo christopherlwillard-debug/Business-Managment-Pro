@@ -142,7 +142,7 @@ pool.query(\`
   .catch(e => { console.error('prospects migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
-# Task #114: create estimated_tax_payments table
+# Task #114: create estimated_tax_payments table + add amount_due column (idempotent)
 (cd lib/db && node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -152,6 +152,7 @@ pool.query(\`
     \"year\" integer NOT NULL,
     \"quarter\" integer NOT NULL,
     \"level\" text NOT NULL DEFAULT 'federal',
+    \"amount_due\" numeric(12, 2),
     \"amount_paid\" numeric(12, 2),
     \"paid_date\" text,
     \"payment_method\" text,
@@ -159,7 +160,8 @@ pool.query(\`
     \"created_at\" timestamp DEFAULT now() NOT NULL,
     CONSTRAINT estimated_tax_payments_quarter_check CHECK (quarter BETWEEN 1 AND 4),
     CONSTRAINT estimated_tax_payments_level_check CHECK (level IN ('federal', 'state', 'combined'))
-  )
+  );
+  ALTER TABLE \"estimated_tax_payments\" ADD COLUMN IF NOT EXISTS \"amount_due\" numeric(12, 2);
 \`).then(() => { console.log('estimated_tax_payments table ensured'); pool.end(); })
   .catch(e => { console.error('estimated_tax_payments migration error:', e.message); pool.end(); process.exit(1); });
 ")

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable, settingsTable } from "@workspace/db";
+import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable } from "@workspace/db";
 import { eq, and, gte, lte, sum } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 
@@ -9,11 +9,16 @@ interface QuarterInfo {
   quarter: number;
   label: string;
   period: string;
-  dueDateLabel: string;
-  dueDate: Date;
+  federalDueDate: string;
+  federalDueDateLabel: string;
+  kyDueDate: string;
+  kyDueDateLabel: string;
   recommendedFederal: number;
   recommendedKy: number;
   recommendedTotal: number;
+  safeHarborFederal: number;
+  safeHarborKy: number;
+  safeHarborTotal: number;
   totalPaidFederal: number;
   totalPaidKy: number;
   totalPaidCombined: number;
@@ -27,6 +32,7 @@ interface EstimatedTaxPaymentRow {
   year: number;
   quarter: number;
   level: string;
+  amountDue: number | null;
   amountPaid: number;
   paidDate: string | null;
   paymentMethod: string | null;
@@ -34,24 +40,33 @@ interface EstimatedTaxPaymentRow {
   createdAt: Date;
 }
 
-function getQuarterDueDate(year: number, quarter: number): Date {
-  switch (quarter) {
-    case 1: return new Date(year, 3, 15);
-    case 2: return new Date(year, 5, 15);
-    case 3: return new Date(year, 8, 15);
-    case 4: return new Date(year + 1, 0, 15);
-    default: return new Date(year, 3, 15);
-  }
+function nextBusinessDay(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  if (day === 0) d.setDate(d.getDate() + 1);
+  else if (day === 6) d.setDate(d.getDate() + 2);
+  return d;
 }
 
-function getQuarterDueDateLabel(year: number, quarter: number): string {
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDueDate(d: Date): string {
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+}
+
+function getQuarterDueDates(year: number, quarter: number): { dueDate: Date; label: string } {
+  let base: Date;
   switch (quarter) {
-    case 1: return `April 15, ${year}`;
-    case 2: return `June 15, ${year}`;
-    case 3: return `September 15, ${year}`;
-    case 4: return `January 15, ${year + 1}`;
-    default: return "";
+    case 1: base = new Date(Date.UTC(year, 3, 15)); break;
+    case 2: base = new Date(Date.UTC(year, 5, 15)); break;
+    case 3: base = new Date(Date.UTC(year, 8, 15)); break;
+    case 4: base = new Date(Date.UTC(year + 1, 0, 15)); break;
+    default: base = new Date(Date.UTC(year, 3, 15));
   }
+  const dueDate = nextBusinessDay(base);
+  return { dueDate, label: formatDueDate(dueDate) };
 }
 
 const QUARTER_DEFS = [
@@ -61,16 +76,23 @@ const QUARTER_DEFS = [
   { quarter: 4, label: "Q4", period: "Sep – Dec" },
 ];
 
-async function computeNetProfit(year: number): Promise<{ netProfit: number; kyStateTax: number; federalSETax: number }> {
+async function computeTaxData(year: number): Promise<{
+  netProfit: number;
+  fullYearFederalTax: number;
+  fullYearKyTax: number;
+}> {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
 
-  const [invoicesResult, expensesResult, mileageResult, otherIncomeResult, settingsResult] = await Promise.all([
+  const [invoicesResult, expensesResult, mileageResult, otherIncomeResult] = await Promise.all([
     db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
     db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
-    db.select({ totalDeduction: sum(mileageLogsTable.deductionAmount) }).from(mileageLogsTable).where(and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
-    db.select({ total: sum(otherIncomeTable.amount) }).from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
-    db.select().from(settingsTable).limit(1),
+    db.select({ totalDeduction: sum(mileageLogsTable.deductionAmount) }).from(mileageLogsTable).where(
+      and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
+    ),
+    db.select({ total: sum(otherIncomeTable.amount) }).from(otherIncomeTable).where(
+      and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))
+    ),
   ]);
 
   const paidRevenue = invoicesResult.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
@@ -79,11 +101,15 @@ async function computeNetProfit(year: number): Promise<{ netProfit: number; kySt
   const mileageDeduction = mileageResult[0]?.totalDeduction ? parseFloat(mileageResult[0].totalDeduction as string) : 0;
 
   const netProfit = Math.max(0, (paidRevenue + otherIncomeSum) - totalExpenses - mileageDeduction);
-  const kyStateTax = netProfit * 0.04;
-  const federalSETax = netProfit * 0.9235 * 0.153;
-  const federalIncomeTaxEst = Math.max(0, (netProfit - federalSETax * 0.5) * 0.22);
 
-  return { netProfit, kyStateTax, federalSETax: federalSETax + federalIncomeTaxEst };
+  const selfEmploymentTax = netProfit * 0.9235 * 0.153;
+  const seDeduction = selfEmploymentTax * 0.5;
+  const taxableIncome = Math.max(0, netProfit - seDeduction);
+  const incomeTax = taxableIncome * 0.22;
+  const fullYearFederalTax = selfEmploymentTax + incomeTax;
+  const fullYearKyTax = netProfit * 0.04;
+
+  return { netProfit, fullYearFederalTax, fullYearKyTax };
 }
 
 // GET /api/estimated-tax-payments?year=YYYY
@@ -92,13 +118,15 @@ router.get("/", wrapAsync(async (req, res) => {
 
   const [payments, taxData] = await Promise.all([
     db.select().from(estimatedTaxPaymentsTable).where(eq(estimatedTaxPaymentsTable.year, year)),
-    computeNetProfit(year),
+    computeTaxData(year),
   ]);
 
-  const { kyStateTax, federalSETax } = taxData;
-  const recommendedFederalPerQ = federalSETax / 4;
-  const recommendedKyPerQ = kyStateTax / 4;
-  const recommendedTotalPerQ = recommendedFederalPerQ + recommendedKyPerQ;
+  const { fullYearFederalTax, fullYearKyTax } = taxData;
+
+  const fullYearFederalPerQ = fullYearFederalTax / 4;
+  const fullYearKyPerQ = fullYearKyTax / 4;
+  const safeHarborFederalPerQ = (fullYearFederalTax * 0.9) / 4;
+  const safeHarborKyPerQ = (fullYearKyTax * 0.9) / 4;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -108,6 +136,7 @@ router.get("/", wrapAsync(async (req, res) => {
     year: p.year,
     quarter: p.quarter,
     level: p.level,
+    amountDue: p.amountDue ? parseFloat(p.amountDue as string) : null,
     amountPaid: p.amountPaid ? parseFloat(p.amountPaid as string) : 0,
     paidDate: p.paidDate,
     paymentMethod: p.paymentMethod,
@@ -122,21 +151,29 @@ router.get("/", wrapAsync(async (req, res) => {
     const totalPaidCombined = qPayments.filter(p => p.level === "combined").reduce((s, p) => s + p.amountPaid, 0);
     const totalPaid = totalPaidFederal + totalPaidKy + totalPaidCombined;
 
-    const dueDate = getQuarterDueDate(year, qDef.quarter);
+    const { dueDate, label } = getQuarterDueDates(year, qDef.quarter);
     const isOverdue = dueDate < today;
 
+    const recommendedTotal = fullYearFederalPerQ + fullYearKyPerQ;
+    const safeHarborTotal = safeHarborFederalPerQ + safeHarborKyPerQ;
+
     let status: QuarterInfo["status"] = "due";
-    if (totalPaid >= recommendedTotalPerQ && recommendedTotalPerQ > 0) status = "paid";
+    if (totalPaid >= safeHarborTotal && safeHarborTotal > 0) status = "paid";
     else if (totalPaid > 0) status = "partial";
     else if (isOverdue) status = "overdue";
 
     return {
       ...qDef,
-      dueDateLabel: getQuarterDueDateLabel(year, qDef.quarter),
-      dueDate,
-      recommendedFederal: recommendedFederalPerQ,
-      recommendedKy: recommendedKyPerQ,
-      recommendedTotal: recommendedTotalPerQ,
+      federalDueDate: isoDate(dueDate),
+      federalDueDateLabel: label,
+      kyDueDate: isoDate(dueDate),
+      kyDueDateLabel: label,
+      recommendedFederal: fullYearFederalPerQ,
+      recommendedKy: fullYearKyPerQ,
+      recommendedTotal,
+      safeHarborFederal: safeHarborFederalPerQ,
+      safeHarborKy: safeHarborKyPerQ,
+      safeHarborTotal,
       totalPaidFederal,
       totalPaidKy,
       totalPaidCombined,
@@ -146,28 +183,31 @@ router.get("/", wrapAsync(async (req, res) => {
     };
   });
 
-  const totalRecommended = recommendedTotalPerQ * 4;
+  const totalRecommended = fullYearFederalTax + fullYearKyTax;
+  const totalSafeHarbor = totalRecommended * 0.9;
   const totalPaidYtd = rows.reduce((s, p) => s + p.amountPaid, 0);
 
   res.json({
     year,
     quarters,
     payments: rows,
+    safeHarborMethod: "current-year-90-percent",
     summary: {
-      recommendedPerQuarter: recommendedTotalPerQ,
-      recommendedFederalPerQ,
-      recommendedKyPerQ,
-      totalRecommended,
-      totalPaid: totalPaidYtd,
-      remaining: Math.max(0, totalRecommended - totalPaidYtd),
       netProfit: taxData.netProfit,
+      fullYearFederalTax,
+      fullYearKyTax,
+      totalRecommended,
+      totalSafeHarbor,
+      safeHarborPerQuarter: totalSafeHarbor / 4,
+      totalPaid: totalPaidYtd,
+      remaining: Math.max(0, totalSafeHarbor - totalPaidYtd),
     },
   });
 }));
 
 // POST /api/estimated-tax-payments
 router.post("/", wrapAsync(async (req, res) => {
-  const { year, quarter, level, amountPaid, paidDate, paymentMethod, notes } = req.body;
+  const { year, quarter, level, amountDue, amountPaid, paidDate, paymentMethod, notes } = req.body;
   if (!year || !quarter || !level) {
     res.status(400).json({ error: "year, quarter, and level are required" });
     return;
@@ -184,6 +224,7 @@ router.post("/", wrapAsync(async (req, res) => {
     year: parseInt(year),
     quarter: parseInt(quarter),
     level,
+    amountDue: amountDue ? String(amountDue) : null,
     amountPaid: amountPaid ? String(amountPaid) : null,
     paidDate: paidDate || null,
     paymentMethod: paymentMethod || null,
@@ -194,10 +235,11 @@ router.post("/", wrapAsync(async (req, res) => {
 
 // PUT /api/estimated-tax-payments/:id
 router.put("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { amountPaid, paidDate, paymentMethod, notes, level } = req.body;
+  const { amountDue, amountPaid, paidDate, paymentMethod, notes, level } = req.body;
   const updates: Partial<typeof estimatedTaxPaymentsTable.$inferInsert> = {};
+  if (amountDue !== undefined) updates.amountDue = String(amountDue);
   if (amountPaid !== undefined) updates.amountPaid = String(amountPaid);
   if (paidDate !== undefined) updates.paidDate = paidDate;
   if (paymentMethod !== undefined) updates.paymentMethod = paymentMethod;
@@ -210,7 +252,7 @@ router.put("/:id", wrapAsync(async (req, res) => {
 
 // DELETE /api/estimated-tax-payments/:id
 router.delete("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(estimatedTaxPaymentsTable).where(eq(estimatedTaxPaymentsTable.id, id));
   res.status(204).end();
