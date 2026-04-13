@@ -166,6 +166,38 @@ pool.query(\`
   .catch(e => { console.error('estimated_tax_payments migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Task #115: create bank_import_batches and bank_transactions tables
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS \"bank_import_batches\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"account_name\" text NOT NULL,
+    \"file_name\" text,
+    \"row_count\" integer NOT NULL DEFAULT 0,
+    \"imported_at\" timestamp DEFAULT now() NOT NULL,
+    \"created_at\" timestamp DEFAULT now() NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS \"bank_transactions\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"import_batch_id\" integer NOT NULL REFERENCES \"bank_import_batches\"(\"id\") ON DELETE CASCADE,
+    \"date\" text NOT NULL,
+    \"description\" text NOT NULL,
+    \"amount\" numeric(12, 2) NOT NULL,
+    \"transaction_type\" text NOT NULL,
+    \"status\" text NOT NULL DEFAULT 'unmatched',
+    \"matched_expense_id\" integer REFERENCES \"expenses\"(\"id\") ON DELETE SET NULL,
+    \"matched_invoice_id\" integer REFERENCES \"invoices\"(\"id\") ON DELETE SET NULL,
+    \"matched_other_income_id\" integer REFERENCES \"other_income\"(\"id\") ON DELETE SET NULL,
+    \"suggested_match_type\" text,
+    \"suggested_match_id\" integer,
+    \"created_at\" timestamp DEFAULT now() NOT NULL
+  )
+\`).then(() => { console.log('bank reconciliation tables ensured'); pool.end(); })
+  .catch(e => { console.error('bank reconciliation migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Task #120: add business_line column to invoices and estimates
 (cd lib/db && node -e "
 const { Pool } = require('pg');
