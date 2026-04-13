@@ -3,6 +3,13 @@ import { db } from "@workspace/db";
 import { routeStopsTable, type RouteStop as RouteStopRow } from "@workspace/db/schema";
 import { eq, and, gte, lte, SQL } from "drizzle-orm";
 
+const VALID_STATUSES = ["prospect", "scheduled", "completed", "skipped"] as const;
+type ValidStatus = typeof VALID_STATUSES[number];
+
+function isValidStatus(s: unknown): s is ValidStatus {
+  return typeof s === "string" && (VALID_STATUSES as readonly string[]).includes(s);
+}
+
 const router = Router();
 
 function formatStop(s: RouteStopRow) {
@@ -40,6 +47,9 @@ router.post("/", async (req, res) => {
       scheduledDate?: string; status?: string; estimatedDurationMinutes?: number; sortOrder?: number;
     };
     if (!address) return res.status(400).json({ error: "Address is required" });
+    if (status !== undefined && !isValidStatus(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
+    }
 
     const [stop] = await db.insert(routeStopsTable).values({
       title: title || null,
@@ -48,7 +58,7 @@ router.post("/", async (req, res) => {
       lng: lng ?? null,
       notes: notes || null,
       scheduledDate: scheduledDate || null,
-      status: status || "prospect",
+      status: status ?? "prospect",
       estimatedDurationMinutes: estimatedDurationMinutes ?? 60,
       sortOrder: sortOrder ?? 0,
     }).returning();
@@ -62,12 +72,18 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid stop ID" });
+
     const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder } = req.body as {
       title?: string | null; address?: string; lat?: number | null; lng?: number | null;
       notes?: string | null; scheduledDate?: string | null; status?: string;
       estimatedDurationMinutes?: number; sortOrder?: number;
     };
+
+    if (status !== undefined && !isValidStatus(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
+    }
 
     const updates: Partial<RouteStopRow> = {};
     if (title !== undefined) updates.title = title || null;
@@ -92,7 +108,9 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(routeStopsTable).where(eq(routeStopsTable.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid stop ID" });
+    await db.delete(routeStopsTable).where(eq(routeStopsTable.id, id));
     res.status(204).send();
   } catch (err) {
     console.error(err);

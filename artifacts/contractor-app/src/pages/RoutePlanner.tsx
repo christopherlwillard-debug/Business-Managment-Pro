@@ -327,17 +327,20 @@ export default function RoutePlanner() {
   }
 
   function handleDragStart(e: React.DragEvent<HTMLDivElement>, idx: number) {
+    if (viewMode !== "day") { e.preventDefault(); return; }
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", String(idx));
   }
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>, idx: number) {
+    if (viewMode !== "day") return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverIdx(idx);
   }
 
   async function handleDrop(e: React.DragEvent<HTMLDivElement>, dropIdx: number) {
+    if (viewMode !== "day") return;
     e.preventDefault();
     const dragIdx = parseInt(e.dataTransfer.getData("text/plain"));
     setDragOverIdx(null);
@@ -465,7 +468,9 @@ export default function RoutePlanner() {
             </div>
           </div>
           {viewMode === "week" && (
-            <p className="text-[10px] text-muted-foreground mt-1">Optimize applies to {format(selectedDate, "MMM d")} only</p>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Optimize and drag-reorder apply to {format(selectedDate, "MMM d")} — switch to Day view to reorder
+            </p>
           )}
         </div>
 
