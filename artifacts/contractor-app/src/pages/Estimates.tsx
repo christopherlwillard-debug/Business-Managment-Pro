@@ -16,6 +16,7 @@ import { TrimCalculator } from "@/components/calculators/TrimCalculator";
 import { SidingCalculator } from "@/components/calculators/SidingCalculator";
 import { FlooringCalculator } from "@/components/calculators/FlooringCalculator";
 import { PlumbingCalculator } from "@/components/calculators/PlumbingCalculator";
+import { AsphaltCalculator } from "@/components/calculators/AsphaltCalculator";
 
 // ─── Trade templates ──────────────────────────────────────────────────────────
 const TRADE_TEMPLATES: Record<string, Array<{ category: string; description: string; quantity: number; unit: string; unitCost: number }>> = {
@@ -84,6 +85,10 @@ const TRADE_TEMPLATES: Record<string, Array<{ category: string; description: str
     { category: "Material", description: "Equipment / unit", quantity: 1, unit: "EA", unitCost: 3500 },
     { category: "Material", description: "Ductwork material", quantity: 1, unit: "LOT", unitCost: 800 },
     { category: "Labor", description: "Duct installation", quantity: 16, unit: "HR", unitCost: 85 },
+  ],
+  "Asphalt Sealing": [
+    { category: "Labor", description: "Asphalt sealing labor", quantity: 1000, unit: "SF", unitCost: 0.28 },
+    { category: "Material", description: "Sealer & supplies", quantity: 1, unit: "LOT", unitCost: 150 },
   ],
   "General": [
     { category: "Labor", description: "General labor", quantity: 8, unit: "HR", unitCost: 65 },
@@ -159,6 +164,7 @@ export function EstimateModal({
   const [showSidingCalc, setShowSidingCalc] = useState(false);
   const [showFlooringCalc, setShowFlooringCalc] = useState(false);
   const [showPlumbingCalc, setShowPlumbingCalc] = useState(false);
+  const [showAsphaltCalc, setShowAsphaltCalc] = useState(false);
 
   const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
   const markupAmt = markup ? subtotal * (parseFloat(markup) / 100) : 0;
@@ -334,6 +340,15 @@ export function EstimateModal({
                   className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
                 >
                   <Calculator className="w-3.5 h-3.5" /> Open Plumbing Calculator
+                </button>
+              )}
+              {jobType === "Asphalt Sealing" && (
+                <button
+                  type="button"
+                  onClick={() => setShowAsphaltCalc(true)}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-700 text-white text-xs font-bold hover:bg-gray-800 transition-colors"
+                >
+                  <Calculator className="w-3.5 h-3.5" /> Open Asphalt Sealing Calculator
                 </button>
               )}
             </div>
@@ -555,6 +570,23 @@ export function EstimateModal({
       {showPlumbingCalc && (
         <PlumbingCalculator
           onClose={() => setShowPlumbingCalc(false)}
+          onUseNumbers={calcLines => {
+            setLines(calcLines.map(l => ({
+              category: l.category,
+              description: l.description,
+              quantity: String(l.quantity),
+              unit: l.unit,
+              unitCost: String(l.unitCost),
+            })));
+            setTemplateApplied(true);
+          }}
+        />
+      )}
+
+      {/* Asphalt Sealing calculator overlay */}
+      {showAsphaltCalc && (
+        <AsphaltCalculator
+          onClose={() => setShowAsphaltCalc(false)}
           onUseNumbers={calcLines => {
             setLines(calcLines.map(l => ({
               category: l.category,
