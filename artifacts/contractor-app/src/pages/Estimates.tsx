@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 import {
-  useListEstimates, useListClients,
+  useListEstimates, useListClients, useGetSettings,
   useCreateEstimate, useUpdateEstimate, useDeleteEstimate, useConvertEstimateToJob,
   getListEstimatesQueryKey,
-  Estimate, CreateEstimateRequest, CreateEstimateRequestStatus,
+  Estimate, CreateEstimateRequest, CreateEstimateRequestStatus, AppSettings,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -211,6 +211,9 @@ export function EstimateModal({
   onSave: (req: CreateEstimateRequest) => void;
 }) {
   const { data: clients = [] } = useListClients();
+  const { data: settings } = useGetSettings();
+  const s = (settings ?? {}) as AppSettings;
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const seedData = fromTemplate === "asphalt_sealing_proposal" ? ASPHALT_SEALING_PROPOSAL : null;
 
@@ -249,11 +252,14 @@ export function EstimateModal({
   const [showPlumbingCalc, setShowPlumbingCalc] = useState(false);
   const [showAsphaltCalc, setShowAsphaltCalc] = useState(false);
 
-  const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
+  const subtotal = lines.reduce((acc, l) => acc + lineTotal(l), 0);
   const markupAmt = markup ? subtotal * (parseFloat(markup) / 100) : 0;
   const afterMarkup = subtotal + markupAmt;
   const contAmt = cont ? afterMarkup * (parseFloat(cont) / 100) : 0;
   const grandTotal = afterMarkup + contAmt;
+
+  const effectiveLogoUrl: string | null =
+    (businessLine === "asphalt_sealing" ? (s.dbaLogoUrl ?? s.logoUrl) : s.logoUrl) ?? null;
 
   function applyTemplate() {
     const tpl = TRADE_TEMPLATES[jobType];
@@ -311,7 +317,11 @@ export function EstimateModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2 flex-wrap">
-            <Calculator className="w-5 h-5 text-amber-500" />
+            {effectiveLogoUrl ? (
+              <img src={`${base}${effectiveLogoUrl}`} alt="Logo" className="h-7 w-auto object-contain flex-shrink-0" />
+            ) : (
+              <Calculator className="w-5 h-5 text-amber-500" />
+            )}
             <h2 className="text-lg font-bold text-gray-900">
               {initial ? "Edit Estimate" : "Build Estimate"}
             </h2>

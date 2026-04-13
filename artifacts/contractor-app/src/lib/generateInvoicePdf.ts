@@ -38,6 +38,13 @@ export interface InvoicePdfSettings {
   companyZip?: string | null;
   companyPhone?: string | null;
   companyEmail?: string | null;
+  logoUrl?: string | null;
+  dbaLogoUrl?: string | null;
+}
+
+export function resolveLogoUrl(settings: InvoicePdfSettings, businessLine?: string | null): string | null {
+  if (businessLine === "asphalt_sealing") return settings.dbaLogoUrl ?? settings.logoUrl ?? null;
+  return settings.logoUrl ?? null;
 }
 
 function fmtDate(iso: string | null | undefined): string {
