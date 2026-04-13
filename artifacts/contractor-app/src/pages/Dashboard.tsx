@@ -236,10 +236,12 @@ function NetProfitCard({ operationalNetProfit, excludedFromProfit, excludedCount
             </p>
             <p className="text-xs text-muted-foreground mt-1.5">
               Revenue minus operational expenses
-              {excludedCount > 0 && (
+              {excludedCount > 0 ? (
                 <span className="ml-1 text-amber-600 font-medium">
                   · {excludedCount} write-off{excludedCount !== 1 ? "s" : ""} excluded ({formatCurrency(excludedFromProfit)})
                 </span>
+              ) : (
+                <span className="ml-1 text-muted-foreground/70">· No write-offs excluded</span>
               )}
             </p>
           </div>
