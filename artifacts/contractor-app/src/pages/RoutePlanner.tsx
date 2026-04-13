@@ -16,7 +16,7 @@ import {
   isToday, parseISO, startOfWeek, endOfWeek, addMonths, subMonths,
 } from "date-fns";
 
-/* ── Fix Leaflet default marker icon without `any` ───────────────────────── */
+// Fix Leaflet default marker icon without using `any`
 type IconDefaultWithGetUrl = typeof L.Icon.Default & {
   prototype: { _getIconUrl?: () => string };
 };
@@ -29,7 +29,6 @@ L.Icon.Default.mergeOptions({
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-/* ── Types ──────────────────────────────────────────────────────────────── */
 interface RouteStop {
   id: number;
   title: string | null;
@@ -45,7 +44,6 @@ interface RouteStop {
 }
 
 type StopStatus = RouteStop["status"];
-
 type ViewMode = "day" | "week";
 
 interface EditFormState {
@@ -64,7 +62,6 @@ const STATUS_CONFIG: Record<StopStatus, { label: string; color: string; bg: stri
   skipped:   { label: "Skipped",   color: "text-gray-500",    bg: "bg-gray-100 border-gray-300",       mapColor: "#9CA3AF" },
 };
 
-/* ── API helpers ────────────────────────────────────────────────────────── */
 async function apiFetch(path: string, options?: RequestInit) {
   const res = await fetch(`${BASE}/api${path}`, {
     credentials: "include",
@@ -76,18 +73,16 @@ async function apiFetch(path: string, options?: RequestInit) {
   return res.json() as Promise<RouteStop | RouteStop[] | null>;
 }
 
-/* ── Geocoding via Nominatim ────────────────────────────────────────────── */
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=us`;
     const res = await fetch(url, { headers: { "Accept-Language": "en", "User-Agent": "WillardsContractingApp/1.0" } });
     const data = await res.json() as Array<{ lat: string; lon: string }>;
     if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch { /* geocoding failed silently */ }
+  } catch { /* geocoding failed */ }
   return null;
 }
 
-/* ── Haversine distance (miles) ─────────────────────────────────────────── */
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 3959;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -96,15 +91,12 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/* ── Nearest-neighbor route optimization ────────────────────────────────── */
-function optimizeRoute(stops: RouteStop[]): RouteStop[] {
+function nearestNeighborRoute(stops: RouteStop[]): RouteStop[] {
   const routable = stops.filter(s => s.lat !== null && s.lng !== null);
   const nonGeo = stops.filter(s => s.lat === null || s.lng === null);
   if (routable.length <= 1) return stops;
-
   const remaining = [...routable];
   const ordered: RouteStop[] = [remaining.shift()!];
-
   while (remaining.length > 0) {
     const last = ordered[ordered.length - 1];
     let nearestIdx = 0;
@@ -115,11 +107,9 @@ function optimizeRoute(stops: RouteStop[]): RouteStop[] {
     });
     ordered.push(remaining.splice(nearestIdx, 1)[0]);
   }
-
   return [...ordered, ...nonGeo];
 }
 
-/* ── OSRM route geometry (optional) ────────────────────────────────────── */
 async function fetchOsrmRoute(stops: RouteStop[]): Promise<{ coords: [number, number][]; durationSecs: number } | null> {
   const geo = stops.filter(s => s.lat && s.lng);
   if (geo.length < 2) return null;
@@ -135,27 +125,19 @@ async function fetchOsrmRoute(stops: RouteStop[]): Promise<{ coords: [number, nu
   } catch { return null; }
 }
 
-/* ── Custom colored map marker ──────────────────────────────────────────── */
 function makeIcon(color: string, label?: string | number) {
   const text = label !== undefined
     ? `<span style="position:absolute;top:0;left:0;width:100%;height:75%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:white;">${label}</span>`
     : "";
   return L.divIcon({
     className: "",
-    html: `<div style="width:28px;height:36px;position:relative;">
-      <svg viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">
-        <path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 22 14 22S28 24.5 28 14C28 6.268 21.732 0 14 0z" fill="${color}" stroke="white" stroke-width="1.5"/>
-        <circle cx="14" cy="14" r="6" fill="white" fill-opacity="0.3"/>
-      </svg>
-      ${text}
-    </div>`,
+    html: `<div style="width:28px;height:36px;position:relative;"><svg viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg"><path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 22 14 22S28 24.5 28 14C28 6.268 21.732 0 14 0z" fill="${color}" stroke="white" stroke-width="1.5"/><circle cx="14" cy="14" r="6" fill="white" fill-opacity="0.3"/></svg>${text}</div>`,
     iconSize: [28, 36],
     iconAnchor: [14, 36],
     popupAnchor: [0, -36],
   });
 }
 
-/* ── Map auto-fit helper ─────────────────────────────────────────────────── */
 function MapFitter({ stops }: { stops: RouteStop[] }) {
   const map = useMap();
   const geoStops = stops.filter(s => s.lat && s.lng);
@@ -171,7 +153,6 @@ function MapFitter({ stops }: { stops: RouteStop[] }) {
   return null;
 }
 
-/* ── Mini-calendar day cell ─────────────────────────────────────────────── */
 function CalDay({ date, count, selected, onClick }: { date: Date; count: number; selected: boolean; onClick: () => void }) {
   const today = isToday(date);
   return (
@@ -197,7 +178,6 @@ function CalDay({ date, count, selected, onClick }: { date: Date; count: number;
   );
 }
 
-/* ══ Main Component ══════════════════════════════════════════════════════ */
 export default function RoutePlanner() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -224,31 +204,29 @@ export default function RoutePlanner() {
   const [editForm, setEditForm] = useState<Partial<EditFormState>>({});
 
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-
-  /* ── Week range for week view ────────────────────────────────────────── */
   const weekStart = format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
   const weekEnd = format(endOfWeek(selectedDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
 
-  /* ── Fetch all stops ─────────────────────────────────────────────────── */
   const { data: allStops = [], isLoading } = useQuery<RouteStop[]>({
     queryKey: ["/api/route-stops"],
     queryFn: () => apiFetch("/route-stops") as Promise<RouteStop[]>,
   });
 
-  /* ── Filter stops for current view ──────────────────────────────────── */
+  // Stops visible in the current view (day or week)
   const viewStops = viewMode === "day"
     ? allStops.filter(s => s.scheduledDate === selectedDateStr)
     : allStops.filter(s => s.scheduledDate && s.scheduledDate >= weekStart && s.scheduledDate <= weekEnd);
 
+  // Optimize always operates on the selected day's stops only
+  const dayStops = allStops.filter(s => s.scheduledDate === selectedDateStr);
+
   const displayStops = optimizedOrder ?? viewStops;
 
-  /* ── Count stops per day (calendar badges) ──────────────────────────── */
   const stopCounts: Record<string, number> = {};
   allStops.forEach(s => {
     if (s.scheduledDate) stopCounts[s.scheduledDate] = (stopCounts[s.scheduledDate] ?? 0) + 1;
   });
 
-  /* ── Mutations ───────────────────────────────────────────────────────── */
   const createStop = useMutation({
     mutationFn: (data: Partial<EditFormState> & { lat?: number | null; lng?: number | null }) =>
       apiFetch("/route-stops", { method: "POST", body: JSON.stringify(data) }),
@@ -288,7 +266,6 @@ export default function RoutePlanner() {
     setForm({ title: "", address: "", notes: "", scheduledDate: selectedDateStr, estimatedDurationMinutes: 60, status: "scheduled" });
   }
 
-  /* ── Persist sort order to backend ──────────────────────────────────── */
   async function persistSortOrder(ordered: RouteStop[]) {
     try {
       await Promise.all(
@@ -302,7 +279,6 @@ export default function RoutePlanner() {
     }
   }
 
-  /* ── Geocode then create stop ────────────────────────────────────────── */
   async function handleAddStop(e: React.FormEvent) {
     e.preventDefault();
     if (!form.address.trim()) return;
@@ -312,14 +288,14 @@ export default function RoutePlanner() {
     createStop.mutate({ ...form, lat: coords?.lat ?? null, lng: coords?.lng ?? null });
   }
 
-  /* ── Optimize route ──────────────────────────────────────────────────── */
   async function handleOptimize() {
-    if (viewStops.length < 2) {
-      toast({ title: "Need at least 2 stops to optimize" });
+    // Optimize always scopes to the selected day, regardless of view mode
+    if (dayStops.length < 2) {
+      toast({ title: "Need at least 2 stops on the selected day to optimize" });
       return;
     }
     setIsOptimizing(true);
-    const ordered = optimizeRoute(viewStops);
+    const ordered = nearestNeighborRoute(dayStops);
     setOptimizedOrder(ordered);
 
     const route = await fetchOsrmRoute(ordered);
@@ -331,7 +307,6 @@ export default function RoutePlanner() {
       setRouteDuration(null);
     }
     setIsOptimizing(false);
-
     await persistSortOrder(ordered);
 
     const geoCount = ordered.filter(s => s.lat && s.lng).length;
@@ -341,7 +316,6 @@ export default function RoutePlanner() {
     });
   }
 
-  /* ── Manual reorder (up/down) + persist ─────────────────────────────── */
   async function moveStop(idx: number, dir: -1 | 1) {
     const arr = [...(optimizedOrder ?? viewStops)];
     const newIdx = idx + dir;
@@ -352,7 +326,6 @@ export default function RoutePlanner() {
     await persistSortOrder(arr);
   }
 
-  /* ── Drag-to-reorder handlers ────────────────────────────────────────── */
   function handleDragStart(e: React.DragEvent<HTMLDivElement>, idx: number) {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", String(idx));
@@ -377,7 +350,6 @@ export default function RoutePlanner() {
     await persistSortOrder(arr);
   }
 
-  /* ── Calendar month grid ─────────────────────────────────────────────── */
   const monthStart = startOfMonth(calMonth);
   const monthEnd = endOfMonth(calMonth);
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
@@ -386,23 +358,19 @@ export default function RoutePlanner() {
   const calWeeks: Date[][] = [];
   for (let i = 0; i < calDays.length; i += 7) calWeeks.push(calDays.slice(i, i + 7));
 
-  /* ── Map center: default to Owensboro KY ────────────────────────────── */
   const geoStops = allStops.filter(s => s.lat && s.lng);
   const mapCenter: [number, number] = geoStops.length > 0
     ? [geoStops[0].lat!, geoStops[0].lng!]
     : [37.7719, -87.1111];
 
   const totalEstDuration = displayStops.reduce((sum, s) => sum + (s.estimatedDurationMinutes ?? 60), 0);
-
-  const viewLabel = viewMode === "day" ? format(selectedDate, "EEEE, MMM d") : `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "MMM d")}`;
+  const viewLabel = viewMode === "day"
+    ? format(selectedDate, "EEEE, MMM d")
+    : `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "MMM d")}`;
 
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-130px)] gap-0 -m-4 sm:-m-6 lg:-m-8 overflow-hidden">
-
-      {/* ── Left panel ─────────────────────────────────────────────────── */}
       <div className="w-full lg:w-[360px] flex-shrink-0 flex flex-col bg-card border-r border-border overflow-y-auto">
-
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-primary text-primary-foreground">
           <div className="flex items-center gap-2">
             <Route className="w-5 h-5" />
@@ -411,7 +379,6 @@ export default function RoutePlanner() {
           <span className="text-xs text-primary-foreground/70">Asphalt Sealing</span>
         </div>
 
-        {/* Mini calendar */}
         <div className="px-4 py-3 border-b border-border">
           <div className="flex items-center justify-between mb-2">
             <button onClick={() => setCalMonth(m => subMonths(m, 1))} className="p-1 rounded hover:bg-muted transition-colors">
@@ -449,9 +416,7 @@ export default function RoutePlanner() {
           </div>
         </div>
 
-        {/* View mode toggle + day header + stats */}
         <div className="px-4 py-3 border-b border-border bg-muted/30">
-          {/* Day / Week toggle */}
           <div className="flex rounded-lg border border-border overflow-hidden mb-2 text-xs font-medium">
             <button
               onClick={() => { setViewMode("day"); setOptimizedOrder(null); setRouteCoords(null); }}
@@ -490,7 +455,8 @@ export default function RoutePlanner() {
               )}
               <button
                 onClick={handleOptimize}
-                disabled={isOptimizing || viewStops.length < 2}
+                disabled={isOptimizing || dayStops.length < 2}
+                title={viewMode === "week" ? `Optimizes ${format(selectedDate, "MMM d")} stops` : undefined}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {isOptimizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
@@ -498,9 +464,11 @@ export default function RoutePlanner() {
               </button>
             </div>
           </div>
+          {viewMode === "week" && (
+            <p className="text-[10px] text-muted-foreground mt-1">Optimize applies to {format(selectedDate, "MMM d")} only</p>
+          )}
         </div>
 
-        {/* Add stop button / form */}
         {showAddForm ? (
           <form onSubmit={handleAddStop} className="px-4 py-3 border-b border-border bg-muted/20 space-y-2">
             <div className="flex items-center justify-between mb-1">
@@ -578,7 +546,6 @@ export default function RoutePlanner() {
           </div>
         )}
 
-        {/* Stops list */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -587,7 +554,9 @@ export default function RoutePlanner() {
           ) : displayStops.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-center px-4">
               <MapPin className="w-8 h-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">No stops {viewMode === "day" ? `on ${format(selectedDate, "MMM d")}` : `this week`}</p>
+              <p className="text-sm text-muted-foreground">
+                No stops {viewMode === "day" ? `on ${format(selectedDate, "MMM d")}` : "this week"}
+              </p>
               <p className="text-xs text-muted-foreground/70">Click "Add Stop" to schedule a location</p>
             </div>
           ) : (
@@ -640,7 +609,6 @@ export default function RoutePlanner() {
         </div>
       </div>
 
-      {/* ── Map panel ──────────────────────────────────────────────────── */}
       <div className="flex-1 relative min-h-[400px] lg:min-h-0">
         <MapContainer
           center={mapCenter}
@@ -696,7 +664,6 @@ export default function RoutePlanner() {
           )}
         </MapContainer>
 
-        {/* Map legend */}
         <div className="absolute top-3 left-3 z-[1000] bg-white/90 backdrop-blur-sm border border-border rounded-lg shadow-md px-3 py-2 space-y-1">
           {(Object.entries(STATUS_CONFIG) as [StopStatus, typeof STATUS_CONFIG[StopStatus]][]).map(([key, cfg]) => (
             <div key={key} className="flex items-center gap-2 text-xs">
@@ -710,7 +677,6 @@ export default function RoutePlanner() {
   );
 }
 
-/* ── Stop Card Component ─────────────────────────────────────────────────── */
 interface StopCardProps {
   stop: RouteStop;
   idx: number;
@@ -822,19 +788,16 @@ function StopCard({
       )}
     >
       <div className="flex items-start gap-2">
-        {/* Drag handle */}
-        <div className="flex-shrink-0 flex flex-col items-center gap-0.5 pt-0.5">
+        <div className="flex-shrink-0 pt-0.5">
           <GripVertical className="w-4 h-4 text-muted-foreground/50" />
         </div>
 
-        {/* Order number */}
         {isOptimized && (
           <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold mt-0.5">
             {idx + 1}
           </div>
         )}
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-medium text-foreground truncate">
@@ -865,7 +828,6 @@ function StopCard({
           {stop.notes && <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{stop.notes}</p>}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button onClick={onMoveUp} disabled={idx === 0} className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors" title="Move up">
             <ChevronUp className="w-3.5 h-3.5" />
@@ -882,7 +844,6 @@ function StopCard({
         </div>
       </div>
 
-      {/* Quick status toggle row */}
       <div className="flex gap-1 mt-2 ml-6">
         {(Object.keys(STATUS_CONFIG) as StopStatus[]).map(s => (
           <button
