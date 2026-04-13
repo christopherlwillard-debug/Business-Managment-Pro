@@ -620,6 +620,41 @@ export type DashboardStatsMonthlyRevenueItem = {
   expenses: number;
 };
 
+export type RouteStopStatus = (typeof RouteStopStatus)[keyof typeof RouteStopStatus];
+
+export const RouteStopStatus = {
+  prospect: "prospect",
+  scheduled: "scheduled",
+  completed: "completed",
+  skipped: "skipped",
+} as const;
+
+export interface RouteStop {
+  id: number;
+  title?: string | null;
+  address: string;
+  lat?: number | null;
+  lng?: number | null;
+  notes?: string | null;
+  scheduledDate?: string | null;
+  status: RouteStopStatus;
+  estimatedDurationMinutes?: number | null;
+  sortOrder?: number | null;
+  createdAt: string;
+}
+
+export interface CreateRouteStopRequest {
+  title?: string | null;
+  address: string;
+  lat?: number | null;
+  lng?: number | null;
+  notes?: string | null;
+  scheduledDate?: string | null;
+  status?: RouteStopStatus;
+  estimatedDurationMinutes?: number | null;
+  sortOrder?: number | null;
+}
+
 export interface DashboardStats {
   totalRevenue: number;
   pendingInvoices: number;

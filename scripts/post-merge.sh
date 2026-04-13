@@ -84,3 +84,25 @@ pool.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS exclude_from_net_profi
   .then(() => { console.log('expenses.exclude_from_net_profit ensured'); pool.end(); })
   .catch(e => { console.error('exclude_from_net_profit migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #111: create route_stops table
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS \"route_stops\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"title\" text,
+    \"address\" text NOT NULL,
+    \"lat\" double precision,
+    \"lng\" double precision,
+    \"notes\" text,
+    \"scheduled_date\" text,
+    \"status\" text NOT NULL DEFAULT 'prospect',
+    \"estimated_duration_minutes\" integer DEFAULT 60,
+    \"sort_order\" integer DEFAULT 0,
+    \"created_at\" timestamp DEFAULT now() NOT NULL
+  )
+\`).then(() => { console.log('route_stops table ensured'); pool.end(); })
+  .catch(e => { console.error('route_stops migration error:', e.message); pool.end(); process.exit(1); });
+")
