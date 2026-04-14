@@ -893,7 +893,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                 {isOpen ? <ChevronUp className="w-4 h-4 text-primary flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
               </button>
               <div className={`grid transition-[grid-template-rows] duration-200 ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-                <div className="overflow-hidden">
+                <div className="overflow-hidden min-h-0">
                   {mod.key === "city" && (
                     <div className="border-t border-border">
                       {data.incomeByCity.length === 0 ? (
