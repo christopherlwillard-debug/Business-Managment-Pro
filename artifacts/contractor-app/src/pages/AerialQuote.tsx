@@ -123,17 +123,15 @@ function zoomForType(type: string): number {
   return 18;
 }
 
-async function geocodeAddress(address: string): Promise<GeoResult[]> {
+async function geocodeAddress(
+  street: string, city: string, state: string, postalcode: string
+): Promise<GeoResult[]> {
   try {
-    const params = new URLSearchParams({
-      q: address,
-      format: "json",
-      limit: "5",
-      countrycodes: "us",
-      addressdetails: "1",
-      viewbox: "-87.55,38.15,-86.65,37.45",
-      bounded: "0",
-    });
+    const params = new URLSearchParams({ format: "json", limit: "5", countrycodes: "us", addressdetails: "1" });
+    if (street)     params.set("street", street);
+    if (city)       params.set("city", city);
+    if (state)      params.set("state", state);
+    if (postalcode) params.set("postalcode", postalcode);
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?${params}`,
       { headers: { "Accept-Language": "en-US,en" } }
@@ -154,7 +152,10 @@ async function geocodeAddress(address: string): Promise<GeoResult[]> {
 export default function AerialQuote() {
   const { toast } = useToast();
 
-  const [address, setAddress] = useState("");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("Owensboro");
+  const [stateAbbr, setStateAbbr] = useState("KY");
+  const [zip, setZip] = useState("");
   const [searching, setSearching] = useState(false);
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
   const searchBoxRef = useRef<HTMLDivElement>(null);
@@ -217,7 +218,10 @@ export default function AerialQuote() {
     setGeoResults([]);
     setFlyTo([r.lat, r.lon]);
     setFlyZoom(zoomForType(r.type));
-    if (!jobAddress) setJobAddress(address.trim());
+    if (!jobAddress) {
+      const parts = [street.trim(), city && stateAbbr ? `${city}, ${stateAbbr}` : city || stateAbbr, zip].filter(Boolean);
+      setJobAddress(parts.join(" "));
+    }
   }
 
   useEffect(() => {
@@ -233,13 +237,13 @@ export default function AerialQuote() {
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (!address.trim()) return;
+    if (!street.trim() && !city.trim() && !zip.trim()) return;
     setGeoResults([]);
     setSearching(true);
-    const results = await geocodeAddress(address.trim());
+    const results = await geocodeAddress(street.trim(), city.trim(), stateAbbr.trim(), zip.trim());
     setSearching(false);
     if (results.length === 0) {
-      toast({ title: "Location not found", description: "Try adding a city or state, e.g. '1234 Main St, Owensboro, KY'", variant: "destructive" });
+      toast({ title: "Location not found", description: "Check the address fields and try again.", variant: "destructive" });
       return;
     }
     if (results.length === 1) {
@@ -405,22 +409,62 @@ export default function AerialQuote() {
           </div>
 
           <div ref={searchBoxRef} className="relative">
-            <form onSubmit={handleSearch} className="flex gap-2">
-              <input
-                type="text"
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                onKeyDown={e => { if (e.key === "Escape") setGeoResults([]); }}
-                placeholder="Address, city, state or ZIP…"
-                className="flex-1 px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400 min-w-0"
-              />
-              <button
-                type="submit"
-                disabled={searching}
-                className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
-              >
-                {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-              </button>
+            <form onSubmit={handleSearch} className="space-y-2">
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground mb-1">Street Address</label>
+                <input
+                  type="text"
+                  value={street}
+                  onChange={e => setStreet(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Escape") setGeoResults([]); }}
+                  placeholder="123 Main St"
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[11px] font-semibold text-muted-foreground mb-1">City</label>
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                    placeholder="Owensboro"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <div className="w-16">
+                  <label className="block text-[11px] font-semibold text-muted-foreground mb-1">State</label>
+                  <input
+                    type="text"
+                    value={stateAbbr}
+                    onChange={e => setStateAbbr(e.target.value.toUpperCase())}
+                    placeholder="KY"
+                    maxLength={2}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400 uppercase"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="block text-[11px] font-semibold text-muted-foreground mb-1">ZIP Code</label>
+                  <input
+                    type="text"
+                    value={zip}
+                    onChange={e => setZip(e.target.value)}
+                    placeholder="42301"
+                    maxLength={10}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={searching}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
+                >
+                  {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  {!searching && <span>Search</span>}
+                </button>
+              </div>
             </form>
             {geoResults.length > 1 && (
               <ul className="absolute left-0 right-0 top-full mt-1 z-[9999] bg-background border border-border rounded-xl shadow-lg overflow-hidden">
