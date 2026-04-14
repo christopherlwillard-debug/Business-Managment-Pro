@@ -9,7 +9,7 @@ import {
   X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
-  Link2, Link2Off,
+  Link2, Link2Off, Smartphone, LayoutDashboard,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -30,6 +30,24 @@ const FEATURE_OPTIONS = [
 ];
 
 const PAYMENT_TERMS_OPTIONS = ["Due on Receipt", "Net 7", "Net 15", "Net 30", "Net 45", "Net 60"];
+
+const BOTTOM_NAV_OPTIONS = [
+  { href: "/jobs", label: "Jobs" },
+  { href: "/expenses", label: "Expenses" },
+  { href: "/mileage", label: "Mileage" },
+  { href: "/clients", label: "Clients" },
+  { href: "/subcontractors", label: "Subcontractors" },
+  { href: "/materials", label: "Materials" },
+  { href: "/pricing-guide", label: "Services Guide" },
+  { href: "/route-planner", label: "Route Planner" },
+  { href: "/prospects", label: "Prospects" },
+  { href: "/assets", label: "Assets" },
+  { href: "/accounting", label: "Accounting & Tax" },
+  { href: "/settings", label: "Settings" },
+];
+
+const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/prospects", "/accounting"];
+
 const ENTITY_TYPES = ["LLC", "Single-Member LLC", "Multi-Member LLC", "S Corporation", "C Corporation", "Sole Proprietor", "Partnership", "DBA"];
 
 const LOGO_POSITIONS = [
@@ -928,6 +946,7 @@ export default function Settings() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [dbaLogoUrl, setDbaLogoUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [bottomNavHrefs, setBottomNavHrefs] = useState<string[]>(DEFAULT_BOTTOM_NAV_HREFS);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [seeded, setSeeded] = useState(false);
@@ -968,6 +987,7 @@ export default function Settings() {
         feat[f.key] = Array.isArray(s.enabledFeatures) ? s.enabledFeatures.includes(f.key) : true;
       });
       setFeatures(feat);
+      setBottomNavHrefs(Array.isArray(s.bottomNavItems) ? s.bottomNavItems : DEFAULT_BOTTOM_NAV_HREFS);
       setSeeded(true);
     }
   }, [settings, seeded]);
@@ -1008,6 +1028,7 @@ export default function Settings() {
           mileageUnits: form.mileageUnits,
           mileageReminderFrequency: form.mileageReminderFrequency,
           enabledFeatures: FEATURE_OPTIONS.filter(f => features[f.key]).map(f => f.key),
+          bottomNavItems: bottomNavHrefs,
         } as Partial<AppSettings>,
       });
       queryClient.invalidateQueries();
@@ -1469,37 +1490,95 @@ export default function Settings() {
 
         {/* ── Modules ── */}
         {activeTab === "modules" && (
-          <Card className="border-border/50 shadow-md bg-card">
-            <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-              <CardTitle className="font-display flex items-center gap-2">
-                <Settings2 className="w-5 h-5 text-primary" /> Feature Modules
-              </CardTitle>
-              <CardDescription>Enable or disable modules — disabled ones are hidden from the sidebar. Dashboard and Settings always show.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-6 space-y-3">
-              {FEATURE_OPTIONS.map(feature => (
-                <button
-                  key={feature.key}
-                  type="button"
-                  onClick={() => setFeatures(p => ({ ...p, [feature.key]: !p[feature.key] }))}
-                  className={`w-full flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all text-left ${
-                    features[feature.key] ? "border-primary bg-primary/5" : "border-border bg-background hover:border-muted-foreground/40"
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                    features[feature.key] ? "border-primary bg-primary" : "border-muted-foreground/40"
-                  }`}>
-                    {features[feature.key] && <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+          <div className="space-y-5">
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <Settings2 className="w-5 h-5 text-primary" /> Feature Modules
+                </CardTitle>
+                <CardDescription>Enable or disable modules — disabled ones are hidden from the sidebar. Dashboard and Settings always show.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-3">
+                {FEATURE_OPTIONS.map(feature => (
+                  <button
+                    key={feature.key}
+                    type="button"
+                    onClick={() => setFeatures(p => ({ ...p, [feature.key]: !p[feature.key] }))}
+                    className={`w-full flex items-center gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all text-left ${
+                      features[feature.key] ? "border-primary bg-primary/5" : "border-border bg-background hover:border-muted-foreground/40"
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      features[feature.key] ? "border-primary bg-primary" : "border-muted-foreground/40"
+                    }`}>
+                      {features[feature.key] && <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`font-semibold text-sm ${features[feature.key] ? "text-foreground" : "text-muted-foreground"}`}>{feature.label}</p>
+                      <p className="text-xs text-muted-foreground">{feature.desc}</p>
+                    </div>
+                    <ChevronRight className={`w-4 h-4 flex-shrink-0 ${features[feature.key] ? "text-primary" : "text-muted-foreground/40"}`} />
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <Smartphone className="w-5 h-5 text-primary" /> Bottom Navigation
+                </CardTitle>
+                <CardDescription>
+                  Choose up to 4 shortcuts for the mobile bottom bar. Home is always the first slot.
+                  {bottomNavHrefs.length >= 4 && (
+                    <span className="ml-1 text-amber-600 font-medium">Max 4 selected — deselect one to add another.</span>
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-2">
+                <div className="flex items-center gap-4 p-3 rounded-xl border-2 border-muted bg-muted/20 opacity-60 cursor-not-allowed">
+                  <div className="w-5 h-5 rounded-md border-2 border-primary bg-primary flex items-center justify-center flex-shrink-0">
+                    <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
                   </div>
-                  <div className="flex-1">
-                    <p className={`font-semibold text-sm ${features[feature.key] ? "text-foreground" : "text-muted-foreground"}`}>{feature.label}</p>
-                    <p className="text-xs text-muted-foreground">{feature.desc}</p>
-                  </div>
-                  <ChevronRight className={`w-4 h-4 flex-shrink-0 ${features[feature.key] ? "text-primary" : "text-muted-foreground/40"}`} />
-                </button>
-              ))}
-            </CardContent>
-          </Card>
+                  <LayoutDashboard className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <p className="font-semibold text-sm text-muted-foreground flex-1">Home (Dashboard)</p>
+                  <span className="text-xs text-muted-foreground">Always on</span>
+                </div>
+                {BOTTOM_NAV_OPTIONS.map(option => {
+                  const selected = bottomNavHrefs.includes(option.href);
+                  const maxReached = !selected && bottomNavHrefs.length >= 4;
+                  return (
+                    <button
+                      key={option.href}
+                      type="button"
+                      disabled={maxReached}
+                      onClick={() => {
+                        setBottomNavHrefs(prev =>
+                          prev.includes(option.href)
+                            ? prev.filter(h => h !== option.href)
+                            : [...prev, option.href]
+                        );
+                      }}
+                      className={`w-full flex items-center gap-4 p-3 border-2 rounded-xl cursor-pointer transition-all text-left ${
+                        selected
+                          ? "border-primary bg-primary/5"
+                          : maxReached
+                          ? "border-border bg-background opacity-40 cursor-not-allowed"
+                          : "border-border bg-background hover:border-muted-foreground/40"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        selected ? "border-primary bg-primary" : "border-muted-foreground/40"
+                      }`}>
+                        {selected && <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />}
+                      </div>
+                      <p className={`font-semibold text-sm flex-1 ${selected ? "text-foreground" : "text-muted-foreground"}`}>{option.label}</p>
+                    </button>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* Save bar */}

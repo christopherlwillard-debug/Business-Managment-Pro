@@ -262,3 +262,12 @@ pool.query('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS business_line text')
   .then(() => { console.log('jobs.business_line ensured'); pool.end(); })
   .catch(e => { console.error('jobs.business_line migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #125: add bottom_nav_items column to settings
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS bottom_nav_items text')
+  .then(() => { console.log('settings.bottom_nav_items ensured'); pool.end(); })
+  .catch(e => { console.error('bottom_nav_items migration error:', e.message); pool.end(); process.exit(1); });
+")

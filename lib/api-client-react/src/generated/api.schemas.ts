@@ -622,6 +622,7 @@ export interface AppSettings {
   thresholdAmount1099?: number | null;
   invoiceLogoSize?: AppSettingsInvoiceLogoSize;
   invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
+  bottomNavItems?: string[] | null;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {

@@ -169,26 +169,31 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-md border-border/50 bg-accent/5 border-accent/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-0.5">YTD Mileage Deduction</p>
-            <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
-            <div className="mt-3 pt-3 border-t border-accent/20 grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Business Miles</p>
-                <p className="text-base font-semibold text-foreground">{(stats.ytdMiles ?? 0).toFixed(0)} mi</p>
+        <Link href="/mileage" className="block group">
+          <Card className="shadow-md border-border/50 bg-accent/5 border-accent/20 hover:shadow-lg transition-all duration-300 cursor-pointer hover:border-accent/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-0.5">YTD Mileage Deduction</p>
+              <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
+              <div className="mt-3 pt-3 border-t border-accent/20 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Business Miles</p>
+                  <p className="text-base font-semibold text-foreground">{(stats.ytdMiles ?? 0).toFixed(0)} mi</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">IRS Rate</p>
+                  <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.70).toFixed(2)}/mi</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">IRS Rate</p>
-                <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.70).toFixed(2)}/mi</p>
+              <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
+              <div className="mt-3 flex items-center text-xs font-semibold text-accent-foreground/60 group-hover:text-accent-foreground transition-colors">
+                View mileage log <ArrowRight className="w-3 h-3 ml-1" />
               </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
     </div>
   );

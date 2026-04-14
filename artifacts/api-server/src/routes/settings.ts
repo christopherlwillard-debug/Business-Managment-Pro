@@ -143,6 +143,7 @@ const DEFAULT_SETTINGS = {
   currency: "USD",
   enabledFeatures: ["invoices", "expenses", "mileage", "estimates", "subcontractors", "daily_logs", "compliance", "clients"],
   thresholdAmount1099: "600",
+  bottomNavItems: null,
 };
 
 /** Convert a raw DB path to a correct serving URL.
@@ -155,6 +156,11 @@ function toServingUrl(raw: string | null | undefined): string | null {
   if (raw.startsWith("/objects/")) return `/api/storage/objects/${raw.slice("/objects/".length)}`;
   if (raw.startsWith("/uploads/")) return `/api${raw}`;
   return raw; // Already /api/uploads/... or http://...
+}
+
+function parseJsonArray(v: string | null | undefined): string[] | null {
+  if (!v) return null;
+  try { return JSON.parse(v); } catch { return null; }
 }
 
 function format(s: any) {
@@ -178,6 +184,7 @@ function format(s: any) {
     mileageDefaultClassification: s.mileageDefaultClassification ?? "business",
     mileageUnits: s.mileageUnits ?? "miles",
     mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
+    bottomNavItems: parseJsonArray(s.bottomNavItems),
   };
 }
 
@@ -237,6 +244,9 @@ router.put("/", async (req, res) => {
       currency: body.currency ?? settings?.currency,
       enabledFeatures: body.enabledFeatures ?? settings?.enabledFeatures,
       thresholdAmount1099: body.thresholdAmount1099?.toString() ?? settings?.thresholdAmount1099,
+      bottomNavItems: body.bottomNavItems !== undefined
+        ? (Array.isArray(body.bottomNavItems) ? JSON.stringify(body.bottomNavItems) : null)
+        : settings?.bottomNavItems,
       updatedAt: new Date(),
     };
 

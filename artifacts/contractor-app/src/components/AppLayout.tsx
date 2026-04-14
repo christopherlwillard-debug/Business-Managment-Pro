@@ -12,6 +12,23 @@ import { useGetSettings } from "@workspace/api-client-react";
 import { useAuth } from "@workspace/replit-auth-web";
 import { useUserPermissions, type SectionKey } from "@/contexts/UserPermissions";
 
+const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
+  "/jobs": { name: "Jobs", icon: Briefcase },
+  "/expenses": { name: "Expenses", icon: Receipt },
+  "/mileage": { name: "Mileage", icon: Navigation },
+  "/clients": { name: "Clients", icon: Users },
+  "/subcontractors": { name: "Subs", icon: HardHat },
+  "/materials": { name: "Materials", icon: Package },
+  "/pricing-guide": { name: "Services", icon: Tag },
+  "/route-planner": { name: "Routes", icon: Route },
+  "/prospects": { name: "Prospects", icon: Target },
+  "/assets": { name: "Assets", icon: Wrench },
+  "/accounting": { name: "Accounting", icon: BookOpen },
+  "/settings": { name: "Settings", icon: Settings },
+};
+
+const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/prospects", "/accounting"];
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
@@ -92,19 +109,34 @@ export function AppLayout({ children }: AppLayoutProps) {
     section: SectionKey | null;
   }
 
-  const allBottomNavItems: BottomNavItem[] = [
-    { name: "Home", href: "/", icon: LayoutDashboard, section: null },
-    { name: "Jobs", href: "/jobs", icon: Briefcase, section: "jobs" },
-    { name: "Clients", href: "/clients", icon: Users, section: "clients" },
-    { name: "Mileage", href: "/mileage", icon: Navigation, section: "mileage" },
-    { name: "Expenses", href: "/expenses", icon: Receipt, section: "expenses" },
-    { name: "More", href: "#", icon: Menu, action: () => setMobileMenuOpen(true), section: null },
-  ];
+  let bottomNavItems: BottomNavItem[];
 
-  const bottomNavItems = allBottomNavItems.filter((item) => {
-    if (item.section !== null && !isOwner && !canView(item.section)) return false;
-    return true;
-  });
+  if (isOwner) {
+    const savedHrefs: string[] = settings?.bottomNavItems ?? DEFAULT_BOTTOM_NAV_HREFS;
+    bottomNavItems = [
+      { name: "Home", href: "/", icon: LayoutDashboard, section: null },
+      ...savedHrefs
+        .map(href => {
+          const opt = BOTTOM_NAV_MAP[href];
+          if (!opt) return null;
+          return { name: opt.name, href, icon: opt.icon, section: null } as BottomNavItem;
+        })
+        .filter((o): o is BottomNavItem => o !== null),
+    ];
+  } else {
+    const nonOwnerItems: BottomNavItem[] = [
+      { name: "Home", href: "/", icon: LayoutDashboard, section: null },
+      { name: "Jobs", href: "/jobs", icon: Briefcase, section: "jobs" },
+      { name: "Clients", href: "/clients", icon: Users, section: "clients" },
+      { name: "Mileage", href: "/mileage", icon: Navigation, section: "mileage" },
+      { name: "Expenses", href: "/expenses", icon: Receipt, section: "expenses" },
+      { name: "More", href: "#", icon: Menu, action: () => setMobileMenuOpen(true), section: null },
+    ];
+    bottomNavItems = nonOwnerItems.filter((item) => {
+      if (item.section !== null && !canView(item.section)) return false;
+      return true;
+    });
+  }
 
   const GROUP_LABELS: Record<string, string> = {
     operations: "Operations",
