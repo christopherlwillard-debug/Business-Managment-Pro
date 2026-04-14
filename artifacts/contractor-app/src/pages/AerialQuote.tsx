@@ -4,7 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 import {
-  MapPin, PenLine, Check, Trash2, X, Search, Layers,
+  PenLine, Check, Trash2, X, Search, Layers,
   DollarSign, Ruler, Plus, Minus, ChevronDown, ChevronUp,
   Printer, FileText, AlertCircle, RotateCcw, Move,
   HardHat, Loader2,
@@ -889,17 +889,6 @@ export default function AerialQuote() {
           </div>
         )}
 
-        {polygons.length === 0 && !isDrawing && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[500]">
-            <div className="bg-gray-900/70 text-white rounded-2xl px-6 py-4 text-center backdrop-blur-sm shadow-xl max-w-xs">
-              <MapPin className="w-8 h-8 mx-auto mb-2 text-amber-400" />
-              <p className="text-sm font-semibold mb-1">Aerial Quote Tool</p>
-              <p className="text-xs text-white/80">
-                Search an address on the left, then click "Draw Area" to outline the asphalt and get an instant quote.
-              </p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
