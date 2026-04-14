@@ -16,6 +16,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const OWENSBORO: [number, number] = [37.7719, -87.1111];
 
 type LatLng = [number, number];
+type GeoResult = { label: string; lat: number; lon: number; type: string };
 
 const ESRI_SATELLITE_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -108,17 +109,38 @@ function DrawController({ isDrawing, onAddPoint }: DrawControllerProps) {
 
 const POLYGON_COLORS = ["#CC1F2B", "#1B3F8C", "#f59e0b", "#10b981", "#8b5cf6", "#06b6d4"];
 
-async function geocodeAddress(address: string): Promise<LatLng | null> {
+function zoomForType(type: string): number {
+  if (["city", "town", "village", "county", "state", "administrative"].includes(type)) return 13;
+  if (["suburb", "neighbourhood", "quarter"].includes(type)) return 15;
+  if (["postcode"].includes(type)) return 14;
+  return 18;
+}
+
+async function geocodeAddress(address: string): Promise<GeoResult[]> {
   try {
+    const params = new URLSearchParams({
+      q: address,
+      format: "json",
+      limit: "5",
+      countrycodes: "us",
+      addressdetails: "1",
+      viewbox: "-87.55,38.15,-86.65,37.45",
+      bounded: "0",
+    });
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+      `https://nominatim.openstreetmap.org/search?${params}`,
       { headers: { "Accept-Language": "en-US,en" } }
     );
     const data = await res.json();
-    if (data.length === 0) return null;
-    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    if (!Array.isArray(data) || data.length === 0) return [];
+    return data.map((d: { display_name: string; lat: string; lon: string; type: string }) => ({
+      label: d.display_name,
+      lat: parseFloat(d.lat),
+      lon: parseFloat(d.lon),
+      type: d.type ?? "house",
+    }));
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -127,8 +149,10 @@ export default function AerialQuote() {
 
   const [address, setAddress] = useState("");
   const [searching, setSearching] = useState(false);
+  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
   const [flyTo, setFlyTo] = useState<LatLng | null>(null);
-  const [flyZoom, setFlyZoom] = useState(19);
+  const [flyZoom, setFlyZoom] = useState(18);
 
   const [polygons, setPolygons] = useState<LatLng[][]>([]);
   const [activePoints, setActivePoints] = useState<LatLng[]>([]);
@@ -182,19 +206,40 @@ export default function AerialQuote() {
     return { base, crack, coat, oil, subtotal, tax, total };
   }, [measurements.totalSqFt, ratePerSqFt, crackLF, crackRate, secondCoat, secondCoatRate, oilStain, oilStainRate, taxPct]);
 
+  function selectGeoResult(r: GeoResult) {
+    setGeoResults([]);
+    setFlyTo([r.lat, r.lon]);
+    setFlyZoom(zoomForType(r.type));
+    if (!jobAddress) setJobAddress(address.trim());
+  }
+
+  useEffect(() => {
+    if (geoResults.length === 0) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setGeoResults([]);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [geoResults.length]);
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!address.trim()) return;
+    setGeoResults([]);
     setSearching(true);
-    const result = await geocodeAddress(address.trim());
+    const results = await geocodeAddress(address.trim());
     setSearching(false);
-    if (!result) {
-      toast({ title: "Address not found", description: "Try a more specific address.", variant: "destructive" });
+    if (results.length === 0) {
+      toast({ title: "Location not found", description: "Try adding a city or state, e.g. '1234 Main St, Owensboro, KY'", variant: "destructive" });
       return;
     }
-    setFlyTo(result);
-    setFlyZoom(19);
-    if (!jobAddress) setJobAddress(address.trim());
+    if (results.length === 1) {
+      selectGeoResult(results[0]);
+    } else {
+      setGeoResults(results);
+    }
   }
 
   const handleAddPoint = useCallback((pt: LatLng) => {
@@ -352,22 +397,40 @@ export default function AerialQuote() {
             </div>
           </div>
 
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <input
-              type="text"
-              value={address}
-              onChange={e => setAddress(e.target.value)}
-              placeholder="Search address or intersection…"
-              className="flex-1 px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400 min-w-0"
-            />
-            <button
-              type="submit"
-              disabled={searching}
-              className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
-            >
-              {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            </button>
-          </form>
+          <div ref={searchBoxRef} className="relative">
+            <form onSubmit={handleSearch} className="flex gap-2">
+              <input
+                type="text"
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                onKeyDown={e => { if (e.key === "Escape") setGeoResults([]); }}
+                placeholder="Address, city, state or ZIP…"
+                className="flex-1 px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400 min-w-0"
+              />
+              <button
+                type="submit"
+                disabled={searching}
+                className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 text-sm font-semibold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              </button>
+            </form>
+            {geoResults.length > 1 && (
+              <ul className="absolute left-0 right-0 top-full mt-1 z-[9999] bg-background border border-border rounded-xl shadow-lg overflow-hidden">
+                {geoResults.map((r, i) => (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => selectGeoResult(r)}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-amber-50 dark:hover:bg-amber-900/20 border-b border-border last:border-0 truncate"
+                    >
+                      {r.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         <div className="p-4 border-b border-border space-y-3">
