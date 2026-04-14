@@ -851,6 +851,14 @@ export default function AerialQuote() {
               icon={pointIcon}
               draggable={true}
               eventHandlers={{
+                drag(e) {
+                  const { lat, lng } = (e.target as L.Marker).getLatLng();
+                  setActivePoints(prev => {
+                    const next = [...prev];
+                    next[i] = [lat, lng];
+                    return next;
+                  });
+                },
                 dragend(e) {
                   const { lat, lng } = (e.target as L.Marker).getLatLng();
                   setActivePoints(prev => {
