@@ -23,6 +23,7 @@ type JobRow = {
   estimatedAmount: string | null;
   actualAmount: string | null;
   notes: string | null;
+  businessLine: string | null;
   createdAt: Date;
   subcontractorId?: number | null;
   subcontractorName?: string | null;
@@ -67,6 +68,7 @@ async function getJobWithSubs(jobId: number) {
       estimatedAmount: jobsTable.estimatedAmount,
       actualAmount: jobsTable.actualAmount,
       notes: jobsTable.notes,
+      businessLine: jobsTable.businessLine,
       createdAt: jobsTable.createdAt,
       subcontractorId: jobSubcontractorsTable.subcontractorId,
       subcontractorName: subcontractorsTable.name,
@@ -126,6 +128,7 @@ router.get("/", async (req, res) => {
         estimatedAmount: jobsTable.estimatedAmount,
         actualAmount: jobsTable.actualAmount,
         notes: jobsTable.notes,
+        businessLine: jobsTable.businessLine,
         createdAt: jobsTable.createdAt,
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subcontractorName: subcontractorsTable.name,
@@ -158,7 +161,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
 
     const [job] = await db.insert(jobsTable).values({
@@ -170,6 +173,7 @@ router.post("/", async (req, res) => {
       estimatedAmount: estimatedAmount?.toString(),
       actualAmount: actualAmount?.toString(),
       notes,
+      businessLine: businessLine || null,
     }).returning();
 
     if (Array.isArray(subcontractorIds) && subcontractorIds.length > 0) {
@@ -216,6 +220,7 @@ router.get("/:id/invoice-draft", async (req, res) => {
       locationName: job.locationName ?? null,
       city: job.city ?? null,
       state: job.state ?? null,
+      businessLine: job.businessLine ?? null,
       lineItems,
     };
 
@@ -241,7 +246,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine } = req.body;
 
     // Only include fields that were explicitly sent in the request body
     // to avoid wiping existing values (e.g. clientId when only status changes)
@@ -260,6 +265,7 @@ router.put("/:id", async (req, res) => {
     if (estimatedAmount !== undefined) updates.estimatedAmount = estimatedAmount?.toString();
     if (actualAmount !== undefined) updates.actualAmount = actualAmount?.toString();
     if (notes !== undefined) updates.notes = notes;
+    if ("businessLine" in req.body) updates.businessLine = businessLine || null;
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });

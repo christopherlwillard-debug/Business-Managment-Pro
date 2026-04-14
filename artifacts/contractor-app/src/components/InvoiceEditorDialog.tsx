@@ -118,7 +118,7 @@ export function InvoiceEditorDialog({
       clientState: initialData?.clientState ?? "",
       clientZip: initialData?.clientZip ?? "",
       clientNotes: "",
-      businessLine: "general_contracting",
+      businessLine: (initialData?.businessLine as "general_contracting" | "asphalt_sealing" | undefined) ?? "general_contracting",
     };
   }
 

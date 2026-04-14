@@ -62,10 +62,10 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title={`Total Revenue (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} />
-        <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} />
-        <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} />
-        <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} />
+        <MetricCard title={`Total Revenue (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} href="/accounting" />
+        <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} href="/expenses" />
+        <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} href="/jobs" />
+        <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} href="/accounting" />
       </div>
 
       {/* Operational Net Profit card */}
@@ -169,50 +169,26 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="shadow-md border-border/50">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="font-display text-lg">Recent Jobs</CardTitle>
-              <Link href="/jobs" className="text-sm text-accent hover:underline flex items-center">View All <ArrowRight className="w-4 h-4 ml-1"/></Link>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {stats.recentJobs.slice(0, 4).map(job => (
-                  <div key={job.id} className="flex justify-between items-center border-b border-border/40 pb-3 last:border-0 last:pb-0">
-                    <div>
-                      <p className="font-medium text-sm">{job.title}</p>
-                      <p className="text-xs text-muted-foreground">{job.clientName || 'No Client'}</p>
-                    </div>
-                    <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
-                      {job.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                ))}
+        <Card className="shadow-md border-border/50 bg-accent/5 border-accent/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-0.5">YTD Mileage Deduction</p>
+            <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
+            <div className="mt-3 pt-3 border-t border-accent/20 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Business Miles</p>
+                <p className="text-base font-semibold text-foreground">{(stats.ytdMiles ?? 0).toFixed(0)} mi</p>
               </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="shadow-md border-border/50 bg-accent/5 border-accent/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-0.5">YTD Mileage Deduction</p>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
-              <div className="mt-3 pt-3 border-t border-accent/20 grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Business Miles</p>
-                  <p className="text-base font-semibold text-foreground">{(stats.ytdMiles ?? 0).toFixed(0)} mi</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">IRS Rate</p>
-                  <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.70).toFixed(2)}/mi</p>
-                </div>
+              <div>
+                <p className="text-xs text-muted-foreground">IRS Rate</p>
+                <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.70).toFixed(2)}/mi</p>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -259,30 +235,47 @@ function NetProfitCard({ operationalNetProfit, excludedFromProfit, excludedCount
   );
 }
 
-function MetricCard({ title, value, icon: Icon, trend, isAlert }: any) {
+function MetricCard({ title, value, icon: Icon, isAlert, href }: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+  isAlert?: boolean;
+  href?: string;
+}) {
+  const inner = (
+    <CardContent className="p-6">
+      <div className="flex justify-between items-start">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className={cn("text-3xl font-display font-bold tracking-tight", isAlert ? "text-destructive" : "text-foreground")}>
+            {value}
+          </p>
+        </div>
+        <div className={cn("p-3 rounded-xl", isAlert ? "bg-destructive/10 text-destructive" : "bg-primary/5 text-primary")}>
+          <Icon className="w-5 h-5" />
+        </div>
+      </div>
+      {href && (
+        <div className="mt-4 flex items-center text-xs font-semibold text-primary/60 group-hover:text-primary transition-colors">
+          View details <ArrowRight className="w-3 h-3 ml-1" />
+        </div>
+      )}
+    </CardContent>
+  );
+
+  if (href) {
+    return (
+      <Link href={href}>
+        <Card className="shadow-md border-border/50 hover:shadow-lg transition-all duration-300 cursor-pointer group hover:border-primary/20">
+          {inner}
+        </Card>
+      </Link>
+    );
+  }
+
   return (
     <Card className="shadow-md border-border/50 hover:shadow-lg transition-shadow duration-300">
-      <CardContent className="p-6">
-        <div className="flex justify-between items-start">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className={cn("text-3xl font-display font-bold tracking-tight", isAlert ? "text-destructive" : "text-foreground")}>
-              {value}
-            </p>
-          </div>
-          <div className={cn("p-3 rounded-xl", isAlert ? "bg-destructive/10 text-destructive" : "bg-primary/5 text-primary")}>
-            <Icon className="w-5 h-5" />
-          </div>
-        </div>
-        {trend && (
-          <div className="mt-4 flex items-center text-sm">
-            <span className={cn("font-medium", trend.startsWith('+') ? "text-emerald-600" : "text-rose-600")}>
-              {trend}
-            </span>
-            <span className="text-muted-foreground ml-2">vs last month</span>
-          </div>
-        )}
-      </CardContent>
+      {inner}
     </Card>
   );
 }

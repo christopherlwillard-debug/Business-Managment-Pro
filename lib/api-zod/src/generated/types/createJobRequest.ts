@@ -23,4 +23,5 @@ export interface CreateJobRequest {
   estimatedAmount?: number | null;
   actualAmount?: number | null;
   notes?: string | null;
+  businessLine?: string | null;
 }

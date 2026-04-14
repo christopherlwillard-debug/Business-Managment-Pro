@@ -36,21 +36,22 @@ export function AppLayout({ children }: AppLayoutProps) {
     feature: string | null;
     section: SectionKey | null;
     ownerOnly?: boolean;
+    group?: "operations" | "business_tools" | "finance";
   }
 
   const allNavItems: NavItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard, feature: null, section: null, ownerOnly: true },
-    { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs" },
-    { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses" },
-    { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage" },
-    { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors" },
-    { name: "Clients", href: "/clients", icon: Users, feature: "clients", section: "clients" },
-    { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true },
-    { name: "Services Guide", href: "/pricing-guide", icon: Tag, feature: null, section: null, ownerOnly: true },
-    { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true },
-    { name: "Prospects", href: "/prospects", icon: Target, feature: null, section: null, ownerOnly: true },
-    { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true },
-    { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices" },
+    { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs", group: "operations" },
+    { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses", group: "operations" },
+    { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage", group: "operations" },
+    { name: "Clients", href: "/clients", icon: Users, feature: "clients", section: "clients", group: "operations" },
+    { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors", group: "operations" },
+    { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true, group: "business_tools" },
+    { name: "Services Guide", href: "/pricing-guide", icon: Tag, feature: null, section: null, ownerOnly: true, group: "business_tools" },
+    { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
+    { name: "Prospects", href: "/prospects", icon: Target, feature: null, section: null, ownerOnly: true, group: "business_tools" },
+    { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },
+    { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices", group: "finance" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
   ];
 
@@ -70,7 +71,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const initials = companyName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const [logoImgError, setLogoImgError] = useState(false);
-  // Reset error when logo URL changes (e.g. user uploads a new logo)
   const logoUrlRef = useRef(logoUrl);
   if (logoUrlRef.current !== logoUrl) {
     logoUrlRef.current = logoUrl;
@@ -105,6 +105,56 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (item.section !== null && !isOwner && !canView(item.section)) return false;
     return true;
   });
+
+  const GROUP_LABELS: Record<string, string> = {
+    operations: "Operations",
+    business_tools: "Business Tools",
+    finance: "Finance",
+  };
+
+  function renderNavItems(items: NavItem[]) {
+    const result: React.ReactNode[] = [];
+    let lastGroup: string | undefined = undefined;
+
+    for (const item of items) {
+      const currentGroup = item.group;
+      if (currentGroup && currentGroup !== lastGroup) {
+        result.push(
+          <div key={`divider-${currentGroup}`} className="mt-3 mb-1 px-3">
+            <p className="text-[10px] font-bold tracking-widest uppercase text-primary-foreground/30 select-none">
+              {GROUP_LABELS[currentGroup]}
+            </p>
+          </div>
+        );
+      } else if (!currentGroup && lastGroup) {
+        result.push(<div key="divider-bottom" className="my-2 border-t border-primary-foreground/10" />);
+      }
+      lastGroup = currentGroup;
+
+      const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+      result.push(
+        <Link
+          key={item.name}
+          href={item.href}
+          onClick={() => setMobileMenuOpen(false)}
+          className={cn(
+            "flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group",
+            isActive
+              ? "bg-accent/10 text-accent"
+              : "text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white"
+          )}
+        >
+          <item.icon className={cn(
+            "w-5 h-5 mr-3 flex-shrink-0",
+            isActive ? "text-accent" : "text-primary-foreground/50 group-hover:text-primary-foreground/80"
+          )} />
+          {item.name}
+        </Link>
+      );
+    }
+
+    return result;
+  }
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -145,31 +195,10 @@ export function AppLayout({ children }: AppLayoutProps) {
           </button>
         </div>
 
-        {/* Nav items — scrollable, Settings always included */}
+        {/* Nav items — scrollable, grouped with dividers */}
         <div className="flex-1 overflow-y-auto py-4 px-3">
-          <nav className="space-y-1">
-            {navigation.map((item) => {
-              const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={cn(
-                    "flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group",
-                    isActive
-                      ? "bg-accent/10 text-accent"
-                      : "text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white"
-                  )}
-                >
-                  <item.icon className={cn(
-                    "w-5 h-5 mr-3 flex-shrink-0",
-                    isActive ? "text-accent" : "text-primary-foreground/50 group-hover:text-primary-foreground/80"
-                  )} />
-                  {item.name}
-                </Link>
-              );
-            })}
+          <nav className="space-y-0.5">
+            {renderNavItems(navigation)}
           </nav>
         </div>
 

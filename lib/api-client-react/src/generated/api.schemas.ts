@@ -105,6 +105,7 @@ export interface Job {
   estimatedAmount?: number | null;
   actualAmount?: number | null;
   notes?: string | null;
+  businessLine?: string | null;
   createdAt: string;
 }
 
@@ -136,6 +137,7 @@ export interface CreateJobRequest {
   estimatedAmount?: number | null;
   actualAmount?: number | null;
   notes?: string | null;
+  businessLine?: string | null;
 }
 
 export interface DraftLineItem {
@@ -158,6 +160,7 @@ export interface InvoiceDraft {
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
+  businessLine?: string | null;
   lineItems: DraftLineItem[];
 }
 

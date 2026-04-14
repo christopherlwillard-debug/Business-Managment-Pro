@@ -26,5 +26,6 @@ export interface Job {
   estimatedAmount?: number | null;
   actualAmount?: number | null;
   notes?: string | null;
+  businessLine?: string | null;
   createdAt: string;
 }

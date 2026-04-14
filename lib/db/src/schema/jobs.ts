@@ -21,6 +21,7 @@ export const jobsTable = pgTable("jobs", {
   actualAmount: numeric("actual_amount", { precision: 12, scale: 2 }),
   locationName: text("location_name"),
   notes: text("notes"),
+  businessLine: text("business_line"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -903,6 +903,16 @@ function JobCard({
                 {isCompleted ? <CheckCircle className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
                 {isCompleted ? "Completed" : "Scheduled"}
               </span>
+              {job.businessLine === "asphalt_sealing" && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                  Asphalt
+                </span>
+              )}
+              {job.businessLine === "general_contracting" && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary">
+                  GC
+                </span>
+              )}
             </div>
             {job.estimatedAmount && (
               <p className="text-amber-600 font-bold text-sm">{formatCurrency(job.estimatedAmount)}</p>
@@ -1052,12 +1062,14 @@ function JobFormDialog({
         startDate: editJob.startDate ?? "",
         endDate: editJob.endDate ?? "",
         notes: editJob.notes ?? "",
+        businessLine: (editJob.businessLine as "" | "general_contracting" | "asphalt_sealing") ?? "",
       };
     }
     return {
       title: "", clientId: "", status: "scheduled",
       locationName: "", city: "", state: "KY",
       estimatedAmount: "", startDate: "", endDate: "", notes: "",
+      businessLine: "" as "" | "general_contracting" | "asphalt_sealing",
     };
   }
 
@@ -1086,6 +1098,7 @@ function JobFormDialog({
         startDate: form.startDate || undefined,
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
+        businessLine: form.businessLine || undefined,
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });
@@ -1131,6 +1144,35 @@ function JobFormDialog({
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="e.g. Kitchen Renovation"
               value={form.title} onChange={e => setField("title", e.target.value)} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Business</label>
+            <div className="flex gap-2">
+              {([
+                { value: "", label: "Unassigned" },
+                { value: "general_contracting", label: "General Contracting" },
+                { value: "asphalt_sealing", label: "Asphalt Sealing" },
+              ] as const).map(opt => (
+                <label key={opt.value} className="flex-1">
+                  <input type="radio" name="businessLine" value={opt.value}
+                    checked={form.businessLine === opt.value}
+                    onChange={() => setField("businessLine", opt.value)}
+                    className="sr-only" />
+                  <span className={`flex items-center justify-center px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                    form.businessLine === opt.value
+                      ? opt.value === "asphalt_sealing"
+                        ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                        : opt.value === "general_contracting"
+                          ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                          : "bg-muted border-muted-foreground/30 text-foreground shadow-sm"
+                      : "bg-background border-border text-muted-foreground hover:border-primary/30"
+                  }`}>
+                    {opt.label}
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div>
