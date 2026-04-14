@@ -189,7 +189,7 @@ export default function Dashboard() {
               </div>
               <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
               <div className="mt-3 flex items-center text-xs font-semibold text-accent-foreground/60 group-hover:text-accent-foreground transition-colors">
-                View mileage log <ArrowRight className="w-3 h-3 ml-1" />
+                View details <ArrowRight className="w-3 h-3 ml-1" />
               </div>
             </CardContent>
           </Card>

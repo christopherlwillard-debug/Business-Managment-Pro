@@ -17,13 +17,13 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/expenses": { name: "Expenses", icon: Receipt },
   "/mileage": { name: "Mileage", icon: Navigation },
   "/clients": { name: "Clients", icon: Users },
-  "/subcontractors": { name: "Subs", icon: HardHat },
+  "/subcontractors": { name: "Subcontractors", icon: HardHat },
   "/materials": { name: "Materials", icon: Package },
-  "/pricing-guide": { name: "Services", icon: Tag },
-  "/route-planner": { name: "Routes", icon: Route },
+  "/pricing-guide": { name: "Services Guide", icon: Tag },
+  "/route-planner": { name: "Route Planner", icon: Route },
   "/prospects": { name: "Prospects", icon: Target },
   "/assets": { name: "Assets", icon: Wrench },
-  "/accounting": { name: "Accounting", icon: BookOpen },
+  "/accounting": { name: "Accounting & Tax", icon: BookOpen },
   "/settings": { name: "Settings", icon: Settings },
 };
 
