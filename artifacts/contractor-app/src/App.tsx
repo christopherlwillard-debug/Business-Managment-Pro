@@ -23,6 +23,7 @@ import RoutePlanner from "./pages/RoutePlanner";
 import Prospects from "./pages/Prospects";
 import Assets from "./pages/Assets";
 import SubcontractorPortal from "./pages/SubcontractorPortal";
+import AerialQuote from "./pages/AerialQuote";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -231,6 +232,9 @@ function AdminApp() {
         </Route>
         <Route path="/assets">
           <PermissionGuard ownerOnly><Assets /></PermissionGuard>
+        </Route>
+        <Route path="/aerial-quote">
+          <PermissionGuard ownerOnly><AerialQuote /></PermissionGuard>
         </Route>
         <Route component={NotFound} />
       </Switch>

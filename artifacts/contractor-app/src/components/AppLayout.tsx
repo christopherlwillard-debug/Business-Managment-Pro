@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, Users,
-  Settings, Menu, X, BookOpen, LogOut, Package, Tag, Route, Target, Wrench,
+  Settings, Menu, X, BookOpen, LogOut, Package, Tag, Route, Target, Wrench, Crosshair,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/route-planner": { name: "Route Planner", icon: Route },
   "/prospects": { name: "Prospects", icon: Target },
   "/assets": { name: "Assets", icon: Wrench },
+  "/aerial-quote": { name: "Aerial Quote", icon: Crosshair },
   "/accounting": { name: "Accounting & Tax", icon: BookOpen },
   "/settings": { name: "Settings", icon: Settings },
 };
@@ -68,6 +69,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Prospects", href: "/prospects", icon: Target, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },
+    { name: "Aerial Quote", href: "/aerial-quote", icon: Crosshair, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices", group: "finance" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
   ];

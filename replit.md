@@ -131,6 +131,29 @@ Drizzle ORM schema + PostgreSQL connection.
 OpenAPI spec in `openapi.yaml`. Codegen produces React Query hooks + Zod schemas.
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate after spec changes
 
+## Aerial Quote Tool (Asphalt Sealing)
+
+Route: `/aerial-quote` (owner-only). Sidebar: Business Tools group.
+
+Full-page split layout: left panel (address search, polygon manager, pricing controls, quote summary) + right panel (interactive map).
+
+**Mapping:**
+- Esri World Imagery satellite tiles (completely free, no API key)
+- Fallback: OpenStreetMap street view toggle
+- Geocoding: Nominatim (same as Route Planner)
+- Polygon drawing: custom react-leaflet click handler (`DrawController` component); disables double-click zoom while drawing; crosshair cursor
+- Area + perimeter calculation: `@turf/turf` (turf.area → m² × 10.764 = sq ft; turf.length → km × 3280.84 = ft)
+
+**Pricing engine (matches existing AsphaltCalculator tiers):**
+- Auto-tiers: < 1,000 SF → $0.40/SF, 1,000–3,000 SF → $0.28/SF, > 3,000 SF → $0.20/SF
+- Add-ons: crack sealing (LF × rate), second coat (SF × rate), oil stain treatment (SF × rate)
+- Round to nearest $50, minimum $300
+- Configurable tax rate
+
+**Save as Estimate:** POSTs to `/api/estimates` with `businessLine: "asphalt_sealing"` and includes satellite measurement details in notes. Polygon coordinates embedded in notes disclaimer. Estimate appears in Jobs → Estimates tab.
+
+**Packages added:** `@turf/turf`
+
 ## Google Integration (Drive + Gmail)
 
 Frontend-only integration using Google Identity Services (GIS) OAuth2 implicit token flow.
