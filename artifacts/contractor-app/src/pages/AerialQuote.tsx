@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Polygon, Polyline, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 import {
   PenLine, Check, Trash2, X, Search, Layers,
   DollarSign, Ruler, Plus, Minus, ChevronDown, ChevronUp,
-  Printer, FileText, AlertCircle, RotateCcw, Move,
+  Printer, FileText, AlertCircle, RotateCcw,
   HardHat, Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -108,6 +108,13 @@ function DrawController({ isDrawing, onAddPoint }: DrawControllerProps) {
 }
 
 const POLYGON_COLORS = ["#CC1F2B", "#1B3F8C", "#f59e0b", "#10b981", "#8b5cf6", "#06b6d4"];
+
+const pointIcon = L.divIcon({
+  className: "",
+  html: '<div style="width:12px;height:12px;border-radius:50%;background:#f59e0b;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>',
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+});
 
 function zoomForType(type: string): number {
   if (["city", "town", "village", "county", "state", "administrative"].includes(type)) return 13;
@@ -385,7 +392,7 @@ export default function AerialQuote() {
 
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-56px)] overflow-hidden bg-background">
-      <div className="w-full lg:w-80 xl:w-96 border-r border-border bg-card overflow-y-auto flex-shrink-0 flex flex-col">
+      <div className="order-2 lg:order-1 h-[46vh] lg:h-auto w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-r border-border bg-card overflow-y-auto flex-shrink-0 flex flex-col">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
@@ -803,7 +810,7 @@ export default function AerialQuote() {
         </div>
       </div>
 
-      <div className="flex-1 relative min-h-[400px] lg:min-h-0">
+      <div className="order-1 lg:order-2 flex-1 relative min-h-0">
         <MapContainer
           center={OWENSBORO}
           zoom={14}
@@ -838,11 +845,21 @@ export default function AerialQuote() {
           )}
 
           {activePoints.map((pt, i) => (
-            <CircleMarker
+            <Marker
               key={i}
-              center={pt}
-              radius={5}
-              pathOptions={{ color: "#f59e0b", fillColor: "#f59e0b", fillOpacity: 1, weight: 2 }}
+              position={pt}
+              icon={pointIcon}
+              draggable={true}
+              eventHandlers={{
+                dragend(e) {
+                  const { lat, lng } = (e.target as L.Marker).getLatLng();
+                  setActivePoints(prev => {
+                    const next = [...prev];
+                    next[i] = [lat, lng];
+                    return next;
+                  });
+                },
+              }}
             />
           ))}
         </MapContainer>
