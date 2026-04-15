@@ -145,7 +145,7 @@ export interface BuildInvoiceEmailHtmlOpts {
   companyZip?: string;
   companyPhone?: string;
   companyEmail?: string;
-  logoAbsoluteUrl?: string | null;
+  logoDataUri?: string | null;
   invoiceNumber: string;
   issueDate?: string | null;
   dueDate?: string | null;
@@ -179,12 +179,12 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
     ? `${opts.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
     : (opts.companyName || "");
 
-  const logoHtml = opts.logoAbsoluteUrl
-    ? `<img src="${esc(opts.logoAbsoluteUrl)}" alt="${esc(displayCompanyName)}" style="height:80px;width:auto;max-width:200px;display:block;border:0;" />`
+  const logoHtml = opts.logoDataUri
+    ? `<img src="${opts.logoDataUri}" alt="${esc(displayCompanyName)}" style="height:80px;width:auto;max-width:200px;display:block;border:0;margin-bottom:6px;" />`
     : ``;
 
   const contactLines: string[] = [];
-  if (!opts.logoAbsoluteUrl && displayCompanyName) {
+  if (displayCompanyName) {
     contactLines.push(`<tr><td style="font-size:18px;font-weight:800;color:#111827;padding-bottom:4px;">${esc(displayCompanyName)}</td></tr>`);
   }
   if (opts.companyAddress) contactLines.push(`<tr><td style="font-size:11px;color:#6b7280;line-height:1.5;">${esc(opts.companyAddress)}</td></tr>`);

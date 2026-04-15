@@ -154,7 +154,9 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     setGmailSending(true);
     try {
       const token = await getToken();
-      const absoluteLogoUrl = logoUrl ? `${window.location.origin}${base}${logoUrl}` : null;
+      const pdfSettings = buildPdfSettings();
+      const effectiveRelUrl = resolveLogoUrl(pdfSettings, invoice.businessLine);
+      const logoDataUri = await fetchLogoDataUri(effectiveRelUrl ? `${window.location.origin}${base}${effectiveRelUrl}` : null);
       const html = buildInvoiceEmailHtml({
         companyName,
         companyAddress,
@@ -163,7 +165,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         companyZip,
         companyPhone,
         companyEmail,
-        logoAbsoluteUrl: absoluteLogoUrl,
+        logoDataUri: logoDataUri ?? null,
         invoiceNumber: invoice.invoiceNumber,
         issueDate: invoice.issueDate,
         dueDate: invoice.dueDate,
@@ -189,9 +191,6 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         notes: invoice.notes ?? undefined,
         customMessage: gmailMessage.trim() || undefined,
       });
-      const pdfSettings = buildPdfSettings();
-      const effectiveRelUrl = resolveLogoUrl(pdfSettings, invoice.businessLine);
-      const logoDataUri = await fetchLogoDataUri(effectiveRelUrl ? `${window.location.origin}${base}${effectiveRelUrl}` : null);
       const pdfBase64 = invoicePdfToBase64(buildPdfData(), { ...pdfSettings, logoDataUri });
       const pdfFilename = `Invoice-${invoice.invoiceNumber}.pdf`;
       await sendViaGmail({
