@@ -1,10 +1,3 @@
-/* ---------------------------------------------------------------------------
- * printInvoiceWindow
- * Opens a fresh browser window, writes a self-contained HTML invoice into it,
- * and triggers the print dialog. This bypasses iframe restrictions that prevent
- * window.print() from working correctly inside the Replit preview environment.
- * --------------------------------------------------------------------------- */
-
 export interface PrintableInvoice {
   invoiceNumber: string;
   issueDate?: string | null;
@@ -63,7 +56,16 @@ function esc(s: string | null | undefined): string {
   return (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
+export const INVOICE_PRINT_STYLES = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; background: white; }
+  .page { max-width: 750px; margin: 0 auto; padding: 48px; }
+  table.items { width: 100%; border-collapse: collapse; font-size: 11px; }
+  table.items th { text-align: right; padding-bottom: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; font-size: 10px; border-bottom: 2px solid #1f2937; }
+  table.items th:first-child { text-align: left; }
+`;
+
+export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
   const logoPx = settings.logoSize === "small" ? 64 : settings.logoSize === "large" ? 160 : 100;
   const logoPos = settings.logoPosition ?? "top-left";
 
@@ -188,25 +190,7 @@ function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): s
        </div>`
     : "";
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Invoice ${esc(inv.invoiceNumber)}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; background: white; }
-    .page { max-width: 750px; margin: 0 auto; padding: 48px; }
-    table.items { width: 100%; border-collapse: collapse; font-size: 11px; }
-    table.items th { text-align: right; padding-bottom: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; font-size: 10px; border-bottom: 2px solid #1f2937; }
-    table.items th:first-child { text-align: left; }
-    @media print {
-      @page { size: letter portrait; margin: 0.5in; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
-  </style>
-</head>
-<body>
+  return `
   <div style="height:8px;background:linear-gradient(to right,#f59e0b,#fbbf24);"></div>
   <div class="page">
     <div style="margin-bottom:32px;">${headerHtml}</div>
@@ -238,6 +222,34 @@ function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): s
     ${notesHtml}
   </div>
   <div style="height:6px;background:linear-gradient(to right,#fbbf24,#f59e0b);margin-top:32px;"></div>
+  <div style="text-align:center;padding:12px 0 8px;font-size:10px;color:#9ca3af;">
+    Thank you for your business${settings.companyName ? " &middot; " + esc(settings.companyName) : ""}
+  </div>`;
+}
+
+function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
+  const bodyContent = buildInvoiceBodyHtml(inv, settings);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Invoice ${esc(inv.invoiceNumber)}</title>
+  <style>
+    ${INVOICE_PRINT_STYLES}
+    @media print {
+      @page { size: letter portrait; margin: 0.5in; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="position:fixed;top:0;left:0;right:0;z-index:999;background:#1f2937;padding:10px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+    <button onclick="window.close()" style="background:#f59e0b;color:#111827;border:none;border-radius:6px;padding:8px 18px;font-size:14px;font-weight:700;cursor:pointer;">&#8592; Back to App</button>
+    <button onclick="window.print()" style="background:transparent;color:#d1d5db;border:1px solid #4b5563;border-radius:6px;padding:8px 18px;font-size:14px;cursor:pointer;">Print / Save as PDF</button>
+  </div>
+  <div style="height:52px;" class="no-print"></div>
+  ${bodyContent}
 </body>
 </html>`;
 }
