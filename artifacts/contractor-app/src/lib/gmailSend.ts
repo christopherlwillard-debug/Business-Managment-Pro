@@ -275,7 +275,7 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
             <tr>
               <td style="vertical-align:top;padding-right:20px;">
                 ${logoHtml}
-                ${contactLines.length > 0 ? `<table cellpadding="0" cellspacing="0" style="margin-top:${opts.logoAbsoluteUrl ? "8" : "0"}px;">${contactLines.join("")}</table>` : ""}
+                ${contactLines.length > 0 ? `<table cellpadding="0" cellspacing="0" style="margin-top:${opts.logoDataUri ? "8" : "0"}px;">${contactLines.join("")}</table>` : ""}
               </td>
               <td style="vertical-align:top;text-align:right;white-space:nowrap;">
                 <p style="margin:0;font-size:34px;font-weight:900;letter-spacing:0.08em;color:#1f2937;line-height:1;text-transform:uppercase;">INVOICE</p>
