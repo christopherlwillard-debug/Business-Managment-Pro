@@ -76,6 +76,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
       locationName: invoice.locationName,
       city: invoice.city,
       state: invoice.state,
+      jobTitle: invoice.jobTitle,
       lineItems: lineItems.map(li => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice })),
       subtotal,
       taxRate,
@@ -153,6 +154,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     setGmailSending(true);
     try {
       const token = await getToken();
+      const absoluteLogoUrl = logoUrl ? `${window.location.origin}${base}${logoUrl}` : null;
       const html = buildInvoiceEmailHtml({
         companyName,
         companyAddress,
@@ -161,16 +163,29 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         companyZip,
         companyPhone,
         companyEmail,
+        logoAbsoluteUrl: absoluteLogoUrl,
         invoiceNumber: invoice.invoiceNumber,
         issueDate: invoice.issueDate,
         dueDate: invoice.dueDate,
+        terms: invoice.terms ?? undefined,
         clientName: invoice.clientName ?? undefined,
+        clientEmail: invoice.clientEmail ?? undefined,
+        clientPhone: invoice.clientPhone ?? undefined,
+        clientAddress: invoice.clientAddress ?? undefined,
+        clientCity: invoice.clientCity ?? undefined,
+        clientState: invoice.clientState ?? undefined,
+        clientZip: invoice.clientZip ?? undefined,
+        clientNotes: invoice.clientNotes ?? undefined,
+        jobTitle: invoice.jobTitle ?? undefined,
+        locationName: invoice.locationName ?? undefined,
+        city: invoice.city ?? undefined,
+        state: invoice.state ?? undefined,
+        businessLine: invoice.businessLine ?? undefined,
         lineItems: lineItems.map(li => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice })),
         subtotal,
         taxRate,
         taxAmount,
         total,
-        terms: invoice.terms ?? undefined,
         notes: invoice.notes ?? undefined,
         customMessage: gmailMessage.trim() || undefined,
       });
