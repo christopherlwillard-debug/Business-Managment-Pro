@@ -127,15 +127,13 @@ async function geocodeAddress(
   street: string, city: string, state: string, postalcode: string
 ): Promise<GeoResult[]> {
   try {
-    const params = new URLSearchParams({ format: "json", limit: "5", countrycodes: "us", addressdetails: "1" });
+    const params = new URLSearchParams();
     if (street)     params.set("street", street);
     if (city)       params.set("city", city);
     if (state)      params.set("state", state);
     if (postalcode) params.set("postalcode", postalcode);
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?${params}`,
-      { headers: { "Accept-Language": "en-US,en" } }
-    );
+    const res = await fetch(`${BASE}/api/geocode?${params}`);
+    if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return [];
     return data.map((d: { display_name: string; lat: string; lon: string; type: string }) => ({
