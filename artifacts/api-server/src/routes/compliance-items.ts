@@ -82,14 +82,49 @@ router.post("/", async (req, res) => {
   }
 });
 
+function advanceDueDate(dueDate: string, recurrence: string): string {
+  const [y, m, d] = dueDate.split("-").map(Number);
+  let date = new Date(y, m - 1, d);
+  switch (recurrence) {
+    case "monthly":
+      date.setMonth(date.getMonth() + 1);
+      break;
+    case "quarterly":
+      date.setMonth(date.getMonth() + 3);
+      break;
+    case "annual":
+      date.setFullYear(date.getFullYear() + 1);
+      break;
+    case "every_5_years":
+      date.setFullYear(date.getFullYear() + 5);
+      break;
+  }
+  const ny = date.getFullYear();
+  const nm = String(date.getMonth() + 1).padStart(2, "0");
+  const nd = String(date.getDate()).padStart(2, "0");
+  return `${ny}-${nm}-${nd}`;
+}
+
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { title, category, jurisdiction, dueDate, recurrence, status, notes, enabled } = req.body;
+
+    let resolvedDueDate = dueDate;
+    let resolvedStatus = status;
+
+    if (status === "complete" && recurrence && recurrence !== "one-time") {
+      if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+        return res.status(400).json({ error: "A valid due date (YYYY-MM-DD) is required to advance a recurring item" });
+      }
+      resolvedDueDate = advanceDueDate(dueDate, recurrence);
+      resolvedStatus = "upcoming";
+    }
+
     const updateData: Record<string, any> = {
       title, category,
       jurisdiction: jurisdiction || null,
-      dueDate, recurrence, status,
+      dueDate: resolvedDueDate, recurrence, status: resolvedStatus,
       notes: notes || null,
     };
     if (enabled !== undefined) updateData.enabled = enabled;
