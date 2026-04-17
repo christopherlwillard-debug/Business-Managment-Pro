@@ -5,7 +5,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert, CheckCircle2, Clock, TrendingUp, TrendingDown } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -23,6 +23,7 @@ function useComplianceSummary() {
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
+  const [, navigate] = useLocation();
   const { data: stats, isLoading } = useGetDashboardStats({ period });
   const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
 
@@ -79,11 +80,17 @@ export default function Dashboard() {
       )}
 
       {/* Compliance Summary Widget — always visible */}
-      <Card className={`shadow-md border-border/50 ${
-        complianceError ? "border-l-4 border-l-muted-foreground/40" :
-        hasComplianceIssues ? "border-l-4 border-l-amber-400" :
-        "border-l-4 border-l-emerald-400"
-      }`}>
+      <Card
+        role="button"
+        tabIndex={0}
+        onClick={() => navigate("/accounting?tab=tax-calendar")}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/accounting?tab=tax-calendar"); }}
+        className={`shadow-md border-border/50 cursor-pointer transition-shadow hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          complianceError ? "border-l-4 border-l-muted-foreground/40" :
+          hasComplianceIssues ? "border-l-4 border-l-amber-400" :
+          "border-l-4 border-l-emerald-400"
+        }`}
+      >
         <CardContent className="p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -129,15 +136,15 @@ export default function Dashboard() {
                     </span>
                   </div>
                 )}
-                <Link href="/accounting?tab=compliance-items" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline ml-1">
+                <span className="flex items-center gap-1 text-xs font-semibold text-primary ml-1">
                   View All <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+                </span>
               </div>
             )}
             {(complianceLoading || complianceError) && (
-              <Link href="/accounting?tab=compliance-items" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+              <span className="flex items-center gap-1 text-xs font-semibold text-primary">
                 View All <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              </span>
             )}
           </div>
         </CardContent>
