@@ -9,7 +9,7 @@ import {
   X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
-  Link2, Link2Off, Smartphone, LayoutDashboard,
+  Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -954,6 +954,7 @@ export default function Settings() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [seeded, setSeeded] = useState(false);
+  const [testEmailState, setTestEmailState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   useEffect(() => {
     if (settings && !seeded) {
@@ -1044,6 +1045,30 @@ export default function Settings() {
       setTimeout(() => setSuccess(false), 4000);
     } catch {
       setError("Failed to save settings. Please try again.");
+    }
+  }
+
+  async function handleTestEmail() {
+    setTestEmailState("sending");
+    try {
+      const res = await fetch(`${BASE}/api/settings/test-compliance-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.complianceNotificationEmail || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: "Test email failed", description: data.error ?? "Unknown error", variant: "destructive" });
+        setTestEmailState("error");
+      } else {
+        toast({ title: "Test email sent!", description: `Check the inbox at ${data.sentTo}.` });
+        setTestEmailState("sent");
+      }
+    } catch {
+      toast({ title: "Test email failed", description: "Could not reach the server.", variant: "destructive" });
+      setTestEmailState("error");
+    } finally {
+      setTimeout(() => setTestEmailState("idle"), 4000);
     }
   }
 
@@ -1661,6 +1686,29 @@ export default function Settings() {
                         </p>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={handleTestEmail}
+                      disabled={testEmailState === "sending"}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+                        testEmailState === "sent"
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : testEmailState === "error"
+                          ? "border-red-300 bg-red-50 text-red-700"
+                          : "border-border bg-muted/40 hover:bg-muted text-foreground"
+                      } disabled:opacity-60`}
+                    >
+                      {testEmailState === "sending" ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : testEmailState === "sent" ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : testEmailState === "error" ? (
+                        <XCircle className="w-4 h-4" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                      {testEmailState === "sending" ? "Sending…" : testEmailState === "sent" ? "Test email sent!" : testEmailState === "error" ? "Send failed" : "Send Test Email"}
+                    </button>
                   </div>
                 )}
 

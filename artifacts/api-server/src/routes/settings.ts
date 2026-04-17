@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { settingsTable } from "@workspace/db/schema";
+import { settingsTable, usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { sendEmail, escapeHtml } from "../lib/sendEmail";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
 
@@ -277,6 +278,73 @@ router.put("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update settings" });
+  }
+});
+
+router.post("/test-compliance-email", async (req, res) => {
+  try {
+    const [settings] = await db
+      .select({
+        ownerUserId: settingsTable.ownerUserId,
+        companyEmail: settingsTable.companyEmail,
+        complianceNotificationEmail: settingsTable.complianceNotificationEmail,
+        complianceEmailEnabled: settingsTable.complianceEmailEnabled,
+      })
+      .from(settingsTable)
+      .limit(1);
+
+    if (settings?.complianceEmailEnabled === 0) {
+      res.status(400).json({ error: "Compliance email notifications are disabled." });
+      return;
+    }
+
+    const bodyEmail = typeof req.body?.email === "string" ? req.body.email.trim() : null;
+
+    let recipientEmail: string | null = bodyEmail || settings?.complianceNotificationEmail || null;
+
+    if (!recipientEmail && settings?.ownerUserId) {
+      const [owner] = await db
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, settings.ownerUserId))
+        .limit(1);
+      recipientEmail = owner?.email ?? null;
+    }
+
+    if (!recipientEmail) {
+      recipientEmail = settings?.companyEmail ?? null;
+    }
+
+    if (!recipientEmail) {
+      res.status(400).json({ error: "No recipient email configured. Add a notification email address or business email in settings." });
+      return;
+    }
+
+    const safeEmail = escapeHtml(recipientEmail);
+    const html = `<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px;">
+  <h2 style="color: #1a56db;">Test: Compliance Notification</h2>
+  <p>This is a test email confirming your compliance notification settings are working correctly.</p>
+  <p>Compliance advance emails will be delivered to <strong>${safeEmail}</strong>.</p>
+  ${process.env.APP_URL ? `<p>
+    <a href="${process.env.APP_URL}/compliance" style="display: inline-block; background: #1a56db; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 6px;">
+      View Compliance Center
+    </a>
+  </p>` : ""}
+  <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">
+    This is a test notification from your Contractor Management App.
+  </p>
+</body>
+</html>`.trim();
+
+    const text = `Test: Compliance Notification\n\nThis is a test email confirming your compliance notification settings are working correctly.\n\nCompliance advance emails will be delivered to: ${recipientEmail}`;
+
+    await sendEmail({ to: recipientEmail, subject: "Test: Compliance Notification Email", html, text });
+    res.json({ ok: true, sentTo: recipientEmail });
+  } catch (err) {
+    console.error("Test compliance email failed:", err);
+    res.status(500).json({ error: "Failed to send test email. Check your Gmail connection." });
   }
 });
 
