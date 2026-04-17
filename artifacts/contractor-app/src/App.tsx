@@ -1,5 +1,5 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,22 +9,23 @@ import { GoogleAuthProvider } from "@/contexts/GoogleAuth";
 import { PermissionGuard } from "./components/PermissionGuard";
 
 import { AppLayout } from "./components/AppLayout";
-import Dashboard from "./pages/Dashboard";
-import Jobs from "./pages/Jobs";
-import Expenses from "./pages/Expenses";
-import Mileage from "./pages/Mileage";
-import Subcontractors from "./pages/Subcontractors";
-import Clients from "./pages/Clients";
-import Settings from "./pages/Settings";
-import Accounting from "./pages/Accounting";
-import Materials from "./pages/Materials";
-import PricingGuide from "./pages/PricingGuide";
-import RoutePlanner from "./pages/RoutePlanner";
-import Prospects from "./pages/Prospects";
-import Assets from "./pages/Assets";
-import SubcontractorPortal from "./pages/SubcontractorPortal";
-import AerialQuote from "./pages/AerialQuote";
-import NotFound from "./pages/not-found";
+
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Jobs = lazy(() => import("./pages/Jobs"));
+const Expenses = lazy(() => import("./pages/Expenses"));
+const Mileage = lazy(() => import("./pages/Mileage"));
+const Subcontractors = lazy(() => import("./pages/Subcontractors"));
+const Clients = lazy(() => import("./pages/Clients"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Accounting = lazy(() => import("./pages/Accounting"));
+const Materials = lazy(() => import("./pages/Materials"));
+const PricingGuide = lazy(() => import("./pages/PricingGuide"));
+const RoutePlanner = lazy(() => import("./pages/RoutePlanner"));
+const Prospects = lazy(() => import("./pages/Prospects"));
+const Assets = lazy(() => import("./pages/Assets"));
+const SubcontractorPortal = lazy(() => import("./pages/SubcontractorPortal"));
+const AerialQuote = lazy(() => import("./pages/AerialQuote"));
+const NotFound = lazy(() => import("./pages/not-found"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,14 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function AccessPendingScreen() {
   const { companyName: ctxCompany, userName, profileImageUrl } = useUserPermissions();
@@ -195,61 +204,65 @@ function AdminApp() {
 
   return (
     <AppLayout>
-      <Switch>
-        <Route path="/" component={HomeRoute} />
-        <Route path="/jobs">
-          <PermissionGuard section="jobs"><Jobs /></PermissionGuard>
-        </Route>
-        <Route path="/expenses">
-          <PermissionGuard section="expenses"><Expenses /></PermissionGuard>
-        </Route>
-        <Route path="/mileage">
-          <PermissionGuard section="mileage"><Mileage /></PermissionGuard>
-        </Route>
-        <Route path="/subcontractors">
-          <PermissionGuard section="subcontractors"><Subcontractors /></PermissionGuard>
-        </Route>
-        <Route path="/clients">
-          <PermissionGuard section="clients"><Clients /></PermissionGuard>
-        </Route>
-        <Route path="/settings">
-          <PermissionGuard ownerOnly><Settings /></PermissionGuard>
-        </Route>
-        <Route path="/accounting">
-          <PermissionGuard section="invoices"><Accounting /></PermissionGuard>
-        </Route>
-        <Route path="/materials">
-          <PermissionGuard ownerOnly><Materials /></PermissionGuard>
-        </Route>
-        <Route path="/pricing-guide">
-          <PermissionGuard ownerOnly><PricingGuide /></PermissionGuard>
-        </Route>
-        <Route path="/route-planner">
-          <PermissionGuard ownerOnly><RoutePlanner /></PermissionGuard>
-        </Route>
-        <Route path="/prospects">
-          <PermissionGuard ownerOnly><Prospects /></PermissionGuard>
-        </Route>
-        <Route path="/assets">
-          <PermissionGuard ownerOnly><Assets /></PermissionGuard>
-        </Route>
-        <Route path="/aerial-quote">
-          <PermissionGuard ownerOnly><AerialQuote /></PermissionGuard>
-        </Route>
-        <Route component={NotFound} />
-      </Switch>
+      <Suspense fallback={<PageLoader />}>
+        <Switch>
+          <Route path="/" component={HomeRoute} />
+          <Route path="/jobs">
+            <PermissionGuard section="jobs"><Jobs /></PermissionGuard>
+          </Route>
+          <Route path="/expenses">
+            <PermissionGuard section="expenses"><Expenses /></PermissionGuard>
+          </Route>
+          <Route path="/mileage">
+            <PermissionGuard section="mileage"><Mileage /></PermissionGuard>
+          </Route>
+          <Route path="/subcontractors">
+            <PermissionGuard section="subcontractors"><Subcontractors /></PermissionGuard>
+          </Route>
+          <Route path="/clients">
+            <PermissionGuard section="clients"><Clients /></PermissionGuard>
+          </Route>
+          <Route path="/settings">
+            <PermissionGuard ownerOnly><Settings /></PermissionGuard>
+          </Route>
+          <Route path="/accounting">
+            <PermissionGuard section="invoices"><Accounting /></PermissionGuard>
+          </Route>
+          <Route path="/materials">
+            <PermissionGuard ownerOnly><Materials /></PermissionGuard>
+          </Route>
+          <Route path="/pricing-guide">
+            <PermissionGuard ownerOnly><PricingGuide /></PermissionGuard>
+          </Route>
+          <Route path="/route-planner">
+            <PermissionGuard ownerOnly><RoutePlanner /></PermissionGuard>
+          </Route>
+          <Route path="/prospects">
+            <PermissionGuard ownerOnly><Prospects /></PermissionGuard>
+          </Route>
+          <Route path="/assets">
+            <PermissionGuard ownerOnly><Assets /></PermissionGuard>
+          </Route>
+          <Route path="/aerial-quote">
+            <PermissionGuard ownerOnly><AerialQuote /></PermissionGuard>
+          </Route>
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
     </AppLayout>
   );
 }
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/portal/:token" component={SubcontractorPortal} />
-      <Route>
-        <AdminApp />
-      </Route>
-    </Switch>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+      <Switch>
+        <Route path="/portal/:token" component={SubcontractorPortal} />
+        <Route>
+          <AdminApp />
+        </Route>
+      </Switch>
+    </Suspense>
   );
 }
 
