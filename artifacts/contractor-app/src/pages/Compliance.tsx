@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useGetComplianceReport } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import {
   ShieldAlert, AlertTriangle, CheckCircle2, Plus, X, Pencil,
   CalendarClock, RefreshCw, MapPin, Trash2, Bell, FileCheck, Undo2,
@@ -341,6 +342,8 @@ export default function Compliance() {
   const updateItem   = useUpdateComplianceItem();
   const deleteItem   = useDeleteComplianceItem();
 
+  const { toast } = useToast();
+
   const [showForm,    setShowForm]    = useState(false);
   const [editTarget,  setEditTarget]  = useState<ComplianceItem | null>(null);
   const [filterCat,   setFilterCat]   = useState("All");
@@ -351,6 +354,7 @@ export default function Compliance() {
     originalDueDate: string;
     originalStatus: string;
     progress: number;
+    newDueDate?: string;
     error?: boolean;
   } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -405,7 +409,7 @@ export default function Compliance() {
       dismissUndo();
     }
 
-    await updateItem.mutateAsync({ ...item, status: newStatus });
+    const updated = await updateItem.mutateAsync({ ...item, status: newStatus });
 
     if (isAutoAdvance) {
       const startTime = Date.now();
@@ -415,6 +419,7 @@ export default function Compliance() {
         originalDueDate: item.dueDate,
         originalStatus: item.status,
         progress: 100,
+        newDueDate: updated?.dueDate,
       });
       undoTimerRef.current = setInterval(() => {
         const elapsed = Date.now() - startTime;
@@ -425,6 +430,8 @@ export default function Compliance() {
           setUndoState(prev => prev ? { ...prev, progress: remaining } : null);
         }
       }, 50);
+    } else if (newStatus === "complete") {
+      toast({ title: "Marked complete" });
     }
   }
 
@@ -476,7 +483,11 @@ export default function Compliance() {
                 {undoState.error
                   ? <span className="font-semibold">Undo failed — please try editing the item manually</span>
                   : <>
-                      <span className="font-semibold">Marked complete</span>
+                      <span className="font-semibold">
+                        {undoState.newDueDate
+                          ? `Auto-advanced to ${formatDate(undoState.newDueDate)}`
+                          : "Marked complete"}
+                      </span>
                       {" — "}
                       <span className="text-gray-300">{undoState.title}</span>
                     </>
