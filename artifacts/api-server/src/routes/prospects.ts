@@ -46,6 +46,9 @@ function format(p: ProspectWithEstimate) {
     stripePaymentLinkUrl: p.stripePaymentLinkUrl ?? null,
     depositPaidAt: p.depositPaidAt instanceof Date ? p.depositPaidAt.toISOString() : (p.depositPaidAt ?? null),
     depositPaidAmount: p.depositPaidAmount != null ? parseFloat(p.depositPaidAmount) : null,
+    lastPaidAt: p.lastPaidAt instanceof Date ? p.lastPaidAt.toISOString() : (p.lastPaidAt ?? null),
+    followUpDate: p.followUpDate ?? null,
+    source: p.source ?? "manual",
     createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt,
   };

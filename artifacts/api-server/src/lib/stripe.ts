@@ -39,7 +39,9 @@ export async function createPaymentLink(opts: {
     line_items: [{ price: price.id, quantity: 1 }],
     metadata: opts.metadata,
     payment_intent_data: { metadata: opts.metadata },
-    ...(opts.customerEmail ? { customer_creation: "always" } : {}),
+    customer_creation: "always",
+    phone_number_collection: { enabled: true },
+    billing_address_collection: "required",
     after_completion: { type: "hosted_confirmation", hosted_confirmation: { custom_message: "Payment received! Thank you for your business." } },
   });
 

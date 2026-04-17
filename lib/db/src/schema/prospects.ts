@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, numeric, check } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, check, date } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { estimatesTable } from "./estimates";
 
@@ -26,6 +26,9 @@ export const prospectsTable = pgTable(
     stripePaymentLinkUrl: text("stripe_payment_link_url"),
     depositPaidAt: timestamp("deposit_paid_at"),
     depositPaidAmount: numeric("deposit_paid_amount", { precision: 12, scale: 2 }),
+    lastPaidAt: timestamp("last_paid_at"),
+    followUpDate: date("follow_up_date"),
+    source: text("source").default("manual"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

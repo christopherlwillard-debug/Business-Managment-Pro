@@ -932,6 +932,9 @@ export interface Prospect {
   stripePaymentLinkUrl?: string | null;
   depositPaidAt?: string | null;
   depositPaidAmount?: number | null;
+  lastPaidAt?: string | null;
+  followUpDate?: string | null;
+  source?: string | null;
   createdAt: string;
   updatedAt: string;
 }

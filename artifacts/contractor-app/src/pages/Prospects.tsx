@@ -15,7 +15,7 @@ import {
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
   Maximize2, Building2, CheckCircle2, AlertCircle, UserPlus,
-  CreditCard, Copy, ExternalLink, X,
+  CreditCard, Copy, ExternalLink, X, BadgeCheck, CalendarClock,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,7 +51,23 @@ const PROPERTY_TYPE_COLORS: Record<string, string> = {
 const FILTER_OPTIONS = [
   { value: "", label: "All" },
   ...STATUS_OPTIONS,
+  { value: "follow_up_due", label: "Follow-up Due" },
 ];
+
+function isFollowUpDue(followUpDate: string | null | undefined): boolean {
+  if (!followUpDate) return false;
+  const due = new Date(followUpDate);
+  const now = new Date();
+  const in60 = new Date(now);
+  in60.setDate(in60.getDate() + 60);
+  return due <= in60;
+}
+
+function formatDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 type FormData = {
   address: string;
@@ -141,7 +157,9 @@ export default function Prospects() {
     }
   }
 
-  const filtered = statusFilter
+  const filtered = statusFilter === "follow_up_due"
+    ? prospects.filter((p) => isFollowUpDue(p.followUpDate))
+    : statusFilter
     ? prospects.filter((p) => p.status === statusFilter)
     : prospects;
 
@@ -261,7 +279,12 @@ export default function Prospects() {
             {opt.value === "" && (
               <span className="ml-1.5 text-xs opacity-70">({prospects.length})</span>
             )}
-            {opt.value !== "" && (
+            {opt.value === "follow_up_due" && (
+              <span className="ml-1.5 text-xs opacity-70">
+                ({prospects.filter((p) => isFollowUpDue(p.followUpDate)).length})
+              </span>
+            )}
+            {opt.value !== "" && opt.value !== "follow_up_due" && (
               <span className="ml-1.5 text-xs opacity-70">
                 ({prospects.filter((p) => p.status === opt.value).length})
               </span>
@@ -328,6 +351,18 @@ export default function Prospects() {
                       <Building2 className="w-3 h-3" />
                       {p.propertyType}
                     </span>
+                    {p.source === "stripe_payment" && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200">
+                        <BadgeCheck className="w-3 h-3" />
+                        Stripe Customer
+                      </span>
+                    )}
+                    {isFollowUpDue(p.followUpDate) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-100 text-amber-700 border-amber-200">
+                        <CalendarClock className="w-3 h-3" />
+                        Follow-up Due
+                      </span>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-sm">
@@ -352,6 +387,18 @@ export default function Prospects() {
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <Phone className="w-3.5 h-3.5 flex-shrink-0" />
                         <span>{p.contactPhone}</span>
+                      </div>
+                    )}
+                    {p.lastPaidAt && (
+                      <div className="flex items-center gap-1.5 text-muted-foreground col-span-2 text-xs">
+                        <CreditCard className="w-3.5 h-3.5 flex-shrink-0 text-violet-500" />
+                        <span>Last paid: {formatDate(p.lastPaidAt)}</span>
+                      </div>
+                    )}
+                    {p.followUpDate && (
+                      <div className={`flex items-center gap-1.5 col-span-2 text-xs ${isFollowUpDue(p.followUpDate) ? "text-amber-700" : "text-muted-foreground"}`}>
+                        <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Follow-up: {formatDate(p.followUpDate)}</span>
                       </div>
                     )}
                   </div>
