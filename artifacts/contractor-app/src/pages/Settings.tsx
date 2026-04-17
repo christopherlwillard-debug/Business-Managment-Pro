@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useGetSettings, useUpdateSettings, type AppSettings } from "@workspace/api-client-react";
+import { useGetSettings, useUpdateSettings, useStripeStatus, type AppSettings } from "@workspace/api-client-react";
 import { RegisteredAgentSection } from "@/components/RegisteredAgentSection";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -926,6 +926,7 @@ export default function Settings() {
   const { data: settings, isLoading } = useGetSettings();
   const updateMutation = useUpdateSettings();
   const { isOwner } = useUserPermissions();
+  const { data: stripeStatus } = useStripeStatus();
 
   const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
@@ -1135,13 +1136,28 @@ export default function Settings() {
               <CardDescription>Accept card payments on invoices, deposits, and quick charges</CardDescription>
             </CardHeader>
             <CardContent className="pt-5 space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-emerald-800">Stripe is connected</p>
-                  <p className="text-xs text-emerald-700">STRIPE_SECRET_KEY is configured in your environment</p>
+              {stripeStatus?.connected ? (
+                <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Stripe is connected{stripeStatus.displayName ? ` — ${stripeStatus.displayName}` : ""}
+                    </p>
+                    <p className="text-xs text-emerald-700">
+                      {stripeStatus.chargesEnabled ? "Charges enabled" : "Charges not yet enabled"}
+                      {stripeStatus.country ? ` · ${stripeStatus.country}` : ""}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Stripe not connected</p>
+                    <p className="text-xs text-amber-700">{stripeStatus?.message ?? "Add STRIPE_SECRET_KEY to your environment to enable payments"}</p>
+                  </div>
+                </div>
+              )}
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-1">What's enabled</p>

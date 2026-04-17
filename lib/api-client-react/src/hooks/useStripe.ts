@@ -85,6 +85,24 @@ export function useCreateInvoicePaymentLink() {
   });
 }
 
+export interface StripeStatus {
+  connected: boolean;
+  message?: string;
+  accountId?: string;
+  displayName?: string | null;
+  country?: string | null;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+}
+
+export function useStripeStatus() {
+  return useQuery({
+    queryKey: ["/api/stripe/status"],
+    queryFn: () => customFetch<StripeStatus>("/api/stripe/status", { method: "GET" }),
+    staleTime: 60_000,
+  });
+}
+
 export function useCreateProspectDepositLink() {
   const qc = useQueryClient();
   return useMutation({

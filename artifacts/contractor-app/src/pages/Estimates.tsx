@@ -4,6 +4,7 @@ import {
   useCreateEstimate, useUpdateEstimate, useDeleteEstimate, useConvertEstimateToJob,
   getListEstimatesQueryKey,
   Estimate, CreateEstimateRequest, CreateEstimateRequestStatus, AppSettings,
+  useCreateQuickCharge,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -11,6 +12,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   Calculator, FileText, Plus, Trash2, Edit2, X,
   ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
+  CreditCard, ExternalLink,
 } from "lucide-react";
 import { TrimCalculator } from "@/components/calculators/TrimCalculator";
 import { SidingCalculator } from "@/components/calculators/SidingCalculator";
@@ -251,6 +253,8 @@ export function EstimateModal({
   const [showFlooringCalc, setShowFlooringCalc] = useState(false);
   const [showPlumbingCalc, setShowPlumbingCalc] = useState(false);
   const [showAsphaltCalc, setShowAsphaltCalc] = useState(false);
+  const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; amount: number } | null>(null);
+  const createQuickCharge = useCreateQuickCharge();
 
   const subtotal = lines.reduce((acc, l) => acc + lineTotal(l), 0);
   const markupAmt = markup ? subtotal * (parseFloat(markup) / 100) : 0;
@@ -725,7 +729,63 @@ export function EstimateModal({
             })));
             setTemplateApplied(true);
           }}
+          onRequestDeposit={async (totalAmount) => {
+            const depositAmt = Math.round(totalAmount * 0.5 * 100) / 100;
+            try {
+              const charge = await createQuickCharge.mutateAsync({
+                label: `Asphalt Sealing Deposit — ${title || "New Estimate"}`,
+                amount: depositAmt,
+                notes: "50% deposit for asphalt sealing work",
+              });
+              if (charge.stripePaymentLinkUrl) {
+                setDepositLinkResult({ url: charge.stripePaymentLinkUrl, amount: depositAmt });
+                setShowAsphaltCalc(false);
+              }
+            } catch {
+              alert("Failed to create deposit payment link. Make sure Stripe is configured.");
+            }
+          }}
         />
+      )}
+
+      {/* Deposit link result modal */}
+      {depositLinkResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-600" /> Deposit Link Ready
+              </h3>
+              <button type="button" onClick={() => setDepositLinkResult(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">
+              A Stripe payment link for <strong>${depositLinkResult.amount.toFixed(2)}</strong> (50% deposit) has been created.
+              Share this link with your customer to collect payment.
+            </p>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="text-xs text-gray-500 break-all font-mono">{depositLinkResult.url}</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(depositLinkResult.url)}
+                className="flex-1 py-2 text-sm font-semibold border border-gray-300 rounded-xl hover:bg-gray-50"
+              >
+                Copy Link
+              </button>
+              <a
+                href={depositLinkResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700"
+              >
+                Open <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

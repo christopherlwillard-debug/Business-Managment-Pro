@@ -59,7 +59,7 @@ router.post("/prospects/:id/deposit-link", async (req, res) => {
       currency,
       productName: `${companyName}: Deposit — ${label}`,
       metadata,
-      customerEmail: prospect.contactPhone ?? null,
+      customerEmail: prospect.contactEmail ?? null,
     });
 
     await db.update(prospectsTable)

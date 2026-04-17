@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { X, Copy, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { X, Copy, ChevronRight, Plus, Trash2, CreditCard } from "lucide-react";
 
 interface DraftLine {
   category: string;
@@ -12,6 +12,7 @@ interface DraftLine {
 interface AsphaltCalculatorProps {
   onClose: () => void;
   onUseNumbers: (lines: DraftLine[]) => void;
+  onRequestDeposit?: (totalAmount: number) => void;
 }
 
 interface Section {
@@ -61,7 +62,7 @@ const CRACK_REPAIR_RATE_DEFAULT = 2.50;
 const OIL_STAIN_RATE_DEFAULT = 0.35;
 const SECOND_COAT_RATE_DEFAULT = 0.15;
 
-export function AsphaltCalculator({ onClose, onUseNumbers }: AsphaltCalculatorProps) {
+export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: AsphaltCalculatorProps) {
   const [sections, setSections] = useState<Section[]>([makeSection("Driveway / Lot")]);
 
   const [manualTier, setManualTier] = useState<SizeTier | null>(null);
@@ -562,7 +563,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers }: AsphaltCalculatorPr
           >
             <Copy className="w-4 h-4" /> {copied ? "Copied!" : "Copy Quote"}
           </button>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <button
               type="button"
               onClick={onClose}
@@ -570,6 +571,16 @@ export function AsphaltCalculator({ onClose, onUseNumbers }: AsphaltCalculatorPr
             >
               Cancel
             </button>
+            {onRequestDeposit && calc.final > 0 && (
+              <button
+                type="button"
+                onClick={() => { onRequestDeposit(calc.final); }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors"
+              >
+                <CreditCard className="w-4 h-4" />
+                Request 50% Deposit (${fmt(calc.final * 0.5)})
+              </button>
+            )}
             <button
               type="button"
               onClick={() => { onUseNumbers(buildLines()); onClose(); }}

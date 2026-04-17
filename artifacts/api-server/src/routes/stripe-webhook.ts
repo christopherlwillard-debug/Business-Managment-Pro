@@ -8,7 +8,7 @@ import { getStripe } from "../lib/stripe";
 const router = Router();
 
 router.post(
-  "/webhooks/stripe",
+  "/",
   async (req: Request, res: Response) => {
     const sig = req.headers["stripe-signature"];
     const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
@@ -55,8 +55,16 @@ router.post(
             .where(eq(invoicesTable.id, invoiceId));
           console.log(`Invoice ${invoiceId} marked paid via Stripe`);
         } else if (prospectId && !isNaN(prospectId)) {
+          const amountReceived =
+            event.type === "payment_intent.succeeded"
+              ? (obj as Stripe.PaymentIntent).amount_received / 100
+              : null;
           await db.update(prospectsTable)
-            .set({ status: "quoted", updatedAt: new Date() })
+            .set({
+              depositPaidAt: new Date(),
+              ...(amountReceived !== null ? { depositPaidAmount: amountReceived.toFixed(2) } : {}),
+              updatedAt: new Date(),
+            })
             .where(eq(prospectsTable.id, prospectId));
           console.log(`Prospect ${prospectId} deposit received via Stripe`);
         }
@@ -87,7 +95,7 @@ router.post(
 
         if (prospectId && !isNaN(prospectId)) {
           await db.update(prospectsTable)
-            .set({ status: "quoted", updatedAt: new Date() })
+            .set({ depositPaidAt: new Date(), updatedAt: new Date() })
             .where(eq(prospectsTable.id, prospectId));
         }
       }

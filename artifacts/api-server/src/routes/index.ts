@@ -48,6 +48,7 @@ import geocodeRouter from "./geocode";
 import stripeInvoiceRouter from "./stripe-invoice";
 import quickChargesRouter from "./quick-charges";
 import stripeDepositRouter from "./stripe-deposit";
+import stripeStatusRouter from "./stripe-status";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -192,5 +193,6 @@ router.use(geocodeRouter);
 router.use("/invoices", sectionGuard("invoices"), stripeInvoiceRouter);
 router.use("/quick-charges", requireOwner, quickChargesRouter);
 router.use(requireOwner, stripeDepositRouter);
+router.use(requireOwner, stripeStatusRouter);
 
 export default router;
