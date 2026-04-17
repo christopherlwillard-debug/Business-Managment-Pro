@@ -1,7 +1,8 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import fs from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const rawPort = process.env.PORT;
@@ -26,12 +27,46 @@ if (!basePath) {
   );
 }
 
+function swCacheVersionPlugin(): Plugin {
+  const buildVersion = Date.now().toString(36);
+
+  return {
+    name: 'sw-cache-version',
+
+    closeBundle() {
+      const outDir = path.resolve(import.meta.dirname, 'dist/public');
+      const swOut = path.join(outDir, 'sw.js');
+      if (fs.existsSync(swOut)) {
+        const content = fs.readFileSync(swOut, 'utf-8');
+        fs.writeFileSync(swOut, content.replaceAll('__SW_CACHE_VERSION__', buildVersion));
+      }
+    },
+
+    configureServer(server) {
+      const swSrc = path.resolve(import.meta.dirname, 'public/sw.js');
+      const devVersion = `dev-${Date.now().toString(36)}`;
+      server.middlewares.use((req, res, next) => {
+        const swPath = `${basePath}sw.js`.replace(/\/\//g, '/');
+        if (req.url === swPath || req.url === '/sw.js') {
+          const content = fs.readFileSync(swSrc, 'utf-8')
+            .replaceAll('__SW_CACHE_VERSION__', devVersion);
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          res.end(content);
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    swCacheVersionPlugin(),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
