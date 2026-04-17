@@ -390,6 +390,7 @@ const COMPLIANCE_RECURRENCES = [
   { value: "monthly", label: "Monthly" },
   { value: "quarterly", label: "Quarterly" },
   { value: "annual", label: "Annual" },
+  { value: "every_5_years", label: "Every 5 Years" },
 ];
 
 const COMPLIANCE_API = `${BASE}/api/compliance-items`;
