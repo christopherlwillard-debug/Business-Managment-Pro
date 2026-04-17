@@ -3,8 +3,8 @@
 //      scope "https://example.com/contractor/" → base "/contractor/"
 const base = new URL(self.registration.scope).pathname; // ends with "/"
 
-const SHELL_CACHE  = 'buildpro-shell-v1';
-const ASSET_CACHE  = 'buildpro-assets-v1';
+const SHELL_CACHE  = 'buildpro-shell-v2';
+const ASSET_CACHE  = 'buildpro-assets-v2';
 
 // Static file extensions to cache at runtime (cache-first)
 const CACHEABLE_EXT = /\.(js|css|svg|png|jpg|jpeg|webp|woff2?|ico)(\?.*)?$/;
