@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   useListQuickCharges,
   useCreateQuickCharge,
@@ -11,7 +11,7 @@ import {
   Zap, Plus, Trash2, Copy, ExternalLink, QrCode,
   CheckCircle2, Clock, DollarSign, X,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 function QrModal({ charge, onClose }: { charge: QuickCharge; onClose: () => void }) {
   const { toast } = useToast();
@@ -91,6 +91,26 @@ export default function QuickCharge() {
   const createMutation = useCreateQuickCharge();
   const deleteMutation = useDeleteQuickCharge();
   const { toast } = useToast();
+  const prevChargeStatuses = useRef<Record<number, string>>({});
+
+  useEffect(() => {
+    if (!charges || !Array.isArray(charges)) return;
+    const prev = prevChargeStatuses.current;
+    const newlyPaid = charges.filter(
+      (c) => c.status === "paid" && prev[c.id] !== undefined && prev[c.id] !== "paid",
+    );
+    if (newlyPaid.length > 0) {
+      newlyPaid.forEach((c) => {
+        toast({
+          title: `"${c.label}" marked Paid`,
+          description: c.paidAt ? "Stripe payment received." : "Status updated to paid.",
+        });
+      });
+    }
+    const next: Record<number, string> = {};
+    charges.forEach((c) => { next[c.id] = c.status; });
+    prevChargeStatuses.current = next;
+  }, [charges, toast]);
 
   const [showForm, setShowForm] = useState(false);
   const [qrCharge, setQrCharge] = useState<QuickCharge | null>(null);
@@ -309,16 +329,23 @@ export default function QuickCharge() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
-                    c.status === "paid"
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                      : "bg-amber-100 text-amber-700 border-amber-200"
-                  }`}>
-                    {c.status === "paid"
-                      ? <><CheckCircle2 className="w-3 h-3" /> Paid</>
-                      : <><Clock className="w-3 h-3" /> Pending</>
-                    }
-                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
+                      c.status === "paid"
+                        ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                        : "bg-amber-100 text-amber-700 border-amber-200"
+                    }`}>
+                      {c.status === "paid"
+                        ? <><CheckCircle2 className="w-3 h-3" /> Paid</>
+                        : <><Clock className="w-3 h-3" /> Pending</>
+                      }
+                    </span>
+                    {c.status === "paid" && c.paidAt && (
+                      <span className="text-[10px] text-emerald-600 font-medium pl-0.5">
+                        {formatDate(c.paidAt)}
+                      </span>
+                    )}
+                  </div>
                   <span className="flex items-center gap-1 text-sm font-bold text-foreground">
                     <DollarSign className="w-3.5 h-3.5 text-amber-500" />
                     {formatCurrency(c.amount)}

@@ -46,6 +46,7 @@ export function useListQuickCharges() {
   return useQuery({
     queryKey: ["/api/quick-charges"],
     queryFn: () => customFetch<QuickCharge[]>("/api/quick-charges", { method: "GET" }),
+    refetchInterval: 15_000,
   });
 }
 

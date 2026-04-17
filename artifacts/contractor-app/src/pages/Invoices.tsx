@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   useListInvoices,
   useGetInvoiceTaxReport,
@@ -23,6 +23,7 @@ import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import {
   FileText, Download, Plus, Trash2, X,
   Building2, MapPin, Check, Eye, AlertTriangle,
@@ -702,7 +703,31 @@ export default function Invoices() {
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
   const [open, setOpen] = useState(false);
 
-  const { data: invoices, isLoading: loadingInvoices } = useListInvoices();
+  const { toast } = useToast();
+  const prevInvoiceStatuses = useRef<Record<number, string>>({});
+  const { data: invoices, isLoading: loadingInvoices } = useListInvoices(
+    undefined,
+    { query: { refetchInterval: 15_000 } },
+  );
+
+  useEffect(() => {
+    if (!invoices) return;
+    const prev = prevInvoiceStatuses.current;
+    const newlyPaid = invoices.filter(
+      (inv) => inv.status === "paid" && prev[inv.id] !== undefined && prev[inv.id] !== "paid",
+    );
+    if (newlyPaid.length > 0) {
+      newlyPaid.forEach((inv) => {
+        toast({
+          title: `Invoice ${inv.invoiceNumber} marked Paid`,
+          description: inv.stripePaidAt ? "Stripe payment received." : "Status updated to paid.",
+        });
+      });
+    }
+    const next: Record<number, string> = {};
+    invoices.forEach((inv) => { next[inv.id] = inv.status; });
+    prevInvoiceStatuses.current = next;
+  }, [invoices, toast]);
   const { data: taxReport, isLoading: loadingTax }     = useGetInvoiceTaxReport();
   const { data: clients = [] }  = useListClients();
   const { data: jobs = [] }     = useListJobs();
@@ -999,15 +1024,28 @@ export default function Invoices() {
                       </td>
                       <td className="px-6 py-4 text-right font-display font-semibold text-foreground">{formatCurrency(inv.total)}</td>
                       <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
-                        <select
-                          value={inv.status}
-                          onChange={e => handleStatusChange(inv.id, e.target.value)}
-                          className={`inline-flex px-2 py-1 rounded-md text-xs font-semibold tracking-wide uppercase border-0 cursor-pointer ${STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}
-                        >
-                          {["draft","sent","paid","overdue","cancelled"].map(st => (
-                            <option key={st} value={st}>{st}</option>
-                          ))}
-                        </select>
+                        {inv.status === "paid" ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              <Check className="w-3 h-3" /> Paid
+                            </span>
+                            {inv.stripePaidAt && (
+                              <span className="text-[10px] text-emerald-600 font-medium">
+                                {formatDate(inv.stripePaidAt)}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <select
+                            value={inv.status}
+                            onChange={e => handleStatusChange(inv.id, e.target.value)}
+                            className={`inline-flex px-2 py-1 rounded-md text-xs font-semibold tracking-wide uppercase border-0 cursor-pointer ${STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}
+                          >
+                            {["draft","sent","paid","overdue","cancelled"].map(st => (
+                              <option key={st} value={st}>{st}</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
