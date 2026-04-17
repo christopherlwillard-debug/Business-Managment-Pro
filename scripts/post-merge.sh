@@ -277,7 +277,7 @@ pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS bottom_nav_items text'
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS compliance_notification_email text')
-  .then(() => pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS compliance_email_enabled integer NOT NULL DEFAULT 0'))
+  .then(() => pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS compliance_email_enabled integer DEFAULT 1'))
   .then(() => { console.log('settings.compliance_notification_email and compliance_email_enabled ensured'); pool.end(); })
   .catch(e => { console.error('compliance email columns migration error:', e.message); pool.end(); process.exit(1); });
 ")
