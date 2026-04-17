@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useGetComplianceReport } from "@workspace/api-client-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ShieldAlert, AlertTriangle, CheckCircle2, Plus, X, Pencil,
-  CalendarClock, RefreshCw, MapPin, Trash2, Bell, FileCheck,
+  CalendarClock, RefreshCw, MapPin, Trash2, Bell, FileCheck, Undo2,
 } from "lucide-react";
 import { RegisteredAgentSection } from "@/components/RegisteredAgentSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -345,6 +345,30 @@ export default function Compliance() {
   const [editTarget,  setEditTarget]  = useState<ComplianceItem | null>(null);
   const [filterCat,   setFilterCat]   = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
+  const [undoState, setUndoState] = useState<{
+    id: number;
+    title: string;
+    originalDueDate: string;
+    originalStatus: string;
+    progress: number;
+    error?: boolean;
+  } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const UNDO_DURATION = 6000;
+
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearInterval(undoTimerRef.current);
+    };
+  }, []);
+
+  function dismissUndo() {
+    if (undoTimerRef.current) {
+      clearInterval(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoState(null);
+  }
 
   const overdue  = items.filter(i => i.computedStatus === "overdue");
   const dueSoon  = items.filter(i => i.computedStatus === "due-soon");
@@ -375,7 +399,58 @@ export default function Compliance() {
 
   async function handleToggleComplete(item: ComplianceItem) {
     const newStatus = item.status === "complete" ? "upcoming" : "complete";
+    const isAutoAdvance = newStatus === "complete" && item.recurrence && item.recurrence !== "one-time";
+
+    if (isAutoAdvance) {
+      dismissUndo();
+    }
+
     await updateItem.mutateAsync({ ...item, status: newStatus });
+
+    if (isAutoAdvance) {
+      const startTime = Date.now();
+      setUndoState({
+        id: item.id,
+        title: item.title,
+        originalDueDate: item.dueDate,
+        originalStatus: item.status,
+        progress: 100,
+      });
+      undoTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.max(0, 100 - (elapsed / UNDO_DURATION) * 100);
+        if (remaining <= 0) {
+          dismissUndo();
+        } else {
+          setUndoState(prev => prev ? { ...prev, progress: remaining } : null);
+        }
+      }, 50);
+    }
+  }
+
+  async function handleUndo() {
+    if (!undoState) return;
+    const { id, originalDueDate, originalStatus } = undoState;
+    dismissUndo();
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    try {
+      await updateItem.mutateAsync({
+        ...item,
+        id,
+        dueDate: originalDueDate,
+        status: originalStatus,
+      });
+    } catch {
+      setUndoState({
+        id,
+        title: item.title,
+        originalDueDate,
+        originalStatus,
+        progress: 0,
+        error: true,
+      });
+    }
   }
 
   async function handleDelete(id: number) {
@@ -387,6 +462,48 @@ export default function Compliance() {
 
   return (
     <div className="space-y-8 max-w-5xl">
+
+      {/* Undo toast */}
+      {undoState && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
+          <div className={`rounded-2xl shadow-xl overflow-hidden ${undoState.error ? "bg-red-700" : "bg-gray-900"} text-white`}>
+            <div className="flex items-center gap-3 px-4 py-3">
+              {undoState.error
+                ? <AlertTriangle className="w-4 h-4 text-red-200 flex-shrink-0" />
+                : <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              }
+              <p className="text-sm flex-1 min-w-0 truncate">
+                {undoState.error
+                  ? <span className="font-semibold">Undo failed — please try editing the item manually</span>
+                  : <>
+                      <span className="font-semibold">Marked complete</span>
+                      {" — "}
+                      <span className="text-gray-300">{undoState.title}</span>
+                    </>
+                }
+              </p>
+              {!undoState.error && (
+                <button
+                  onClick={handleUndo}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm font-semibold flex-shrink-0"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  Undo
+                </button>
+              )}
+              <button onClick={dismissUndo} className="text-gray-400 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {!undoState.error && (
+              <div
+                className="h-1 bg-emerald-500 transition-none"
+                style={{ width: `${undoState.progress}%` }}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
