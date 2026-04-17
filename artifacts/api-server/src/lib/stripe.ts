@@ -6,7 +6,7 @@ export function getStripe(): Stripe {
   if (!_stripe) {
     const key = process.env["STRIPE_SECRET_KEY"];
     if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
-    _stripe = new Stripe(key, { apiVersion: "2025-02-24.acacia" });
+    _stripe = new Stripe(key, { apiVersion: "2026-03-25.dahlia" });
   }
   return _stripe;
 }
@@ -38,6 +38,7 @@ export async function createPaymentLink(opts: {
   const link = await stripe.paymentLinks.create({
     line_items: [{ price: price.id, quantity: 1 }],
     metadata: opts.metadata,
+    payment_intent_data: { metadata: opts.metadata },
     ...(opts.customerEmail ? { customer_creation: "always" } : {}),
     after_completion: { type: "hosted_confirmation", hosted_confirmation: { custom_message: "Payment received! Thank you for your business." } },
   });
