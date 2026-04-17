@@ -19,6 +19,8 @@ export const estimatesTable = pgTable("estimates", {
   lineItems: jsonb("line_items").default("[]"),
   jobId: integer("job_id").references(() => jobsTable.id),
   businessLine: text("business_line"),
+  stripePaymentLinkId: text("stripe_payment_link_id"),
+  stripePaymentLinkUrl: text("stripe_payment_link_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

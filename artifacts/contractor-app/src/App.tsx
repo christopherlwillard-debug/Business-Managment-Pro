@@ -25,6 +25,7 @@ const Prospects = lazy(() => import("./pages/Prospects"));
 const Assets = lazy(() => import("./pages/Assets"));
 const SubcontractorPortal = lazy(() => import("./pages/SubcontractorPortal"));
 const AerialQuote = lazy(() => import("./pages/AerialQuote"));
+const QuickCharge = lazy(() => import("./pages/QuickCharge"));
 const NotFound = lazy(() => import("./pages/not-found"));
 
 const queryClient = new QueryClient({
@@ -245,6 +246,9 @@ function AdminApp() {
           </Route>
           <Route path="/aerial-quote">
             <PermissionGuard ownerOnly><AerialQuote /></PermissionGuard>
+          </Route>
+          <Route path="/quick-charge">
+            <PermissionGuard ownerOnly><QuickCharge /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

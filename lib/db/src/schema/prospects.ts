@@ -21,6 +21,8 @@ export const prospectsTable = pgTable(
     notes: text("notes"),
     status: text("status").notNull().default("cold"),
     linkedEstimateId: integer("linked_estimate_id").references(() => estimatesTable.id),
+    stripePaymentLinkId: text("stripe_payment_link_id"),
+    stripePaymentLinkUrl: text("stripe_payment_link_url"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

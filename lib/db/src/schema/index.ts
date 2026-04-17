@@ -28,3 +28,4 @@ export * from "./prospects";
 export * from "./estimated-tax-payments";
 export * from "./bank-reconciliation";
 export * from "./assets";
+export * from "./quick-charges";

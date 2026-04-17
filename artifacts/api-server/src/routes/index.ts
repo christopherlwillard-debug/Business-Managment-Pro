@@ -45,6 +45,9 @@ import estimatedTaxPaymentsRouter from "./estimated-tax-payments";
 import bankReconciliationRouter from "./bank-reconciliation";
 import assetsRouter from "./assets";
 import geocodeRouter from "./geocode";
+import stripeInvoiceRouter from "./stripe-invoice";
+import quickChargesRouter from "./quick-charges";
+import stripeDepositRouter from "./stripe-deposit";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -186,5 +189,8 @@ router.use("/estimated-tax-payments", requireOwner, estimatedTaxPaymentsRouter);
 router.use("/bank-reconciliation", requireOwner, bankReconciliationRouter);
 router.use("/assets", requireOwner, assetsRouter);
 router.use(geocodeRouter);
+router.use("/invoices", sectionGuard("invoices"), stripeInvoiceRouter);
+router.use("/quick-charges", requireOwner, quickChargesRouter);
+router.use(requireOwner, stripeDepositRouter);
 
 export default router;

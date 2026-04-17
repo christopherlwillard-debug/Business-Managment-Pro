@@ -25,6 +25,10 @@ export const invoicesTable = pgTable("invoices", {
   lineItems: jsonb("line_items").default("[]"),
   attachments: jsonb("attachments").default("[]"),
   businessLine: text("business_line"),
+  stripePaymentLinkId: text("stripe_payment_link_id"),
+  stripePaymentLinkUrl: text("stripe_payment_link_url"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  stripePaidAt: timestamp("stripe_paid_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

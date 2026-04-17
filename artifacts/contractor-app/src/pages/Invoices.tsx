@@ -12,6 +12,7 @@ import {
   useListMaterialLists,
   useAttachMaterialListToInvoice,
   useListMaterials,
+  useCreateInvoicePaymentLink,
   Invoice,
   InvoiceAttachment,
   type MaterialList,
@@ -25,7 +26,7 @@ import { Card } from "@/components/ui/card";
 import {
   FileText, Download, Plus, Trash2, X,
   Building2, MapPin, Check, Eye, AlertTriangle,
-  Paperclip, Upload, Package,
+  Paperclip, Upload, Package, CreditCard, Copy, ExternalLink,
 } from "lucide-react";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
 import { MaterialListDialog } from "@/pages/Materials";
@@ -711,6 +712,24 @@ export default function Invoices() {
   const updateStatus            = useUpdateInvoiceStatus();
   const deleteInvoice           = useDeleteInvoice();
   const attachMaterialList      = useAttachMaterialListToInvoice();
+  const createPaymentLink       = useCreateInvoicePaymentLink();
+
+  const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string } | null>(null);
+  const [generatingLinkId, setGeneratingLinkId] = useState<number | null>(null);
+
+  async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
+    setGeneratingLinkId(invoiceId);
+    try {
+      const result = await createPaymentLink.mutateAsync(invoiceId);
+      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber });
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create payment link";
+      alert(msg);
+    } finally {
+      setGeneratingLinkId(null);
+    }
+  }
 
   const [form, setFormState] = useState({
     clientId: "", jobId: "",
@@ -996,6 +1015,32 @@ export default function Invoices() {
                             className="text-muted-foreground hover:text-primary transition-colors" title="View invoice">
                             <Eye className="w-4 h-4" />
                           </button>
+                          {inv.status !== "paid" && inv.status !== "cancelled" && (
+                            inv.stripePaymentLinkUrl ? (
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(inv.stripePaymentLinkUrl);
+                                  setPaymentLinkResult({ url: inv.stripePaymentLinkUrl, invoiceNumber: inv.invoiceNumber });
+                                }}
+                                className="text-emerald-600 hover:text-emerald-700 transition-colors"
+                                title="Copy payment link"
+                              >
+                                <CreditCard className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleGetPaymentLink(inv.id, inv.invoiceNumber)}
+                                disabled={generatingLinkId === inv.id}
+                                className="text-muted-foreground hover:text-amber-600 transition-colors disabled:opacity-40"
+                                title="Get payment link"
+                              >
+                                {generatingLinkId === inv.id
+                                  ? <span className="text-xs">…</span>
+                                  : <CreditCard className="w-4 h-4" />
+                                }
+                              </button>
+                            )
+                          )}
                           <button onClick={() => setDeleteTarget(inv)}
                             className="text-muted-foreground hover:text-destructive transition-colors" title="Delete invoice">
                             <Trash2 className="w-4 h-4" />
@@ -1077,6 +1122,62 @@ export default function Invoices() {
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setDeleteTarget(null)}
         />
+      )}
+
+      {/* Payment Link Modal */}
+      {paymentLinkResult && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-emerald-500 to-emerald-400" />
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">Payment Link Ready</h3>
+                  <p className="text-sm text-gray-500">Invoice {paymentLinkResult.invoiceNumber}</p>
+                </div>
+                <button
+                  onClick={() => setPaymentLinkResult(null)}
+                  className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                <p className="text-xs text-gray-500 mb-1 font-medium">Stripe Payment Link</p>
+                <p className="text-sm text-gray-800 break-all font-mono">{paymentLinkResult.url}</p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(paymentLinkResult.url);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 transition-colors"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Link
+                </button>
+                <a
+                  href={paymentLinkResult.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open
+                </a>
+              </div>
+
+              <p className="text-xs text-gray-400 text-center">
+                Share this link with your client. Stripe will process the payment and send them a receipt.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

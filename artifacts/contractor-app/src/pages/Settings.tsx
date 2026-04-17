@@ -43,6 +43,7 @@ const BOTTOM_NAV_OPTIONS = [
   { href: "/prospects", label: "Prospects" },
   { href: "/assets", label: "Assets" },
   { href: "/accounting", label: "Accounting & Tax" },
+  { href: "/quick-charge", label: "Quick Charge" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -70,6 +71,7 @@ const TABS = [
   { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "modules", label: "Modules", icon: Settings2 },
   { key: "notifications", label: "Notifications", icon: Bell },
+  { key: "payments", label: "Payments", icon: DollarSign },
   { key: "team", label: "Team", icon: Users2 },
   { key: "google", label: "Google", icon: Link2 },
 ];
@@ -1121,7 +1123,63 @@ export default function Settings() {
       {/* ── Google (outside form) ── */}
       {activeTab === "google" && <GoogleSection />}
 
-      <form onSubmit={handleSave} className={`space-y-5 ${(activeTab === "team" || activeTab === "google") ? "hidden" : ""}`}>
+      {/* ── Stripe Payments (outside form) ── */}
+      {activeTab === "payments" && (
+        <div className="space-y-5 pb-8">
+          <Card className="border-border/50 shadow-md bg-card">
+            <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+              <CardTitle className="text-base flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-amber-500" />
+                Stripe Payments
+              </CardTitle>
+              <CardDescription>Accept card payments on invoices, deposits, and quick charges</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-5 space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-emerald-800">Stripe is connected</p>
+                  <p className="text-xs text-emerald-700">STRIPE_SECRET_KEY is configured in your environment</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-1">What's enabled</p>
+                  <ul className="text-sm text-muted-foreground space-y-1.5">
+                    <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Invoice payment links — get paid online per invoice</li>
+                    <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Quick Charge — instant payment links with QR codes</li>
+                    <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Prospect deposit links — collect 50% deposits automatically</li>
+                    <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Automatic receipts sent by Stripe to your customers</li>
+                  </ul>
+                </div>
+                <div className="border-t border-border pt-3">
+                  <p className="text-sm font-semibold text-foreground mb-1">Webhook (optional, for auto-payment confirmation)</p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Add this endpoint in your Stripe Dashboard → Developers → Webhooks to automatically mark invoices and charges as paid when a payment completes.
+                  </p>
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    <code className="text-xs text-gray-700 font-mono flex-1 truncate">
+                      {typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/stripe` : "/api/webhooks/stripe"}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/stripe`)}
+                      className="text-xs text-amber-600 hover:text-amber-700 font-medium flex-shrink-0"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Events to listen for: <code className="text-xs">checkout.session.completed</code>, <code className="text-xs">payment_intent.succeeded</code>
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className={`space-y-5 ${(activeTab === "team" || activeTab === "google" || activeTab === "payments") ? "hidden" : ""}`}>
 
         {/* ── Profile ── */}
         {activeTab === "profile" && (
