@@ -38,6 +38,9 @@ export const settingsTable = pgTable("settings", {
   mileageReminderFrequency: text("mileage_reminder_frequency").default("daily"),
   // Bottom navigation customization (JSON array of hrefs)
   bottomNavItems: text("bottom_nav_items"),
+  // Compliance notification preferences
+  complianceNotificationEmail: text("compliance_notification_email"),
+  complianceEmailEnabled: integer("compliance_email_enabled").default(1),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

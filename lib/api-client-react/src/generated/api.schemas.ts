@@ -623,6 +623,8 @@ export interface AppSettings {
   invoiceLogoSize?: AppSettingsInvoiceLogoSize;
   invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
   bottomNavItems?: string[] | null;
+  complianceNotificationEmail?: string | null;
+  complianceEmailEnabled?: boolean | null;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {

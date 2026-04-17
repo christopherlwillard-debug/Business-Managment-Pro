@@ -144,6 +144,8 @@ const DEFAULT_SETTINGS = {
   enabledFeatures: ["invoices", "expenses", "mileage", "estimates", "subcontractors", "daily_logs", "compliance", "clients"],
   thresholdAmount1099: "600",
   bottomNavItems: null,
+  complianceNotificationEmail: null,
+  complianceEmailEnabled: 1,
 };
 
 /** Convert a raw DB path to a correct serving URL.
@@ -185,6 +187,8 @@ function format(s: any) {
     mileageUnits: s.mileageUnits ?? "miles",
     mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
     bottomNavItems: parseJsonArray(s.bottomNavItems),
+    complianceNotificationEmail: s.complianceNotificationEmail ?? null,
+    complianceEmailEnabled: s.complianceEmailEnabled === 1 || s.complianceEmailEnabled === true,
   };
 }
 
@@ -198,7 +202,7 @@ router.get("/", async (req, res) => {
     const isOwner = settings.ownerUserId === userId;
     const formatted = format(settings);
     if (!isOwner) {
-      const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, ...safe } = formatted;
+      const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, complianceNotificationEmail, complianceEmailEnabled, ...safe } = formatted;
       res.json(safe);
       return;
     }
@@ -212,6 +216,14 @@ router.get("/", async (req, res) => {
 router.put("/", async (req, res) => {
   try {
     const body = req.body;
+
+    if (body.complianceNotificationEmail) {
+      const email = body.complianceNotificationEmail.toString().trim();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: "complianceNotificationEmail must be a valid email address" });
+      }
+    }
+
     let [settings] = await db.select().from(settingsTable).limit(1);
 
     const patch = {
@@ -247,6 +259,12 @@ router.put("/", async (req, res) => {
       bottomNavItems: body.bottomNavItems !== undefined
         ? (Array.isArray(body.bottomNavItems) ? JSON.stringify(body.bottomNavItems) : null)
         : settings?.bottomNavItems,
+      complianceNotificationEmail: body.complianceNotificationEmail !== undefined
+        ? (body.complianceNotificationEmail ? body.complianceNotificationEmail.toString().trim() || null : null)
+        : settings?.complianceNotificationEmail,
+      complianceEmailEnabled: body.complianceEmailEnabled !== undefined
+        ? (body.complianceEmailEnabled ? 1 : 0)
+        : (settings?.complianceEmailEnabled ?? 1),
       updatedAt: new Date(),
     };
 

@@ -69,6 +69,7 @@ const TABS = [
   { key: "financial", label: "Financial", icon: DollarSign },
   { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "modules", label: "Modules", icon: Settings2 },
+  { key: "notifications", label: "Notifications", icon: Bell },
   { key: "team", label: "Team", icon: Users2 },
   { key: "google", label: "Google", icon: Link2 },
 ];
@@ -939,6 +940,9 @@ export default function Settings() {
     mileageDefaultClassification: "business",
     mileageUnits: "miles",
     mileageReminderFrequency: "daily",
+    // compliance notifications
+    complianceNotificationEmail: "",
+    complianceEmailEnabled: "1",
   });
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpConfigured, setSmtpConfigured] = useState(false);
@@ -979,6 +983,8 @@ export default function Settings() {
         mileageDefaultClassification: s.mileageDefaultClassification ?? "business",
         mileageUnits: s.mileageUnits ?? "miles",
         mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
+        complianceNotificationEmail: s.complianceNotificationEmail ?? "",
+        complianceEmailEnabled: s.complianceEmailEnabled === false ? "0" : "1",
       });
       setLogoUrl(s.logoUrl ?? null);
       setDbaLogoUrl(s.dbaLogoUrl ?? null);
@@ -1029,6 +1035,8 @@ export default function Settings() {
           mileageReminderFrequency: form.mileageReminderFrequency,
           enabledFeatures: FEATURE_OPTIONS.filter(f => features[f.key]).map(f => f.key),
           bottomNavItems: bottomNavHrefs,
+          complianceNotificationEmail: form.complianceNotificationEmail || null,
+          complianceEmailEnabled: form.complianceEmailEnabled === "1",
         } as Partial<AppSettings>,
       });
       queryClient.invalidateQueries();
@@ -1576,6 +1584,94 @@ export default function Settings() {
                     </button>
                   );
                 })}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Notifications ── */}
+        {activeTab === "notifications" && (
+          <div className="space-y-5">
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-primary" /> Compliance Notifications
+                </CardTitle>
+                <CardDescription>
+                  Control where compliance advance emails are sent when a recurring item is marked complete and auto-advances to its next due date.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {/* Enable / disable toggle */}
+                <div className="flex items-start justify-between gap-4 rounded-xl border border-border px-5 py-4 bg-muted/20">
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Compliance Advance Emails</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Send an email whenever a recurring compliance item is marked complete and its next due date is set.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setF("complianceEmailEnabled", form.complianceEmailEnabled === "1" ? "0" : "1")}
+                    className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                      form.complianceEmailEnabled === "1" ? "bg-primary" : "bg-muted-foreground/30"
+                    }`}
+                    role="switch"
+                    aria-checked={form.complianceEmailEnabled === "1"}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        form.complianceEmailEnabled === "1" ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Notification email */}
+                {form.complianceEmailEnabled === "1" && (
+                  <div className="space-y-4">
+                    <LF
+                      label="Notification Email Address"
+                      hint="If left blank, emails will be sent to the account owner's email (or the business email if no owner is set)."
+                    >
+                      <input
+                        className={inp}
+                        type="email"
+                        value={form.complianceNotificationEmail}
+                        onChange={e => setF("complianceNotificationEmail", e.target.value)}
+                        placeholder="compliance@yourcompany.com"
+                      />
+                    </LF>
+                    {form.complianceNotificationEmail && (
+                      <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <Check className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-emerald-800">
+                          Compliance advance emails will be sent to <strong>{form.complianceNotificationEmail}</strong>.
+                        </p>
+                      </div>
+                    )}
+                    {!form.complianceNotificationEmail && (
+                      <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                        <Mail className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-blue-800">
+                          No dedicated address set — emails will fall back to the account owner's email or your business email.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {form.complianceEmailEnabled === "0" && (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800">
+                      Compliance advance emails are <strong>disabled</strong>. No email will be sent when recurring items auto-advance.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -108,13 +108,25 @@ function advanceDueDate(dueDate: string, recurrence: string): string {
 
 async function sendComplianceAdvanceEmail(itemTitle: string, newDueDate: string): Promise<void> {
   const [settings] = await db
-    .select({ ownerUserId: settingsTable.ownerUserId, companyEmail: settingsTable.companyEmail })
+    .select({
+      ownerUserId: settingsTable.ownerUserId,
+      companyEmail: settingsTable.companyEmail,
+      complianceNotificationEmail: settingsTable.complianceNotificationEmail,
+      complianceEmailEnabled: settingsTable.complianceEmailEnabled,
+    })
     .from(settingsTable)
     .limit(1);
 
+  if (settings?.complianceEmailEnabled === 0) {
+    console.log("Compliance email notifications are disabled; skipping.");
+    return;
+  }
+
   let recipientEmail: string | null = null;
 
-  if (settings?.ownerUserId) {
+  if (settings?.complianceNotificationEmail) {
+    recipientEmail = settings.complianceNotificationEmail;
+  } else if (settings?.ownerUserId) {
     const [owner] = await db
       .select({ email: usersTable.email })
       .from(usersTable)
