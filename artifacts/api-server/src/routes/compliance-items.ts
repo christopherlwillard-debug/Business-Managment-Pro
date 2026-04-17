@@ -1,10 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
 import { db } from "@workspace/db";
-import { complianceItemsTable } from "@workspace/db/schema";
+import { complianceItemsTable, settingsTable, usersTable } from "@workspace/db/schema";
 import type { ComplianceDocument } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { sendEmail, escapeHtml } from "../lib/sendEmail";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -105,6 +106,72 @@ function advanceDueDate(dueDate: string, recurrence: string): string {
   return `${ny}-${nm}-${nd}`;
 }
 
+async function sendComplianceAdvanceEmail(itemTitle: string, newDueDate: string): Promise<void> {
+  const [settings] = await db
+    .select({ ownerUserId: settingsTable.ownerUserId, companyEmail: settingsTable.companyEmail })
+    .from(settingsTable)
+    .limit(1);
+
+  let recipientEmail: string | null = null;
+
+  if (settings?.ownerUserId) {
+    const [owner] = await db
+      .select({ email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.id, settings.ownerUserId))
+      .limit(1);
+    recipientEmail = owner?.email ?? null;
+  }
+
+  if (!recipientEmail) {
+    recipientEmail = settings?.companyEmail ?? null;
+  }
+
+  if (!recipientEmail) {
+    console.warn("No recipient email found for compliance advance notification; skipping.");
+    return;
+  }
+
+  const [y, m, d] = newDueDate.split("-");
+  const formattedDate = new Date(Number(y), Number(m) - 1, Number(d))
+    .toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  const safeTitle = escapeHtml(itemTitle);
+  const subject = `Compliance Reminder: "${itemTitle}" is now due ${formattedDate}`;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px;">
+  <h2 style="color: #1a56db;">Compliance Item Auto-Advanced</h2>
+  <p>Your recurring compliance item has been marked complete and its next due date has been set.</p>
+  <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+    <tr>
+      <td style="padding: 8px 12px; background: #f3f4f6; font-weight: bold; width: 40%;">Item</td>
+      <td style="padding: 8px 12px; border-left: 1px solid #e5e7eb;">${safeTitle}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 12px; background: #f3f4f6; font-weight: bold;">Next Due Date</td>
+      <td style="padding: 8px 12px; border-left: 1px solid #e5e7eb;">${formattedDate}</td>
+    </tr>
+  </table>
+  ${process.env.APP_URL ? `<p>
+    <a href="${process.env.APP_URL}/compliance" style="display: inline-block; background: #1a56db; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 6px;">
+      View Compliance Center
+    </a>
+  </p>` : ""}
+  <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">
+    This is an automated notification from your Contractor Management App.
+  </p>
+</body>
+</html>
+  `.trim();
+
+  const text = `Compliance Item Auto-Advanced\n\nItem: ${itemTitle}\nNext Due Date: ${formattedDate}\n\nLog in to your Contractor Management App to view the Compliance Center.`;
+
+  await sendEmail({ to: recipientEmail, subject, html, text });
+}
+
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -134,6 +201,13 @@ router.put("/:id", async (req, res) => {
       .where(eq(complianceItemsTable.id, id))
       .returning();
     if (!item) return res.status(404).json({ error: "Not found" });
+
+    if (status === "complete" && recurrence && recurrence !== "one-time") {
+      sendComplianceAdvanceEmail(item.title, resolvedDueDate).catch((err) =>
+        console.error("Failed to send compliance advance email:", err)
+      );
+    }
+
     res.json(format(item));
   } catch (err) {
     console.error(err);

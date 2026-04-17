@@ -573,6 +573,7 @@ export default function Compliance() {
             </button>
           </div>
           <ItemForm
+            key={editTarget ? `edit-${editTarget.id}` : "new"}
             initial={editTarget ?? undefined}
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditTarget(null); }}
