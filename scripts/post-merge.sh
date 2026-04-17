@@ -271,3 +271,13 @@ pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS bottom_nav_items text'
   .then(() => { console.log('settings.bottom_nav_items ensured'); pool.end(); })
   .catch(e => { console.error('bottom_nav_items migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #143: add compliance_notification_email and compliance_email_enabled columns to settings
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS compliance_notification_email text')
+  .then(() => pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS compliance_email_enabled integer NOT NULL DEFAULT 0'))
+  .then(() => { console.log('settings.compliance_notification_email and compliance_email_enabled ensured'); pool.end(); })
+  .catch(e => { console.error('compliance email columns migration error:', e.message); pool.end(); process.exit(1); });
+")
