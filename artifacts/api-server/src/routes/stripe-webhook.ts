@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import Stripe from "stripe";
 import { db } from "@workspace/db";
 import { invoicesTable, quickChargesTable, prospectsTable, estimatesTable } from "@workspace/db/schema";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getStripe } from "../lib/stripe";
 
 const router = Router();
