@@ -5,14 +5,16 @@ import {
   getListEstimatesQueryKey,
   Estimate, CreateEstimateRequest, CreateEstimateRequestStatus, AppSettings,
   useCreateQuickCharge,
+  useCreateEstimateDepositLink,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useToast } from "@/hooks/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   Calculator, FileText, Plus, Trash2, Edit2, X,
   ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
-  CreditCard, ExternalLink,
+  CreditCard, ExternalLink, Copy, CheckCircle2,
 } from "lucide-react";
 import { TrimCalculator } from "@/components/calculators/TrimCalculator";
 import { SidingCalculator } from "@/components/calculators/SidingCalculator";
@@ -824,12 +826,14 @@ function StatusMenu({ current, onChange }: { current: string; onChange: (s: stri
 export default function Estimates() {
   const { canEdit } = useUserPermissions();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { data: estimates = [], isLoading } = useListEstimates();
 
   const createMut   = useCreateEstimate();
   const updateMut   = useUpdateEstimate();
   const deleteMut   = useDeleteEstimate();
   const convertMut  = useConvertEstimateToJob();
+  const depositLinkMut = useCreateEstimateDepositLink();
 
   const [modal, setModal]         = useState<"create" | number | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -837,6 +841,8 @@ export default function Estimates() {
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [converting, setConverting] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; title: string } | null>(null);
+  const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
 
@@ -891,6 +897,20 @@ export default function Estimates() {
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
     } finally {
       setConverting(null);
+    }
+  }
+
+  async function handleRequestDeposit(est: Estimate) {
+    setGeneratingDepositId(est.id);
+    try {
+      const result = await depositLinkMut.mutateAsync({ id: est.id, depositPercent: 50 });
+      setDepositLinkResult({ url: result.paymentLinkUrl, title: est.title });
+      invalidate();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create deposit link";
+      toast({ title: msg, variant: "destructive" });
+    } finally {
+      setGeneratingDepositId(null);
     }
   }
 
@@ -1072,6 +1092,35 @@ export default function Estimates() {
                       {converting === est.id ? "Converting…" : "Convert to Job"}
                     </button>
                   )}
+                  {/* Deposit button / status for asphalt sealing estimates */}
+                  {(est.businessLine === "asphalt_sealing" || est.jobType === "Asphalt Sealing") &&
+                    (est.status === "sent" || est.status === "won") &&
+                    parseFloat(String(est.total)) > 0 && (
+                    est.depositPaidAt ? (
+                      <div className="flex items-center gap-1 text-xs text-emerald-700 border border-emerald-200 bg-emerald-50 rounded-lg px-3 py-1.5 font-semibold">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                        Deposit Received{est.depositPaidAmount != null ? ` — ${formatCurrency(Number(est.depositPaidAmount))}` : ""}
+                      </div>
+                    ) : canEdit("estimates") && (
+                      est.stripePaymentLinkUrl ? (
+                        <button
+                          onClick={() => setDepositLinkResult({ url: est.stripePaymentLinkUrl!, title: est.title })}
+                          className="flex items-center gap-1 text-xs text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-1.5 font-semibold transition-colors"
+                        >
+                          <CreditCard className="w-3 h-3" /> Deposit Link
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleRequestDeposit(est)}
+                          disabled={generatingDepositId === est.id}
+                          className="flex items-center gap-1 text-xs text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-1.5 font-semibold transition-colors disabled:opacity-60"
+                        >
+                          <CreditCard className="w-3 h-3" />
+                          {generatingDepositId === est.id ? "Generating…" : "Request 50% Deposit"}
+                        </button>
+                      )
+                    )
+                  )}
                   {canEdit("estimates") && (
                     <button
                       onClick={() => setDeleteTarget(est.id)}
@@ -1113,6 +1162,57 @@ export default function Estimates() {
           onClose={() => setModal(null)}
           onSave={req => handleUpdate(editingEstimate.id, req)}
         />
+      )}
+
+      {/* Deposit link result modal */}
+      {depositLinkResult && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-amber-500 to-amber-400" />
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-amber-100 flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">Deposit Link Ready</h3>
+                  <p className="text-sm text-gray-500 truncate max-w-[240px]">{depositLinkResult.title}</p>
+                </div>
+                <button
+                  onClick={() => setDepositLinkResult(null)}
+                  className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                <p className="text-xs text-gray-500 mb-1 font-medium">Stripe Payment Link (50% Deposit)</p>
+                <p className="text-sm text-gray-800 break-all font-mono">{depositLinkResult.url}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigator.clipboard.writeText(depositLinkResult.url)}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 transition-colors"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Link
+                </button>
+                <a
+                  href={depositLinkResult.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open
+                </a>
+              </div>
+              <p className="text-xs text-gray-400 text-center">
+                Share this link with the customer to collect the 50% deposit via Stripe.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete confirm */}

@@ -521,6 +521,10 @@ export interface Estimate {
   jobId?: number | null;
   jobTitle?: string | null;
   businessLine?: string | null;
+  stripePaymentLinkId?: string | null;
+  stripePaymentLinkUrl?: string | null;
+  depositPaidAt?: string | null;
+  depositPaidAmount?: number | null;
   createdAt: string;
 }
 

@@ -21,6 +21,8 @@ export const estimatesTable = pgTable("estimates", {
   businessLine: text("business_line"),
   stripePaymentLinkId: text("stripe_payment_link_id"),
   stripePaymentLinkUrl: text("stripe_payment_link_url"),
+  depositPaidAt: timestamp("deposit_paid_at"),
+  depositPaidAmount: numeric("deposit_paid_amount", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

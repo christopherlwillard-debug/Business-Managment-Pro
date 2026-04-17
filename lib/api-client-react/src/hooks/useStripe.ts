@@ -117,3 +117,25 @@ export function useCreateProspectDepositLink() {
     },
   });
 }
+
+export interface CreateEstimateDepositLinkResponse {
+  paymentLinkUrl: string;
+  paymentLinkId: string;
+  depositAmount: number;
+  estimate: unknown;
+}
+
+export function useCreateEstimateDepositLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: number } & CreateDepositLinkRequest) =>
+      customFetch<CreateEstimateDepositLinkResponse>(`/api/estimates/${id}/deposit-link`, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/estimates"] });
+    },
+  });
+}

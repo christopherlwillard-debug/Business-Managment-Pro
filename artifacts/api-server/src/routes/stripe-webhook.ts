@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import Stripe from "stripe";
 import { db } from "@workspace/db";
-import { invoicesTable, quickChargesTable, prospectsTable } from "@workspace/db/schema";
+import { invoicesTable, quickChargesTable, prospectsTable, estimatesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { getStripe } from "../lib/stripe";
 
@@ -11,6 +11,7 @@ async function handlePaymentMetadata(metadata: Record<string, string>, paymentIn
   const invoiceId = metadata["invoice_id"] ? parseInt(metadata["invoice_id"]) : null;
   const prospectId = metadata["prospect_id"] ? parseInt(metadata["prospect_id"]) : null;
   const quickChargeId = metadata["quick_charge_id"] ? parseInt(metadata["quick_charge_id"]) : null;
+  const estimateId = metadata["estimate_id"] ? parseInt(metadata["estimate_id"]) : null;
 
   if (invoiceId && !isNaN(invoiceId)) {
     await db.update(invoicesTable)
@@ -43,6 +44,16 @@ async function handlePaymentMetadata(metadata: Record<string, string>, paymentIn
       })
       .where(eq(prospectsTable.id, prospectId));
     console.log(`Prospect ${prospectId} deposit paid via Stripe`);
+  }
+
+  if (estimateId && !isNaN(estimateId)) {
+    await db.update(estimatesTable)
+      .set({
+        depositPaidAt: new Date(),
+        ...(amountReceived !== null ? { depositPaidAmount: amountReceived.toFixed(2) } : {}),
+      })
+      .where(eq(estimatesTable.id, estimateId));
+    console.log(`Estimate ${estimateId} deposit paid via Stripe`);
   }
 }
 
