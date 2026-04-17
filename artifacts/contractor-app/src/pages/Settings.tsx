@@ -1662,13 +1662,43 @@ export default function Settings() {
                       label="Notification Email Address"
                       hint="If left blank, emails will be sent to the account owner's email (or the business email if no owner is set)."
                     >
-                      <input
-                        className={inp}
-                        type="email"
-                        value={form.complianceNotificationEmail}
-                        onChange={e => setF("complianceNotificationEmail", e.target.value)}
-                        placeholder="compliance@yourcompany.com"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          className={`${inp} flex-1`}
+                          type="email"
+                          value={form.complianceNotificationEmail}
+                          onChange={e => setF("complianceNotificationEmail", e.target.value)}
+                          placeholder="compliance@yourcompany.com"
+                        />
+                        {form.complianceNotificationEmail.trim().length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleTestEmail}
+                            disabled={testEmailState === "sending"}
+                            title="Send a test email to verify this address"
+                            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+                              testEmailState === "sent"
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                : testEmailState === "error"
+                                ? "border-red-300 bg-red-50 text-red-700"
+                                : "border-border bg-muted/40 hover:bg-muted text-foreground"
+                            } disabled:opacity-60`}
+                          >
+                            {testEmailState === "sending" ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : testEmailState === "sent" ? (
+                              <CheckCircle2 className="w-4 h-4" />
+                            ) : testEmailState === "error" ? (
+                              <XCircle className="w-4 h-4" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                            <span className="hidden sm:inline">
+                              {testEmailState === "sending" ? "Sending…" : testEmailState === "sent" ? "Sent!" : testEmailState === "error" ? "Failed" : "Test"}
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     </LF>
                     {form.complianceNotificationEmail && (
                       <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
@@ -1686,29 +1716,6 @@ export default function Settings() {
                         </p>
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleTestEmail}
-                      disabled={testEmailState === "sending"}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${
-                        testEmailState === "sent"
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : testEmailState === "error"
-                          ? "border-red-300 bg-red-50 text-red-700"
-                          : "border-border bg-muted/40 hover:bg-muted text-foreground"
-                      } disabled:opacity-60`}
-                    >
-                      {testEmailState === "sending" ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : testEmailState === "sent" ? (
-                        <CheckCircle2 className="w-4 h-4" />
-                      ) : testEmailState === "error" ? (
-                        <XCircle className="w-4 h-4" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                      {testEmailState === "sending" ? "Sending…" : testEmailState === "sent" ? "Test email sent!" : testEmailState === "error" ? "Send failed" : "Send Test Email"}
-                    </button>
                   </div>
                 )}
 
