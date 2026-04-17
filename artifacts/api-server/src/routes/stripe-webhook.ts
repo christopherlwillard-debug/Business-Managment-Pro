@@ -82,6 +82,7 @@ async function upsertProspectFromSession(session: Stripe.Checkout.Session, metad
       ...(name ? { contactName: name } : {}),
       ...(email ? { contactEmail: email } : {}),
       ...(phone ? { contactPhone: phone } : {}),
+      ...(addressLine ? { address: addressLine } : {}),
       lastPaidAt: now,
       followUpDate: followUpStr,
       updatedAt: now,
@@ -96,9 +97,9 @@ async function upsertProspectFromSession(session: Stripe.Checkout.Session, metad
 
   if (existing.length > 0) {
     await db.update(prospectsTable).set({
-      ...(name && !existing[0].contactName ? { contactName: name } : {}),
-      ...(phone && !existing[0].contactPhone ? { contactPhone: phone } : {}),
-      ...(addressLine && existing[0].address === addressLine ? {} : addressLine ? { address: addressLine } : {}),
+      ...(name ? { contactName: name } : {}),
+      ...(phone ? { contactPhone: phone } : {}),
+      ...(addressLine ? { address: addressLine } : {}),
       lastPaidAt: now,
       followUpDate: followUpStr,
       updatedAt: now,
