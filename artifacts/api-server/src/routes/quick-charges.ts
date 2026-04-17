@@ -47,8 +47,22 @@ router.post("/", async (req, res) => {
     const currency = settings?.currency ?? "USD";
     const companyName = settings?.companyName ?? "BuildPro";
 
+    // Insert first to get an ID, then create the payment link with that ID in metadata
+    const [charge] = await db.insert(quickChargesTable).values({
+      label,
+      amount: amount.toString(),
+      customerName: customerName ?? null,
+      customerEmail: customerEmail ?? null,
+      notes: notes ?? null,
+      status: "pending",
+    }).returning();
+
     const amountCents = Math.round(amount * 100);
-    const metadata: Record<string, string> = { source: "buildpro", charge_label: label };
+    const metadata: Record<string, string> = {
+      source: "buildpro",
+      charge_label: label,
+      quick_charge_id: String(charge.id),
+    };
 
     const { url, id: linkId } = await createPaymentLink({
       amountCents,
@@ -60,19 +74,16 @@ router.post("/", async (req, res) => {
 
     const qrDataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 });
 
-    const [charge] = await db.insert(quickChargesTable).values({
-      label,
-      amount: amount.toString(),
-      customerName: customerName ?? null,
-      customerEmail: customerEmail ?? null,
-      notes: notes ?? null,
-      stripePaymentLinkId: linkId,
-      stripePaymentLinkUrl: url,
-      qrCodeDataUrl: qrDataUrl,
-      status: "pending",
-    }).returning();
+    const [updated] = await db.update(quickChargesTable)
+      .set({
+        stripePaymentLinkId: linkId,
+        stripePaymentLinkUrl: url,
+        qrCodeDataUrl: qrDataUrl,
+      })
+      .where(eq(quickChargesTable.id, charge.id))
+      .returning();
 
-    res.status(201).json(fmt(charge));
+    res.status(201).json(fmt(updated));
   } catch (err: unknown) {
     console.error("Quick charge creation error:", err);
     const message = err instanceof Error ? err.message : "Failed to create quick charge";

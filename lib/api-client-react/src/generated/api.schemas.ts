@@ -211,6 +211,10 @@ export interface Invoice {
   attachments?: InvoiceAttachment[] | null;
   businessLine?: string | null;
   createdAt: string;
+  stripePaymentLinkId?: string | null;
+  stripePaymentLinkUrl?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripePaidAt?: string | null;
 }
 
 export type CreateInvoiceRequestStatus =
@@ -915,10 +919,15 @@ export interface Prospect {
   roughQuote?: number | null;
   contactName?: string | null;
   contactPhone?: string | null;
+  contactEmail?: string | null;
   notes?: string | null;
   status: ProspectStatus;
   linkedEstimateId?: number | null;
   linkedEstimateNumber?: string | null;
+  stripePaymentLinkId?: string | null;
+  stripePaymentLinkUrl?: string | null;
+  depositPaidAt?: string | null;
+  depositPaidAmount?: number | null;
   createdAt: string;
   updatedAt: string;
 }

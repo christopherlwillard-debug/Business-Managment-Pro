@@ -578,7 +578,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors"
               >
                 <CreditCard className="w-4 h-4" />
-                Request 50% Deposit (${fmt(calc.final * 0.5)})
+                Get Payment Link (${fmt(calc.final)})
               </button>
             )}
             <button

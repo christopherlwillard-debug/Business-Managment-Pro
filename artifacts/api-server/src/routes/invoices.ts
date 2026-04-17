@@ -333,6 +333,12 @@ router.post("/:id/send", async (req, res) => {
           </table>
           ${inv.terms ? `<p style="margin:20px 0 0;font-size:12px;color:#888;">Payment Terms: ${inv.terms}</p>` : ""}
           ${inv.notes ? `<p style="margin:8px 0 0;font-size:12px;color:#888;">${inv.notes}</p>` : ""}
+          ${inv.stripePaymentLinkUrl ? `
+          <div style="margin-top:24px;padding:20px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;text-align:center;">
+            <p style="margin:0 0 12px;font-size:13px;font-weight:600;color:#15803d;">Pay this invoice securely online:</p>
+            <a href="${inv.stripePaymentLinkUrl}" target="_blank" style="display:inline-block;background:#f59e0b;color:#fff;font-size:14px;font-weight:700;padding:12px 32px;border-radius:8px;text-decoration:none;">Pay Now — $${total.toFixed(2)}</a>
+            <p style="margin:10px 0 0;font-size:11px;color:#6b7280;">Powered by Stripe · Secure payment</p>
+          </div>` : ""}
         </td></tr>
         <tr><td style="padding:20px 40px;background:#fafafa;border-top:1px solid #f0f0f0;">
           <p style="margin:0;font-size:12px;color:#aaa;text-align:center;">Thank you for your business · ${settings.companyName || ""} · ${settings.companyEmail || ""}</p>

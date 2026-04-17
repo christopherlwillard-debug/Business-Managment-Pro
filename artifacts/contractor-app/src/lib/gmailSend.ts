@@ -170,6 +170,7 @@ export interface BuildInvoiceEmailHtmlOpts {
   total: number;
   notes?: string | null;
   customMessage?: string;
+  stripePaymentLink?: string | null;
 }
 
 export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
@@ -256,6 +257,20 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
        </td></tr>`
     : "";
 
+  const paymentLinkHtml = opts.stripePaymentLink
+    ? `<tr><td style="padding:20px 0 0;border-top:1px solid #f3f4f6;">
+         <table cellpadding="0" cellspacing="0" width="100%">
+           <tr><td align="center">
+             <p style="margin:0 0 12px;font-size:12px;font-weight:600;color:#374151;">Pay this invoice securely online:</p>
+             <a href="${esc(opts.stripePaymentLink)}" target="_blank" style="display:inline-block;background:#f59e0b;color:#fff;font-size:14px;font-weight:700;padding:12px 32px;border-radius:8px;text-decoration:none;">
+               Pay Now — ${fmtCurrency(opts.total)}
+             </a>
+             <p style="margin:10px 0 0;font-size:10px;color:#9ca3af;">Powered by Stripe · Secure payment</p>
+           </td></tr>
+         </table>
+       </td></tr>`
+    : "";
+
   const customMsgHtml = opts.customMessage
     ? `<tr><td style="padding:0 0 20px;"><p style="margin:0;font-size:13px;color:#555;line-height:1.6;">${esc(opts.customMessage).replace(/\n/g, "<br>")}</p></td></tr>`
     : "";
@@ -321,6 +336,7 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
             </td></tr>
 
             ${notesHtml}
+            ${paymentLinkHtml}
           </table>
         </td></tr>
 

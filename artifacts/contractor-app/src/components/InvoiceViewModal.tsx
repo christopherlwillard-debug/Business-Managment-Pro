@@ -161,6 +161,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         total,
         notes: invoice.notes ?? undefined,
         customMessage: gmailMessage.trim() || undefined,
+        stripePaymentLink: invoice.stripePaymentLinkUrl ?? null,
       });
       const pdfBase64 = await invoiceHtmlPdfToBase64(
         buildPrintableInvoice(),

@@ -730,19 +730,18 @@ export function EstimateModal({
             setTemplateApplied(true);
           }}
           onRequestDeposit={async (totalAmount) => {
-            const depositAmt = Math.round(totalAmount * 0.5 * 100) / 100;
             try {
               const charge = await createQuickCharge.mutateAsync({
-                label: `Asphalt Sealing Deposit — ${title || "New Estimate"}`,
-                amount: depositAmt,
-                notes: "50% deposit for asphalt sealing work",
+                label: `Asphalt Sealing — ${title || "New Estimate"}`,
+                amount: totalAmount,
+                notes: "Payment link from asphalt sealing calculator",
               });
               if (charge.stripePaymentLinkUrl) {
-                setDepositLinkResult({ url: charge.stripePaymentLinkUrl, amount: depositAmt });
+                setDepositLinkResult({ url: charge.stripePaymentLinkUrl, amount: totalAmount });
                 setShowAsphaltCalc(false);
               }
             } catch {
-              alert("Failed to create deposit payment link. Make sure Stripe is configured.");
+              alert("Failed to create payment link. Make sure Stripe is configured.");
             }
           }}
         />
@@ -754,14 +753,14 @@ export function EstimateModal({
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-600" /> Deposit Link Ready
+                <CreditCard className="w-5 h-5 text-emerald-600" /> Payment Link Ready
               </h3>
               <button type="button" onClick={() => setDepositLinkResult(null)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <p className="text-sm text-gray-600">
-              A Stripe payment link for <strong>${depositLinkResult.amount.toFixed(2)}</strong> (50% deposit) has been created.
+              A Stripe payment link for <strong>${depositLinkResult.amount.toFixed(2)}</strong> has been created.
               Share this link with your customer to collect payment.
             </p>
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
