@@ -366,7 +366,7 @@ export default function Prospects() {
                     <p className="text-xs text-muted-foreground border-t border-border pt-2 line-clamp-2">{p.notes}</p>
                   )}
 
-                  {(p.roughQuote != null || p.stripePaymentLinkUrl || p.depositPaidAt) && (
+                  {(p.depositPaidAt || p.stripePaymentLinkUrl || (p.roughQuote != null && (p.status === "quoted" || p.status === "won"))) && (
                     <div className="border-t border-border pt-2 space-y-1.5">
                       {p.depositPaidAt ? (
                         <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded text-xs font-medium text-emerald-800">

@@ -47,7 +47,8 @@ router.post("/", async (req, res) => {
     const currency = settings?.currency ?? "USD";
     const companyName = settings?.companyName ?? "BuildPro";
 
-    // Insert first to get an ID, then create the payment link with that ID in metadata
+    // Insert first to get an ID, then create the payment link with that ID in metadata.
+    // On any Stripe failure, the orphan DB row is cleaned up before re-throwing.
     const [charge] = await db.insert(quickChargesTable).values({
       label,
       amount: amount.toString(),
@@ -57,20 +58,29 @@ router.post("/", async (req, res) => {
       status: "pending",
     }).returning();
 
-    const amountCents = Math.round(amount * 100);
-    const metadata: Record<string, string> = {
-      source: "buildpro",
-      charge_label: label,
-      quick_charge_id: String(charge.id),
-    };
-
-    const { url, id: linkId } = await createPaymentLink({
-      amountCents,
-      currency,
-      productName: `${companyName}: ${label}`,
-      metadata,
-      customerEmail: customerEmail ?? null,
-    });
+    let url: string;
+    let linkId: string;
+    try {
+      const amountCents = Math.round(amount * 100);
+      const metadata: Record<string, string> = {
+        source: "buildpro",
+        charge_label: label,
+        quick_charge_id: String(charge.id),
+      };
+      const result = await createPaymentLink({
+        amountCents,
+        currency,
+        productName: `${companyName}: ${label}`,
+        metadata,
+        customerEmail: customerEmail ?? null,
+      });
+      url = result.url;
+      linkId = result.id;
+    } catch (stripeErr) {
+      // Clean up the orphan row so no pending charges accumulate
+      await db.delete(quickChargesTable).where(eq(quickChargesTable.id, charge.id));
+      throw stripeErr;
+    }
 
     const qrDataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 });
 
