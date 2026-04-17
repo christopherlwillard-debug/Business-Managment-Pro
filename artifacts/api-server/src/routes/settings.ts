@@ -293,12 +293,12 @@ router.post("/test-compliance-email", async (req, res) => {
       .from(settingsTable)
       .limit(1);
 
-    if (settings?.complianceEmailEnabled === 0) {
-      res.status(400).json({ error: "Compliance email notifications are disabled." });
+    const bodyEmail = typeof req.body?.email === "string" ? req.body.email.trim() : null;
+
+    if (bodyEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bodyEmail)) {
+      res.status(400).json({ error: "The provided email address is not valid." });
       return;
     }
-
-    const bodyEmail = typeof req.body?.email === "string" ? req.body.email.trim() : null;
 
     let recipientEmail: string | null = bodyEmail || settings?.complianceNotificationEmail || null;
 

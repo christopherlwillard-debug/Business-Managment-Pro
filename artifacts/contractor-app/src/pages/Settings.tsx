@@ -1694,7 +1694,7 @@ export default function Settings() {
                               <Send className="w-4 h-4" />
                             )}
                             <span className="hidden sm:inline">
-                              {testEmailState === "sending" ? "Sending…" : testEmailState === "sent" ? "Sent!" : testEmailState === "error" ? "Failed" : "Test"}
+                              {testEmailState === "sending" ? "Sending…" : testEmailState === "sent" ? "Sent!" : testEmailState === "error" ? "Failed" : "Send Test Email"}
                             </span>
                           </button>
                         )}
