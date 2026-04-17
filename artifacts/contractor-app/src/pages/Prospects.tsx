@@ -112,12 +112,26 @@ export default function Prospects() {
 
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; address: string } | null>(null);
   const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
+  const [depositInputId, setDepositInputId] = useState<number | null>(null);
+  const [depositAmtStr, setDepositAmtStr] = useState("");
+  const [depositMode, setDepositMode] = useState<"flat" | "percent">("percent");
 
   async function handleRequestDeposit(p: Prospect) {
     setGeneratingDepositId(p.id);
     try {
-      const result = await depositLinkMutation.mutateAsync({ id: p.id });
+      let depositAmount: number | undefined;
+      let depositPercent: number | undefined;
+      if (depositInputId === p.id && depositAmtStr) {
+        const val = parseFloat(depositAmtStr);
+        if (!isNaN(val) && val > 0) {
+          if (depositMode === "flat") depositAmount = val;
+          else depositPercent = val;
+        }
+      }
+      const result = await depositLinkMutation.mutateAsync({ id: p.id, depositAmount, depositPercent });
       setDepositLinkResult({ url: result.paymentLinkUrl, address: p.address });
+      setDepositInputId(null);
+      setDepositAmtStr("");
       refetch();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to create deposit link";
@@ -352,9 +366,14 @@ export default function Prospects() {
                     <p className="text-xs text-muted-foreground border-t border-border pt-2 line-clamp-2">{p.notes}</p>
                   )}
 
-                  {(p.roughQuote != null || p.stripePaymentLinkUrl) && (
+                  {(p.roughQuote != null || p.stripePaymentLinkUrl || p.depositPaidAt) && (
                     <div className="border-t border-border pt-2 space-y-1.5">
-                      {p.stripePaymentLinkUrl ? (
+                      {p.depositPaidAt ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded text-xs font-medium text-emerald-800">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                          Deposit Received{p.depositPaidAmount != null ? ` — $${p.depositPaidAmount.toFixed(2)}` : ""}
+                        </div>
+                      ) : p.stripePaymentLinkUrl ? (
                         <div className="flex gap-1.5">
                           <button
                             onClick={() => {
@@ -374,14 +393,49 @@ export default function Prospects() {
                             <ExternalLink className="w-3 h-3" />
                           </a>
                         </div>
+                      ) : depositInputId === p.id ? (
+                        <div className="space-y-1.5">
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setDepositMode("percent")}
+                              className={`flex-1 py-1 text-xs rounded border transition-colors ${depositMode === "percent" ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground hover:bg-muted"}`}
+                            >% of quote</button>
+                            <button
+                              onClick={() => setDepositMode("flat")}
+                              className={`flex-1 py-1 text-xs rounded border transition-colors ${depositMode === "flat" ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground hover:bg-muted"}`}
+                            >Flat $</button>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="number"
+                              placeholder={depositMode === "percent" ? "50" : "Amount"}
+                              value={depositAmtStr}
+                              onChange={e => setDepositAmtStr(e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleRequestDeposit(p)}
+                              disabled={generatingDepositId === p.id}
+                              className="px-2.5 py-1 text-xs bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-60"
+                            >
+                              {generatingDepositId === p.id ? "…" : "Go"}
+                            </button>
+                            <button
+                              onClick={() => { setDepositInputId(null); setDepositAmtStr(""); }}
+                              className="px-2 py-1 text-xs text-muted-foreground border border-border rounded hover:bg-muted"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         <button
-                          onClick={() => handleRequestDeposit(p)}
-                          disabled={generatingDepositId === p.id}
-                          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-medium hover:bg-amber-600 transition-colors disabled:opacity-60"
+                          onClick={() => { setDepositInputId(p.id); setDepositAmtStr("50"); setDepositMode("percent"); }}
+                          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-medium hover:bg-amber-600 transition-colors"
                         >
                           <CreditCard className="w-3 h-3" />
-                          {generatingDepositId === p.id ? "Creating…" : "Request 50% Deposit"}
+                          Request Deposit
                         </button>
                       )}
                     </div>

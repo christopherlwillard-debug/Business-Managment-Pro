@@ -729,12 +729,12 @@ export function EstimateModal({
             })));
             setTemplateApplied(true);
           }}
-          onRequestDeposit={async (totalAmount) => {
+          onRequestDeposit={async (totalAmount, description) => {
             try {
               const charge = await createQuickCharge.mutateAsync({
-                label: `Asphalt Sealing — ${title || "New Estimate"}`,
+                label: description || `Asphalt Sealing — ${title || "New Estimate"}`,
                 amount: totalAmount,
-                notes: "Payment link from asphalt sealing calculator",
+                notes: title ? `Estimate: ${title}` : "Asphalt sealing calculator quote",
               });
               if (charge.stripePaymentLinkUrl) {
                 setDepositLinkResult({ url: charge.stripePaymentLinkUrl, amount: totalAmount });

@@ -12,7 +12,7 @@ interface DraftLine {
 interface AsphaltCalculatorProps {
   onClose: () => void;
   onUseNumbers: (lines: DraftLine[]) => void;
-  onRequestDeposit?: (totalAmount: number) => void;
+  onRequestDeposit?: (totalAmount: number, description: string) => void;
 }
 
 interface Section {
@@ -574,7 +574,10 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
             {onRequestDeposit && calc.final > 0 && (
               <button
                 type="button"
-                onClick={() => { onRequestDeposit(calc.final); }}
+                onClick={() => {
+                  const desc = sections.map(s => s.label).filter(Boolean).join(", ") || "Asphalt Sealing";
+                  onRequestDeposit(calc.final, `${desc} — ${calc.totalSF.toFixed(0)} SF`);
+                }}
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors"
               >
                 <CreditCard className="w-4 h-4" />

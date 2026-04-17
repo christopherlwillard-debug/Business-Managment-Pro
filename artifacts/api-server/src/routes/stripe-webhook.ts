@@ -25,7 +25,11 @@ async function handlePaymentMetadata(metadata: Record<string, string>, paymentIn
 
   if (quickChargeId && !isNaN(quickChargeId)) {
     await db.update(quickChargesTable)
-      .set({ status: "paid", paidAt: new Date() })
+      .set({
+        status: "paid",
+        paidAt: new Date(),
+        stripePaymentIntentId: paymentIntentId ?? null,
+      })
       .where(eq(quickChargesTable.id, quickChargeId));
     console.log(`Quick charge ${quickChargeId} marked paid via Stripe`);
   }
