@@ -347,6 +347,7 @@ export default function Prospects() {
       </div>
 
       {/* Status filter tabs */}
+      <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {FILTER_OPTIONS.map((opt) => (
           <button
@@ -379,6 +380,13 @@ export default function Prospects() {
             )}
           </button>
         ))}
+      </div>
+      {hasLocationFilter && (
+        <div className="flex items-center gap-1.5 text-xs text-primary font-medium">
+          <MapPin className="w-3 h-3 flex-shrink-0" />
+          <span>Filtered by: <span className="font-semibold">{locationSearch.trim()}</span> — counts reflect this location only</span>
+        </div>
+      )}
       </div>
 
       {/* Location search */}
