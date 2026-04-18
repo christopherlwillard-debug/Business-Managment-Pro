@@ -214,7 +214,7 @@ router.put("/:id", async (req, res) => {
     };
 
     const [existing] = await db
-      .select({ status: prospectsTable.status })
+      .select({ status: prospectsTable.status, linkedEstimateId: prospectsTable.linkedEstimateId })
       .from(prospectsTable)
       .where(eq(prospectsTable.id, id));
 
@@ -240,6 +240,9 @@ router.put("/:id", async (req, res) => {
 
     const statusChanged = body.status !== undefined && patch.status && patch.status !== existing.status;
 
+    const estimateIdChanged = body.linkedEstimateId !== undefined &&
+      (body.linkedEstimateId ?? null) !== (existing.linkedEstimateId ?? null);
+
     await db.transaction(async (tx) => {
       await tx.update(prospectsTable).set(patch).where(eq(prospectsTable.id, id));
       if (statusChanged) {
@@ -248,6 +251,22 @@ router.put("/:id", async (req, res) => {
           type: "status_change",
           oldValue: existing.status,
           newValue: patch.status as string,
+        });
+      }
+      if (estimateIdChanged) {
+        const isLinking = (body.linkedEstimateId ?? null) !== null;
+        let estimateNumber: string | null = null;
+        if (isLinking && body.linkedEstimateId) {
+          const [est] = await tx
+            .select({ title: estimatesTable.title })
+            .from(estimatesTable)
+            .where(eq(estimatesTable.id, body.linkedEstimateId));
+          estimateNumber = est?.title ?? null;
+        }
+        await tx.insert(prospectEventsTable).values({
+          prospectId: id,
+          type: isLinking ? "estimate_linked" : "estimate_unlinked",
+          newValue: estimateNumber,
         });
       }
     });

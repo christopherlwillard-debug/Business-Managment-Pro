@@ -36,6 +36,8 @@ import {
   Copy,
   ExternalLink,
   UserPlus,
+  Link,
+  LinkOff,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -579,33 +581,77 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectD
             />
           </section>
 
-          {/* Status History Section */}
+          {/* Activity Section */}
           {statusHistory.length > 0 && (
             <section className="space-y-3">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <History className="w-3.5 h-3.5" />
-                Status History
+                Activity
               </h3>
               <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
-                {statusHistory.map((event) => (
-                  <div key={event.id} className="px-4 py-3 flex items-center gap-3">
-                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground">
-                        {event.oldValue ? (
-                          <>
-                            <span className="font-medium">{statusLabel(event.oldValue)}</span>
-                            {" → "}
-                            <span className="font-medium">{statusLabel(event.newValue ?? "")}</span>
-                          </>
-                        ) : (
-                          <span className="font-medium">{statusLabel(event.newValue ?? "")}</span>
+                {statusHistory.map((event) => {
+                  if (event.type === "deposit_received") {
+                    const amount = event.newValue ? parseFloat(event.newValue) : null;
+                    return (
+                      <div key={event.id} className="px-4 py-3 flex items-center gap-3">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">Deposit Received</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                        </div>
+                        {amount != null && !isNaN(amount) && (
+                          <span className="text-sm font-semibold text-emerald-700">{formatCurrency(amount)}</span>
                         )}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                      </div>
+                    );
+                  }
+                  if (event.type === "estimate_linked") {
+                    return (
+                      <div key={event.id} className="px-4 py-3 flex items-center gap-3">
+                        <Link className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-foreground">
+                            Estimate linked
+                            {event.newValue && (
+                              <> — <span className="font-medium">{event.newValue}</span></>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (event.type === "estimate_unlinked") {
+                    return (
+                      <div key={event.id} className="px-4 py-3 flex items-center gap-3">
+                        <LinkOff className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-muted-foreground">Estimate unlinked</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={event.id} className="px-4 py-3 flex items-center gap-3">
+                      <ArrowRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-foreground">
+                          {event.oldValue ? (
+                            <>
+                              <span className="font-medium">{statusLabel(event.oldValue)}</span>
+                              {" → "}
+                              <span className="font-medium">{statusLabel(event.newValue ?? "")}</span>
+                            </>
+                          ) : (
+                            <span className="font-medium">{statusLabel(event.newValue ?? "")}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}

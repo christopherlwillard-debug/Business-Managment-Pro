@@ -1,13 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import Stripe from "stripe";
 import { db } from "@workspace/db";
-import { invoicesTable, quickChargesTable, prospectsTable, estimatesTable } from "@workspace/db/schema";
+import { invoicesTable, quickChargesTable, prospectsTable, estimatesTable, prospectEventsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { getStripe } from "../lib/stripe";
 
 const router = Router();
 
-async function handlePaymentMetadata(metadata: Record<string, string>, paymentIntentId: string | null, amountReceived: number | null) {
+async function handlePaymentMetadata(metadata: Record<string, string>, paymentIntentId: string | null, amountReceived: number | null, logProspectEvent = false) {
   const invoiceId = metadata["invoice_id"] ? parseInt(metadata["invoice_id"]) : null;
   const prospectId = metadata["prospect_id"] ? parseInt(metadata["prospect_id"]) : null;
   const quickChargeId = metadata["quick_charge_id"] ? parseInt(metadata["quick_charge_id"]) : null;
@@ -36,13 +36,21 @@ async function handlePaymentMetadata(metadata: Record<string, string>, paymentIn
   }
 
   if (prospectId && !isNaN(prospectId)) {
+    const now = new Date();
     await db.update(prospectsTable)
       .set({
-        depositPaidAt: new Date(),
+        depositPaidAt: now,
         ...(amountReceived !== null ? { depositPaidAmount: amountReceived.toFixed(2) } : {}),
-        updatedAt: new Date(),
+        updatedAt: now,
       })
       .where(eq(prospectsTable.id, prospectId));
+    if (logProspectEvent) {
+      await db.insert(prospectEventsTable).values({
+        prospectId,
+        type: "deposit_received",
+        newValue: amountReceived !== null ? amountReceived.toFixed(2) : null,
+      });
+    }
     console.log(`Prospect ${prospectId} deposit paid via Stripe`);
   }
 
@@ -150,7 +158,7 @@ router.post("/", async (req: Request, res: Response) => {
       const metadata = session.metadata ?? {};
       const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null;
       const amountTotal = session.amount_total !== null ? session.amount_total / 100 : null;
-      await handlePaymentMetadata(metadata, paymentIntentId, amountTotal);
+      await handlePaymentMetadata(metadata, paymentIntentId, amountTotal, true);
       await upsertProspectFromSession(session, metadata);
     }
 
@@ -158,7 +166,7 @@ router.post("/", async (req: Request, res: Response) => {
       const pi = event.data.object as Stripe.PaymentIntent;
       const metadata = pi.metadata ?? {};
       const amountReceived = pi.amount_received / 100;
-      await handlePaymentMetadata(metadata, pi.id, amountReceived);
+      await handlePaymentMetadata(metadata, pi.id, amountReceived, false);
     }
 
     res.json({ received: true });
