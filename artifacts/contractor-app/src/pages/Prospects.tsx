@@ -163,7 +163,7 @@ export default function Prospects() {
         }),
       });
       if (!res.ok) throw new Error("Failed");
-      toast({ title: "Added to Route Plan", description: `${p.address} → ${routeDateStr}` });
+      toast({ title: "Added to Route Plan", description: `${p.address} scheduled for ${routeDateStr}. Open Route Planner to optimize.` });
       setRouteTargetId(null);
     } catch {
       toast({ title: "Failed to add to route", variant: "destructive" });
@@ -371,7 +371,7 @@ export default function Prospects() {
                           <span className="text-sm font-medium text-foreground block truncate">{p.address}</span>
                           {(p.city || p.state || p.zip) && (
                             <span className="text-xs text-muted-foreground">
-                              {[p.city, p.state, p.zip].filter(Boolean).join(", ")}
+                              {[p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
                             </span>
                           )}
                         </div>
