@@ -81,6 +81,13 @@ function parseAddressParts(address: string): Record<string, string> {
   const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length === 0) return params;
 
+  // Freeform (no commas): pass the whole thing as `street` so Census can
+  // parse it as a full address string — still beats a free-text Nominatim call.
+  if (parts.length === 1) {
+    params.street = parts[0];
+    return params;
+  }
+
   params.street = parts[0];
 
   const stateMatch = address.match(/\b([A-Za-z]{2})\b(?=\s*(?:\d{5}|,|$))/);

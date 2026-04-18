@@ -115,6 +115,7 @@ async function mapboxGeocode(
       q: address,
       country: "us",
       limit: "1",
+      permanent: "true",
       access_token: token,
     });
 
