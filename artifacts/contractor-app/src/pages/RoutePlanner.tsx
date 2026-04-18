@@ -73,10 +73,36 @@ async function apiFetch(path: string, options?: RequestInit) {
   return res.json() as Promise<RouteStop | RouteStop[] | null>;
 }
 
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+function parseAddressParts(address: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const zipMatch = address.match(/\b(\d{5})\b/);
+  if (zipMatch) params.postalcode = zipMatch[1];
+
+  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return params;
+
+  params.street = parts[0];
+
+  const stateMatch = address.match(/\b([A-Za-z]{2})\b(?=\s*(?:\d{5}|,|$))/);
+  if (stateMatch) params.state = stateMatch[1].toUpperCase();
+
+  if (parts.length >= 2) {
+    let rawCity = parts[1];
+    if (params.state) rawCity = rawCity.replace(new RegExp(`\\b${params.state}\\b`, "i"), "");
+    if (params.postalcode) rawCity = rawCity.replace(params.postalcode, "");
+    const city = rawCity.trim().replace(/,+$/, "").trim();
+    if (city) params.city = city;
+  }
+
+  return params;
+}
+
+async function geocodeAddress(address: string, base: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=us`;
-    const res = await fetch(url, { headers: { "Accept-Language": "en", "User-Agent": "WillardsContractingApp/1.0" } });
+    const parts = parseAddressParts(address);
+    const qs = new URLSearchParams(parts).toString();
+    const res = await fetch(`${base}/api/geocode?${qs}`, { credentials: "include" });
+    if (!res.ok) return null;
     const data = await res.json() as Array<{ lat: string; lon: string }>;
     if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
   } catch { /* geocoding failed */ }
@@ -212,6 +238,13 @@ export default function RoutePlanner() {
     queryFn: () => apiFetch("/route-stops") as Promise<RouteStop[]>,
   });
 
+  const { data: mapboxData } = useQuery<{ token: string | null }>({
+    queryKey: ["/api/mapbox-token"],
+    queryFn: () => fetch(`${BASE}/api/mapbox-token`, { credentials: "include" }).then(r => r.json()),
+    staleTime: Infinity,
+  });
+  const mapboxToken = mapboxData?.token ?? null;
+
   // Stops visible in the current view (day or week)
   const viewStops = viewMode === "day"
     ? allStops.filter(s => s.scheduledDate === selectedDateStr)
@@ -283,7 +316,7 @@ export default function RoutePlanner() {
     e.preventDefault();
     if (!form.address.trim()) return;
     setGeocoding(true);
-    const coords = await geocodeAddress(form.address);
+    const coords = await geocodeAddress(form.address, BASE);
     setGeocoding(false);
     createStop.mutate({ ...form, lat: coords?.lat ?? null, lng: coords?.lng ?? null });
   }
@@ -590,7 +623,7 @@ export default function RoutePlanner() {
                   onSaveEdit={async () => {
                     setGeocoding(true);
                     const coords = editForm.address !== stop.address
-                      ? await geocodeAddress(editForm.address ?? stop.address)
+                      ? await geocodeAddress(editForm.address ?? stop.address, BASE)
                       : { lat: stop.lat, lng: stop.lng };
                     setGeocoding(false);
                     updateStop.mutate({ id: stop.id, data: { ...editForm, lat: coords?.lat ?? stop.lat, lng: coords?.lng ?? stop.lng } });
@@ -621,10 +654,20 @@ export default function RoutePlanner() {
           style={{ height: "100%", width: "100%" }}
           className="z-0"
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          {mapboxToken ? (
+            <TileLayer
+              attribution='&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url={`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxToken}`}
+              tileSize={512}
+              zoomOffset={-1}
+              maxZoom={22}
+            />
+          ) : (
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          )}
           <MapFitter stops={displayStops.filter(s => s.lat && s.lng)} />
 
           {routeCoords && routeCoords.length > 1 && (
