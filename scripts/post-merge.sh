@@ -311,6 +311,42 @@ pool.query(\`
   .catch(e => { console.error('prospect_events migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Task #202: add serviced_at and follow_up_date columns to prospects; update status constraint
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS serviced_at date')
+  .then(() => pool.query('ALTER TABLE prospects DROP CONSTRAINT IF EXISTS prospects_status_check'))
+  .then(() => pool.query(\`ALTER TABLE prospects ADD CONSTRAINT prospects_status_check CHECK (status IN ('cold', 'contacted', 'quoted', 'won', 'serviced', 'lost'))\`))
+  .then(() => { console.log('prospects.serviced_at and status constraint ensured'); pool.end(); })
+  .catch(e => { console.error('prospects serviced_at migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Task #206: create prospect_service_visits table and backfill from servicedAt
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS prospect_service_visits (
+    id SERIAL PRIMARY KEY,
+    prospect_id INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+    serviced_at DATE NOT NULL,
+    notes TEXT,
+    price NUMERIC(12, 2),
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS psv_prospect_id_idx ON prospect_service_visits (prospect_id, serviced_at DESC);
+  INSERT INTO prospect_service_visits (prospect_id, serviced_at, created_at)
+  SELECT p.id, p.serviced_at::date, COALESCE(p.updated_at, p.created_at)
+  FROM prospects p
+  WHERE p.serviced_at IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM prospect_service_visits v WHERE v.prospect_id = p.id
+    );
+\`).then(() => { console.log('prospect_service_visits table ensured'); pool.end(); })
+  .catch(e => { console.error('prospect_service_visits migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Task #190: add pay_token columns to invoices and quick_charges
 (cd lib/db && node -e "
 const { Pool } = require('pg');

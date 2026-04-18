@@ -10,7 +10,7 @@ import {
   PROSPECT_STATUSES,
   type Prospect as ProspectRow,
 } from "@workspace/db/schema";
-import { eq, asc, desc, and, ilike, or } from "drizzle-orm";
+import { eq, asc, desc, and, ilike, or, max } from "drizzle-orm";
 
 const router = Router();
 
@@ -342,11 +342,6 @@ router.post("/:id/service-visits", async (req, res) => {
 
     if (!existing) return res.status(404).json({ error: "Prospect not found" });
 
-    const serviceDate = new Date(body.servicedAt + "T00:00:00");
-    const followUpDate = new Date(serviceDate);
-    followUpDate.setMonth(followUpDate.getMonth() + 30);
-    const followUpStr = followUpDate.toISOString().slice(0, 10);
-
     await db.transaction(async (tx) => {
       await tx.insert(prospectServiceVisitsTable).values({
         prospectId: id,
@@ -355,9 +350,19 @@ router.post("/:id/service-visits", async (req, res) => {
         price: body.price != null ? body.price.toString() : null,
       });
 
+      const [{ maxDate }] = await tx
+        .select({ maxDate: max(prospectServiceVisitsTable.servicedAt) })
+        .from(prospectServiceVisitsTable)
+        .where(eq(prospectServiceVisitsTable.prospectId, id));
+
+      const mostRecentDate = maxDate ?? body.servicedAt;
+      const followUpDate = new Date(mostRecentDate + "T00:00:00");
+      followUpDate.setMonth(followUpDate.getMonth() + 30);
+      const followUpStr = followUpDate.toISOString().slice(0, 10);
+
       const prospectPatch: Partial<typeof prospectsTable.$inferInsert> & { updatedAt: Date } = {
         updatedAt: new Date(),
-        servicedAt: body.servicedAt,
+        servicedAt: mostRecentDate,
         followUpDate: followUpStr,
       };
       if (existing.status !== "serviced") {
