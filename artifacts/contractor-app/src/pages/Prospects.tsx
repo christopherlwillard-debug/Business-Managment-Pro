@@ -520,7 +520,12 @@ export default function Prospects() {
                   )}
 
                   <div className="border-t border-border pt-2">
-                    {routeTargetId === p.id ? (
+                    {scheduledDate ? (
+                      <div className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border border-green-200 rounded text-xs font-medium text-green-700 bg-green-50 cursor-default select-none">
+                        <Route className="w-3 h-3" />
+                        Already Scheduled — {formatShortDate(scheduledDate)}
+                      </div>
+                    ) : routeTargetId === p.id ? (
                       <div className="flex gap-1.5 items-center">
                         <input
                           type="date"
