@@ -617,11 +617,13 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 </div>
               ) : null}
               {(() => {
-                const totalEarned = detail?.serviceVisits?.reduce(
-                  (sum, v) => sum + (v.price != null ? Number(v.price) : 0),
-                  0,
-                ) ?? 0;
-                if (totalEarned <= 0) return null;
+                const visits = detail?.serviceVisits ?? [];
+                const hasPricedVisit = visits.some((v) => v.price != null);
+                if (!hasPricedVisit) return null;
+                const totalEarned = visits.reduce((sum, v) => {
+                  const n = Number(v.price);
+                  return sum + (v.price != null && Number.isFinite(n) ? n : 0);
+                }, 0);
                 return (
                   <div className="flex items-center justify-between px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Total earned</span>
