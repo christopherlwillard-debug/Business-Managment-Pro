@@ -995,6 +995,13 @@ export interface ProspectDetail extends Prospect {
   serviceVisits: ProspectServiceVisit[];
 }
 
+export interface ProspectRevenueSummary {
+  allTime: number;
+  thisYear: number;
+  thisMonth: number;
+  visitCount: number;
+}
+
 export type AssetType = (typeof AssetType)[keyof typeof AssetType];
 
 export const AssetType = {

@@ -7,6 +7,7 @@ import {
   useUpdateProspect,
   useDeleteProspect,
   useListEstimates,
+  useProspectRevenueSummary,
   type Prospect,
   type Estimate,
   type ProspectStatus,
@@ -16,7 +17,7 @@ import { ProspectDrawer } from "@/components/ProspectDrawer";
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
   Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
-  BadgeCheck, CalendarClock, Route, X,
+  BadgeCheck, CalendarClock, Route, X, TrendingUp,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -174,6 +175,7 @@ export default function Prospects() {
 
   const { data: prospects = [], isLoading, refetch } = useListProspects();
   const { data: estimates = [] } = useListEstimates();
+  const { data: revenue } = useProspectRevenueSummary();
   const createMutation = useCreateProspect();
   const updateMutation = useUpdateProspect();
   const deleteMutation = useDeleteProspect();
@@ -345,6 +347,28 @@ export default function Prospects() {
           <Plus className="w-4 h-4" />
           Log Prospect
         </button>
+      </div>
+
+      {/* Revenue summary */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "This Month", value: revenue?.thisMonth ?? 0 },
+          { label: "This Year", value: revenue?.thisYear ?? 0 },
+          { label: "All Time", value: revenue?.allTime ?? 0 },
+        ].map(({ label, value }) => (
+          <div
+            key={label}
+            className="bg-card border border-border rounded-xl px-4 py-3 flex flex-col gap-0.5"
+          >
+            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1">
+              <TrendingUp className="w-3 h-3" />
+              {label}
+            </span>
+            <span className="text-lg sm:text-xl font-bold text-foreground tabular-nums">
+              {formatCurrency(value)}
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* Status filter tabs */}

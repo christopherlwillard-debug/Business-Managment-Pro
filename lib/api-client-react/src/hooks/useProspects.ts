@@ -10,10 +10,12 @@ import type {
   ProspectDetail,
   ProspectServiceVisit,
   AddServiceVisitRequest,
+  ProspectRevenueSummary,
 } from "../generated/api.schemas";
 
 export type { Prospect, CreateProspectRequest, UpdateProspectRequest, ListProspectsParams, ProspectStatus };
 export type { ProspectStatusEvent, ProspectDetail, ProspectServiceVisit, AddServiceVisitRequest };
+export type { ProspectRevenueSummary };
 export { ProspectStatus as ProspectStatusEnum } from "../generated/api.schemas";
 export { ProspectPropertyType as ProspectPropertyTypeEnum } from "../generated/api.schemas";
 export type { ProspectPropertyType } from "../generated/api.schemas";
@@ -83,6 +85,7 @@ export function useAddProspectServiceVisit() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["/api/prospects"] });
       qc.invalidateQueries({ queryKey: ["/api/prospects", variables.id] });
+      qc.invalidateQueries({ queryKey: ["/api/prospects/revenue-summary"] });
     },
   });
 }
@@ -97,7 +100,16 @@ export function useDeleteProspectServiceVisit() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["/api/prospects"] });
       qc.invalidateQueries({ queryKey: ["/api/prospects", variables.prospectId] });
+      qc.invalidateQueries({ queryKey: ["/api/prospects/revenue-summary"] });
     },
+  });
+}
+
+export function useProspectRevenueSummary() {
+  return useQuery({
+    queryKey: ["/api/prospects/revenue-summary"],
+    queryFn: () => customFetch<ProspectRevenueSummary>("/api/prospects/revenue-summary", { method: "GET" }),
+    staleTime: 60_000,
   });
 }
 

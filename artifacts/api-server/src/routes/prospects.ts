@@ -10,7 +10,7 @@ import {
   PROSPECT_STATUSES,
   type Prospect as ProspectRow,
 } from "@workspace/db/schema";
-import { eq, asc, desc, and, ilike, or, max } from "drizzle-orm";
+import { eq, asc, desc, and, ilike, or, max, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -96,6 +96,33 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch prospects" });
+  }
+});
+
+router.get("/revenue-summary", async (_req, res) => {
+  try {
+    const now = new Date();
+    const yr = now.getFullYear();
+    const mo = now.getMonth() + 1;
+
+    const [row] = await db
+      .select({
+        allTime: sql<string>`COALESCE(SUM(${prospectServiceVisitsTable.price}), 0)`,
+        thisYear: sql<string>`COALESCE(SUM(CASE WHEN EXTRACT(YEAR FROM ${prospectServiceVisitsTable.servicedAt}::date) = ${yr} THEN ${prospectServiceVisitsTable.price} ELSE 0 END), 0)`,
+        thisMonth: sql<string>`COALESCE(SUM(CASE WHEN EXTRACT(YEAR FROM ${prospectServiceVisitsTable.servicedAt}::date) = ${yr} AND EXTRACT(MONTH FROM ${prospectServiceVisitsTable.servicedAt}::date) = ${mo} THEN ${prospectServiceVisitsTable.price} ELSE 0 END), 0)`,
+        visitCount: sql<number>`COUNT(CASE WHEN ${prospectServiceVisitsTable.price} IS NOT NULL THEN 1 END)`,
+      })
+      .from(prospectServiceVisitsTable);
+
+    res.json({
+      allTime: parseFloat(row?.allTime ?? "0"),
+      thisYear: parseFloat(row?.thisYear ?? "0"),
+      thisMonth: parseFloat(row?.thisMonth ?? "0"),
+      visitCount: Number(row?.visitCount ?? 0),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch revenue summary" });
   }
 });
 
