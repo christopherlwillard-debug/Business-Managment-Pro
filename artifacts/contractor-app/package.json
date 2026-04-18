@@ -78,6 +78,8 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^6.2.0",
+    "@stripe/stripe-js": "^9.2.0",
     "@turf/turf": "^7.3.4",
     "heic2any": "^0.0.4",
     "html2pdf.js": "^0.14.0",

@@ -29,6 +29,7 @@ export const invoicesTable = pgTable("invoices", {
   stripePaymentLinkUrl: text("stripe_payment_link_url"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   stripePaidAt: timestamp("stripe_paid_at"),
+  payToken: text("pay_token").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

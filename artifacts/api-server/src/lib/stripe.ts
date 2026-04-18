@@ -15,6 +15,24 @@ export function isStripeConfigured(): boolean {
   return !!process.env["STRIPE_SECRET_KEY"];
 }
 
+export async function createPaymentIntent(opts: {
+  amountCents: number;
+  currency: string;
+  description: string;
+  metadata: Record<string, string>;
+}): Promise<{ id: string; clientSecret: string }> {
+  const stripe = getStripe();
+  const pi = await stripe.paymentIntents.create({
+    amount: opts.amountCents,
+    currency: opts.currency.toLowerCase(),
+    description: opts.description,
+    metadata: opts.metadata,
+    automatic_payment_methods: { enabled: true },
+  });
+  if (!pi.client_secret) throw new Error("Stripe did not return a client_secret");
+  return { id: pi.id, clientSecret: pi.client_secret };
+}
+
 export async function createPaymentLink(opts: {
   amountCents: number;
   currency: string;

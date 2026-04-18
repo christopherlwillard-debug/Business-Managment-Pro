@@ -1,9 +1,10 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import QRCode from "qrcode";
 import { db } from "@workspace/db";
 import { quickChargesTable, settingsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { createPaymentLink, isStripeConfigured } from "../lib/stripe";
+import { createPaymentIntent, isStripeConfigured } from "../lib/stripe";
 
 const router = Router();
 
@@ -32,12 +33,13 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Stripe is not configured. Add STRIPE_SECRET_KEY to your environment." });
     }
 
-    const { label, amount, customerName, customerEmail, notes } = req.body as {
+    const { label, amount, customerName, customerEmail, notes, payPageBaseUrl } = req.body as {
       label: string;
       amount: number;
       customerName?: string | null;
       customerEmail?: string | null;
       notes?: string | null;
+      payPageBaseUrl?: string | null;
     };
 
     if (!label) return res.status(400).json({ error: "Label is required" });
@@ -47,8 +49,6 @@ router.post("/", async (req, res) => {
     const currency = settings?.currency ?? "USD";
     const companyName = settings?.companyName ?? "BuildPro";
 
-    // Insert first to get an ID, then create the payment link with that ID in metadata.
-    // On any Stripe failure, the orphan DB row is cleaned up before re-throwing.
     const [charge] = await db.insert(quickChargesTable).values({
       label,
       amount: amount.toString(),
@@ -58,8 +58,10 @@ router.post("/", async (req, res) => {
       status: "pending",
     }).returning();
 
-    let url: string;
-    let linkId: string;
+    let paymentIntentId: string;
+    let payToken: string;
+    let qrDataUrl: string | null = null;
+
     try {
       const amountCents = Math.round(amount * 100);
       const metadata: Record<string, string> = {
@@ -67,27 +69,28 @@ router.post("/", async (req, res) => {
         charge_label: label,
         quick_charge_id: String(charge.id),
       };
-      const result = await createPaymentLink({
+      const pi = await createPaymentIntent({
         amountCents,
         currency,
-        productName: `${companyName}: ${label}`,
+        description: `${companyName}: ${label}`,
         metadata,
-        customerEmail: customerEmail ?? null,
       });
-      url = result.url;
-      linkId = result.id;
+      paymentIntentId = pi.id;
+      payToken = randomUUID();
+
+      if (payPageBaseUrl) {
+        const payUrl = `${payPageBaseUrl}${payToken}`;
+        qrDataUrl = await QRCode.toDataURL(payUrl, { width: 300, margin: 2 });
+      }
     } catch (stripeErr) {
-      // Clean up the orphan row so no pending charges accumulate
       await db.delete(quickChargesTable).where(eq(quickChargesTable.id, charge.id));
       throw stripeErr;
     }
 
-    const qrDataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 });
-
     const [updated] = await db.update(quickChargesTable)
       .set({
-        stripePaymentLinkId: linkId,
-        stripePaymentLinkUrl: url,
+        stripePaymentIntentId: paymentIntentId,
+        payToken,
         qrCodeDataUrl: qrDataUrl,
       })
       .where(eq(quickChargesTable.id, charge.id))

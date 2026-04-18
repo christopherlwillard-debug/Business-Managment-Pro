@@ -12,7 +12,7 @@ import {
   useListMaterialLists,
   useAttachMaterialListToInvoice,
   useListMaterials,
-  useCreateInvoicePaymentLink,
+  useCreateInvoicePaySession,
   Invoice,
   InvoiceAttachment,
   type MaterialList,
@@ -737,7 +737,7 @@ export default function Invoices() {
   const updateStatus            = useUpdateInvoiceStatus();
   const deleteInvoice           = useDeleteInvoice();
   const attachMaterialList      = useAttachMaterialListToInvoice();
-  const createPaymentLink       = useCreateInvoicePaymentLink();
+  const createPaymentLink       = useCreateInvoicePaySession();
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string } | null>(null);
   const [generatingLinkId, setGeneratingLinkId] = useState<number | null>(null);
@@ -745,8 +745,10 @@ export default function Invoices() {
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
     setGeneratingLinkId(invoiceId);
     try {
-      const result = await createPaymentLink.mutateAsync(invoiceId);
-      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber });
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const payPageBaseUrl = `${window.location.origin}${base}/pay/`;
+      const result = await createPaymentLink.mutateAsync({ id: invoiceId, payPageBaseUrl });
+      setPaymentLinkResult({ url: result.payUrl, invoiceNumber });
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to create payment link";
@@ -1053,12 +1055,16 @@ export default function Invoices() {
                             className="text-muted-foreground hover:text-primary transition-colors" title="View invoice">
                             <Eye className="w-4 h-4" />
                           </button>
-                          {inv.status !== "paid" && inv.status !== "cancelled" && (
-                            inv.stripePaymentLinkUrl ? (
+                          {inv.status !== "paid" && inv.status !== "cancelled" && (() => {
+                            const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                            const payUrl = inv.payToken
+                              ? `${window.location.origin}${base}/pay/${inv.payToken}`
+                              : inv.stripePaymentLinkUrl ?? null;
+                            return payUrl ? (
                               <button
                                 onClick={() => {
-                                  navigator.clipboard.writeText(inv.stripePaymentLinkUrl);
-                                  setPaymentLinkResult({ url: inv.stripePaymentLinkUrl, invoiceNumber: inv.invoiceNumber });
+                                  navigator.clipboard.writeText(payUrl);
+                                  setPaymentLinkResult({ url: payUrl, invoiceNumber: inv.invoiceNumber });
                                 }}
                                 className="text-emerald-600 hover:text-emerald-700 transition-colors"
                                 title="Copy payment link"
@@ -1077,8 +1083,8 @@ export default function Invoices() {
                                   : <CreditCard className="w-4 h-4" />
                                 }
                               </button>
-                            )
-                          )}
+                            );
+                          })()}
                           <button onClick={() => setDeleteTarget(inv)}
                             className="text-muted-foreground hover:text-destructive transition-colors" title="Delete invoice">
                             <Trash2 className="w-4 h-4" />

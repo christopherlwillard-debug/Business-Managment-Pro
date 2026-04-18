@@ -310,3 +310,15 @@ pool.query(\`
 \`).then(() => { console.log('prospect_events table and indexes ensured'); pool.end(); })
   .catch(e => { console.error('prospect_events migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #190: add pay_token columns to invoices and quick_charges
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_token text')
+  .then(() => pool.query('CREATE UNIQUE INDEX IF NOT EXISTS invoices_pay_token_unique ON invoices (pay_token) WHERE pay_token IS NOT NULL'))
+  .then(() => pool.query('ALTER TABLE quick_charges ADD COLUMN IF NOT EXISTS pay_token text'))
+  .then(() => pool.query('CREATE UNIQUE INDEX IF NOT EXISTS quick_charges_pay_token_unique ON quick_charges (pay_token) WHERE pay_token IS NOT NULL'))
+  .then(() => { console.log('pay_token columns ensured'); pool.end(); })
+  .catch(e => { console.error('pay_token migration error:', e.message); pool.end(); process.exit(1); });
+")

@@ -14,6 +14,7 @@ export const quickChargesTable = pgTable("quick_charges", {
   stripePriceId: text("stripe_price_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   stripeSessionId: text("stripe_session_id"),
+  payToken: text("pay_token").unique(),
   status: text("status").notNull().default("pending"),
   paidAt: timestamp("paid_at"),
   qrCodeDataUrl: text("qr_code_data_url"),

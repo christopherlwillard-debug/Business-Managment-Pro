@@ -49,6 +49,7 @@ import stripeInvoiceRouter from "./stripe-invoice";
 import quickChargesRouter from "./quick-charges";
 import stripeDepositRouter from "./stripe-deposit";
 import stripeStatusRouter from "./stripe-status";
+import payPublicRouter from "./pay-public";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -152,6 +153,7 @@ router.use(healthRouter);
 router.use(authRouter);
 
 router.use("/portal", portalRouter);
+router.use("/pay", payPublicRouter);
 router.use(requireAuth);
 router.use(requireAccess);
 

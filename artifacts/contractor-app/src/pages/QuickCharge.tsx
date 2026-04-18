@@ -13,12 +13,20 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function getPayUrl(charge: QuickCharge): string | null {
+  if (!charge.payToken) return charge.stripePaymentLinkUrl ?? null;
+  return `${window.location.origin}${BASE}/pay/${charge.payToken}`;
+}
+
 function QrModal({ charge, onClose }: { charge: QuickCharge; onClose: () => void }) {
   const { toast } = useToast();
+  const payUrl = getPayUrl(charge);
 
   function copyLink() {
-    if (charge.stripePaymentLinkUrl) {
-      navigator.clipboard.writeText(charge.stripePaymentLinkUrl);
+    if (payUrl) {
+      navigator.clipboard.writeText(payUrl);
       toast({ title: "Link copied!" });
     }
   }
@@ -46,7 +54,7 @@ function QrModal({ charge, onClose }: { charge: QuickCharge; onClose: () => void
                 alt="Payment QR Code"
                 className="w-56 h-56 rounded-xl border border-gray-100 shadow-sm"
               />
-              <p className="text-xs text-gray-500 text-center">Scan with your phone to pay</p>
+              <p className="text-xs text-gray-500 text-center">Scan with your phone to pay — no account needed</p>
             </div>
           ) : (
             <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
@@ -55,7 +63,7 @@ function QrModal({ charge, onClose }: { charge: QuickCharge; onClose: () => void
           )}
 
           <div className="mt-4 space-y-2">
-            {charge.stripePaymentLinkUrl && (
+            {payUrl && (
               <>
                 <button
                   onClick={copyLink}
@@ -65,7 +73,7 @@ function QrModal({ charge, onClose }: { charge: QuickCharge; onClose: () => void
                   Copy Payment Link
                 </button>
                 <a
-                  href={charge.stripePaymentLinkUrl}
+                  href={payUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors"
@@ -136,14 +144,16 @@ export default function QuickCharge() {
       return;
     }
     try {
+      const payPageBaseUrl = `${window.location.origin}${BASE}/pay/`;
       const charge = await createMutation.mutateAsync({
         label: form.label.trim(),
         amount,
         customerName: form.customerName || null,
         customerEmail: form.customerEmail || null,
         notes: form.notes || null,
+        payPageBaseUrl,
       });
-      toast({ title: "Payment link created!" });
+      toast({ title: "Pay link created!" });
       setShowForm(false);
       setForm({ label: "", amount: "", customerName: "", customerEmail: "", notes: "" });
       setQrCharge(charge);
@@ -171,7 +181,7 @@ export default function QuickCharge() {
             Quick Charge
           </h1>
           <p className="text-muted-foreground mt-1">
-            Generate a Stripe payment link instantly — no invoice needed
+            Generate a payment link instantly — customers pay without creating an account
           </p>
         </div>
         <button
@@ -301,88 +311,91 @@ export default function QuickCharge() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {charges.map((c) => (
-            <Card key={c.id} className="border border-border hover:shadow-md transition-shadow">
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground text-sm truncate">{c.label}</p>
-                    {c.customerName && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{c.customerName}</p>
-                    )}
+          {charges.map((c) => {
+            const payUrl = getPayUrl(c);
+            return (
+              <Card key={c.id} className="border border-border hover:shadow-md transition-shadow">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground text-sm truncate">{c.label}</p>
+                      {c.customerName && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{c.customerName}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      {(c.qrCodeDataUrl || payUrl) && (
+                        <button
+                          onClick={() => setQrCharge(c)}
+                          className="p-1.5 rounded text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                          title="Show QR / payment link"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(c.id)}
+                        className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => setQrCharge(c)}
-                      className="p-1.5 rounded text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                      title="Show QR code"
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(c.id)}
-                      className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
-                      c.status === "paid"
-                        ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                        : "bg-amber-100 text-amber-700 border-amber-200"
-                    }`}>
-                      {c.status === "paid"
-                        ? <><CheckCircle2 className="w-3 h-3" /> Paid</>
-                        : <><Clock className="w-3 h-3" /> Pending</>
-                      }
-                    </span>
-                    {c.status === "paid" && c.paidAt && (
-                      <span className="text-[10px] text-emerald-600 font-medium pl-0.5">
-                        {formatDate(c.paidAt)}
-                      </span>
-                    )}
-                  </div>
-                  <span className="flex items-center gap-1 text-sm font-bold text-foreground">
-                    <DollarSign className="w-3.5 h-3.5 text-amber-500" />
-                    {formatCurrency(c.amount)}
-                  </span>
-                </div>
-
-                {c.stripePaymentLinkUrl && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        if (c.stripePaymentLinkUrl) {
-                          navigator.clipboard.writeText(c.stripePaymentLinkUrl);
-                          toast({ title: "Link copied!" });
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
+                        c.status === "paid"
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                          : "bg-amber-100 text-amber-700 border-amber-200"
+                      }`}>
+                        {c.status === "paid"
+                          ? <><CheckCircle2 className="w-3 h-3" /> Paid</>
+                          : <><Clock className="w-3 h-3" /> Pending</>
                         }
-                      }}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold hover:bg-amber-600 transition-colors"
-                    >
-                      <Copy className="w-3 h-3" />
-                      Copy Link
-                    </button>
-                    <a
-                      href={c.stripePaymentLinkUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                      </span>
+                      {c.status === "paid" && c.paidAt && (
+                        <span className="text-[10px] text-emerald-600 font-medium pl-0.5">
+                          {formatDate(c.paidAt)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="flex items-center gap-1 text-sm font-bold text-foreground">
+                      <DollarSign className="w-3.5 h-3.5 text-amber-500" />
+                      {formatCurrency(c.amount)}
+                    </span>
                   </div>
-                )}
 
-                {c.notes && (
-                  <p className="text-xs text-muted-foreground border-t border-border pt-2 line-clamp-1">{c.notes}</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  {payUrl && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(payUrl);
+                          toast({ title: "Link copied!" });
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold hover:bg-amber-600 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                        Copy Link
+                      </button>
+                      <a
+                        href={payUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+
+                  {c.notes && (
+                    <p className="text-xs text-muted-foreground border-t border-border pt-2 line-clamp-1">{c.notes}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

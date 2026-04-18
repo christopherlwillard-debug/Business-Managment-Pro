@@ -10,6 +10,8 @@ export interface QuickCharge {
   notes?: string | null;
   stripePaymentLinkId?: string | null;
   stripePaymentLinkUrl?: string | null;
+  stripePaymentIntentId?: string | null;
+  payToken?: string | null;
   qrCodeDataUrl?: string | null;
   status: string;
   paidAt?: string | null;
@@ -50,10 +52,14 @@ export function useListQuickCharges() {
   });
 }
 
+export interface CreateQuickChargeRequestWithBase extends CreateQuickChargeRequest {
+  payPageBaseUrl?: string | null;
+}
+
 export function useCreateQuickCharge() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateQuickChargeRequest) =>
+    mutationFn: (data: CreateQuickChargeRequestWithBase) =>
       customFetch<QuickCharge>("/api/quick-charges", {
         method: "POST",
         body: JSON.stringify(data),
@@ -101,6 +107,26 @@ export function useStripeStatus() {
     queryKey: ["/api/stripe/status"],
     queryFn: () => customFetch<StripeStatus>("/api/stripe/status", { method: "GET" }),
     staleTime: 60_000,
+  });
+}
+
+export interface CreatePaySessionResponse {
+  payUrl: string;
+  payToken: string;
+}
+
+export function useCreateInvoicePaySession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payPageBaseUrl }: { id: number; payPageBaseUrl: string }) =>
+      customFetch<CreatePaySessionResponse>(`/api/invoices/${id}/pay-session`, {
+        method: "POST",
+        body: JSON.stringify({ payPageBaseUrl }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/invoices"] });
+    },
   });
 }
 
