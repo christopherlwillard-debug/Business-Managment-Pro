@@ -976,8 +976,23 @@ export interface ProspectStatusEvent {
   createdAt: string;
 }
 
+export interface ProspectServiceVisit {
+  id: number;
+  servicedAt: string;
+  notes?: string | null;
+  price?: number | null;
+  createdAt: string;
+}
+
+export interface AddServiceVisitRequest {
+  servicedAt: string;
+  notes?: string | null;
+  price?: number | null;
+}
+
 export interface ProspectDetail extends Prospect {
   statusHistory: ProspectStatusEvent[];
+  serviceVisits: ProspectServiceVisit[];
 }
 
 export type AssetType = (typeof AssetType)[keyof typeof AssetType];

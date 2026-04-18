@@ -8,10 +8,12 @@ import type {
   ProspectStatus,
   ProspectStatusEvent,
   ProspectDetail,
+  ProspectServiceVisit,
+  AddServiceVisitRequest,
 } from "../generated/api.schemas";
 
 export type { Prospect, CreateProspectRequest, UpdateProspectRequest, ListProspectsParams, ProspectStatus };
-export type { ProspectStatusEvent, ProspectDetail };
+export type { ProspectStatusEvent, ProspectDetail, ProspectServiceVisit, AddServiceVisitRequest };
 export { ProspectStatus as ProspectStatusEnum } from "../generated/api.schemas";
 export { ProspectPropertyType as ProspectPropertyTypeEnum } from "../generated/api.schemas";
 export type { ProspectPropertyType } from "../generated/api.schemas";
@@ -66,6 +68,22 @@ export function useDeleteProspect() {
     mutationFn: (id: number) =>
       customFetch(`/api/prospects/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/prospects"] }),
+  });
+}
+
+export function useAddProspectServiceVisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: AddServiceVisitRequest & { id: number }) =>
+      customFetch<ProspectDetail>(`/api/prospects/${id}/service-visits`, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["/api/prospects"] });
+      qc.invalidateQueries({ queryKey: ["/api/prospects", variables.id] });
+    },
   });
 }
 

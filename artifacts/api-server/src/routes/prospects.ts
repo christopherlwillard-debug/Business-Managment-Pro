@@ -5,6 +5,7 @@ import {
   estimatesTable,
   clientsTable,
   prospectEventsTable,
+  prospectServiceVisitsTable,
   PROSPECT_PROPERTY_TYPES,
   PROSPECT_STATUSES,
   type Prospect as ProspectRow,
@@ -111,11 +112,10 @@ router.get("/:id", async (req, res) => {
 
     if (!p) return res.status(404).json({ error: "Prospect not found" });
 
-    const events = await db
-      .select()
-      .from(prospectEventsTable)
-      .where(eq(prospectEventsTable.prospectId, id))
-      .orderBy(desc(prospectEventsTable.createdAt));
+    const [events, visits] = await Promise.all([
+      db.select().from(prospectEventsTable).where(eq(prospectEventsTable.prospectId, id)).orderBy(desc(prospectEventsTable.createdAt)),
+      db.select().from(prospectServiceVisitsTable).where(eq(prospectServiceVisitsTable.prospectId, id)).orderBy(desc(prospectServiceVisitsTable.servicedAt)),
+    ]);
 
     const formatted = {
       ...format(p as ProspectWithEstimate),
@@ -125,6 +125,13 @@ router.get("/:id", async (req, res) => {
         oldValue: e.oldValue ?? null,
         newValue: e.newValue ?? null,
         createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+      })),
+      serviceVisits: visits.map((v) => ({
+        id: v.id,
+        servicedAt: v.servicedAt,
+        notes: v.notes ?? null,
+        price: v.price != null ? parseFloat(v.price) : null,
+        createdAt: v.createdAt instanceof Date ? v.createdAt.toISOString() : v.createdAt,
       })),
     };
 
@@ -312,6 +319,93 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete prospect" });
+  }
+});
+
+router.post("/:id/service-visits", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+
+    const body = req.body as {
+      servicedAt: string;
+      notes?: string | null;
+      price?: number | null;
+    };
+
+    if (!body.servicedAt) return res.status(400).json({ error: "servicedAt is required" });
+
+    const [existing] = await db
+      .select({ status: prospectsTable.status })
+      .from(prospectsTable)
+      .where(eq(prospectsTable.id, id));
+
+    if (!existing) return res.status(404).json({ error: "Prospect not found" });
+
+    const serviceDate = new Date(body.servicedAt + "T00:00:00");
+    const followUpDate = new Date(serviceDate);
+    followUpDate.setMonth(followUpDate.getMonth() + 30);
+    const followUpStr = followUpDate.toISOString().slice(0, 10);
+
+    await db.transaction(async (tx) => {
+      await tx.insert(prospectServiceVisitsTable).values({
+        prospectId: id,
+        servicedAt: body.servicedAt,
+        notes: body.notes ?? null,
+        price: body.price != null ? body.price.toString() : null,
+      });
+
+      const prospectPatch: Partial<typeof prospectsTable.$inferInsert> & { updatedAt: Date } = {
+        updatedAt: new Date(),
+        servicedAt: body.servicedAt,
+        followUpDate: followUpStr,
+      };
+      if (existing.status !== "serviced") {
+        prospectPatch.status = "serviced";
+      }
+      await tx.update(prospectsTable).set(prospectPatch).where(eq(prospectsTable.id, id));
+
+      if (existing.status !== "serviced") {
+        await tx.insert(prospectEventsTable).values({
+          prospectId: id,
+          type: "status_change",
+          oldValue: existing.status,
+          newValue: "serviced",
+        });
+      }
+      await tx.insert(prospectEventsTable).values({
+        prospectId: id,
+        type: "service_visit_added",
+        newValue: body.servicedAt,
+      });
+    });
+
+    const [[p], visits, events] = await Promise.all([
+      db.select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+        .from(prospectsTable)
+        .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
+        .where(eq(prospectsTable.id, id)),
+      db.select().from(prospectServiceVisitsTable).where(eq(prospectServiceVisitsTable.prospectId, id)).orderBy(desc(prospectServiceVisitsTable.servicedAt)),
+      db.select().from(prospectEventsTable).where(eq(prospectEventsTable.prospectId, id)).orderBy(desc(prospectEventsTable.createdAt)),
+    ]);
+
+    if (!p) return res.status(404).json({ error: "Prospect not found" });
+
+    res.status(201).json({
+      ...format(p as ProspectWithEstimate),
+      statusHistory: events.map((e) => ({
+        id: e.id, type: e.type, oldValue: e.oldValue ?? null, newValue: e.newValue ?? null,
+        createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+      })),
+      serviceVisits: visits.map((v) => ({
+        id: v.id, servicedAt: v.servicedAt, notes: v.notes ?? null,
+        price: v.price != null ? parseFloat(v.price) : null,
+        createdAt: v.createdAt instanceof Date ? v.createdAt.toISOString() : v.createdAt,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to add service visit" });
   }
 });
 

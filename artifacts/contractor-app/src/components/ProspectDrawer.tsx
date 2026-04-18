@@ -3,6 +3,7 @@ import {
   useUpdateProspect,
   useGetProspect,
   useCreateProspectDepositLink,
+  useAddProspectServiceVisit,
   type Prospect,
   type ProspectDetail,
   type ProspectStatus,
@@ -228,10 +229,11 @@ interface ProspectDrawerProps {
 export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAddressMap, onAddToRoute }: ProspectDrawerProps) {
   const updateMutation = useUpdateProspect();
   const depositLinkMutation = useCreateProspectDepositLink();
+  const addVisitMutation = useAddProspectServiceVisit();
   const { toast } = useToast();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
 
-  const detail: (Prospect & { statusHistory?: ProspectDetail["statusHistory"] }) | null = detailQuery.data ?? prospect;
+  const detail: (Prospect & { statusHistory?: ProspectDetail["statusHistory"]; serviceVisits?: ProspectDetail["serviceVisits"] }) | null = detailQuery.data ?? prospect;
 
   const [showDepositInput, setShowDepositInput] = useState(false);
   const [depositAmtStr, setDepositAmtStr] = useState("50");
@@ -241,7 +243,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
 
   const [showServicePanel, setShowServicePanel] = useState(false);
   const [serviceDateStr, setServiceDateStr] = useState(new Date().toISOString().slice(0, 10));
-  const [isMarkingServiced, setIsMarkingServiced] = useState(false);
+  const [serviceNotes, setServiceNotes] = useState("");
 
   const [showRouteInput, setShowRouteInput] = useState(false);
   const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));
@@ -255,6 +257,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setNewDepositUrl(null);
       setShowServicePanel(false);
       setServiceDateStr(new Date().toISOString().slice(0, 10));
+      setServiceNotes("");
       setShowRouteInput(false);
       setRouteDateStr(new Date().toISOString().slice(0, 10));
     }
@@ -317,17 +320,23 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   };
 
   const handleMarkServiced = async () => {
-    setIsMarkingServiced(true);
     try {
-      await updateMutation.mutateAsync({ id: prospect.id, status: "serviced", servicedAt: serviceDateStr });
-      toast({ title: "Job marked as serviced", description: "Resealing follow-up date has been set automatically." });
+      await addVisitMutation.mutateAsync({
+        id: prospect.id,
+        servicedAt: serviceDateStr,
+        notes: serviceNotes.trim() || null,
+      });
+      const isFirstVisit = (detail?.serviceVisits?.length ?? 0) === 0;
+      toast({
+        title: isFirstVisit ? "Job marked as serviced" : "Visit recorded",
+        description: "Resealing follow-up date has been updated automatically.",
+      });
       setShowServicePanel(false);
+      setServiceNotes("");
       detailQuery.refetch();
       onUpdated();
     } catch {
-      toast({ title: "Error marking as serviced", variant: "destructive" });
-    } finally {
-      setIsMarkingServiced(false);
+      toast({ title: "Error recording service visit", variant: "destructive" });
     }
   };
 
@@ -412,30 +421,54 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
 
         <div className="px-6 py-5 space-y-6">
 
-          {/* Serviced Job Info — shown when job is complete */}
+          {/* Service History — shown when job has been serviced at least once */}
           {p.status === "serviced" && (
             <section className="space-y-2.5">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <BadgeCheck className="w-3.5 h-3.5" />
-                Job Record
+                Service History
               </h3>
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-indigo-900">
-                  <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-                  Job completed{p.servicedAt ? ` — ${formatDate(p.servicedAt)}` : ""}
+              {p.followUpDate && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-700">
+                  <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
+                  Next reseal due: <span className="font-semibold ml-0.5">{formatDate(p.followUpDate)}</span>
                 </div>
-                {p.followUpDate && (
-                  <div className="flex items-center gap-2 text-xs text-indigo-700">
-                    <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
-                    Reseal follow-up: <span className="font-medium ml-0.5">{formatDate(p.followUpDate)}</span>
-                  </div>
-                )}
-              </div>
+              )}
+              {detail?.serviceVisits && detail.serviceVisits.length > 0 ? (
+                <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
+                  {detail.serviceVisits.map((v, i) => (
+                    <div key={v.id} className="px-4 py-3 flex items-start gap-3">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">
+                            {formatDate(v.servicedAt)}
+                          </p>
+                          {i === 0 && (
+                            <span className="text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">Most recent</span>
+                          )}
+                        </div>
+                        {v.notes && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{v.notes}</p>
+                        )}
+                        {v.price != null && (
+                          <p className="text-xs text-emerald-700 font-medium mt-0.5">{formatCurrency(v.price)}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : p.servicedAt ? (
+                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 flex items-center gap-3">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                  <p className="text-sm font-medium text-foreground">Job completed — {formatDate(p.servicedAt)}</p>
+                </div>
+              ) : null}
             </section>
           )}
 
           {/* Actions Section */}
-          {(showDepositActions || p.depositPaidAt || p.status === "won") && (
+          {(showDepositActions || p.depositPaidAt || p.status === "won" || p.status === "serviced") && (
             <section className="space-y-2.5">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <CreditCard className="w-3.5 h-3.5" />
@@ -524,35 +557,44 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 </div>
               ) : null}
 
-              {/* Mark as Serviced */}
-              {p.status === "won" && !showServicePanel && (
+              {/* Mark as Serviced / Record Another Visit */}
+              {(p.status === "won" || p.status === "serviced") && !showServicePanel && (
                 <button
-                  onClick={() => { setShowServicePanel(true); setServiceDateStr(new Date().toISOString().slice(0, 10)); }}
+                  onClick={() => { setShowServicePanel(true); setServiceDateStr(new Date().toISOString().slice(0, 10)); setServiceNotes(""); }}
                   className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
                 >
                   <BadgeCheck className="w-3.5 h-3.5" />
-                  Mark as Serviced
+                  {p.status === "serviced" ? "Record Another Visit" : "Mark as Serviced"}
                 </button>
               )}
 
-              {/* Mark as Serviced panel */}
+              {/* Service visit panel */}
               {showServicePanel && (
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2.5">
-                  <p className="text-sm font-medium text-indigo-900">Confirm service date</p>
-                  <p className="text-xs text-indigo-700">Recording this will set a resealing follow-up ~2.5 years out.</p>
+                  <p className="text-sm font-medium text-indigo-900">
+                    {p.status === "serviced" ? "Record another service visit" : "Confirm service date"}
+                  </p>
+                  <p className="text-xs text-indigo-700">Recording this will update the resealing follow-up to ~2.5 years out.</p>
                   <input
                     type="date"
                     value={serviceDateStr}
                     onChange={(e) => setServiceDateStr(e.target.value)}
                     className="w-full px-2.5 py-1.5 text-sm border border-indigo-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400/30 bg-background"
                   />
+                  <input
+                    type="text"
+                    value={serviceNotes}
+                    onChange={(e) => setServiceNotes(e.target.value)}
+                    placeholder="Notes (optional)"
+                    className="w-full px-2.5 py-1.5 text-sm border border-indigo-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400/30 bg-background"
+                  />
                   <div className="flex gap-2">
                     <button
                       onClick={handleMarkServiced}
-                      disabled={isMarkingServiced}
+                      disabled={addVisitMutation.isPending}
                       className="flex-1 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors"
                     >
-                      {isMarkingServiced ? "Saving…" : "Confirm"}
+                      {addVisitMutation.isPending ? "Saving…" : "Confirm"}
                     </button>
                     <button
                       onClick={() => setShowServicePanel(false)}
@@ -738,6 +780,19 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                         <ExternalLink className="w-3.5 h-3.5 text-violet-600 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-foreground">Payment link created</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (event.type === "service_visit_added") {
+                    return (
+                      <div key={event.id} className="px-4 py-3 flex items-center gap-3">
+                        <BadgeCheck className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            Service visit recorded{event.newValue ? ` — ${formatDate(event.newValue)}` : ""}
+                          </p>
                           <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
                         </div>
                       </div>
