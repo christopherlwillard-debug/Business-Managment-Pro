@@ -616,6 +616,19 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                   <p className="text-sm font-medium text-foreground">Job completed — {formatDate(p.servicedAt)}</p>
                 </div>
               ) : null}
+              {(() => {
+                const totalEarned = detail?.serviceVisits?.reduce(
+                  (sum, v) => sum + (v.price != null ? Number(v.price) : 0),
+                  0,
+                ) ?? 0;
+                if (totalEarned <= 0) return null;
+                return (
+                  <div className="flex items-center justify-between px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Total earned</span>
+                    <span className="text-sm font-bold text-emerald-700">{formatCurrency(totalEarned)}</span>
+                  </div>
+                );
+              })()}
             </section>
           )}
 
