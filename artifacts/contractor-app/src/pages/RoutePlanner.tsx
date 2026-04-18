@@ -412,8 +412,8 @@ export default function RoutePlanner() {
     : `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "MMM d")}`;
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-130px)] gap-0 -m-4 sm:-m-6 lg:-m-8 overflow-hidden">
-      <div className="w-full lg:w-[360px] flex-shrink-0 flex flex-col bg-card border-r border-border overflow-y-auto">
+    <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-130px)] gap-0 -m-4 sm:-m-6 lg:-m-8 lg:overflow-hidden">
+      <div className="w-full lg:w-[360px] lg:flex-shrink-0 flex flex-col bg-card border-b lg:border-b-0 lg:border-r border-border lg:overflow-y-auto">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-primary text-primary-foreground">
           <div className="flex items-center gap-2">
             <Route className="w-5 h-5" />
@@ -654,7 +654,7 @@ export default function RoutePlanner() {
         </div>
       </div>
 
-      <div className="flex-1 relative min-h-[400px] lg:min-h-0">
+      <div className="relative h-[320px] lg:flex-1 lg:h-auto">
         <MapContainer
           center={mapCenter}
           zoom={12}
