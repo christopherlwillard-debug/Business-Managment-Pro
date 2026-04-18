@@ -247,6 +247,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [showServicePanel, setShowServicePanel] = useState(false);
   const [serviceDateStr, setServiceDateStr] = useState(new Date().toISOString().slice(0, 10));
   const [serviceNotes, setServiceNotes] = useState("");
+  const [servicePriceStr, setServicePriceStr] = useState("");
 
   const [showRouteInput, setShowRouteInput] = useState(false);
   const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));
@@ -263,6 +264,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setShowServicePanel(false);
       setServiceDateStr(new Date().toISOString().slice(0, 10));
       setServiceNotes("");
+      setServicePriceStr("");
       setShowRouteInput(false);
       setRouteDateStr(new Date().toISOString().slice(0, 10));
       setConfirmDeleteVisitId(null);
@@ -327,10 +329,12 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
 
   const handleMarkServiced = async () => {
     try {
+      const parsedPrice = servicePriceStr.trim() !== "" ? parseFloat(servicePriceStr) : null;
       await addVisitMutation.mutateAsync({
         id: prospect.id,
         servicedAt: serviceDateStr,
         notes: serviceNotes.trim() || null,
+        price: parsedPrice != null && !isNaN(parsedPrice) ? parsedPrice : null,
       });
       const isFirstVisit = (detail?.serviceVisits?.length ?? 0) === 0;
       toast({
@@ -339,6 +343,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       });
       setShowServicePanel(false);
       setServiceNotes("");
+      setServicePriceStr("");
       detailQuery.refetch();
       onUpdated();
     } catch {
@@ -605,7 +610,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
               {/* Mark as Serviced / Record Another Visit */}
               {(p.status === "won" || p.status === "serviced") && !showServicePanel && (
                 <button
-                  onClick={() => { setShowServicePanel(true); setServiceDateStr(new Date().toISOString().slice(0, 10)); setServiceNotes(""); }}
+                  onClick={() => { setShowServicePanel(true); setServiceDateStr(new Date().toISOString().slice(0, 10)); setServiceNotes(""); setServicePriceStr(""); }}
                   className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
                 >
                   <BadgeCheck className="w-3.5 h-3.5" />
@@ -633,6 +638,18 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                     placeholder="Notes (optional)"
                     className="w-full px-2.5 py-1.5 text-sm border border-indigo-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400/30 bg-background"
                   />
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={servicePriceStr}
+                      onChange={(e) => setServicePriceStr(e.target.value)}
+                      placeholder="Amount charged (optional)"
+                      className="w-full pl-6 pr-2.5 py-1.5 text-sm border border-indigo-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400/30 bg-background"
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={handleMarkServiced}
@@ -642,7 +659,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                       {addVisitMutation.isPending ? "Saving…" : "Confirm"}
                     </button>
                     <button
-                      onClick={() => setShowServicePanel(false)}
+                      onClick={() => { setShowServicePanel(false); setServicePriceStr(""); }}
                       className="flex-1 px-3 py-1.5 border border-border text-sm rounded-md hover:bg-muted transition-colors"
                     >
                       Cancel
