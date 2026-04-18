@@ -175,7 +175,7 @@ export default function Prospects() {
 
   const { data: prospects = [], isLoading, refetch } = useListProspects();
   const { data: estimates = [] } = useListEstimates();
-  const { data: revenue } = useProspectRevenueSummary();
+  const { data: revenue, isLoading: revenueLoading } = useProspectRevenueSummary();
   const createMutation = useCreateProspect();
   const updateMutation = useUpdateProspect();
   const deleteMutation = useDeleteProspect();
@@ -364,9 +364,13 @@ export default function Prospects() {
               <TrendingUp className="w-3 h-3" />
               {label}
             </span>
-            <span className="text-lg sm:text-xl font-bold text-foreground tabular-nums">
-              {formatCurrency(value)}
-            </span>
+            {revenueLoading ? (
+              <div className="h-7 w-20 bg-muted animate-pulse rounded mt-0.5" />
+            ) : (
+              <span className="text-lg sm:text-xl font-bold text-foreground tabular-nums">
+                {formatCurrency(value)}
+              </span>
+            )}
           </div>
         ))}
       </div>
