@@ -212,7 +212,8 @@ export default function Prospects() {
   const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));
   const [addingToRouteId, setAddingToRouteId] = useState<number | null>(null);
 
-  async function handleAddToRoute(p: Prospect) {
+  async function handleAddToRoute(p: Prospect, date?: string) {
+    const effectiveDate = date ?? routeDateStr;
     setAddingToRouteId(p.id);
     try {
       const fullAddress = buildFullAddress(p);
@@ -223,12 +224,12 @@ export default function Prospects() {
         body: JSON.stringify({
           title: p.contactName ?? p.address,
           address: fullAddress,
-          scheduledDate: routeDateStr,
+          scheduledDate: effectiveDate,
           status: "scheduled",
         }),
       });
       if (!res.ok) throw new Error("Failed");
-      toast({ title: "Added to Route Plan", description: `${p.address} scheduled for ${routeDateStr}. Open Route Planner to optimize.` });
+      toast({ title: "Added to Route Plan", description: `${p.address} scheduled for ${effectiveDate}. Open Route Planner to optimize.` });
       setRouteTargetId(null);
       queryClient.invalidateQueries({ queryKey: ["route-stops-upcoming"] });
     } catch {
@@ -619,6 +620,7 @@ export default function Prospects() {
         onClose={() => setDrawerProspectId(null)}
         onUpdated={() => refetch()}
         scheduledAddressMap={scheduledAddressMap}
+        onAddToRoute={handleAddToRoute}
       />
 
       {/* Create / Edit Dialog */}

@@ -222,9 +222,10 @@ interface ProspectDrawerProps {
   onClose: () => void;
   onUpdated: () => void;
   scheduledAddressMap?: Map<string, string>;
+  onAddToRoute?: (p: Prospect, date: string) => Promise<void>;
 }
 
-export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAddressMap }: ProspectDrawerProps) {
+export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAddressMap, onAddToRoute }: ProspectDrawerProps) {
   const updateMutation = useUpdateProspect();
   const depositLinkMutation = useCreateProspectDepositLink();
   const { toast } = useToast();
@@ -242,6 +243,10 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [serviceDateStr, setServiceDateStr] = useState(new Date().toISOString().slice(0, 10));
   const [isMarkingServiced, setIsMarkingServiced] = useState(false);
 
+  const [showRouteInput, setShowRouteInput] = useState(false);
+  const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));
+  const [addingToRoute, setAddingToRoute] = useState(false);
+
   useEffect(() => {
     if (!open) {
       setShowDepositInput(false);
@@ -250,6 +255,8 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setNewDepositUrl(null);
       setShowServicePanel(false);
       setServiceDateStr(new Date().toISOString().slice(0, 10));
+      setShowRouteInput(false);
+      setRouteDateStr(new Date().toISOString().slice(0, 10));
     }
   }, [open]);
 
@@ -327,6 +334,17 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const copyDepositLink = (url: string) => {
     navigator.clipboard.writeText(url);
     toast({ title: "Deposit link copied!" });
+  };
+
+  const handleRouteAdd = async () => {
+    if (!onAddToRoute || !prospect) return;
+    setAddingToRoute(true);
+    try {
+      await onAddToRoute(prospect, routeDateStr);
+      setShowRouteInput(false);
+    } finally {
+      setAddingToRoute(false);
+    }
   };
 
   const p = detail ?? prospect;
@@ -544,6 +562,56 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                     </button>
                   </div>
                 </div>
+              )}
+            </section>
+          )}
+
+          {/* Route Plan Section */}
+          {onAddToRoute && (
+            <section className="space-y-2.5">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Route className="w-3.5 h-3.5" />
+                Route Plan
+              </h3>
+              {scheduledDate ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-lg text-sm font-medium text-green-800">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  Already Scheduled — {formatShortDate(scheduledDate)}
+                </div>
+              ) : showRouteInput ? (
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                  <p className="text-xs font-medium text-foreground">Pick a date to add this stop</p>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="date"
+                      value={routeDateStr}
+                      onChange={(e) => setRouteDateStr(e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleRouteAdd}
+                      disabled={addingToRoute}
+                      className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-60 transition-colors"
+                    >
+                      {addingToRoute ? "…" : "Add"}
+                    </button>
+                    <button
+                      onClick={() => setShowRouteInput(false)}
+                      className="px-2.5 py-1.5 text-sm text-muted-foreground border border-border rounded-md hover:bg-muted transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setRouteDateStr(new Date().toISOString().slice(0, 10)); setShowRouteInput(true); }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  <Route className="w-3.5 h-3.5" />
+                  Add to Route Plan
+                </button>
               )}
             </section>
           )}
