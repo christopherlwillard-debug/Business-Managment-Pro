@@ -87,6 +87,20 @@ export function useAddProspectServiceVisit() {
   });
 }
 
+export function useDeleteProspectServiceVisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ prospectId, visitId }: { prospectId: number; visitId: number }) =>
+      customFetch<ProspectDetail>(`/api/prospects/${prospectId}/service-visits/${visitId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["/api/prospects"] });
+      qc.invalidateQueries({ queryKey: ["/api/prospects", variables.prospectId] });
+    },
+  });
+}
+
 export function useConvertProspectToClient() {
   const qc = useQueryClient();
   return useMutation({

@@ -4,6 +4,7 @@ import {
   useGetProspect,
   useCreateProspectDepositLink,
   useAddProspectServiceVisit,
+  useDeleteProspectServiceVisit,
   type Prospect,
   type ProspectDetail,
   type ProspectStatus,
@@ -38,6 +39,7 @@ import {
   Link,
   Link2Off,
   Route,
+  Trash2,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -230,6 +232,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const updateMutation = useUpdateProspect();
   const depositLinkMutation = useCreateProspectDepositLink();
   const addVisitMutation = useAddProspectServiceVisit();
+  const deleteVisitMutation = useDeleteProspectServiceVisit();
   const { toast } = useToast();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
 
@@ -249,6 +252,8 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));
   const [addingToRoute, setAddingToRoute] = useState(false);
 
+  const [confirmDeleteVisitId, setConfirmDeleteVisitId] = useState<number | null>(null);
+
   useEffect(() => {
     if (!open) {
       setShowDepositInput(false);
@@ -260,6 +265,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setServiceNotes("");
       setShowRouteInput(false);
       setRouteDateStr(new Date().toISOString().slice(0, 10));
+      setConfirmDeleteVisitId(null);
     }
   }, [open]);
 
@@ -454,7 +460,46 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                         {v.price != null && (
                           <p className="text-xs text-emerald-700 font-medium mt-0.5">{formatCurrency(v.price)}</p>
                         )}
+                        {confirmDeleteVisitId === v.id ? (
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className="text-xs text-destructive">Remove this visit?</span>
+                            <button
+                              onClick={() => {
+                                deleteVisitMutation.mutate(
+                                  { prospectId: p.id, visitId: v.id },
+                                  {
+                                    onSuccess: () => {
+                                      setConfirmDeleteVisitId(null);
+                                      onUpdated();
+                                      toast({ title: "Visit removed", description: "Service visit deleted and dates updated." });
+                                    },
+                                    onError: () => {
+                                      toast({ title: "Error", description: "Failed to delete service visit.", variant: "destructive" });
+                                    },
+                                  }
+                                );
+                              }}
+                              disabled={deleteVisitMutation.isPending}
+                              className="text-xs px-2 py-0.5 bg-destructive text-destructive-foreground rounded hover:opacity-90 transition-opacity"
+                            >
+                              Yes, remove
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteVisitId(null)}
+                              className="text-xs px-2 py-0.5 bg-muted text-muted-foreground rounded hover:bg-muted/80 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
+                      <button
+                        onClick={() => setConfirmDeleteVisitId(confirmDeleteVisitId === v.id ? null : v.id)}
+                        className="flex-shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        title="Delete this visit"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
