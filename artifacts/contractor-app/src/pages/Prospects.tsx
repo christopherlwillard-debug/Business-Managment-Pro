@@ -211,9 +211,7 @@ export default function Prospects() {
 
   const hasLocationFilter = locationSearch.trim().length > 0;
 
-  const filtered = prospects.filter((p) => {
-    if (statusFilter === "follow_up_due" && !isFollowUpDue(p.followUpDate)) return false;
-    if (statusFilter && statusFilter !== "follow_up_due" && p.status !== statusFilter) return false;
+  const locationFiltered = prospects.filter((p) => {
     if (hasLocationFilter) {
       const q = locationSearch.trim().toLowerCase();
       const inCity = p.city?.toLowerCase().includes(q) ?? false;
@@ -221,6 +219,12 @@ export default function Prospects() {
       const inZip = p.zip?.toLowerCase().includes(q) ?? false;
       if (!inCity && !inState && !inZip) return false;
     }
+    return true;
+  });
+
+  const filtered = locationFiltered.filter((p) => {
+    if (statusFilter === "follow_up_due" && !isFollowUpDue(p.followUpDate)) return false;
+    if (statusFilter && statusFilter !== "follow_up_due" && p.status !== statusFilter) return false;
     return true;
   });
 
@@ -326,16 +330,16 @@ export default function Prospects() {
           >
             {opt.label}
             {opt.value === "" && (
-              <span className="ml-1.5 text-xs opacity-70">({prospects.length})</span>
+              <span className="ml-1.5 text-xs opacity-70">({locationFiltered.length})</span>
             )}
             {opt.value === "follow_up_due" && (
               <span className="ml-1.5 text-xs opacity-70">
-                ({prospects.filter((p) => isFollowUpDue(p.followUpDate)).length})
+                ({locationFiltered.filter((p) => isFollowUpDue(p.followUpDate)).length})
               </span>
             )}
             {opt.value !== "" && opt.value !== "follow_up_due" && (
               <span className="ml-1.5 text-xs opacity-70">
-                ({prospects.filter((p) => p.status === opt.value).length})
+                ({locationFiltered.filter((p) => p.status === opt.value).length})
               </span>
             )}
           </button>
