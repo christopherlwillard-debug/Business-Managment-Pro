@@ -270,6 +270,26 @@ router.put("/:id", async (req, res) => {
 
     await db.transaction(async (tx) => {
       await tx.update(prospectsTable).set(patch).where(eq(prospectsTable.id, id));
+      if (isBeingServiced && resolvedServicedAt) {
+        const noVisitsYet = await tx
+          .select({ id: prospectServiceVisitsTable.id })
+          .from(prospectServiceVisitsTable)
+          .where(eq(prospectServiceVisitsTable.prospectId, id))
+          .limit(1);
+        if (noVisitsYet.length === 0) {
+          await tx.insert(prospectServiceVisitsTable).values({
+            prospectId: id,
+            servicedAt: resolvedServicedAt,
+            notes: null,
+            price: null,
+          });
+          await tx.insert(prospectEventsTable).values({
+            prospectId: id,
+            type: "service_visit_added",
+            newValue: resolvedServicedAt,
+          });
+        }
+      }
       if (statusChanged) {
         await tx.insert(prospectEventsTable).values({
           prospectId: id,
