@@ -17,17 +17,41 @@ async function getOrCreateLocation(): Promise<string | null> {
   try {
     const stripe = getStripe();
     const [settings] = await db
-      .select({ companyName: settingsTable.companyName })
+      .select({
+        companyName: settingsTable.companyName,
+        companyAddress: settingsTable.companyAddress,
+        companyCity: settingsTable.companyCity,
+        companyState: settingsTable.companyState,
+        companyZip: settingsTable.companyZip,
+      })
       .from(settingsTable)
       .limit(1);
 
+    const line1 = settings?.companyAddress?.trim() || "";
+    const city = settings?.companyCity?.trim() || "";
+    const state = settings?.companyState?.trim() || "";
+    const postalCode = settings?.companyZip?.trim() || "";
+
+    const missingFields: string[] = [];
+    if (!line1) missingFields.push("address");
+    if (!city) missingFields.push("city");
+    if (!state) missingFields.push("state");
+    if (!postalCode) missingFields.push("zip");
+
+    if (missingFields.length > 0) {
+      console.warn(
+        `[terminal] Business address is incomplete (missing: ${missingFields.join(", ")}). ` +
+          "Falling back to placeholder values. Update Settings to use the real address.",
+      );
+    }
+
     const loc = await stripe.terminal.locations.create({
-      display_name: settings?.companyName || "BuildPro Location",
+      display_name: settings?.companyName?.trim() || "BuildPro Location",
       address: {
-        line1: "123 Main St",
-        city: "Lexington",
-        state: "KY",
-        postal_code: "40502",
+        line1: line1 || "123 Main St",
+        city: city || "Lexington",
+        state: state || "KY",
+        postal_code: postalCode || "40502",
         country: "US",
       },
     });
