@@ -569,6 +569,7 @@ export default function Prospects() {
         open={drawerProspectId != null}
         onClose={() => setDrawerProspectId(null)}
         onUpdated={() => refetch()}
+        scheduledAddressMap={scheduledAddressMap}
       />
 
       {/* Create / Edit Dialog */}

@@ -38,6 +38,7 @@ import {
   UserPlus,
   Link,
   Link2Off,
+  Route,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -206,14 +207,24 @@ function InlineEdit({ label, value, displayValue, type = "text", options, placeh
   );
 }
 
+function buildFullAddress(p: { address: string; city?: string | null; state?: string | null; zip?: string | null }): string {
+  return [p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
+}
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 interface ProspectDrawerProps {
   prospect: Prospect | null;
   open: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  scheduledAddressMap?: Map<string, string>;
 }
 
-export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectDrawerProps) {
+export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAddressMap }: ProspectDrawerProps) {
   const updateMutation = useUpdateProspect();
   const convertMutation = useConvertProspectToClient();
   const depositLinkMutation = useCreateProspectDepositLink();
@@ -311,6 +322,10 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectD
   const p = detail ?? prospect;
   const statusHistory = detailQuery.data?.statusHistory ?? [];
 
+  const scheduledDate = scheduledAddressMap
+    ? (scheduledAddressMap.get(buildFullAddress(p).trim().toLowerCase()) ?? null)
+    : null;
+
   const depositUrl = newDepositUrl ?? p.stripePaymentLinkUrl;
   const showDepositActions = !p.depositPaidAt && (p.roughQuote != null || depositUrl);
   const showRequestBtn = !depositUrl && !showDepositInput;
@@ -336,6 +351,12 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectD
               <Building2 className="w-3 h-3" />
               {p.propertyType}
             </span>
+            {scheduledDate && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-green-100 text-green-700 border-green-200">
+                <Route className="w-3 h-3" />
+                On Route {formatShortDate(scheduledDate)}
+              </span>
+            )}
             {p.source === "stripe_payment" && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200">
                 <BadgeCheck className="w-3 h-3" />
