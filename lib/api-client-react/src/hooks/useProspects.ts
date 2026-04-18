@@ -6,24 +6,15 @@ import type {
   UpdateProspectRequest,
   ListProspectsParams,
   ProspectStatus,
+  ProspectStatusEvent,
+  ProspectDetail,
 } from "../generated/api.schemas";
 
 export type { Prospect, CreateProspectRequest, UpdateProspectRequest, ListProspectsParams, ProspectStatus };
+export type { ProspectStatusEvent, ProspectDetail };
 export { ProspectStatus as ProspectStatusEnum } from "../generated/api.schemas";
 export { ProspectPropertyType as ProspectPropertyTypeEnum } from "../generated/api.schemas";
 export type { ProspectPropertyType } from "../generated/api.schemas";
-
-export interface ProspectStatusEvent {
-  id: number;
-  type: string;
-  oldValue: string | null;
-  newValue: string | null;
-  createdAt: string;
-}
-
-export interface ProspectDetail extends Prospect {
-  statusHistory: ProspectStatusEvent[];
-}
 
 export function useGetProspect(id: number | null) {
   return useQuery({

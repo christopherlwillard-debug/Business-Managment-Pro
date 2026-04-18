@@ -965,6 +965,18 @@ export type ListProspectsParams = {
   status?: ProspectStatus;
 };
 
+export interface ProspectStatusEvent {
+  id: number;
+  type: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  createdAt: string;
+}
+
+export interface ProspectDetail extends Prospect {
+  statusHistory: ProspectStatusEvent[];
+}
+
 export type AssetType = (typeof AssetType)[keyof typeof AssetType];
 
 export const AssetType = {
