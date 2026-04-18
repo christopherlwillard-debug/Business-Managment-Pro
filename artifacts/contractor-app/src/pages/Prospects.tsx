@@ -136,9 +136,7 @@ function formatShortDate(dateStr: string): string {
 
 export default function Prospects() {
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const [cityFilter, setCityFilter] = useState<string>("");
-  const [stateFilter, setStateFilter] = useState<string>("");
-  const [zipFilter, setZipFilter] = useState<string>("");
+  const [locationSearch, setLocationSearch] = useState<string>("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Prospect | null>(null);
@@ -211,18 +209,18 @@ export default function Prospects() {
     }
   }
 
-  const distinctCities = Array.from(new Set(prospects.map((p) => p.city).filter(Boolean) as string[])).sort();
-  const distinctStates = Array.from(new Set(prospects.map((p) => p.state).filter(Boolean) as string[])).sort();
-  const distinctZips = Array.from(new Set(prospects.map((p) => p.zip).filter(Boolean) as string[])).sort();
-
-  const hasLocationFilter = cityFilter || stateFilter || zipFilter;
+  const hasLocationFilter = locationSearch.trim().length > 0;
 
   const filtered = prospects.filter((p) => {
     if (statusFilter === "follow_up_due" && !isFollowUpDue(p.followUpDate)) return false;
     if (statusFilter && statusFilter !== "follow_up_due" && p.status !== statusFilter) return false;
-    if (cityFilter && p.city !== cityFilter) return false;
-    if (stateFilter && p.state !== stateFilter) return false;
-    if (zipFilter && p.zip !== zipFilter) return false;
+    if (hasLocationFilter) {
+      const q = locationSearch.trim().toLowerCase();
+      const inCity = p.city?.toLowerCase().includes(q) ?? false;
+      const inState = p.state?.toLowerCase().includes(q) ?? false;
+      const inZip = p.zip?.toLowerCase().includes(q) ?? false;
+      if (!inCity && !inState && !inZip) return false;
+    }
     return true;
   });
 
@@ -344,66 +342,30 @@ export default function Prospects() {
         ))}
       </div>
 
-      {/* Location filters */}
-      {(distinctCities.length > 0 || distinctStates.length > 0 || distinctZips.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5" />
-            Location:
-          </span>
-          {distinctCities.length > 0 && (
-            <select
-              value={cityFilter}
-              onChange={(e) => setCityFilter(e.target.value)}
-              className={`px-2.5 py-1.5 rounded-lg text-sm border transition-colors bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                cityFilter ? "border-primary text-foreground" : "border-border text-muted-foreground"
-              }`}
-            >
-              <option value="">All Cities</option>
-              {distinctCities.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          )}
-          {distinctStates.length > 0 && (
-            <select
-              value={stateFilter}
-              onChange={(e) => setStateFilter(e.target.value)}
-              className={`px-2.5 py-1.5 rounded-lg text-sm border transition-colors bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                stateFilter ? "border-primary text-foreground" : "border-border text-muted-foreground"
-              }`}
-            >
-              <option value="">All States</option>
-              {distinctStates.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          )}
-          {distinctZips.length > 0 && (
-            <select
-              value={zipFilter}
-              onChange={(e) => setZipFilter(e.target.value)}
-              className={`px-2.5 py-1.5 rounded-lg text-sm border transition-colors bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                zipFilter ? "border-primary text-foreground" : "border-border text-muted-foreground"
-              }`}
-            >
-              <option value="">All Zips</option>
-              {distinctZips.map((z) => (
-                <option key={z} value={z}>{z}</option>
-              ))}
-            </select>
-          )}
+      {/* Location search */}
+      <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card transition-colors focus-within:ring-2 focus-within:ring-primary/20 ${
+          hasLocationFilter ? "border-primary" : "border-border"
+        }`}>
+          <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+          <input
+            type="text"
+            value={locationSearch}
+            onChange={(e) => setLocationSearch(e.target.value)}
+            placeholder="Filter by city, state, or zip…"
+            className="text-sm bg-transparent outline-none placeholder:text-muted-foreground w-48 sm:w-64"
+          />
           {hasLocationFilter && (
             <button
-              onClick={() => { setCityFilter(""); setStateFilter(""); setZipFilter(""); }}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex items-center gap-1"
+              onClick={() => setLocationSearch("")}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Clear location filter"
             >
-              <X className="w-3 h-3" />
-              Clear
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
-      )}
+      </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">

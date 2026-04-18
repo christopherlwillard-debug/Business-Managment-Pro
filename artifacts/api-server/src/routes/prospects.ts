@@ -9,7 +9,7 @@ import {
   PROSPECT_STATUSES,
   type Prospect as ProspectRow,
 } from "@workspace/db/schema";
-import { eq, asc, desc, and } from "drizzle-orm";
+import { eq, asc, desc, and, ilike, or } from "drizzle-orm";
 
 const router = Router();
 
@@ -60,19 +60,27 @@ function format(p: ProspectWithEstimate) {
 
 router.get("/", async (req, res) => {
   try {
-    const { status, city, state, zip } = req.query;
+    const { status, city, state, zip, location } = req.query;
     const statusFilter = typeof status === "string" && PROSPECT_STATUSES.includes(status as typeof PROSPECT_STATUSES[number])
       ? (status as typeof PROSPECT_STATUSES[number])
       : null;
     const cityFilter = typeof city === "string" && city.trim() ? city.trim() : null;
     const stateFilter = typeof state === "string" && state.trim() ? state.trim() : null;
     const zipFilter = typeof zip === "string" && zip.trim() ? zip.trim() : null;
+    const locationSearch = typeof location === "string" && location.trim() ? `%${location.trim()}%` : null;
 
     const conditions = [
       statusFilter ? eq(prospectsTable.status, statusFilter) : null,
-      cityFilter ? eq(prospectsTable.city, cityFilter) : null,
-      stateFilter ? eq(prospectsTable.state, stateFilter) : null,
-      zipFilter ? eq(prospectsTable.zip, zipFilter) : null,
+      cityFilter ? ilike(prospectsTable.city, `%${cityFilter}%`) : null,
+      stateFilter ? ilike(prospectsTable.state, `%${stateFilter}%`) : null,
+      zipFilter ? ilike(prospectsTable.zip, `%${zipFilter}%`) : null,
+      locationSearch
+        ? or(
+            ilike(prospectsTable.city, locationSearch),
+            ilike(prospectsTable.state, locationSearch),
+            ilike(prospectsTable.zip, locationSearch)
+          )
+        : null,
     ].filter(Boolean) as Parameters<typeof and>;
 
     const rows = await db
