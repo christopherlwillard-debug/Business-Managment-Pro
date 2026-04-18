@@ -1,14 +1,22 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import * as Haptics from "expo-haptics";
+import { useAuth } from "@/context/AuthContext";
 import { usePaymentSession } from "@/context/PaymentSession";
+
+const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -36,8 +44,21 @@ function capitalize(s: string | null): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function isEmailLike(s: string): boolean {
+  return s.includes("@");
+}
+
+function isPhoneLike(s: string): boolean {
+  return /^\+?[0-9\s\-().]{7,}$/.test(s);
+}
+
 export default function ReceiptScreen() {
   const { session, clearSession } = usePaymentSession();
+  const { sessionToken } = useAuth();
+  const [contact, setContact] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
   const receipt = session.receipt;
 
   function handleDone() {
@@ -48,6 +69,45 @@ export default function ReceiptScreen() {
   function handleAnotherCharge() {
     clearSession();
     router.replace("/collect");
+  }
+
+  async function handleSendReceipt() {
+    const value = contact.trim();
+    if (!value) return;
+    const isEmail = isEmailLike(value);
+    const isPhone = isPhoneLike(value);
+    if (!isEmail && !isPhone) {
+      Alert.alert("Invalid contact", "Enter a valid email address or phone number.");
+      return;
+    }
+    if (!receipt) return;
+
+    setSending(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/terminal/send-receipt`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionToken ?? ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          paymentIntentId: receipt.paymentIntentId,
+          contact: value,
+          type: isEmail ? "email" : "sms",
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string };
+        throw new Error(body.error ?? "Could not send receipt");
+      }
+      setSent(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not send receipt";
+      Alert.alert("Send failed", msg);
+    } finally {
+      setSending(false);
+    }
   }
 
   if (!receipt) {
@@ -65,107 +125,156 @@ export default function ReceiptScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        <View style={styles.successBadge}>
-          <Text style={styles.successEmoji}>✅</Text>
-          <Text style={styles.successTitle}>Payment Collected</Text>
-          <Text style={styles.successAmount}>{formatCents(receipt.amountCents)}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Receipt</Text>
-
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Date</Text>
-            <Text style={styles.rowValue}>{formatDate(receipt.paidAt)}</Text>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.successBadge}>
+            <Text style={styles.successEmoji}>✅</Text>
+            <Text style={styles.successTitle}>Payment Collected</Text>
+            <Text style={styles.successAmount}>{formatCents(receipt.amountCents)}</Text>
           </View>
-          <View style={styles.divider} />
 
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Time</Text>
-            <Text style={styles.rowValue}>{formatTime(receipt.paidAt)}</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Receipt</Text>
+
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Date</Text>
+              <Text style={styles.rowValue}>{formatDate(receipt.paidAt)}</Text>
+            </View>
+            <View style={styles.divider} />
+
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Time</Text>
+              <Text style={styles.rowValue}>{formatTime(receipt.paidAt)}</Text>
+            </View>
+            <View style={styles.divider} />
+
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Amount</Text>
+              <Text style={[styles.rowValue, styles.rowValueBold]}>
+                {formatCents(receipt.amountCents)}
+              </Text>
+            </View>
+            <View style={styles.divider} />
+
+            {receipt.description ? (
+              <>
+                <View style={styles.row}>
+                  <Text style={styles.rowLabel}>Description</Text>
+                  <Text style={styles.rowValue}>{receipt.description}</Text>
+                </View>
+                <View style={styles.divider} />
+              </>
+            ) : null}
+
+            {receipt.invoiceNumber ? (
+              <>
+                <View style={styles.row}>
+                  <Text style={styles.rowLabel}>Invoice</Text>
+                  <Text style={styles.rowValue}>#{receipt.invoiceNumber}</Text>
+                </View>
+                <View style={styles.divider} />
+              </>
+            ) : null}
+
+            {receipt.clientName ? (
+              <>
+                <View style={styles.row}>
+                  <Text style={styles.rowLabel}>Client</Text>
+                  <Text style={styles.rowValue}>{receipt.clientName}</Text>
+                </View>
+                <View style={styles.divider} />
+              </>
+            ) : null}
+
+            {receipt.last4 ? (
+              <>
+                <View style={styles.row}>
+                  <Text style={styles.rowLabel}>Card</Text>
+                  <Text style={styles.rowValue}>
+                    {capitalize(receipt.brand)} •••• {receipt.last4}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+              </>
+            ) : null}
+
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Payment ID</Text>
+              <Text
+                style={[styles.rowValue, styles.rowValueMono]}
+                numberOfLines={1}
+                ellipsizeMode="middle"
+              >
+                {receipt.paymentIntentId}
+              </Text>
+            </View>
           </View>
-          <View style={styles.divider} />
 
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Amount</Text>
-            <Text style={[styles.rowValue, styles.rowValueBold]}>
-              {formatCents(receipt.amountCents)}
+          <View style={styles.sendCard}>
+            <Text style={styles.sendTitle}>Send Receipt</Text>
+            <Text style={styles.sendHint}>
+              Enter the customer's email or phone number to send a receipt.
             </Text>
+            {sent ? (
+              <View style={styles.sentBanner}>
+                <Text style={styles.sentText}>✓ Receipt sent to {contact.trim()}</Text>
+              </View>
+            ) : (
+              <View style={styles.sendRow}>
+                <TextInput
+                  style={styles.contactInput}
+                  placeholder="Email or phone number"
+                  placeholderTextColor="#94A3B8"
+                  value={contact}
+                  onChangeText={setContact}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!sending}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendBtn,
+                    (!contact.trim() || sending) && styles.sendBtnDisabled,
+                  ]}
+                  onPress={handleSendReceipt}
+                  disabled={!contact.trim() || sending}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.sendBtnText}>
+                    {sending ? "…" : "Send"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-          <View style={styles.divider} />
 
-          {receipt.description && (
-            <>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>Description</Text>
-                <Text style={styles.rowValue}>{receipt.description}</Text>
-              </View>
-              <View style={styles.divider} />
-            </>
-          )}
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={styles.anotherBtn}
+              onPress={handleAnotherCharge}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.anotherBtnText}>Charge Again</Text>
+            </TouchableOpacity>
 
-          {receipt.invoiceNumber && (
-            <>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>Invoice</Text>
-                <Text style={styles.rowValue}>#{receipt.invoiceNumber}</Text>
-              </View>
-              <View style={styles.divider} />
-            </>
-          )}
-
-          {receipt.clientName && (
-            <>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>Client</Text>
-                <Text style={styles.rowValue}>{receipt.clientName}</Text>
-              </View>
-              <View style={styles.divider} />
-            </>
-          )}
-
-          {receipt.last4 && (
-            <>
-              <View style={styles.row}>
-                <Text style={styles.rowLabel}>Card</Text>
-                <Text style={styles.rowValue}>
-                  {capitalize(receipt.brand)} •••• {receipt.last4}
-                </Text>
-              </View>
-              <View style={styles.divider} />
-            </>
-          )}
-
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Payment ID</Text>
-            <Text style={[styles.rowValue, styles.rowValueMono]} numberOfLines={1} ellipsizeMode="middle">
-              {receipt.paymentIntentId}
-            </Text>
+            <TouchableOpacity
+              style={styles.doneBtn}
+              onPress={handleDone}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.doneBtnText}>Done</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.anotherBtn}
-            onPress={handleAnotherCharge}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.anotherBtnText}>Charge Again</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.doneBtn}
-            onPress={handleDone}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.doneBtnText}>Done</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -216,6 +325,71 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     marginBottom: 16,
   },
+  sendCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sendTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1B3A6B",
+    fontFamily: "Inter_600SemiBold",
+  },
+  sendHint: {
+    fontSize: 13,
+    color: "#64748B",
+    fontFamily: "Inter_400Regular",
+  },
+  sendRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  contactInput: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#1B3A6B",
+    fontFamily: "Inter_400Regular",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  sendBtn: {
+    backgroundColor: "#1B3A6B",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  sendBtnDisabled: { backgroundColor: "#CBD5E1" },
+  sendBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    fontFamily: "Inter_600SemiBold",
+  },
+  sentBanner: {
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    padding: 14,
+    alignItems: "center",
+  },
+  sentText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#166534",
+    fontFamily: "Inter_600SemiBold",
+  },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -248,9 +422,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: "#F1F5F9",
   },
-  actions: {
-    gap: 12,
-  },
+  actions: { gap: 12 },
   anotherBtn: {
     backgroundColor: "#E8621A",
     borderRadius: 16,

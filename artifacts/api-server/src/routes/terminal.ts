@@ -104,4 +104,48 @@ router.post(
   },
 );
 
+router.post(
+  "/terminal/send-receipt",
+  async (req: Request, res: Response) => {
+    if (!isStripeConfigured()) {
+      res.status(503).json({ error: "Stripe not configured" });
+      return;
+    }
+
+    const { paymentIntentId, contact, type } = req.body as {
+      paymentIntentId: string;
+      contact: string;
+      type: "email" | "sms";
+    };
+
+    if (!paymentIntentId || typeof paymentIntentId !== "string") {
+      res.status(400).json({ error: "paymentIntentId is required" });
+      return;
+    }
+    if (!contact || typeof contact !== "string") {
+      res.status(400).json({ error: "contact is required" });
+      return;
+    }
+
+    if (type === "sms") {
+      res.status(422).json({
+        error:
+          "SMS receipts require Twilio integration. Please provide an email address instead.",
+      });
+      return;
+    }
+
+    try {
+      const stripe = getStripe();
+      await stripe.paymentIntents.update(paymentIntentId, {
+        receipt_email: contact,
+      });
+      res.json({ ok: true, message: `Receipt will be sent to ${contact}` });
+    } catch (err) {
+      console.error("[terminal] send-receipt error:", err);
+      res.status(500).json({ error: "Failed to send receipt" });
+    }
+  },
+);
+
 export default router;

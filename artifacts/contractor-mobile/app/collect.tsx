@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,19 +14,26 @@ import { usePaymentSession } from "@/context/PaymentSession";
 
 const MAX_CENTS = 9999999;
 
-function formatDisplay(raw: string): string {
-  const cents = parseInt(raw || "0", 10);
+function formatDisplay(cents: number): string {
   const dollars = Math.floor(cents / 100);
-  const centsRemainder = cents % 100;
-  return `$${dollars.toLocaleString()}.${String(centsRemainder).padStart(2, "0")}`;
+  const remainder = cents % 100;
+  return `$${dollars.toLocaleString()}.${String(remainder).padStart(2, "0")}`;
 }
 
 export default function CollectScreen() {
   const { session, setPaymentDetails } = usePaymentSession();
-  const [rawCents, setRawCents] = useState("0");
-  const [note, setNote] = useState(session.description || "");
+  const [rawCents, setRawCents] = useState(() =>
+    session.amountCents > 0 ? String(session.amountCents) : "0",
+  );
+  const [note, setNote] = useState(session.description ?? "");
 
   const amountCents = parseInt(rawCents, 10);
+
+  useEffect(() => {
+    if (session.amountCents > 0 && session.invoiceId !== null) {
+      setRawCents(String(session.amountCents));
+    }
+  }, [session.amountCents, session.invoiceId]);
 
   function handleDigit(digit: string) {
     setRawCents((prev) => {
@@ -37,10 +44,7 @@ export default function CollectScreen() {
   }
 
   function handleDelete() {
-    setRawCents((prev) => {
-      if (prev.length <= 1) return "0";
-      return prev.slice(0, -1);
-    });
+    setRawCents((prev) => (prev.length <= 1 ? "0" : prev.slice(0, -1)));
   }
 
   function handleCharge() {
@@ -50,7 +54,7 @@ export default function CollectScreen() {
     }
     setPaymentDetails({
       amountCents,
-      description: note.trim() || null,
+      description: note.trim(),
       invoiceId: session.invoiceId,
       invoiceNumber: session.invoiceNumber,
       clientName: session.clientName,
@@ -75,13 +79,13 @@ export default function CollectScreen() {
       </View>
 
       <View style={styles.amountWrap}>
-        <Text style={styles.amount}>{formatDisplay(rawCents)}</Text>
+        <Text style={styles.amount}>{formatDisplay(amountCents)}</Text>
         {amountCents > 0 && amountCents < 50 && (
           <Text style={styles.minWarning}>Minimum charge is $0.50</Text>
         )}
       </View>
 
-      {session.invoiceId ? (
+      {session.invoiceId !== null ? (
         <TouchableOpacity style={styles.invoiceChip} onPress={handleInvoicePicker}>
           <Text style={styles.invoiceChipText}>
             Invoice #{session.invoiceNumber} — {session.clientName}
@@ -117,7 +121,7 @@ export default function CollectScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.chargeBtnText}>
-            Charge {canCharge ? formatDisplay(rawCents) : "—"}
+            {canCharge ? `Charge ${formatDisplay(amountCents)}` : "Enter Amount"}
           </Text>
         </TouchableOpacity>
       </View>

@@ -12,20 +12,9 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
-import * as SecureStore from "expo-secure-store";
 
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { PaymentSessionProvider } from "@/context/PaymentSession";
-
-setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
-setAuthTokenGetter(async () => {
-  try {
-    return await SecureStore.getItemAsync("buildpro_session");
-  } catch {
-    return null;
-  }
-});
 
 SplashScreen.preventAutoHideAsync();
 

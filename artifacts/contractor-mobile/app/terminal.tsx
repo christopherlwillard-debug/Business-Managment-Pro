@@ -9,8 +9,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import type { Reader } from "@stripe/stripe-terminal-react-native";
+import {
+  StripeTerminalProvider,
+  useStripeTerminal,
+} from "@stripe/stripe-terminal-react-native";
 import { useAuth } from "@/context/AuthContext";
-import { usePaymentSession } from "@/context/PaymentSession";
+import { usePaymentSession, type ReceiptData } from "@/context/PaymentSession";
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -22,242 +27,287 @@ type Phase =
   | "confirming"
   | "success"
   | "error"
-  | "native_unavailable";
+  | "unavailable";
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-class TerminalErrorBoundary extends React.Component<
-  { children: React.ReactNode; onError: (e: Error) => void },
+function extractCardDetails(pi: Record<string, unknown>): {
+  last4: string | null;
+  brand: string | null;
+} {
+  const charges = pi["charges"];
+  if (!charges || typeof charges !== "object") return { last4: null, brand: null };
+  const data = (charges as Record<string, unknown>)["data"];
+  if (!Array.isArray(data) || data.length === 0) return { last4: null, brand: null };
+  const charge = data[0] as Record<string, unknown>;
+  const pmd = charge["paymentMethodDetails"] as Record<string, unknown> | undefined;
+  if (!pmd) return { last4: null, brand: null };
+  const cp = pmd["cardPresent"] as Record<string, unknown> | undefined;
+  if (!cp) return { last4: null, brand: null };
+  return {
+    last4: typeof cp["last4"] === "string" ? cp["last4"] : null,
+    brand: typeof cp["brand"] === "string" ? cp["brand"] : null,
+  };
+}
+
+class TerminalBoundary extends React.Component<
+  { children: React.ReactNode },
   { hasError: boolean }
 > {
   state = { hasError: false };
-  static getDerivedStateFromError() {
+  static getDerivedStateFromError(): { hasError: boolean } {
     return { hasError: true };
   }
-  componentDidCatch(err: Error) {
-    this.props.onError(err);
+  componentDidCatch(err: Error): void {
+    console.warn("[terminal] SDK boundary caught:", err.message);
   }
-  render() {
-    if (this.state.hasError) return null;
+  render(): React.ReactNode {
+    if (this.state.hasError) return <NativeUnavailableView />;
     return this.props.children;
   }
 }
 
 function NativeUnavailableView() {
   return (
-    <View style={styles.centeredCard}>
-      <Text style={styles.bigEmoji}>📱</Text>
-      <Text style={styles.unavailableTitle}>Native Build Required</Text>
-      <Text style={styles.unavailableText}>
-        Tap to Pay on iPhone requires a native Expo Dev Client build.{"\n\n"}
-        Build with:{"\n"}
-        <Text style={styles.code}>eas build --profile development</Text>
-        {"\n\n"}
-        Install on iPhone 16+ running iOS 16+.{"\n\n"}
-        Stripe Terminal approval is also required from your Stripe Dashboard.
-      </Text>
-      <TouchableOpacity
-        style={styles.backBtn}
-        onPress={() => router.back()}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.backBtnText}>← Go Back</Text>
-      </TouchableOpacity>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.centeredCard}>
+        <Text style={styles.bigEmoji}>📱</Text>
+        <Text style={styles.unavailableTitle}>Native Build Required</Text>
+        <Text style={styles.unavailableText}>
+          Tap to Pay on iPhone requires a native Expo Dev Client build.
+          {"\n\n"}Build with:{"\n"}eas build --profile development{"\n\n"}
+          Install on iPhone 16+ running iOS 16+.{"\n\n"}
+          Stripe Terminal approval is also required from your Stripe Dashboard.
+        </Text>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.back()}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.backBtnText}>← Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
 
 export default function TerminalScreen() {
   const { sessionToken } = useAuth();
+  const locationIdRef = useRef<string>("");
+
+  const tokenProvider = useCallback(async (): Promise<string> => {
+    const res = await fetch(`${BASE_URL}/api/terminal/connection-token`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sessionToken ?? ""}` },
+    });
+    if (!res.ok) throw new Error("Failed to get connection token");
+    const data = (await res.json()) as { secret: string; locationId: string | null };
+    if (data.locationId) locationIdRef.current = data.locationId;
+    return data.secret;
+  }, [sessionToken]);
+
+  return (
+    <TerminalBoundary>
+      <StripeTerminalProvider logLevel="none" tokenProvider={tokenProvider}>
+        <TerminalFlow sessionToken={sessionToken} locationIdRef={locationIdRef} />
+      </StripeTerminalProvider>
+    </TerminalBoundary>
+  );
+}
+
+interface TerminalFlowProps {
+  sessionToken: string | null;
+  locationIdRef: React.MutableRefObject<string>;
+}
+
+function TerminalFlow({ sessionToken, locationIdRef }: TerminalFlowProps) {
+  const [localDiscoveredReaders, setLocalDiscoveredReaders] = useState<Reader.Type[]>([]);
+
+  const {
+    initialize,
+    discoverReaders,
+    connectReader,
+    retrievePaymentIntent,
+    collectPaymentMethod,
+    confirmPaymentIntent,
+    connectedReader,
+  } = useStripeTerminal({
+    onUpdateDiscoveredReaders: (updatedReaders) => {
+      setLocalDiscoveredReaders(updatedReaders);
+    },
+  });
+
   const { session, setPaymentDetails } = usePaymentSession();
   const [phase, setPhase] = useState<Phase>("init");
   const [errorMsg, setErrorMsg] = useState("");
-  const [nativeAvailable, setNativeAvailable] = useState<boolean | null>(null);
-
-  const tokenRef = useRef<string | null>(null);
-  const locationIdRef = useRef<string | null>(null);
-
-  async function fetchConnectionToken(): Promise<{
-    secret: string;
-    locationId: string | null;
-  }> {
-    const res = await fetch(`${BASE_URL}/api/terminal/connection-token`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${sessionToken}` },
-    });
-    if (!res.ok) throw new Error("Failed to get connection token");
-    return res.json();
-  }
-
-  async function createPaymentIntent(): Promise<{
-    paymentIntentId: string;
-    clientSecret: string;
-  }> {
-    const res = await fetch(`${BASE_URL}/api/terminal/payment-intent`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${sessionToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amountCents: session.amountCents,
-        currency: "usd",
-        description: session.description || undefined,
-        invoiceId: session.invoiceId || undefined,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error((body as { error?: string }).error ?? "Failed to create payment intent");
-    }
-    return res.json();
-  }
+  const clientSecretRef = useRef<string | null>(null);
 
   useEffect(() => {
-    async function tryInitStripeTerminal() {
+    async function setup() {
       try {
-        const StripeTerminalModule = await import(
-          "@stripe/stripe-terminal-react-native"
-        );
-        setNativeAvailable(true);
-        return StripeTerminalModule;
-      } catch {
-        setNativeAvailable(false);
-        setPhase("native_unavailable");
-        return null;
+        await initialize();
+        setPhase("connecting");
+        const result = await discoverReaders({
+          discoveryMethod: "tapToPay",
+          simulated: false,
+        });
+        if (result.error) {
+          throw new Error(result.error.message ?? "Reader discovery failed");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Initialization failed";
+        const isNativeError =
+          msg.includes("null") ||
+          msg.includes("NativeModules") ||
+          msg.toLowerCase().includes("native") ||
+          msg.toLowerCase().includes("nativeeventemitter");
+        if (isNativeError) {
+          setPhase("unavailable");
+        } else {
+          setErrorMsg(msg);
+          setPhase("error");
+        }
       }
     }
-    tryInitStripeTerminal();
+    setup();
   }, []);
 
-  async function handleCollect() {
-    setPhase("connecting");
+  useEffect(() => {
+    if (
+      localDiscoveredReaders.length === 0 ||
+      connectedReader !== null ||
+      phase !== "connecting"
+    ) {
+      return;
+    }
+    const reader = localDiscoveredReaders[0];
+    connectReader({
+      discoveryMethod: "tapToPay",
+      reader,
+      locationId: locationIdRef.current,
+    })
+      .then((result) => {
+        if (result.error) {
+          setErrorMsg(result.error.message ?? "Failed to connect reader");
+          setPhase("error");
+        } else {
+          setPhase("ready");
+        }
+      })
+      .catch((err: unknown) => {
+        setErrorMsg(err instanceof Error ? err.message : "Connection failed");
+        setPhase("error");
+      });
+  }, [localDiscoveredReaders, connectedReader, phase]);
+
+  async function handleCharge() {
+    setPhase("collecting");
     setErrorMsg("");
-
     try {
-      const sdk = await import("@stripe/stripe-terminal-react-native");
-
-      const { secret, locationId } = await fetchConnectionToken();
-      tokenRef.current = secret;
-      locationIdRef.current = locationId;
-
-      await sdk.initialize({
-        fetchConnectionToken: async () => {
-          if (tokenRef.current) {
-            const t = tokenRef.current;
-            tokenRef.current = null;
-            return t;
-          }
-          const { secret: s } = await fetchConnectionToken();
-          return s;
+      const piRes = await fetch(`${BASE_URL}/api/terminal/payment-intent`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionToken ?? ""}`,
+          "Content-Type": "application/json",
         },
-        onUnexpectedReaderDisconnect: () => {
-          console.warn("[terminal] Reader disconnected unexpectedly");
-        },
+        body: JSON.stringify({
+          amountCents: session.amountCents,
+          currency: "usd",
+          description: session.description || undefined,
+          invoiceId: session.invoiceId ?? undefined,
+        }),
+      });
+      if (!piRes.ok) {
+        const body = (await piRes.json()) as { error?: string };
+        throw new Error(body.error ?? "Failed to create payment intent");
+      }
+      const piData = (await piRes.json()) as {
+        paymentIntentId: string;
+        clientSecret: string;
+      };
+      clientSecretRef.current = piData.clientSecret;
+      setPaymentDetails({
+        paymentIntentId: piData.paymentIntentId,
+        clientSecret: piData.clientSecret,
       });
 
-      setPhase("connecting");
-
-      const { readers, error: discoverError } = await sdk.discoverReaders({
-        discoveryMethod: "localMobile",
-        simulated: false,
-      });
-
-      if (discoverError) throw new Error(discoverError.message);
-      if (!readers || readers.length === 0)
-        throw new Error("No local mobile reader found");
-
-      const { error: connectError } = await sdk.connectLocalMobileReader({
-        reader: readers[0],
-        locationId: locationIdRef.current ?? undefined,
-      });
-
-      if (connectError) throw new Error(connectError.message);
-
-      setPhase("ready");
-
-      const { paymentIntentId, clientSecret } = await createPaymentIntent();
-      setPaymentDetails({ paymentIntentId, clientSecret });
-
-      setPhase("collecting");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-      const { paymentIntent: collected, error: collectError } =
-        await sdk.collectPaymentMethod({
-          paymentIntentClientSecret: clientSecret,
-        });
+      const retrieveResult = await retrievePaymentIntent(piData.clientSecret);
+      if (retrieveResult.error || !retrieveResult.paymentIntent) {
+        throw new Error(
+          retrieveResult.error?.message ?? "Failed to retrieve payment intent",
+        );
+      }
 
-      if (collectError) throw new Error(collectError.message);
+      const collectResult = await collectPaymentMethod({
+        paymentIntent: retrieveResult.paymentIntent,
+      });
+      if (collectResult.error || !collectResult.paymentIntent) {
+        throw new Error(
+          collectResult.error?.message ?? "Payment collection failed",
+        );
+      }
 
       setPhase("confirming");
 
-      const { paymentIntent: confirmed, error: confirmError } =
-        await sdk.confirmPaymentIntent({
-          paymentIntentClientSecret: clientSecret,
-        });
-
-      if (confirmError) throw new Error(confirmError.message);
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      const charge = (confirmed as any)?.charges?.data?.[0];
-      const paymentMethod = charge?.payment_method_details?.card_present;
-
-      setPaymentDetails({
-        receipt: {
-          paymentIntentId: confirmed?.id ?? paymentIntentId,
-          amountCents: session.amountCents,
-          description: session.description,
-          invoiceNumber: session.invoiceNumber,
-          clientName: session.clientName,
-          paidAt: new Date(),
-          last4: paymentMethod?.last4 ?? null,
-          brand: paymentMethod?.brand ?? null,
-        },
+      const confirmResult = await confirmPaymentIntent({
+        paymentIntent: collectResult.paymentIntent,
       });
+      if (confirmResult.error) {
+        throw new Error(
+          confirmResult.error.message ?? "Payment confirmation failed",
+        );
+      }
 
+      const confirmedPi = confirmResult.paymentIntent as unknown as Record<string, unknown> | undefined;
+      const { last4, brand } = confirmedPi
+        ? extractCardDetails(confirmedPi)
+        : { last4: null, brand: null };
+
+      const receipt: ReceiptData = {
+        paymentIntentId: piData.paymentIntentId,
+        amountCents: session.amountCents,
+        description: session.description || null,
+        invoiceNumber: session.invoiceNumber,
+        clientName: session.clientName,
+        paidAt: new Date(),
+        last4,
+        brand,
+      };
+
+      setPaymentDetails({ receipt });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase("success");
       setTimeout(() => router.replace("/receipt"), 800);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "An unexpected error occurred";
+      const msg = err instanceof Error ? err.message : "An unexpected error occurred";
       setErrorMsg(msg);
       setPhase("error");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   }
 
-  if (nativeAvailable === null) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#1B3A6B" style={{ marginTop: 80 }} />
-      </SafeAreaView>
-    );
-  }
-
-  if (nativeAvailable === false || phase === "native_unavailable") {
-    return (
-      <SafeAreaView style={styles.container}>
-        <NativeUnavailableView />
-      </SafeAreaView>
-    );
+  if (phase === "unavailable") {
+    return <NativeUnavailableView />;
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => {
-            if (phase !== "collecting" && phase !== "confirming") {
-              router.back();
-            }
-          }}
+          onPress={() => router.back()}
           style={styles.navBack}
           disabled={phase === "collecting" || phase === "confirming"}
         >
-          <Text style={[styles.navBackText, (phase === "collecting" || phase === "confirming") && styles.navBackDisabled]}>
+          <Text
+            style={[
+              styles.navBackText,
+              (phase === "collecting" || phase === "confirming") && styles.navBackDisabled,
+            ]}
+          >
             ← Back
           </Text>
         </TouchableOpacity>
@@ -277,18 +327,18 @@ export default function TerminalScreen() {
       </View>
 
       <View style={styles.stateCard}>
-        {phase === "init" || phase === "ready" ? (
+        {(phase === "init" || phase === "ready") && (
           <>
             <Text style={styles.stateEmoji}>📱</Text>
             <Text style={styles.stateTitle}>Ready to Charge</Text>
             <Text style={styles.stateText}>
-              Tap the button below to begin. Your iPhone will act as the
-              card reader — ask the customer to hold their card or phone
-              near yours when prompted.
+              Tap the button below to begin. Your iPhone will act as the card
+              reader — ask the customer to hold their card or phone near yours
+              when prompted.
             </Text>
             <TouchableOpacity
               style={styles.chargeBtn}
-              onPress={handleCollect}
+              onPress={handleCharge}
               activeOpacity={0.85}
             >
               <Text style={styles.chargeBtnText}>
@@ -296,56 +346,70 @@ export default function TerminalScreen() {
               </Text>
             </TouchableOpacity>
           </>
-        ) : phase === "connecting" ? (
+        )}
+
+        {phase === "connecting" && (
           <>
             <ActivityIndicator size="large" color="#1B3A6B" />
             <Text style={styles.stateTitle}>Connecting…</Text>
             <Text style={styles.stateText}>
-              Initializing the Tap to Pay reader
+              Initializing the Tap to Pay reader on this iPhone
             </Text>
           </>
-        ) : phase === "collecting" ? (
+        )}
+
+        {phase === "collecting" && (
           <>
             <Text style={styles.stateEmoji}>🫳</Text>
             <Text style={styles.stateTitle}>Hold Card Near iPhone</Text>
             <Text style={styles.stateText}>
-              iOS will guide the customer through the tap. Keep the phone
-              still until the tap completes.
+              iOS will guide the customer through the tap. Keep the phone still
+              until the tap completes.
             </Text>
-            <ActivityIndicator size="small" color="#64748B" style={{ marginTop: 8 }} />
+            <ActivityIndicator
+              size="small"
+              color="#64748B"
+              style={{ marginTop: 8 }}
+            />
           </>
-        ) : phase === "confirming" ? (
+        )}
+
+        {phase === "confirming" && (
           <>
             <ActivityIndicator size="large" color="#1B3A6B" />
             <Text style={styles.stateTitle}>Processing…</Text>
             <Text style={styles.stateText}>Confirming payment with Stripe</Text>
           </>
-        ) : phase === "success" ? (
+        )}
+
+        {phase === "success" && (
           <>
             <Text style={styles.stateEmoji}>✅</Text>
             <Text style={styles.stateTitle}>Payment Successful!</Text>
             <Text style={styles.stateText}>Redirecting to receipt…</Text>
           </>
-        ) : phase === "error" ? (
+        )}
+
+        {phase === "error" && (
           <>
             <Text style={styles.stateEmoji}>❌</Text>
             <Text style={styles.stateTitle}>Payment Failed</Text>
             <Text style={styles.stateText}>{errorMsg}</Text>
             <TouchableOpacity
               style={[styles.chargeBtn, { marginTop: 24 }]}
-              onPress={() => { setPhase("ready"); setErrorMsg(""); }}
+              onPress={() => {
+                setPhase("ready");
+                setErrorMsg("");
+              }}
               activeOpacity={0.85}
             >
               <Text style={styles.chargeBtnText}>Try Again</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={() => router.back()}
-            >
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </>
-        ) : null}
+        )}
       </View>
     </SafeAreaView>
   );
@@ -361,7 +425,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   navBack: { padding: 8 },
-  navBackText: { fontSize: 15, color: "#1B3A6B", fontFamily: "Inter_500Medium" },
+  navBackText: {
+    fontSize: 15,
+    color: "#1B3A6B",
+    fontFamily: "Inter_500Medium",
+  },
   navBackDisabled: { color: "#CBD5E1" },
   headerTitle: {
     fontSize: 17,
@@ -443,10 +511,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontFamily: "Inter_700Bold",
   },
-  cancelBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
+  cancelBtn: { paddingVertical: 12, paddingHorizontal: 24 },
   cancelBtnText: {
     fontSize: 15,
     color: "#94A3B8",
@@ -480,12 +545,6 @@ const styles = StyleSheet.create({
     color: "#475569",
     fontFamily: "Inter_400Regular",
     textAlign: "center",
-  },
-  code: {
-    fontFamily: "monospace",
-    backgroundColor: "#F1F5F9",
-    color: "#1B3A6B",
-    fontSize: 13,
   },
   backBtn: {
     backgroundColor: "#1B3A6B",
