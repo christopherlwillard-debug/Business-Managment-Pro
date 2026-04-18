@@ -5,6 +5,7 @@ import {
   useCreateProspectDepositLink,
   useAddProspectServiceVisit,
   useDeleteProspectServiceVisit,
+  useUpdateProspectServiceVisit,
   type Prospect,
   type ProspectDetail,
   type ProspectStatus,
@@ -40,6 +41,7 @@ import {
   Link2Off,
   Route,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -233,6 +235,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const depositLinkMutation = useCreateProspectDepositLink();
   const addVisitMutation = useAddProspectServiceVisit();
   const deleteVisitMutation = useDeleteProspectServiceVisit();
+  const updateVisitMutation = useUpdateProspectServiceVisit();
   const { toast } = useToast();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
 
@@ -254,6 +257,10 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [addingToRoute, setAddingToRoute] = useState(false);
 
   const [confirmDeleteVisitId, setConfirmDeleteVisitId] = useState<number | null>(null);
+  const [editingVisitId, setEditingVisitId] = useState<number | null>(null);
+  const [editVisitDate, setEditVisitDate] = useState("");
+  const [editVisitNotes, setEditVisitNotes] = useState("");
+  const [editVisitPrice, setEditVisitPrice] = useState("");
 
   useEffect(() => {
     if (!open) {
@@ -268,6 +275,10 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setShowRouteInput(false);
       setRouteDateStr(new Date().toISOString().slice(0, 10));
       setConfirmDeleteVisitId(null);
+      setEditingVisitId(null);
+      setEditVisitDate("");
+      setEditVisitNotes("");
+      setEditVisitPrice("");
     }
   }, [open]);
 
@@ -448,63 +459,154 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
               {detail?.serviceVisits && detail.serviceVisits.length > 0 ? (
                 <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
                   {detail.serviceVisits.map((v, i) => (
-                    <div key={v.id} className="px-4 py-3 flex items-start gap-3">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">
-                            {formatDate(v.servicedAt)}
-                          </p>
-                          {i === 0 && (
-                            <span className="text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">Most recent</span>
-                          )}
-                        </div>
-                        {v.notes && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{v.notes}</p>
-                        )}
-                        {v.price != null && (
-                          <p className="text-xs text-emerald-700 font-medium mt-0.5">{formatCurrency(v.price)}</p>
-                        )}
-                        {confirmDeleteVisitId === v.id ? (
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <span className="text-xs text-destructive">Remove this visit?</span>
+                    <div key={v.id} className="px-4 py-3">
+                      {editingVisitId === v.id ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Date</label>
+                            <input
+                              type="date"
+                              value={editVisitDate}
+                              onChange={(e) => setEditVisitDate(e.target.value)}
+                              className="text-sm border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Notes</label>
+                            <textarea
+                              value={editVisitNotes}
+                              onChange={(e) => setEditVisitNotes(e.target.value)}
+                              rows={2}
+                              placeholder="Optional notes…"
+                              className="text-sm border border-border rounded px-2 py-1 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Price</label>
+                            <input
+                              type="number"
+                              value={editVisitPrice}
+                              onChange={(e) => setEditVisitPrice(e.target.value)}
+                              placeholder="0.00"
+                              min="0"
+                              step="0.01"
+                              className="text-sm border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 pt-1">
                             <button
                               onClick={() => {
-                                deleteVisitMutation.mutate(
-                                  { prospectId: p.id, visitId: v.id },
+                                if (!editVisitDate) return;
+                                const parsed = parseFloat(editVisitPrice);
+                                const priceVal = editVisitPrice !== "" && !isNaN(parsed) ? parsed : null;
+                                updateVisitMutation.mutate(
+                                  {
+                                    prospectId: p.id,
+                                    visitId: v.id,
+                                    servicedAt: editVisitDate,
+                                    notes: editVisitNotes || null,
+                                    price: priceVal,
+                                  },
                                   {
                                     onSuccess: () => {
-                                      setConfirmDeleteVisitId(null);
+                                      setEditingVisitId(null);
                                       onUpdated();
-                                      toast({ title: "Visit removed", description: "Service visit deleted and dates updated." });
+                                      toast({ title: "Visit updated", description: "Service visit saved." });
                                     },
                                     onError: () => {
-                                      toast({ title: "Error", description: "Failed to delete service visit.", variant: "destructive" });
+                                      toast({ title: "Error", description: "Failed to update service visit.", variant: "destructive" });
                                     },
                                   }
                                 );
                               }}
-                              disabled={deleteVisitMutation.isPending}
-                              className="text-xs px-2 py-0.5 bg-destructive text-destructive-foreground rounded hover:opacity-90 transition-opacity"
+                              disabled={updateVisitMutation.isPending || !editVisitDate}
+                              className="text-xs px-2.5 py-1 bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity disabled:opacity-50"
                             >
-                              Yes, remove
+                              Save
                             </button>
                             <button
-                              onClick={() => setConfirmDeleteVisitId(null)}
-                              className="text-xs px-2 py-0.5 bg-muted text-muted-foreground rounded hover:bg-muted/80 transition-colors"
+                              onClick={() => setEditingVisitId(null)}
+                              className="text-xs px-2.5 py-1 bg-muted text-muted-foreground rounded hover:bg-muted/80 transition-colors"
                             >
                               Cancel
                             </button>
                           </div>
-                        ) : null}
-                      </div>
-                      <button
-                        onClick={() => setConfirmDeleteVisitId(confirmDeleteVisitId === v.id ? null : v.id)}
-                        className="flex-shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        title="Delete this visit"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-3">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-foreground">
+                                {formatDate(v.servicedAt)}
+                              </p>
+                              {i === 0 && (
+                                <span className="text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">Most recent</span>
+                              )}
+                            </div>
+                            {v.notes && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{v.notes}</p>
+                            )}
+                            {v.price != null && (
+                              <p className="text-xs text-emerald-700 font-medium mt-0.5">{formatCurrency(v.price)}</p>
+                            )}
+                            {confirmDeleteVisitId === v.id ? (
+                              <div className="flex items-center gap-2 mt-1.5">
+                                <span className="text-xs text-destructive">Remove this visit?</span>
+                                <button
+                                  onClick={() => {
+                                    deleteVisitMutation.mutate(
+                                      { prospectId: p.id, visitId: v.id },
+                                      {
+                                        onSuccess: () => {
+                                          setConfirmDeleteVisitId(null);
+                                          onUpdated();
+                                          toast({ title: "Visit removed", description: "Service visit deleted and dates updated." });
+                                        },
+                                        onError: () => {
+                                          toast({ title: "Error", description: "Failed to delete service visit.", variant: "destructive" });
+                                        },
+                                      }
+                                    );
+                                  }}
+                                  disabled={deleteVisitMutation.isPending}
+                                  className="text-xs px-2 py-0.5 bg-destructive text-destructive-foreground rounded hover:opacity-90 transition-opacity"
+                                >
+                                  Yes, remove
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteVisitId(null)}
+                                  className="text-xs px-2 py-0.5 bg-muted text-muted-foreground rounded hover:bg-muted/80 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => {
+                                setConfirmDeleteVisitId(null);
+                                setEditingVisitId(v.id);
+                                setEditVisitDate(v.servicedAt);
+                                setEditVisitNotes(v.notes ?? "");
+                                setEditVisitPrice(v.price != null ? String(v.price) : "");
+                              }}
+                              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                              title="Edit this visit"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteVisitId(confirmDeleteVisitId === v.id ? null : v.id)}
+                              className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              title="Delete this visit"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

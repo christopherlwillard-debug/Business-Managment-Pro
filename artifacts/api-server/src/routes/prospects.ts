@@ -461,6 +461,96 @@ router.post("/:id/service-visits", async (req, res) => {
   }
 });
 
+router.put("/:id/service-visits/:visitId", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const visitId = parseInt(req.params.visitId);
+    if (isNaN(id) || isNaN(visitId)) return res.status(400).json({ error: "Invalid id" });
+
+    const body = req.body as {
+      servicedAt?: string;
+      notes?: string | null;
+      price?: number | null;
+    };
+
+    const [existing] = await db
+      .select({ id: prospectsTable.id, status: prospectsTable.status })
+      .from(prospectsTable)
+      .where(eq(prospectsTable.id, id));
+
+    if (!existing) return res.status(404).json({ error: "Prospect not found" });
+
+    let updated = false;
+    await db.transaction(async (tx) => {
+      const patch: Partial<typeof prospectServiceVisitsTable.$inferInsert> = {};
+      if (body.servicedAt !== undefined) patch.servicedAt = body.servicedAt;
+      if (body.notes !== undefined) patch.notes = body.notes ?? null;
+      if (body.price !== undefined) patch.price = body.price != null ? body.price.toString() : null;
+
+      const [updatedRow] = await tx
+        .update(prospectServiceVisitsTable)
+        .set(patch)
+        .where(
+          and(
+            eq(prospectServiceVisitsTable.id, visitId),
+            eq(prospectServiceVisitsTable.prospectId, id)
+          )
+        )
+        .returning({ id: prospectServiceVisitsTable.id });
+
+      if (!updatedRow) return;
+      updated = true;
+
+      const remaining = await tx
+        .select({ servicedAt: prospectServiceVisitsTable.servicedAt })
+        .from(prospectServiceVisitsTable)
+        .where(eq(prospectServiceVisitsTable.prospectId, id))
+        .orderBy(desc(prospectServiceVisitsTable.servicedAt));
+
+      if (remaining.length > 0) {
+        const mostRecentDate = remaining[0].servicedAt;
+        const followUpDate = new Date(mostRecentDate + "T00:00:00");
+        followUpDate.setMonth(followUpDate.getMonth() + 30);
+        const followUpStr = followUpDate.toISOString().slice(0, 10);
+        await tx.update(prospectsTable).set({
+          updatedAt: new Date(),
+          servicedAt: mostRecentDate,
+          followUpDate: followUpStr,
+        }).where(eq(prospectsTable.id, id));
+      }
+    });
+
+    if (!updated) return res.status(404).json({ error: "Service visit not found" });
+
+    const [[p], visits, events] = await Promise.all([
+      db.select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+        .from(prospectsTable)
+        .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
+        .where(eq(prospectsTable.id, id)),
+      db.select().from(prospectServiceVisitsTable).where(eq(prospectServiceVisitsTable.prospectId, id)).orderBy(desc(prospectServiceVisitsTable.servicedAt)),
+      db.select().from(prospectEventsTable).where(eq(prospectEventsTable.prospectId, id)).orderBy(desc(prospectEventsTable.createdAt)),
+    ]);
+
+    if (!p) return res.status(404).json({ error: "Prospect not found" });
+
+    res.json({
+      ...format(p as ProspectWithEstimate),
+      statusHistory: events.map((e) => ({
+        id: e.id, type: e.type, oldValue: e.oldValue ?? null, newValue: e.newValue ?? null,
+        createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+      })),
+      serviceVisits: visits.map((v) => ({
+        id: v.id, servicedAt: v.servicedAt, notes: v.notes ?? null,
+        price: v.price != null ? parseFloat(v.price) : null,
+        createdAt: v.createdAt instanceof Date ? v.createdAt.toISOString() : v.createdAt,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update service visit" });
+  }
+});
+
 router.delete("/:id/service-visits/:visitId", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

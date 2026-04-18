@@ -90,6 +90,33 @@ export function useAddProspectServiceVisit() {
   });
 }
 
+export function useUpdateProspectServiceVisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      prospectId,
+      visitId,
+      ...data
+    }: {
+      prospectId: number;
+      visitId: number;
+      servicedAt?: string;
+      notes?: string | null;
+      price?: number | null;
+    }) =>
+      customFetch<ProspectDetail>(`/api/prospects/${prospectId}/service-visits/${visitId}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["/api/prospects"] });
+      qc.invalidateQueries({ queryKey: ["/api/prospects", variables.prospectId] });
+      qc.invalidateQueries({ queryKey: ["/api/prospects/revenue-summary"] });
+    },
+  });
+}
+
 export function useDeleteProspectServiceVisit() {
   const qc = useQueryClient();
   return useMutation({
