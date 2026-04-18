@@ -104,6 +104,58 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.post("/:id/pay-session", async (req, res) => {
+  try {
+    if (!isStripeConfigured()) {
+      return res.status(400).json({ error: "Stripe is not configured." });
+    }
+
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+
+    const [charge] = await db.select().from(quickChargesTable).where(eq(quickChargesTable.id, id));
+    if (!charge) return res.status(404).json({ error: "Quick charge not found" });
+    if (charge.status === "paid") return res.status(400).json({ error: "Already paid" });
+
+    const { payPageBaseUrl } = req.body as { payPageBaseUrl?: string };
+
+    let payToken = charge.payToken ?? null;
+    let paymentIntentId = charge.stripePaymentIntentId ?? null;
+    let qrDataUrl = charge.qrCodeDataUrl ?? null;
+
+    if (!paymentIntentId || !payToken) {
+      const [settings] = await db.select().from(settingsTable).limit(1);
+      const currency = settings?.currency ?? "USD";
+      const companyName = settings?.companyName ?? "BuildPro";
+      const amountCents = Math.round(parseFloat(charge.amount) * 100);
+      const pi = await createPaymentIntent({
+        amountCents,
+        currency,
+        description: `${companyName}: ${charge.label}`,
+        metadata: { source: "buildpro", charge_label: charge.label, quick_charge_id: String(id) },
+      });
+      paymentIntentId = pi.id;
+      payToken = randomUUID();
+      if (payPageBaseUrl) {
+        qrDataUrl = await QRCode.toDataURL(`${payPageBaseUrl}${payToken}`, { width: 300, margin: 2 });
+      }
+      await db.update(quickChargesTable)
+        .set({ stripePaymentIntentId: paymentIntentId, payToken, qrCodeDataUrl: qrDataUrl ?? undefined })
+        .where(eq(quickChargesTable.id, id));
+    } else if (payPageBaseUrl && !qrDataUrl) {
+      qrDataUrl = await QRCode.toDataURL(`${payPageBaseUrl}${payToken}`, { width: 300, margin: 2 });
+      await db.update(quickChargesTable).set({ qrCodeDataUrl: qrDataUrl }).where(eq(quickChargesTable.id, id));
+    }
+
+    const payUrl = payPageBaseUrl ? `${payPageBaseUrl}${payToken}` : payToken;
+    res.json({ payUrl, payToken });
+  } catch (err: unknown) {
+    console.error("Quick charge pay-session error:", err);
+    const message = err instanceof Error ? err.message : "Failed to create pay session";
+    res.status(500).json({ error: message });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

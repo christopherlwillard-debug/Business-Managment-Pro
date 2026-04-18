@@ -27,7 +27,7 @@ export async function createPaymentIntent(opts: {
     currency: opts.currency.toLowerCase(),
     description: opts.description,
     metadata: opts.metadata,
-    automatic_payment_methods: { enabled: true },
+    payment_method_types: ["card"],
   });
   if (!pi.client_secret) throw new Error("Stripe did not return a client_secret");
   return { id: pi.id, clientSecret: pi.client_secret };

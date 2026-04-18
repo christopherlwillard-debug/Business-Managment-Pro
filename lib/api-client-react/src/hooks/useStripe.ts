@@ -130,6 +130,21 @@ export function useCreateInvoicePaySession() {
   });
 }
 
+export function useCreateQuickChargePaySession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payPageBaseUrl }: { id: number; payPageBaseUrl: string }) =>
+      customFetch<CreatePaySessionResponse>(`/api/quick-charges/${id}/pay-session`, {
+        method: "POST",
+        body: JSON.stringify({ payPageBaseUrl }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/quick-charges"] });
+    },
+  });
+}
+
 export function useCreateProspectDepositLink() {
   const qc = useQueryClient();
   return useMutation({

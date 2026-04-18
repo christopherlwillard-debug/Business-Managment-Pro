@@ -64,7 +64,13 @@ function PayForm({
       <PaymentElement
         options={{
           layout: "tabs",
-          fields: { billingDetails: { email: "never", phone: "never" } },
+          fields: {
+            billingDetails: {
+              email: "never",
+              phone: "never",
+              address: "never",
+            },
+          },
         }}
       />
 

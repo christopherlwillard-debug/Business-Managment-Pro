@@ -119,7 +119,7 @@ router.post("/:id/pay-session", async (req, res) => {
     };
 
     let paymentIntentId = inv.stripePaymentIntentId ?? null;
-    let payToken = (inv as any).payToken ?? null;
+    let payToken = inv.payToken ?? null;
 
     if (paymentIntentId) {
       const stripe = getStripe();
