@@ -32,6 +32,9 @@ function format(p: ProspectWithEstimate) {
   return {
     id: p.id,
     address: p.address,
+    city: p.city ?? null,
+    state: p.state ?? null,
+    zip: p.zip ?? null,
     propertyType: p.propertyType,
     estimatedSqft: p.estimatedSqft ?? null,
     roughQuote: p.roughQuote != null ? parseFloat(p.roughQuote) : null,
@@ -79,6 +82,9 @@ router.post("/", async (req, res) => {
   try {
     const body = req.body as {
       address: string;
+      city?: string | null;
+      state?: string | null;
+      zip?: string | null;
       propertyType?: string;
       estimatedSqft?: number | null;
       roughQuote?: number | null;
@@ -95,6 +101,9 @@ router.post("/", async (req, res) => {
       .insert(prospectsTable)
       .values({
         address: body.address,
+        city: body.city ?? null,
+        state: body.state ?? null,
+        zip: body.zip ?? null,
         propertyType: toProspectPropertyType(body.propertyType),
         estimatedSqft: body.estimatedSqft ?? null,
         roughQuote: body.roughQuote != null ? body.roughQuote.toString() : null,
@@ -129,6 +138,9 @@ router.put("/:id", async (req, res) => {
 
     const body = req.body as {
       address?: string;
+      city?: string | null;
+      state?: string | null;
+      zip?: string | null;
       propertyType?: string;
       estimatedSqft?: number | null;
       roughQuote?: number | null;
@@ -143,6 +155,9 @@ router.put("/:id", async (req, res) => {
       updatedAt: new Date(),
     };
     if (body.address !== undefined) patch.address = body.address;
+    if (body.city !== undefined) patch.city = body.city ?? null;
+    if (body.state !== undefined) patch.state = body.state ?? null;
+    if (body.zip !== undefined) patch.zip = body.zip ?? null;
     if (body.propertyType !== undefined) patch.propertyType = toProspectPropertyType(body.propertyType);
     if (body.estimatedSqft !== undefined) patch.estimatedSqft = body.estimatedSqft ?? null;
     if (body.roughQuote !== undefined) patch.roughQuote = body.roughQuote != null ? body.roughQuote.toString() : null;
@@ -199,6 +214,9 @@ router.post("/:id/convert-to-client", async (req, res) => {
         name: prospect.contactName ?? prospect.address,
         phone: prospect.contactPhone ?? null,
         address: prospect.address,
+        city: prospect.city ?? null,
+        state: prospect.state ?? null,
+        zip: prospect.zip ?? null,
         notes: prospect.notes ?? null,
       })
       .returning();

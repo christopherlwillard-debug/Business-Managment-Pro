@@ -918,6 +918,9 @@ export const ProspectPropertyType = {
 export interface Prospect {
   id: number;
   address: string;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
   propertyType: ProspectPropertyType;
   estimatedSqft?: number | null;
   roughQuote?: number | null;
@@ -941,6 +944,9 @@ export interface Prospect {
 
 export interface CreateProspectRequest {
   address: string;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
   propertyType?: ProspectPropertyType;
   estimatedSqft?: number | null;
   roughQuote?: number | null;

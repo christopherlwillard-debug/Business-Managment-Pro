@@ -15,12 +15,14 @@ import {
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
   Maximize2, Building2, CheckCircle2, AlertCircle, UserPlus,
-  CreditCard, Copy, ExternalLink, X, BadgeCheck, CalendarClock,
+  CreditCard, Copy, ExternalLink, X, BadgeCheck, CalendarClock, Route,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const PROPERTY_TYPES: ProspectPropertyType[] = ["Church", "Retail", "Apartment", "Industrial", "Other"];
 
@@ -71,6 +73,9 @@ function formatDate(iso: string | null | undefined): string | null {
 
 type FormData = {
   address: string;
+  city: string;
+  state: string;
+  zip: string;
   propertyType: string;
   estimatedSqft: string;
   roughQuote: string;
@@ -83,6 +88,9 @@ type FormData = {
 
 const EMPTY_FORM: FormData = {
   address: "",
+  city: "",
+  state: "",
+  zip: "",
   propertyType: "Other",
   estimatedSqft: "",
   roughQuote: "",
@@ -96,6 +104,9 @@ const EMPTY_FORM: FormData = {
 function prospectToForm(p: Prospect): FormData {
   return {
     address: p.address,
+    city: p.city ?? "",
+    state: p.state ?? "",
+    zip: p.zip ?? "",
     propertyType: p.propertyType,
     estimatedSqft: p.estimatedSqft != null ? String(p.estimatedSqft) : "",
     roughQuote: p.roughQuote != null ? String(p.roughQuote) : "",
@@ -131,6 +142,35 @@ export default function Prospects() {
   const [depositInputId, setDepositInputId] = useState<number | null>(null);
   const [depositAmtStr, setDepositAmtStr] = useState("");
   const [depositMode, setDepositMode] = useState<"flat" | "percent">("percent");
+
+  const [routeTargetId, setRouteTargetId] = useState<number | null>(null);
+  const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));
+  const [addingToRouteId, setAddingToRouteId] = useState<number | null>(null);
+
+  async function handleAddToRoute(p: Prospect) {
+    setAddingToRouteId(p.id);
+    try {
+      const fullAddress = [p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
+      const res = await fetch(`${BASE}/api/route-stops`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: p.contactName ?? p.address,
+          address: fullAddress,
+          scheduledDate: routeDateStr,
+          status: "scheduled",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast({ title: "Added to Route Plan", description: `${p.address} → ${routeDateStr}` });
+      setRouteTargetId(null);
+    } catch {
+      toast({ title: "Failed to add to route", variant: "destructive" });
+    } finally {
+      setAddingToRouteId(null);
+    }
+  }
 
   async function handleRequestDeposit(p: Prospect) {
     setGeneratingDepositId(p.id);
@@ -189,6 +229,9 @@ export default function Prospects() {
     e.preventDefault();
     const payload = {
       address: form.address,
+      city: form.city || null,
+      state: form.state || null,
+      zip: form.zip || null,
       propertyType: form.propertyType,
       estimatedSqft: form.estimatedSqft ? parseInt(form.estimatedSqft) : null,
       roughQuote: form.roughQuote ? parseFloat(form.roughQuote) : null,
@@ -322,9 +365,16 @@ export default function Prospects() {
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                        <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="text-sm font-medium text-foreground truncate">{p.address}</span>
+                      <div className="flex items-start gap-1.5 text-muted-foreground mb-1">
+                        <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-foreground block truncate">{p.address}</span>
+                          {(p.city || p.state || p.zip) && (
+                            <span className="text-xs text-muted-foreground">
+                              {[p.city, p.state, p.zip].filter(Boolean).join(", ")}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
@@ -499,6 +549,39 @@ export default function Prospects() {
                       </button>
                     </div>
                   )}
+
+                  <div className="border-t border-border pt-2">
+                    {routeTargetId === p.id ? (
+                      <div className="flex gap-1.5 items-center">
+                        <input
+                          type="date"
+                          value={routeDateStr}
+                          onChange={e => setRouteDateStr(e.target.value)}
+                          className="flex-1 px-2 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary/40"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleAddToRoute(p)}
+                          disabled={addingToRouteId === p.id}
+                          className="px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-60"
+                        >
+                          {addingToRouteId === p.id ? "…" : "Add"}
+                        </button>
+                        <button
+                          onClick={() => setRouteTargetId(null)}
+                          className="px-2 py-1 text-xs text-muted-foreground border border-border rounded hover:bg-muted"
+                        >✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setRouteDateStr(new Date().toISOString().slice(0, 10)); setRouteTargetId(p.id); }}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border border-border rounded text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      >
+                        <Route className="w-3 h-3" />
+                        Add to Route Plan
+                      </button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -515,16 +598,51 @@ export default function Prospects() {
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">
-                Address <span className="text-red-500">*</span>
+                Street Address <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 required
                 value={form.address}
                 onChange={(e) => handleFormChange("address", e.target.value)}
-                placeholder="123 Main St, Louisville, KY"
+                placeholder="123 Main St"
                 className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-foreground mb-1">City</label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => handleFormChange("city", e.target.value)}
+                  placeholder="Owensboro"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">State</label>
+                <input
+                  type="text"
+                  value={form.state}
+                  onChange={(e) => handleFormChange("state", e.target.value)}
+                  placeholder="KY"
+                  maxLength={2}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Zip</label>
+                <input
+                  type="text"
+                  value={form.zip}
+                  onChange={(e) => handleFormChange("zip", e.target.value)}
+                  placeholder="42301"
+                  maxLength={10}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
