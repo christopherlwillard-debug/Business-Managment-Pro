@@ -514,7 +514,7 @@ export default function Prospects() {
                     {p.status === "serviced" && p.servicedAt && (
                       <div className="flex items-center gap-1.5 col-span-2 text-xs text-indigo-700">
                         <BadgeCheck className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>Serviced {formatDate(p.servicedAt)}</span>
+                        <span>Serviced on {formatDate(p.servicedAt)}</span>
                       </div>
                     )}
                     {p.followUpDate && (

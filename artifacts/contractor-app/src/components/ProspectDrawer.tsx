@@ -277,6 +277,15 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     await save(field, parsed);
   };
 
+  const handleStatusSave = async (value: string) => {
+    if (value === "serviced" && (detail?.status ?? prospect.status) !== "serviced") {
+      setServiceDateStr(new Date().toISOString().slice(0, 10));
+      setShowServicePanel(true);
+      return;
+    }
+    await saveField("status")(value);
+  };
+
   const handleRequestDeposit = async () => {
     setIsGeneratingDeposit(true);
     try {
@@ -588,7 +597,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 displayValue={STATUS_OPTIONS.find((s) => s.value === p.status)?.label}
                 type="select"
                 options={STATUS_OPTIONS}
-                onSave={saveField("status")}
+                onSave={handleStatusSave}
               />
               <InlineEdit
                 label="Property Type"
