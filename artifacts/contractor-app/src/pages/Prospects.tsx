@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useSearchParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListProspects,
@@ -149,7 +150,22 @@ function formatShortDate(dateStr: string): string {
 
 export default function Prospects() {
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const [locationSearch, setLocationSearch] = useState<string>("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const locationSearch = searchParams.get("location") ?? "";
+  function setLocationSearch(value: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) {
+          next.set("location", value);
+        } else {
+          next.delete("location");
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  }
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Prospect | null>(null);
