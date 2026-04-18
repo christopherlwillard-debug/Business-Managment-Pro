@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import {
   useUpdateProspect,
   useGetProspect,
+  useConvertProspectToClient,
+  useCreateProspectDepositLink,
   type Prospect,
   type ProspectDetail,
   type ProspectStatus,
@@ -31,6 +33,9 @@ import {
   Clock,
   ArrowRight,
   History,
+  Copy,
+  ExternalLink,
+  UserPlus,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -208,10 +213,31 @@ interface ProspectDrawerProps {
 
 export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectDrawerProps) {
   const updateMutation = useUpdateProspect();
+  const convertMutation = useConvertProspectToClient();
+  const depositLinkMutation = useCreateProspectDepositLink();
   const { toast } = useToast();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
 
   const detail: (Prospect & { statusHistory?: ProspectDetail["statusHistory"] }) | null = detailQuery.data ?? prospect;
+
+  const [showDepositInput, setShowDepositInput] = useState(false);
+  const [depositAmtStr, setDepositAmtStr] = useState("50");
+  const [depositMode, setDepositMode] = useState<"flat" | "percent">("percent");
+  const [isGeneratingDeposit, setIsGeneratingDeposit] = useState(false);
+  const [newDepositUrl, setNewDepositUrl] = useState<string | null>(null);
+
+  const [showConvertConfirm, setShowConvertConfirm] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setShowDepositInput(false);
+      setDepositAmtStr("50");
+      setDepositMode("percent");
+      setNewDepositUrl(null);
+      setShowConvertConfirm(false);
+    }
+  }, [open]);
 
   if (!prospect) return null;
 
@@ -237,8 +263,55 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectD
     await save(field, parsed);
   };
 
+  const handleRequestDeposit = async () => {
+    setIsGeneratingDeposit(true);
+    try {
+      let depositAmount: number | undefined;
+      let depositPercent: number | undefined;
+      const val = parseFloat(depositAmtStr);
+      if (!isNaN(val) && val > 0) {
+        if (depositMode === "flat") depositAmount = val;
+        else depositPercent = val;
+      }
+      const result = await depositLinkMutation.mutateAsync({ id: prospect.id, depositAmount, depositPercent });
+      setNewDepositUrl(result.paymentLinkUrl);
+      setShowDepositInput(false);
+      detailQuery.refetch();
+      onUpdated();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create deposit link";
+      toast({ title: msg, variant: "destructive" });
+    } finally {
+      setIsGeneratingDeposit(false);
+    }
+  };
+
+  const handleConvert = async () => {
+    setIsConverting(true);
+    try {
+      const client = await convertMutation.mutateAsync(prospect.id);
+      toast({ title: `Converted to client: ${client.name}` });
+      setShowConvertConfirm(false);
+      onUpdated();
+      onClose();
+    } catch {
+      toast({ title: "Error converting to client", variant: "destructive" });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  const copyDepositLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    toast({ title: "Deposit link copied!" });
+  };
+
   const p = detail ?? prospect;
   const statusHistory = detailQuery.data?.statusHistory ?? [];
+
+  const depositUrl = newDepositUrl ?? p.stripePaymentLinkUrl;
+  const showDepositActions = !p.depositPaidAt && (p.roughQuote != null || depositUrl);
+  const showRequestBtn = !depositUrl && !showDepositInput;
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -287,6 +360,133 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectD
         </div>
 
         <div className="px-6 py-5 space-y-6">
+
+          {/* Actions Section */}
+          {(showDepositActions || p.depositPaidAt || p.status === "won") && (
+            <section className="space-y-2.5">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5" />
+                Actions
+              </h3>
+
+              {/* Deposit paid badge */}
+              {p.depositPaidAt ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm font-medium text-emerald-800">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  Deposit received{p.depositPaidAmount != null ? ` — ${formatCurrency(p.depositPaidAmount)}` : ""}
+                </div>
+              ) : depositUrl ? (
+                /* Existing deposit link */
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Deposit link ready — share with prospect to collect payment.</p>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => copyDepositLink(depositUrl)}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy Deposit Link
+                    </button>
+                    <a
+                      href={depositUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      title="Open in browser"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              ) : showRequestBtn ? (
+                /* Request deposit button */
+                <button
+                  onClick={() => { setShowDepositInput(true); setDepositAmtStr("50"); setDepositMode("percent"); }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  Request Deposit
+                </button>
+              ) : showDepositInput ? (
+                /* Deposit amount input */
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2.5">
+                  <p className="text-xs font-medium text-foreground">Set deposit amount</p>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setDepositMode("percent")}
+                      className={`flex-1 py-1.5 text-xs rounded border transition-colors ${depositMode === "percent" ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground hover:bg-muted"}`}
+                    >
+                      % of quote
+                    </button>
+                    <button
+                      onClick={() => setDepositMode("flat")}
+                      className={`flex-1 py-1.5 text-xs rounded border transition-colors ${depositMode === "flat" ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground hover:bg-muted"}`}
+                    >
+                      Flat $
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      placeholder={depositMode === "percent" ? "e.g. 50" : "Amount"}
+                      value={depositAmtStr}
+                      onChange={(e) => setDepositAmtStr(e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-amber-400/30 bg-background"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleRequestDeposit}
+                      disabled={isGeneratingDeposit}
+                      className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-md hover:bg-amber-600 disabled:opacity-60 transition-colors"
+                    >
+                      {isGeneratingDeposit ? "…" : "Generate"}
+                    </button>
+                    <button
+                      onClick={() => { setShowDepositInput(false); setDepositAmtStr("50"); }}
+                      className="px-2.5 py-1.5 text-sm text-muted-foreground border border-border rounded-md hover:bg-muted transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Convert to Client */}
+              {p.status === "won" && !showConvertConfirm && (
+                <button
+                  onClick={() => setShowConvertConfirm(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Convert to Client
+                </button>
+              )}
+
+              {/* Convert confirmation inline */}
+              {showConvertConfirm && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-2.5">
+                  <p className="text-sm font-medium text-green-900">Convert this prospect to a client?</p>
+                  <p className="text-xs text-green-700">A new client record will be created. You can edit their full details from the Clients page.</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleConvert}
+                      disabled={isConverting}
+                      className="flex-1 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
+                    >
+                      {isConverting ? "Converting…" : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => setShowConvertConfirm(false)}
+                      className="flex-1 px-3 py-1.5 border border-border text-sm rounded-md hover:bg-muted transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Contact Info Section */}
           <section className="space-y-4">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -445,11 +645,6 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectD
                   </div>
                 )}
               </div>
-              {p.stripePaymentLinkUrl && !p.depositPaidAt && (
-                <p className="text-xs text-muted-foreground">
-                  Deposit link pending — share with prospect to collect payment.
-                </p>
-              )}
             </section>
           )}
 

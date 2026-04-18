@@ -4,8 +4,6 @@ import {
   useCreateProspect,
   useUpdateProspect,
   useDeleteProspect,
-  useConvertProspectToClient,
-  useCreateProspectDepositLink,
   useListEstimates,
   type Prospect,
   type Estimate,
@@ -15,8 +13,8 @@ import {
 import { ProspectDrawer } from "@/components/ProspectDrawer";
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
-  Maximize2, Building2, CheckCircle2, AlertCircle, UserPlus,
-  CreditCard, Copy, ExternalLink, X, BadgeCheck, CalendarClock, Route,
+  Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
+  BadgeCheck, CalendarClock, Route, X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -127,9 +125,7 @@ export default function Prospects() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Prospect | null>(null);
-  const [convertTarget, setConvertTarget] = useState<Prospect | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isConverting, setIsConverting] = useState(false);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
 
   const { data: prospects = [], isLoading, refetch } = useListProspects();
@@ -137,18 +133,10 @@ export default function Prospects() {
   const createMutation = useCreateProspect();
   const updateMutation = useUpdateProspect();
   const deleteMutation = useDeleteProspect();
-  const convertMutation = useConvertProspectToClient();
-  const depositLinkMutation = useCreateProspectDepositLink();
   const { toast } = useToast();
 
   const [drawerProspectId, setDrawerProspectId] = useState<number | null>(null);
   const drawerProspect = drawerProspectId != null ? (prospects.find((p) => p.id === drawerProspectId) ?? null) : null;
-
-  const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; address: string } | null>(null);
-  const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
-  const [depositInputId, setDepositInputId] = useState<number | null>(null);
-  const [depositAmtStr, setDepositAmtStr] = useState("");
-  const [depositMode, setDepositMode] = useState<"flat" | "percent">("percent");
 
   const [routeTargetId, setRouteTargetId] = useState<number | null>(null);
   const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));
@@ -176,31 +164,6 @@ export default function Prospects() {
       toast({ title: "Failed to add to route", variant: "destructive" });
     } finally {
       setAddingToRouteId(null);
-    }
-  }
-
-  async function handleRequestDeposit(p: Prospect) {
-    setGeneratingDepositId(p.id);
-    try {
-      let depositAmount: number | undefined;
-      let depositPercent: number | undefined;
-      if (depositInputId === p.id && depositAmtStr) {
-        const val = parseFloat(depositAmtStr);
-        if (!isNaN(val) && val > 0) {
-          if (depositMode === "flat") depositAmount = val;
-          else depositPercent = val;
-        }
-      }
-      const result = await depositLinkMutation.mutateAsync({ id: p.id, depositAmount, depositPercent });
-      setDepositLinkResult({ url: result.paymentLinkUrl, address: p.address });
-      setDepositInputId(null);
-      setDepositAmtStr("");
-      refetch();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to create deposit link";
-      toast({ title: msg, variant: "destructive" });
-    } finally {
-      setGeneratingDepositId(null);
     }
   }
 
@@ -286,21 +249,6 @@ export default function Prospects() {
     } finally {
       setIsDeleting(false);
       setDeleteTarget(null);
-    }
-  };
-
-  const handleConvertConfirmed = async () => {
-    if (!convertTarget) return;
-    setIsConverting(true);
-    try {
-      const client = await convertMutation.mutateAsync(convertTarget.id);
-      toast({ title: `Converted to client: ${client.name}` });
-      refetch();
-    } catch {
-      toast({ title: "Error converting to client", variant: "destructive" });
-    } finally {
-      setIsConverting(false);
-      setConvertTarget(null);
     }
   };
 
@@ -544,90 +492,12 @@ export default function Prospects() {
                     <p className="text-xs text-muted-foreground border-t border-border pt-2 line-clamp-2">{p.notes}</p>
                   )}
 
-                  {(p.depositPaidAt || p.stripePaymentLinkUrl || (p.roughQuote != null && (p.status === "quoted" || p.status === "won"))) && (
-                    <div className="border-t border-border pt-2 space-y-1.5">
-                      {p.depositPaidAt ? (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded text-xs font-medium text-emerald-800">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-                          Deposit Received{p.depositPaidAmount != null ? ` — $${p.depositPaidAmount.toFixed(2)}` : ""}
-                        </div>
-                      ) : p.stripePaymentLinkUrl ? (
-                        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(p.stripePaymentLinkUrl!);
-                              toast({ title: "Deposit link copied!" });
-                            }}
-                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 transition-colors"
-                          >
-                            <Copy className="w-3 h-3" /> Copy Deposit Link
-                          </button>
-                          <a
-                            href={p.stripePaymentLinkUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-center px-2.5 py-1.5 border border-border rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      ) : depositInputId === p.id ? (
-                        <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => setDepositMode("percent")}
-                              className={`flex-1 py-1 text-xs rounded border transition-colors ${depositMode === "percent" ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground hover:bg-muted"}`}
-                            >% of quote</button>
-                            <button
-                              onClick={() => setDepositMode("flat")}
-                              className={`flex-1 py-1 text-xs rounded border transition-colors ${depositMode === "flat" ? "bg-amber-500 text-white border-amber-500" : "border-border text-muted-foreground hover:bg-muted"}`}
-                            >Flat $</button>
-                          </div>
-                          <div className="flex gap-1.5">
-                            <input
-                              type="number"
-                              placeholder={depositMode === "percent" ? "50" : "Amount"}
-                              value={depositAmtStr}
-                              onChange={e => setDepositAmtStr(e.target.value)}
-                              className="flex-1 px-2 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-amber-400"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => handleRequestDeposit(p)}
-                              disabled={generatingDepositId === p.id}
-                              className="px-2.5 py-1 text-xs bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-60"
-                            >
-                              {generatingDepositId === p.id ? "…" : "Go"}
-                            </button>
-                            <button
-                              onClick={() => { setDepositInputId(null); setDepositAmtStr(""); }}
-                              className="px-2 py-1 text-xs text-muted-foreground border border-border rounded hover:bg-muted"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setDepositInputId(p.id); setDepositAmtStr("50"); setDepositMode("percent"); }}
-                          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-medium hover:bg-amber-600 transition-colors"
-                        >
-                          <CreditCard className="w-3 h-3" />
-                          Request Deposit
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {p.status === "won" && (
-                    <div className="border-t border-border pt-2" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setConvertTarget(p); }}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition-colors"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        Convert to Client
-                      </button>
+                  {p.depositPaidAt && (
+                    <div className="border-t border-border pt-2">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded text-xs font-medium text-emerald-800">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                        Deposit Received{p.depositPaidAmount != null ? ` — $${p.depositPaidAmount.toFixed(2)}` : ""}
+                      </div>
                     </div>
                   )}
 
@@ -885,88 +755,6 @@ export default function Prospects() {
         </DialogContent>
       </Dialog>
 
-      {/* Convert to Client confirmation */}
-      <Dialog open={!!convertTarget} onOpenChange={(open) => { if (!open) setConvertTarget(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-              Convert to Client?
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground mt-1">
-            A new client record will be created from <span className="font-medium text-foreground">{convertTarget?.address}</span>. You can edit their full details from the Clients page.
-          </p>
-          <div className="flex gap-3 mt-4">
-            <button
-              onClick={() => setConvertTarget(null)}
-              className="flex-1 px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConvertConfirmed}
-              disabled={isConverting}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60"
-            >
-              {isConverting ? "Converting…" : "Convert to Client"}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-      {/* Deposit link result modal */}
-      {depositLinkResult && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <div className="h-1.5 bg-gradient-to-r from-emerald-500 to-emerald-400" />
-            <div className="p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900">Deposit Link Ready</h3>
-                  <p className="text-sm text-gray-500 truncate max-w-[240px]">{depositLinkResult.address}</p>
-                </div>
-                <button
-                  onClick={() => setDepositLinkResult(null)}
-                  className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                <p className="text-xs text-gray-500 mb-1 font-medium">Stripe Payment Link</p>
-                <p className="text-sm text-gray-800 break-all font-mono">{depositLinkResult.url}</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(depositLinkResult.url);
-                    toast({ title: "Link copied!" });
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 transition-colors"
-                >
-                  <Copy className="w-4 h-4" />
-                  Copy Link
-                </button>
-                <a
-                  href={depositLinkResult.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Open
-                </a>
-              </div>
-              <p className="text-xs text-gray-400 text-center">
-                Share this with the prospect to collect the deposit via Stripe.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
