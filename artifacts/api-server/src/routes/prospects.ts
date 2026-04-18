@@ -51,6 +51,7 @@ function format(p: ProspectWithEstimate) {
     depositPaidAt: p.depositPaidAt instanceof Date ? p.depositPaidAt.toISOString() : (p.depositPaidAt ?? null),
     depositPaidAmount: p.depositPaidAmount != null ? parseFloat(p.depositPaidAmount) : null,
     lastPaidAt: p.lastPaidAt instanceof Date ? p.lastPaidAt.toISOString() : (p.lastPaidAt ?? null),
+    servicedAt: p.servicedAt ?? null,
     followUpDate: p.followUpDate ?? null,
     source: p.source ?? "manual",
     createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
@@ -210,11 +211,12 @@ router.put("/:id", async (req, res) => {
       notes?: string | null;
       status?: string;
       linkedEstimateId?: number | null;
+      servicedAt?: string | null;
       followUpDate?: string | null;
     };
 
     const [existing] = await db
-      .select({ status: prospectsTable.status, linkedEstimateId: prospectsTable.linkedEstimateId })
+      .select({ status: prospectsTable.status, linkedEstimateId: prospectsTable.linkedEstimateId, followUpDate: prospectsTable.followUpDate })
       .from(prospectsTable)
       .where(eq(prospectsTable.id, id));
 
@@ -236,7 +238,14 @@ router.put("/:id", async (req, res) => {
     if (body.notes !== undefined) patch.notes = body.notes ?? null;
     if (body.status !== undefined) patch.status = toProspectStatus(body.status);
     if (body.linkedEstimateId !== undefined) patch.linkedEstimateId = body.linkedEstimateId ?? null;
-    if (body.followUpDate !== undefined) patch.followUpDate = body.followUpDate ?? null;
+    if (body.servicedAt !== undefined) patch.servicedAt = body.servicedAt ?? null;
+    if (body.followUpDate !== undefined) {
+      patch.followUpDate = body.followUpDate ?? null;
+    } else if (body.servicedAt && !existing.followUpDate) {
+      const serviceDate = new Date(body.servicedAt + "T00:00:00");
+      serviceDate.setMonth(serviceDate.getMonth() + 30);
+      patch.followUpDate = serviceDate.toISOString().slice(0, 10);
+    }
 
     const statusChanged = body.status !== undefined && patch.status && patch.status !== existing.status;
 

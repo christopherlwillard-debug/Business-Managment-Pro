@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import {
   useUpdateProspect,
   useGetProspect,
-  useConvertProspectToClient,
   useCreateProspectDepositLink,
   type Prospect,
   type ProspectDetail,
@@ -35,7 +34,6 @@ import {
   History,
   Copy,
   ExternalLink,
-  UserPlus,
   Link,
   Link2Off,
   Route,
@@ -48,6 +46,7 @@ const STATUS_OPTIONS: { value: ProspectStatus; label: string }[] = [
   { value: "contacted", label: "Contacted" },
   { value: "quoted", label: "Quoted" },
   { value: "won", label: "Won" },
+  { value: "serviced", label: "Serviced" },
   { value: "lost", label: "Lost" },
 ];
 
@@ -56,6 +55,7 @@ const STATUS_BADGE: Record<ProspectStatus, { label: string; className: string }>
   contacted: { label: "Contacted", className: "bg-blue-100 text-blue-700 border-blue-200" },
   quoted: { label: "Quoted", className: "bg-amber-100 text-amber-700 border-amber-200" },
   won: { label: "Won", className: "bg-green-100 text-green-700 border-green-200" },
+  serviced: { label: "Serviced", className: "bg-indigo-100 text-indigo-700 border-indigo-200" },
   lost: { label: "Lost", className: "bg-red-100 text-red-700 border-red-200" },
 };
 
@@ -226,7 +226,6 @@ interface ProspectDrawerProps {
 
 export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAddressMap }: ProspectDrawerProps) {
   const updateMutation = useUpdateProspect();
-  const convertMutation = useConvertProspectToClient();
   const depositLinkMutation = useCreateProspectDepositLink();
   const { toast } = useToast();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
@@ -239,8 +238,9 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [isGeneratingDeposit, setIsGeneratingDeposit] = useState(false);
   const [newDepositUrl, setNewDepositUrl] = useState<string | null>(null);
 
-  const [showConvertConfirm, setShowConvertConfirm] = useState(false);
-  const [isConverting, setIsConverting] = useState(false);
+  const [showServicePanel, setShowServicePanel] = useState(false);
+  const [serviceDateStr, setServiceDateStr] = useState(new Date().toISOString().slice(0, 10));
+  const [isMarkingServiced, setIsMarkingServiced] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -248,7 +248,8 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setDepositAmtStr("50");
       setDepositMode("percent");
       setNewDepositUrl(null);
-      setShowConvertConfirm(false);
+      setShowServicePanel(false);
+      setServiceDateStr(new Date().toISOString().slice(0, 10));
     }
   }, [open]);
 
@@ -299,18 +300,18 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     }
   };
 
-  const handleConvert = async () => {
-    setIsConverting(true);
+  const handleMarkServiced = async () => {
+    setIsMarkingServiced(true);
     try {
-      const client = await convertMutation.mutateAsync(prospect.id);
-      toast({ title: `Converted to client: ${client.name}` });
-      setShowConvertConfirm(false);
+      await updateMutation.mutateAsync({ id: prospect.id, status: "serviced", servicedAt: serviceDateStr });
+      toast({ title: "Job marked as serviced", description: "Resealing follow-up date has been set automatically." });
+      setShowServicePanel(false);
+      detailQuery.refetch();
       onUpdated();
-      onClose();
     } catch {
-      toast({ title: "Error converting to client", variant: "destructive" });
+      toast({ title: "Error marking as serviced", variant: "destructive" });
     } finally {
-      setIsConverting(false);
+      setIsMarkingServiced(false);
     }
   };
 
@@ -383,6 +384,28 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
         </div>
 
         <div className="px-6 py-5 space-y-6">
+
+          {/* Serviced Job Info — shown when job is complete */}
+          {p.status === "serviced" && (
+            <section className="space-y-2.5">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <BadgeCheck className="w-3.5 h-3.5" />
+                Job Record
+              </h3>
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-indigo-900">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                  Job completed{p.servicedAt ? ` — ${formatDate(p.servicedAt)}` : ""}
+                </div>
+                {p.followUpDate && (
+                  <div className="flex items-center gap-2 text-xs text-indigo-700">
+                    <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
+                    Reseal follow-up: <span className="font-medium ml-0.5">{formatDate(p.followUpDate)}</span>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Actions Section */}
           {(showDepositActions || p.depositPaidAt || p.status === "won") && (
@@ -474,32 +497,38 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 </div>
               ) : null}
 
-              {/* Convert to Client */}
-              {p.status === "won" && !showConvertConfirm && (
+              {/* Mark as Serviced */}
+              {p.status === "won" && !showServicePanel && (
                 <button
-                  onClick={() => setShowConvertConfirm(true)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                  onClick={() => { setShowServicePanel(true); setServiceDateStr(new Date().toISOString().slice(0, 10)); }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  Convert to Client
+                  <BadgeCheck className="w-3.5 h-3.5" />
+                  Mark as Serviced
                 </button>
               )}
 
-              {/* Convert confirmation inline */}
-              {showConvertConfirm && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-2.5">
-                  <p className="text-sm font-medium text-green-900">Convert this prospect to a client?</p>
-                  <p className="text-xs text-green-700">A new client record will be created. You can edit their full details from the Clients page.</p>
+              {/* Mark as Serviced panel */}
+              {showServicePanel && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2.5">
+                  <p className="text-sm font-medium text-indigo-900">Confirm service date</p>
+                  <p className="text-xs text-indigo-700">Recording this will set a resealing follow-up ~2.5 years out.</p>
+                  <input
+                    type="date"
+                    value={serviceDateStr}
+                    onChange={(e) => setServiceDateStr(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-indigo-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400/30 bg-background"
+                  />
                   <div className="flex gap-2">
                     <button
-                      onClick={handleConvert}
-                      disabled={isConverting}
-                      className="flex-1 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
+                      onClick={handleMarkServiced}
+                      disabled={isMarkingServiced}
+                      className="flex-1 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-60 transition-colors"
                     >
-                      {isConverting ? "Converting…" : "Confirm"}
+                      {isMarkingServiced ? "Saving…" : "Confirm"}
                     </button>
                     <button
-                      onClick={() => setShowConvertConfirm(false)}
+                      onClick={() => setShowServicePanel(false)}
                       className="flex-1 px-3 py-1.5 border border-border text-sm rounded-md hover:bg-muted transition-colors"
                     >
                       Cancel

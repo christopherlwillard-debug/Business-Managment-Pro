@@ -901,6 +901,7 @@ export const ProspectStatus = {
   contacted: "contacted",
   quoted: "quoted",
   won: "won",
+  serviced: "serviced",
   lost: "lost",
 } as const;
 
@@ -936,6 +937,7 @@ export interface Prospect {
   depositPaidAt?: string | null;
   depositPaidAmount?: number | null;
   lastPaidAt?: string | null;
+  servicedAt?: string | null;
   followUpDate?: string | null;
   source?: string | null;
   createdAt: string;
@@ -956,6 +958,7 @@ export interface CreateProspectRequest {
   notes?: string | null;
   status?: ProspectStatus;
   linkedEstimateId?: number | null;
+  servicedAt?: string | null;
   followUpDate?: string | null;
 }
 

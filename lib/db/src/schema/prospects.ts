@@ -5,7 +5,7 @@ import { estimatesTable } from "./estimates";
 export const PROSPECT_PROPERTY_TYPES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
 export type ProspectPropertyType = typeof PROSPECT_PROPERTY_TYPES[number];
 
-export const PROSPECT_STATUSES = ["cold", "contacted", "quoted", "won", "lost"] as const;
+export const PROSPECT_STATUSES = ["cold", "contacted", "quoted", "won", "serviced", "lost"] as const;
 export type ProspectStatus = typeof PROSPECT_STATUSES[number];
 
 export const prospectsTable = pgTable(
@@ -30,6 +30,7 @@ export const prospectsTable = pgTable(
     depositPaidAt: timestamp("deposit_paid_at"),
     depositPaidAmount: numeric("deposit_paid_amount", { precision: 12, scale: 2 }),
     lastPaidAt: timestamp("last_paid_at"),
+    servicedAt: date("serviced_at"),
     followUpDate: date("follow_up_date"),
     source: text("source").default("manual"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -38,7 +39,7 @@ export const prospectsTable = pgTable(
   (table) => [
     check(
       "prospects_status_check",
-      sql`${table.status} IN ('cold', 'contacted', 'quoted', 'won', 'lost')`,
+      sql`${table.status} IN ('cold', 'contacted', 'quoted', 'won', 'serviced', 'lost')`,
     ),
     check(
       "prospects_property_type_check",

@@ -31,6 +31,7 @@ const STATUS_OPTIONS: { value: ProspectStatus; label: string }[] = [
   { value: "contacted", label: "Contacted" },
   { value: "quoted", label: "Quoted" },
   { value: "won", label: "Won" },
+  { value: "serviced", label: "Serviced" },
   { value: "lost", label: "Lost" },
 ];
 
@@ -39,6 +40,7 @@ const STATUS_BADGE: Record<ProspectStatus, { label: string; className: string }>
   contacted: { label: "Contacted", className: "bg-blue-100 text-blue-700 border-blue-200" },
   quoted: { label: "Quoted", className: "bg-amber-100 text-amber-700 border-amber-200" },
   won: { label: "Won", className: "bg-green-100 text-green-700 border-green-200" },
+  serviced: { label: "Serviced", className: "bg-indigo-100 text-indigo-700 border-indigo-200" },
   lost: { label: "Lost", className: "bg-red-100 text-red-700 border-red-200" },
 };
 
@@ -53,6 +55,7 @@ const PROPERTY_TYPE_COLORS: Record<string, string> = {
 const FILTER_OPTIONS = [
   { value: "", label: "All" },
   ...STATUS_OPTIONS,
+  { value: "due_for_resealing", label: "Due for Resealing" },
   { value: "follow_up_due", label: "Follow-up Due" },
 ];
 
@@ -63,6 +66,16 @@ function isFollowUpDue(followUpDate: string | null | undefined): boolean {
   const in60 = new Date(now);
   in60.setDate(in60.getDate() + 60);
   return due <= in60;
+}
+
+function isDueForResealing(p: { status: ProspectStatus; followUpDate?: string | null }): boolean {
+  if (p.status !== "serviced") return false;
+  if (!p.followUpDate) return false;
+  const due = new Date(p.followUpDate);
+  const now = new Date();
+  const in90 = new Date(now);
+  in90.setDate(in90.getDate() + 90);
+  return due <= in90;
 }
 
 function formatDate(iso: string | null | undefined): string | null {
@@ -224,7 +237,8 @@ export default function Prospects() {
 
   const filtered = locationFiltered.filter((p) => {
     if (statusFilter === "follow_up_due" && !isFollowUpDue(p.followUpDate)) return false;
-    if (statusFilter && statusFilter !== "follow_up_due" && p.status !== statusFilter) return false;
+    if (statusFilter === "due_for_resealing" && !isDueForResealing(p)) return false;
+    if (statusFilter && statusFilter !== "follow_up_due" && statusFilter !== "due_for_resealing" && p.status !== statusFilter) return false;
     return true;
   });
 
@@ -305,7 +319,7 @@ export default function Prospects() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Prospects</h1>
-          <p className="text-muted-foreground mt-1">Commercial asphalt leads and pre-sale pipeline</p>
+          <p className="text-muted-foreground mt-1">Willard's Asphalt Sealing — customer pipeline &amp; job history</p>
         </div>
         <button
           onClick={openCreate}
@@ -337,7 +351,12 @@ export default function Prospects() {
                 ({locationFiltered.filter((p) => isFollowUpDue(p.followUpDate)).length})
               </span>
             )}
-            {opt.value !== "" && opt.value !== "follow_up_due" && (
+            {opt.value === "due_for_resealing" && (
+              <span className="ml-1.5 text-xs opacity-70">
+                ({locationFiltered.filter((p) => isDueForResealing(p)).length})
+              </span>
+            )}
+            {opt.value !== "" && opt.value !== "follow_up_due" && opt.value !== "due_for_resealing" && (
               <span className="ml-1.5 text-xs opacity-70">
                 ({locationFiltered.filter((p) => p.status === opt.value).length})
               </span>
