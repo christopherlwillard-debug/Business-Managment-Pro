@@ -511,10 +511,16 @@ export default function Prospects() {
                         <span>Last paid: {formatDate(p.lastPaidAt)}</span>
                       </div>
                     )}
+                    {p.status === "serviced" && p.servicedAt && (
+                      <div className="flex items-center gap-1.5 col-span-2 text-xs text-indigo-700">
+                        <BadgeCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Serviced {formatDate(p.servicedAt)}</span>
+                      </div>
+                    )}
                     {p.followUpDate && (
-                      <div className={`flex items-center gap-1.5 col-span-2 text-xs ${isFollowUpDue(p.followUpDate) ? "text-amber-700" : "text-muted-foreground"}`}>
+                      <div className={`flex items-center gap-1.5 col-span-2 text-xs ${isDueForResealing(p) ? "text-indigo-700 font-medium" : isFollowUpDue(p.followUpDate) ? "text-amber-700" : "text-muted-foreground"}`}>
                         <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>Follow-up: {formatDate(p.followUpDate)}</span>
+                        <span>{p.status === "serviced" ? "Reseal due:" : "Follow-up:"} {formatDate(p.followUpDate)}</span>
                       </div>
                     )}
                   </div>

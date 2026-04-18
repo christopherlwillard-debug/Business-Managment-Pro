@@ -238,11 +238,20 @@ router.put("/:id", async (req, res) => {
     if (body.notes !== undefined) patch.notes = body.notes ?? null;
     if (body.status !== undefined) patch.status = toProspectStatus(body.status);
     if (body.linkedEstimateId !== undefined) patch.linkedEstimateId = body.linkedEstimateId ?? null;
-    if (body.servicedAt !== undefined) patch.servicedAt = body.servicedAt ?? null;
+
+    const isBeingServiced = patch.status === "serviced" && existing.status !== "serviced";
+    const resolvedServicedAt = body.servicedAt ?? (isBeingServiced ? new Date().toISOString().slice(0, 10) : undefined);
+
+    if (body.servicedAt !== undefined) {
+      patch.servicedAt = body.servicedAt ?? null;
+    } else if (isBeingServiced) {
+      patch.servicedAt = resolvedServicedAt ?? null;
+    }
+
     if (body.followUpDate !== undefined) {
       patch.followUpDate = body.followUpDate ?? null;
-    } else if (body.servicedAt && !existing.followUpDate) {
-      const serviceDate = new Date(body.servicedAt + "T00:00:00");
+    } else if (resolvedServicedAt && !existing.followUpDate) {
+      const serviceDate = new Date(resolvedServicedAt + "T00:00:00");
       serviceDate.setMonth(serviceDate.getMonth() + 30);
       patch.followUpDate = serviceDate.toISOString().slice(0, 10);
     }
