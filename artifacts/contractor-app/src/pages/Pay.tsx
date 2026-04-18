@@ -66,6 +66,7 @@ function PayForm({
           layout: "tabs",
           fields: {
             billingDetails: {
+              name: "never",
               email: "never",
               phone: "never",
               address: "never",

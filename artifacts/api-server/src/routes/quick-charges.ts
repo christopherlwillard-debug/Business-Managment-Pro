@@ -123,7 +123,7 @@ router.post("/:id/pay-session", async (req, res) => {
     let paymentIntentId = charge.stripePaymentIntentId ?? null;
     let qrDataUrl = charge.qrCodeDataUrl ?? null;
 
-    if (!paymentIntentId || !payToken) {
+    if (!paymentIntentId) {
       const [settings] = await db.select().from(settingsTable).limit(1);
       const currency = settings?.currency ?? "USD";
       const companyName = settings?.companyName ?? "BuildPro";
@@ -135,16 +135,21 @@ router.post("/:id/pay-session", async (req, res) => {
         metadata: { source: "buildpro", charge_label: charge.label, quick_charge_id: String(id) },
       });
       paymentIntentId = pi.id;
+    }
+
+    if (!payToken) {
       payToken = randomUUID();
-      if (payPageBaseUrl) {
-        qrDataUrl = await QRCode.toDataURL(`${payPageBaseUrl}${payToken}`, { width: 300, margin: 2 });
-      }
+    }
+
+    if (payPageBaseUrl && !qrDataUrl) {
+      qrDataUrl = await QRCode.toDataURL(`${payPageBaseUrl}${payToken}`, { width: 300, margin: 2 });
+    }
+
+    const needsUpdate = !charge.stripePaymentIntentId || !charge.payToken || (payPageBaseUrl && !charge.qrCodeDataUrl);
+    if (needsUpdate) {
       await db.update(quickChargesTable)
         .set({ stripePaymentIntentId: paymentIntentId, payToken, qrCodeDataUrl: qrDataUrl ?? undefined })
         .where(eq(quickChargesTable.id, id));
-    } else if (payPageBaseUrl && !qrDataUrl) {
-      qrDataUrl = await QRCode.toDataURL(`${payPageBaseUrl}${payToken}`, { width: 300, margin: 2 });
-      await db.update(quickChargesTable).set({ qrCodeDataUrl: qrDataUrl }).where(eq(quickChargesTable.id, id));
     }
 
     const payUrl = payPageBaseUrl ? `${payPageBaseUrl}${payToken}` : payToken;
