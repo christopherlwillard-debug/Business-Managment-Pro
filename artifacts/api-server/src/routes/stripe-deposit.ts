@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { prospectsTable, estimatesTable, settingsTable } from "@workspace/db/schema";
+import { prospectsTable, estimatesTable, settingsTable, prospectEventsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { createPaymentLink, isStripeConfigured } from "../lib/stripe";
 
@@ -62,9 +62,17 @@ router.post("/prospects/:id/deposit-link", async (req, res) => {
       customerEmail: prospect.contactEmail ?? null,
     });
 
-    await db.update(prospectsTable)
-      .set({ stripePaymentLinkId: linkId, stripePaymentLinkUrl: url, updatedAt: new Date() })
-      .where(eq(prospectsTable.id, id));
+    await db.transaction(async (tx) => {
+      await tx.update(prospectsTable)
+        .set({ stripePaymentLinkId: linkId, stripePaymentLinkUrl: url, updatedAt: new Date() })
+        .where(eq(prospectsTable.id, id));
+
+      await tx.insert(prospectEventsTable).values({
+        prospectId: id,
+        type: "payment_link_created",
+        newValue: url,
+      });
+    });
 
     const [updated] = await db
       .select({ ...prospectsTable, estimateNumber: estimatesTable.title })

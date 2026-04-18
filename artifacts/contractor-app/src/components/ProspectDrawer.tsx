@@ -664,6 +664,17 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                       </div>
                     );
                   }
+                  if (event.type === "payment_link_created") {
+                    return (
+                      <div key={event.id} className="px-4 py-3 flex items-center gap-3">
+                        <ExternalLink className="w-3.5 h-3.5 text-violet-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">Payment link created</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                        </div>
+                      </div>
+                    );
+                  }
                   if (event.type === "estimate_linked") {
                     return (
                       <div key={event.id} className="px-4 py-3 flex items-center gap-3">
