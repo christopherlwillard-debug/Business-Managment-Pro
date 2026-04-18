@@ -50,6 +50,7 @@ import quickChargesRouter from "./quick-charges";
 import stripeDepositRouter from "./stripe-deposit";
 import stripeStatusRouter from "./stripe-status";
 import payPublicRouter from "./pay-public";
+import terminalRouter from "./terminal";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -196,5 +197,6 @@ router.use("/invoices", sectionGuard("invoices"), stripeInvoiceRouter);
 router.use("/quick-charges", requireOwner, quickChargesRouter);
 router.use(requireOwner, stripeDepositRouter);
 router.use(requireOwner, stripeStatusRouter);
+router.use(requireOwner, terminalRouter);
 
 export default router;

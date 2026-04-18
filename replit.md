@@ -175,3 +175,34 @@ Frontend-only integration using Google Identity Services (GIS) OAuth2 implicit t
 - Settings → Google tab: connect/disconnect UI, connection status, setup instructions
 - Accounting → Tax Calendar: "Drive" button next to "Attach" for compliance docs (KY filings + custom items)
 - InvoiceViewModal: "Gmail" button in toolbar opens compose panel pre-filled with client email
+
+---
+
+## BuildPro Mobile App (Tap to Pay)
+
+Expo React Native companion app at `artifacts/contractor-mobile/` (port 23559, preview at `/contractor-mobile/`). Designed exclusively for Willard to collect in-person card payments using iPhone's Tap to Pay via Stripe Terminal.
+
+### Auth Flow
+1. First launch: Replit OIDC login via in-app browser (`/api/mobile-auth/start` → `/api/mobile-auth/complete` → `contractor-mobile://auth?token=...`)
+2. PIN setup (4-digit, stored in expo-secure-store)
+3. Subsequent launches: PIN entry only
+
+### Payment Flow
+1. Home screen → "Collect Payment"
+2. Collect screen: NumPad amount entry, optional note, optional invoice link
+3. Terminal screen: Stripe Terminal `localMobile` reader, iOS NFC system UI collects card
+4. Receipt screen: shows amount, card details, payment ID
+
+### Key Files
+- `artifacts/contractor-mobile/app/_layout.tsx` — root layout with AuthProvider, PaymentSessionProvider, auth gate
+- `artifacts/contractor-mobile/context/AuthContext.tsx` — OIDC + PIN auth state
+- `artifacts/contractor-mobile/context/PaymentSession.tsx` — payment flow state
+- `artifacts/contractor-mobile/app/terminal.tsx` — Stripe Terminal NFC collection screen
+- `artifacts/api-server/src/routes/terminal.ts` — `/api/terminal/connection-token` + `/api/terminal/payment-intent` (requireOwner)
+- `artifacts/api-server/src/routes/auth.ts` — `/api/mobile-auth/start` + `/api/mobile-auth/complete`
+
+### Native Build Required
+- Tap to Pay on iPhone requires Expo Dev Client (not Expo Go)
+- Build: `eas build --profile development`
+- Requires iOS 16+ and Stripe Terminal Tap to Pay entitlement from Stripe Dashboard
+- Optional env var: `STRIPE_TERMINAL_LOCATION_ID` to set a pre-existing Stripe Terminal location

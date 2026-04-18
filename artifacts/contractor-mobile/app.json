@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "BuildPro Mobile",
+    "slug": "contractor-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "contractor-mobile",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F2444"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.buildpro.contractor",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID to unlock the BuildPro payment terminal",
+        "NSCameraUsageDescription": "Camera access may be required for card scanning"
+      },
+      "entitlements": {
+        "com.apple.developer.proximity-reader.payment.acceptance": true
+      }
+    },
+    "android": {
+      "package": "com.buildpro.contractor"
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

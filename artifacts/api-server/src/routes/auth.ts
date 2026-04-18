@@ -393,6 +393,95 @@ router.post(
   },
 );
 
+router.get("/mobile-auth/start", async (req: Request, res: Response) => {
+  const config = await getOidcConfig();
+  const origin = getOrigin(req);
+  const mobileCallbackUrl = `${origin}/api/mobile-auth/complete`;
+
+  const state = oidc.randomState();
+  const nonce = oidc.randomNonce();
+  const codeVerifier = oidc.randomPKCECodeVerifier();
+  const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
+
+  const redirectTo = oidc.buildAuthorizationUrl(config, {
+    redirect_uri: mobileCallbackUrl,
+    scope: "openid email profile offline_access",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    prompt: "login consent",
+    state,
+    nonce,
+  });
+
+  setOidcCookie(res, "mobile_verifier", codeVerifier);
+  setOidcCookie(res, "mobile_nonce", nonce);
+  setOidcCookie(res, "mobile_state", state);
+
+  res.redirect(redirectTo.href);
+});
+
+router.get("/mobile-auth/complete", async (req: Request, res: Response) => {
+  const config = await getOidcConfig();
+  const origin = getOrigin(req);
+  const mobileCallbackUrl = `${origin}/api/mobile-auth/complete`;
+
+  const codeVerifier = req.cookies?.mobile_verifier;
+  const nonce = req.cookies?.mobile_nonce;
+  const expectedState = req.cookies?.mobile_state;
+
+  res.clearCookie("mobile_verifier", { path: "/" });
+  res.clearCookie("mobile_nonce", { path: "/" });
+  res.clearCookie("mobile_state", { path: "/" });
+
+  if (!codeVerifier || !expectedState) {
+    res.redirect("contractor-mobile://auth?error=invalid_state");
+    return;
+  }
+
+  try {
+    const currentUrl = new URL(
+      `${mobileCallbackUrl}?${new URL(req.url, `http://${req.headers.host}`).searchParams}`,
+    );
+
+    const tokens = await oidc.authorizationCodeGrant(config, currentUrl, {
+      pkceCodeVerifier: codeVerifier,
+      expectedNonce: nonce,
+      expectedState,
+      idTokenExpected: true,
+    });
+
+    const claims = tokens.claims();
+    if (!claims) {
+      res.redirect("contractor-mobile://auth?error=no_claims");
+      return;
+    }
+
+    const dbUser = await upsertUser(claims as unknown as Record<string, unknown>);
+    await ensureOwner(dbUser.id);
+    invalidateOwnerCache();
+
+    const now = Math.floor(Date.now() / 1000);
+    const sessionData: SessionData = {
+      user: {
+        id: dbUser.id,
+        email: dbUser.email,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+        profileImageUrl: dbUser.profileImageUrl,
+      },
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: tokens.expiresIn() ? now + tokens.expiresIn()! : claims.exp,
+    };
+
+    const sid = await createSession(sessionData);
+    res.redirect(`contractor-mobile://auth?token=${sid}`);
+  } catch (err) {
+    console.error("Mobile auth complete error:", err);
+    res.redirect("contractor-mobile://auth?error=auth_failed");
+  }
+});
+
 router.post("/mobile-auth/logout", async (req: Request, res: Response) => {
   const sid = getSessionId(req);
   if (sid) {
