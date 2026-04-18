@@ -952,9 +952,11 @@ export interface CreateProspectRequest {
   roughQuote?: number | null;
   contactName?: string | null;
   contactPhone?: string | null;
+  contactEmail?: string | null;
   notes?: string | null;
   status?: ProspectStatus;
   linkedEstimateId?: number | null;
+  followUpDate?: string | null;
 }
 
 export type UpdateProspectRequest = Partial<CreateProspectRequest>;

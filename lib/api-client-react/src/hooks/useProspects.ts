@@ -13,6 +13,26 @@ export { ProspectStatus as ProspectStatusEnum } from "../generated/api.schemas";
 export { ProspectPropertyType as ProspectPropertyTypeEnum } from "../generated/api.schemas";
 export type { ProspectPropertyType } from "../generated/api.schemas";
 
+export interface ProspectStatusEvent {
+  id: number;
+  type: string;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: string;
+}
+
+export interface ProspectDetail extends Prospect {
+  statusHistory: ProspectStatusEvent[];
+}
+
+export function useGetProspect(id: number | null) {
+  return useQuery({
+    queryKey: ["/api/prospects", id],
+    queryFn: () => customFetch<ProspectDetail>(`/api/prospects/${id}`, { method: "GET" }),
+    enabled: id != null,
+  });
+}
+
 export function useListProspects(opts?: ListProspectsParams) {
   const params = new URLSearchParams();
   if (opts?.status) params.append("status", opts.status);

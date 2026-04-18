@@ -12,6 +12,7 @@ import {
   type ProspectStatus,
   type ProspectPropertyType,
 } from "@workspace/api-client-react";
+import { ProspectDrawer } from "@/components/ProspectDrawer";
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
   Maximize2, Building2, CheckCircle2, AlertCircle, UserPlus,
@@ -136,6 +137,9 @@ export default function Prospects() {
   const convertMutation = useConvertProspectToClient();
   const depositLinkMutation = useCreateProspectDepositLink();
   const { toast } = useToast();
+
+  const [drawerProspectId, setDrawerProspectId] = useState<number | null>(null);
+  const drawerProspect = drawerProspectId != null ? (prospects.find((p) => p.id === drawerProspectId) ?? null) : null;
 
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; address: string } | null>(null);
   const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
@@ -361,7 +365,11 @@ export default function Prospects() {
             const badge = STATUS_BADGE[p.status] ?? STATUS_BADGE.cold;
             const propColor = PROPERTY_TYPE_COLORS[p.propertyType] ?? PROPERTY_TYPE_COLORS.Other;
             return (
-              <Card key={p.id} className="border border-border hover:shadow-md transition-shadow">
+              <Card
+                key={p.id}
+                className="border border-border hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => setDrawerProspectId(p.id)}
+              >
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -379,13 +387,13 @@ export default function Prospects() {
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                       <button
-                        onClick={() => openEdit(p)}
+                        onClick={(e) => { e.stopPropagation(); openEdit(p); }}
                         className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => setDeleteTarget(p)}
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
                         className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -471,7 +479,7 @@ export default function Prospects() {
                           Deposit Received{p.depositPaidAmount != null ? ` — $${p.depositPaidAmount.toFixed(2)}` : ""}
                         </div>
                       ) : p.stripePaymentLinkUrl ? (
-                        <div className="flex gap-1.5">
+                        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(p.stripePaymentLinkUrl!);
@@ -491,7 +499,7 @@ export default function Prospects() {
                           </a>
                         </div>
                       ) : depositInputId === p.id ? (
-                        <div className="space-y-1.5">
+                        <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex gap-1">
                             <button
                               onClick={() => setDepositMode("percent")}
@@ -528,7 +536,7 @@ export default function Prospects() {
                         </div>
                       ) : (
                         <button
-                          onClick={() => { setDepositInputId(p.id); setDepositAmtStr("50"); setDepositMode("percent"); }}
+                          onClick={(e) => { e.stopPropagation(); setDepositInputId(p.id); setDepositAmtStr("50"); setDepositMode("percent"); }}
                           className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-medium hover:bg-amber-600 transition-colors"
                         >
                           <CreditCard className="w-3 h-3" />
@@ -539,9 +547,9 @@ export default function Prospects() {
                   )}
 
                   {p.status === "won" && (
-                    <div className="border-t border-border pt-2">
+                    <div className="border-t border-border pt-2" onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => setConvertTarget(p)}
+                        onClick={(e) => { e.stopPropagation(); setConvertTarget(p); }}
                         className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition-colors"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
@@ -588,6 +596,14 @@ export default function Prospects() {
           })}
         </div>
       )}
+
+      {/* Prospect Profile Drawer */}
+      <ProspectDrawer
+        prospect={drawerProspect}
+        open={drawerProspectId != null}
+        onClose={() => setDrawerProspectId(null)}
+        onUpdated={() => refetch()}
+      />
 
       {/* Create / Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>

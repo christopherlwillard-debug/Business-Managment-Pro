@@ -281,3 +281,32 @@ pool.query('ALTER TABLE settings ADD COLUMN IF NOT EXISTS compliance_notificatio
   .then(() => { console.log('settings.compliance_notification_email and compliance_email_enabled ensured'); pool.end(); })
   .catch(e => { console.error('compliance email columns migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #171: add contact_email and follow_up_date columns to prospects
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS contact_email text')
+  .then(() => pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS follow_up_date date'))
+  .then(() => { console.log('prospects.contact_email and follow_up_date ensured'); pool.end(); })
+  .catch(e => { console.error('prospects contact_email/follow_up_date migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Task #171: create prospect_events table for status history tracking
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS \"prospect_events\" (
+    \"id\" serial PRIMARY KEY NOT NULL,
+    \"prospect_id\" integer NOT NULL REFERENCES \"prospects\"(\"id\") ON DELETE CASCADE,
+    \"type\" text NOT NULL DEFAULT 'status_change',
+    \"old_value\" text,
+    \"new_value\" text,
+    \"created_at\" timestamp DEFAULT now() NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS prospect_events_prospect_id_idx ON prospect_events (prospect_id);
+  CREATE INDEX IF NOT EXISTS prospect_events_created_at_idx ON prospect_events (created_at);
+\`).then(() => { console.log('prospect_events table and indexes ensured'); pool.end(); })
+  .catch(e => { console.error('prospect_events migration error:', e.message); pool.end(); process.exit(1); });
+")
