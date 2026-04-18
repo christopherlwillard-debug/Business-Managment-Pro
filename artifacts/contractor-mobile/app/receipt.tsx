@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -75,12 +76,37 @@ export default function ReceiptScreen() {
     const value = contact.trim();
     if (!value) return;
     const isEmail = isEmailLike(value);
-    const isPhone = isPhoneLike(value);
+    const isPhone = !isEmail && isPhoneLike(value);
     if (!isEmail && !isPhone) {
       Alert.alert("Invalid contact", "Enter a valid email address or phone number.");
       return;
     }
     if (!receipt) return;
+
+    if (isPhone) {
+      const amountStr = formatCents(receipt.amountCents);
+      const dateStr = formatDate(receipt.paidAt);
+      const body = [
+        `Receipt from Willard's General Contracting`,
+        `Amount: ${amountStr}`,
+        receipt.description ? `Description: ${receipt.description}` : null,
+        receipt.invoiceNumber ? `Invoice: #${receipt.invoiceNumber}` : null,
+        `Date: ${dateStr}`,
+        `Payment ID: ${receipt.paymentIntentId}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const encoded = encodeURIComponent(body);
+      const url = `sms:${value}${Platform.OS === "ios" ? "&" : "?"}body=${encoded}`;
+      try {
+        await Linking.openURL(url);
+        setSent(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {
+        Alert.alert("Could not open SMS", "Please open the Messages app manually.");
+      }
+      return;
+    }
 
     setSending(true);
     try {
@@ -93,7 +119,7 @@ export default function ReceiptScreen() {
         body: JSON.stringify({
           paymentIntentId: receipt.paymentIntentId,
           contact: value,
-          type: isEmail ? "email" : "sms",
+          type: "email",
         }),
       });
       if (!res.ok) {

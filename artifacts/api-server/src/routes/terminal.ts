@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter, type Request, type Response, type RequestHandler } from "express";
 import { getStripe, isStripeConfigured } from "../lib/stripe";
 import { db, settingsTable } from "@workspace/db";
 
@@ -62,47 +62,47 @@ router.post(
   },
 );
 
-router.post(
-  "/terminal/payment-intent",
-  async (req: Request, res: Response) => {
-    if (!isStripeConfigured()) {
-      res.status(503).json({ error: "Stripe not configured" });
-      return;
-    }
+const handleCreatePaymentIntent: RequestHandler = async (req, res) => {
+  if (!isStripeConfigured()) {
+    res.status(503).json({ error: "Stripe not configured" });
+    return;
+  }
 
-    const { amountCents, currency = "usd", description, invoiceId } = req.body as {
-      amountCents: number;
-      currency?: string;
-      description?: string;
-      invoiceId?: number;
-    };
+  const { amountCents, currency = "usd", description, invoiceId } = req.body as {
+    amountCents: number;
+    currency?: string;
+    description?: string;
+    invoiceId?: number;
+  };
 
-    if (!amountCents || amountCents < 50) {
-      res.status(400).json({ error: "amountCents must be at least 50 (i.e. $0.50)" });
-      return;
-    }
+  if (!amountCents || amountCents < 50) {
+    res.status(400).json({ error: "amountCents must be at least 50 (i.e. $0.50)" });
+    return;
+  }
 
-    try {
-      const stripe = getStripe();
-      const pi = await stripe.paymentIntents.create({
-        amount: amountCents,
-        currency,
-        payment_method_types: ["card_present"],
-        capture_method: "automatic",
-        description: description ?? undefined,
-        metadata: {
-          source: "terminal",
-          ...(invoiceId ? { invoice_id: String(invoiceId) } : {}),
-        },
-      });
+  try {
+    const stripe = getStripe();
+    const pi = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency,
+      payment_method_types: ["card_present"],
+      capture_method: "automatic",
+      description: description ?? undefined,
+      metadata: {
+        source: "terminal",
+        ...(invoiceId ? { invoice_id: String(invoiceId) } : {}),
+      },
+    });
 
-      res.json({ paymentIntentId: pi.id, clientSecret: pi.client_secret });
-    } catch (err) {
-      console.error("[terminal] payment-intent error:", err);
-      res.status(500).json({ error: "Failed to create payment intent" });
-    }
-  },
-);
+    res.json({ paymentIntentId: pi.id, clientSecret: pi.client_secret });
+  } catch (err) {
+    console.error("[terminal] payment-intent error:", err);
+    res.status(500).json({ error: "Failed to create payment intent" });
+  }
+};
+
+router.post("/terminal/payment-intent", handleCreatePaymentIntent);
+router.post("/terminal/create-payment-intent", handleCreatePaymentIntent);
 
 router.post(
   "/terminal/send-receipt",
