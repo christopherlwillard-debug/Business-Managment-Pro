@@ -9,7 +9,7 @@ import {
   PROSPECT_STATUSES,
   type Prospect as ProspectRow,
 } from "@workspace/db/schema";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, and } from "drizzle-orm";
 
 const router = Router();
 
@@ -60,16 +60,26 @@ function format(p: ProspectWithEstimate) {
 
 router.get("/", async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, city, state, zip } = req.query;
     const statusFilter = typeof status === "string" && PROSPECT_STATUSES.includes(status as typeof PROSPECT_STATUSES[number])
       ? (status as typeof PROSPECT_STATUSES[number])
       : null;
+    const cityFilter = typeof city === "string" && city.trim() ? city.trim() : null;
+    const stateFilter = typeof state === "string" && state.trim() ? state.trim() : null;
+    const zipFilter = typeof zip === "string" && zip.trim() ? zip.trim() : null;
+
+    const conditions = [
+      statusFilter ? eq(prospectsTable.status, statusFilter) : null,
+      cityFilter ? eq(prospectsTable.city, cityFilter) : null,
+      stateFilter ? eq(prospectsTable.state, stateFilter) : null,
+      zipFilter ? eq(prospectsTable.zip, zipFilter) : null,
+    ].filter(Boolean) as Parameters<typeof and>;
 
     const rows = await db
       .select({ ...prospectsTable, estimateNumber: estimatesTable.title })
       .from(prospectsTable)
       .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
-      .where(statusFilter ? eq(prospectsTable.status, statusFilter) : undefined)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(asc(prospectsTable.createdAt));
 
     res.json(rows.map((r) => format(r as ProspectWithEstimate)));
