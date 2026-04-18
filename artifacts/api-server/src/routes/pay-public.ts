@@ -31,7 +31,6 @@ router.get("/:payToken", async (req, res) => {
         stripePaymentIntentId: invoicesTable.stripePaymentIntentId,
         clientName: clientsTable.name,
         jobTitle: jobsTable.title,
-        notes: invoicesTable.notes,
       })
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
@@ -40,19 +39,40 @@ router.get("/:payToken", async (req, res) => {
       .limit(1);
 
     if (inv) {
-      if (inv.stripePaidAt) {
+      const isPaid = inv.status === "paid" || inv.stripePaidAt != null;
+      if (isPaid) {
+        const paidAtDate = inv.stripePaidAt ?? new Date();
         return res.json({
           type: "invoice",
-          paidAt: inv.stripePaidAt.toISOString(),
+          paidAt: paidAtDate instanceof Date ? paidAtDate.toISOString() : String(paidAtDate),
           businessName,
           description: `Invoice ${inv.invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`,
           amountCents: Math.round(parseFloat(inv.total ?? "0") * 100),
         });
       }
 
+      if (!inv.stripePaymentIntentId) {
+        return res.status(409).json({
+          error: "Payment session not yet created. Please contact the business to regenerate your payment link.",
+        });
+      }
+
       const stripe = getStripe();
-      const pi = await stripe.paymentIntents.retrieve(inv.stripePaymentIntentId!);
-      if (!pi.client_secret) return res.status(500).json({ error: "Payment intent missing client secret" });
+      const pi = await stripe.paymentIntents.retrieve(inv.stripePaymentIntentId);
+
+      if (pi.status === "succeeded") {
+        return res.json({
+          type: "invoice",
+          paidAt: new Date().toISOString(),
+          businessName,
+          description: `Invoice ${inv.invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`,
+          amountCents: pi.amount,
+        });
+      }
+
+      if (!pi.client_secret) {
+        return res.status(500).json({ error: "Payment intent is missing client secret" });
+      }
 
       const description = [
         `Invoice ${inv.invoiceNumber}`,
@@ -78,25 +98,46 @@ router.get("/:payToken", async (req, res) => {
       .limit(1);
 
     if (qc) {
-      if (qc.paidAt) {
+      const isPaid = qc.status === "paid" || qc.paidAt != null;
+      if (isPaid) {
+        const paidAtDate = qc.paidAt ?? new Date();
         return res.json({
           type: "quick_charge",
-          paidAt: qc.paidAt.toISOString(),
+          paidAt: paidAtDate instanceof Date ? paidAtDate.toISOString() : String(paidAtDate),
           businessName,
           description: qc.label,
           amountCents: Math.round(parseFloat(qc.amount) * 100),
         });
       }
 
+      if (!qc.stripePaymentIntentId) {
+        return res.status(409).json({
+          error: "Payment session not yet created. Please contact the business to regenerate your payment link.",
+        });
+      }
+
       const stripe = getStripe();
-      const pi = await stripe.paymentIntents.retrieve(qc.stripePaymentIntentId!);
-      if (!pi.client_secret) return res.status(500).json({ error: "Payment intent missing client secret" });
+      const pi = await stripe.paymentIntents.retrieve(qc.stripePaymentIntentId);
+
+      if (pi.status === "succeeded") {
+        return res.json({
+          type: "quick_charge",
+          paidAt: new Date().toISOString(),
+          businessName,
+          description: qc.label,
+          amountCents: pi.amount,
+        });
+      }
+
+      if (!pi.client_secret) {
+        return res.status(500).json({ error: "Payment intent is missing client secret" });
+      }
 
       return res.json({
         type: "quick_charge",
         clientSecret: pi.client_secret,
         amountCents: pi.amount,
-        currency: pi.currency,
+        currency: pi.currency ?? currency,
         description: qc.label,
         businessName,
         paidAt: null,
