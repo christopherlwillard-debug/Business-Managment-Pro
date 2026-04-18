@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListProspects,
   useCreateProspect,
@@ -117,6 +118,22 @@ function prospectToForm(p: Prospect): FormData {
   };
 }
 
+type RouteStop = {
+  id: number;
+  address: string;
+  scheduledDate: string | null;
+  status: string;
+};
+
+function buildFullAddress(p: Prospect): string {
+  return [p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
+}
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export default function Prospects() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [cityFilter, setCityFilter] = useState<string>("");
@@ -134,6 +151,32 @@ export default function Prospects() {
   const updateMutation = useUpdateProspect();
   const deleteMutation = useDeleteProspect();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const { data: routeStops = [] } = useQuery<RouteStop[]>({
+    queryKey: ["route-stops-upcoming"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/route-stops?startDate=${todayStr}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const scheduledAddressMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const stop of routeStops) {
+      if (!stop.scheduledDate) continue;
+      if (stop.status === "completed" || stop.status === "skipped") continue;
+      const key = stop.address.trim().toLowerCase();
+      const existing = map.get(key);
+      if (!existing || stop.scheduledDate < existing) {
+        map.set(key, stop.scheduledDate);
+      }
+    }
+    return map;
+  }, [routeStops]);
 
   const [drawerProspectId, setDrawerProspectId] = useState<number | null>(null);
   const drawerProspect = drawerProspectId != null ? (prospects.find((p) => p.id === drawerProspectId) ?? null) : null;
@@ -145,7 +188,7 @@ export default function Prospects() {
   async function handleAddToRoute(p: Prospect) {
     setAddingToRouteId(p.id);
     try {
-      const fullAddress = [p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
+      const fullAddress = buildFullAddress(p);
       const res = await fetch(`${BASE}/api/route-stops`, {
         method: "POST",
         credentials: "include",
@@ -160,6 +203,7 @@ export default function Prospects() {
       if (!res.ok) throw new Error("Failed");
       toast({ title: "Added to Route Plan", description: `${p.address} scheduled for ${routeDateStr}. Open Route Planner to optimize.` });
       setRouteTargetId(null);
+      queryClient.invalidateQueries({ queryKey: ["route-stops-upcoming"] });
     } catch {
       toast({ title: "Failed to add to route", variant: "destructive" });
     } finally {
@@ -385,6 +429,8 @@ export default function Prospects() {
           {filtered.map((p) => {
             const badge = STATUS_BADGE[p.status] ?? STATUS_BADGE.cold;
             const propColor = PROPERTY_TYPE_COLORS[p.propertyType] ?? PROPERTY_TYPE_COLORS.Other;
+            const fullAddr = buildFullAddress(p);
+            const scheduledDate = scheduledAddressMap.get(fullAddr.trim().toLowerCase()) ?? null;
             return (
               <Card
                 key={p.id}
@@ -430,6 +476,12 @@ export default function Prospects() {
                       <Building2 className="w-3 h-3" />
                       {p.propertyType}
                     </span>
+                    {scheduledDate && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-green-100 text-green-700 border-green-200">
+                        <Route className="w-3 h-3" />
+                        On Route {formatShortDate(scheduledDate)}
+                      </span>
+                    )}
                     {p.source === "stripe_payment" && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200">
                         <BadgeCheck className="w-3 h-3" />
