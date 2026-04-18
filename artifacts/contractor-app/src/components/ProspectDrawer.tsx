@@ -37,7 +37,7 @@ import {
   ExternalLink,
   UserPlus,
   Link,
-  LinkOff,
+  Link2Off,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -624,7 +624,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated }: ProspectD
                   if (event.type === "estimate_unlinked") {
                     return (
                       <div key={event.id} className="px-4 py-3 flex items-center gap-3">
-                        <LinkOff className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <Link2Off className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-muted-foreground">Estimate unlinked</p>
                           <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
