@@ -932,6 +932,7 @@ export interface Prospect {
   status: ProspectStatus;
   linkedEstimateId?: number | null;
   linkedEstimateNumber?: string | null;
+  linkedInvoiceId?: number | null;
   stripePaymentLinkId?: string | null;
   stripePaymentLinkUrl?: string | null;
   depositPaidAt?: string | null;
@@ -958,6 +959,7 @@ export interface CreateProspectRequest {
   notes?: string | null;
   status?: ProspectStatus;
   linkedEstimateId?: number | null;
+  linkedInvoiceId?: number | null;
   servicedAt?: string | null;
   followUpDate?: string | null;
 }

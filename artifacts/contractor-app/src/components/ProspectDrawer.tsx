@@ -267,6 +267,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [editVisitNotes, setEditVisitNotes] = useState("");
   const [editVisitPrice, setEditVisitPrice] = useState("");
   const [isCreatingQuote, setIsCreatingQuote] = useState(false);
+  const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -426,9 +427,67 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     onClose();
   };
 
-  const handleCreateInvoice = () => {
+  const handleCreateInvoice = async () => {
     if (!prospect) return;
-    setLocation(`/invoices?fromProspect=${prospect.id}`);
+    setIsCreatingInvoice(true);
+    try {
+      let lineItems: { description: string; quantity: number; unitPrice: number }[] = [];
+
+      if (p.linkedEstimateId) {
+        const estRes = await fetch(`${BASE}/api/estimates/${p.linkedEstimateId}`, { credentials: "include" });
+        if (estRes.ok) {
+          const est = await estRes.json();
+          if (Array.isArray(est.lineItems) && est.lineItems.length > 0) {
+            lineItems = (est.lineItems as any[]).map((li: any) => ({
+              description: li.description ?? "",
+              quantity: Number(li.quantity ?? 1),
+              unitPrice: Number(li.unitCost ?? li.unitPrice ?? 0),
+            }));
+          }
+        }
+      }
+
+      if (lineItems.length === 0 && p.roughQuote != null) {
+        lineItems = [{ description: `Asphalt Sealing — ${p.address}`, quantity: 1, unitPrice: Number(p.roughQuote) }];
+      }
+      if (lineItems.length === 0) {
+        lineItems = [{ description: `Asphalt Sealing — ${p.address}`, quantity: 1, unitPrice: 0 }];
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const invRes = await fetch(`${BASE}/api/invoices`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issueDate: today,
+          status: "draft",
+          locationName: p.address,
+          city: p.city ?? undefined,
+          state: p.state ?? "KY",
+          businessLine: "asphalt_sealing",
+          lineItems,
+        }),
+      });
+      if (!invRes.ok) throw new Error("Failed to create invoice");
+      const invoice = await invRes.json();
+
+      await updateMutation.mutateAsync({ id: prospect.id, linkedInvoiceId: invoice.id } as Parameters<typeof updateMutation.mutateAsync>[0]);
+      detailQuery.refetch();
+      onUpdated();
+      toast({ title: "Invoice created", description: "Opening invoice…" });
+      setLocation(`/invoices?open=${invoice.id}`);
+      onClose();
+    } catch {
+      toast({ title: "Failed to create invoice", variant: "destructive" });
+    } finally {
+      setIsCreatingInvoice(false);
+    }
+  };
+
+  const handleViewInvoice = () => {
+    if (!p.linkedInvoiceId) return;
+    setLocation(`/invoices?open=${p.linkedInvoiceId}`);
     onClose();
   };
 
@@ -712,13 +771,24 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
               </button>
             )}
             {(p.status === "won" || p.status === "serviced") && (
-              <button
-                onClick={handleCreateInvoice}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                <Receipt className="w-3.5 h-3.5" />
-                Create Invoice
-              </button>
+              p.linkedInvoiceId ? (
+                <button
+                  onClick={handleViewInvoice}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  View Invoice
+                </button>
+              ) : (
+                <button
+                  onClick={handleCreateInvoice}
+                  disabled={isCreatingInvoice}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  {isCreatingInvoice ? "Creating Invoice…" : "Create Invoice"}
+                </button>
+              )
             )}
           </section>
 
@@ -1171,12 +1241,6 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
 
           {/* Metadata */}
           <section className="pt-2 border-t border-border space-y-1">
-            {p.linkedEstimateNumber && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <DollarSign className="w-3 h-3" />
-                Linked estimate: <span className="font-medium text-foreground">{p.linkedEstimateNumber}</span>
-              </div>
-            )}
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Mail className="w-3 h-3" />
               Source: <span className="font-medium text-foreground capitalize">{(p.source ?? "manual").replace("_", " ")}</span>

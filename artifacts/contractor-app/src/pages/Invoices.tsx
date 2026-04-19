@@ -811,6 +811,30 @@ export default function Invoices() {
     setIsNewClient(false);
   }
 
+  const pendingOpenId = useRef<number | null>(null);
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId) return;
+    const id = parseInt(openId);
+    if (isNaN(id)) return;
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete("open");
+      return next;
+    }, { replace: true });
+    pendingOpenId.current = id;
+  }, []);
+
+  useEffect(() => {
+    if (!invoices || pendingOpenId.current === null) return;
+    const target = invoices.find(inv => inv.id === pendingOpenId.current);
+    if (target) {
+      pendingOpenId.current = null;
+      setViewInvoice(target as any);
+    }
+  }, [invoices]);
+
   useEffect(() => {
     const prospectId = searchParams.get("fromProspect");
     if (!prospectId) return;
@@ -823,7 +847,7 @@ export default function Invoices() {
     if (isNaN(id)) return;
     fetch(`${BASE_URL}/api/prospects/${id}`, { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
-      .then((prospect: any) => {
+      .then(async (prospect: any) => {
         if (!prospect) return;
         resetForm();
         setIsNewClient(true);
@@ -835,7 +859,28 @@ export default function Invoices() {
           locationName: prospect.address ?? "",
           businessLine: "asphalt_sealing",
         }));
-        if (prospect.roughQuote != null) {
+
+        let prefillItems: LineItem[] | null = null;
+        if (prospect.linkedEstimateId) {
+          try {
+            const estRes = await fetch(`${BASE_URL}/api/estimates/${prospect.linkedEstimateId}`, { credentials: "include" });
+            if (estRes.ok) {
+              const est = await estRes.json();
+              if (Array.isArray(est.lineItems) && est.lineItems.length > 0) {
+                prefillItems = (est.lineItems as any[]).map((li: any) => ({
+                  description: li.description ?? "",
+                  quantity: Number(li.quantity ?? 1),
+                  unitPrice: Number(li.unitCost ?? li.unitPrice ?? 0),
+                }));
+              }
+            }
+          } catch {
+          }
+        }
+
+        if (prefillItems) {
+          setLineItems(prefillItems);
+        } else if (prospect.roughQuote != null) {
           setLineItems([{
             description: `Asphalt Sealing — ${prospect.address}`,
             quantity: 1,

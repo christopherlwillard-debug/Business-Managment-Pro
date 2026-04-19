@@ -47,6 +47,7 @@ function format(p: ProspectWithEstimate) {
     status: p.status,
     linkedEstimateId: p.linkedEstimateId ?? null,
     linkedEstimateNumber: p.estimateNumber ?? null,
+    linkedInvoiceId: p.linkedInvoiceId ?? null,
     stripePaymentLinkId: p.stripePaymentLinkId ?? null,
     stripePaymentLinkUrl: p.stripePaymentLinkUrl ?? null,
     depositPaidAt: p.depositPaidAt instanceof Date ? p.depositPaidAt.toISOString() : (p.depositPaidAt ?? null),
@@ -245,6 +246,7 @@ router.put("/:id", async (req, res) => {
       notes?: string | null;
       status?: string;
       linkedEstimateId?: number | null;
+      linkedInvoiceId?: number | null;
       servicedAt?: string | null;
       followUpDate?: string | null;
     };
@@ -272,6 +274,7 @@ router.put("/:id", async (req, res) => {
     if (body.notes !== undefined) patch.notes = body.notes ?? null;
     if (body.status !== undefined) patch.status = toProspectStatus(body.status);
     if (body.linkedEstimateId !== undefined) patch.linkedEstimateId = body.linkedEstimateId ?? null;
+    if (body.linkedInvoiceId !== undefined) (patch as any).linkedInvoiceId = body.linkedInvoiceId ?? null;
 
     const isBeingServiced = patch.status === "serviced" && existing.status !== "serviced";
     const resolvedServicedAt = body.servicedAt ?? (isBeingServiced ? new Date().toISOString().slice(0, 10) : undefined);
