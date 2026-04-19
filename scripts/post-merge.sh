@@ -378,3 +378,20 @@ pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS linked_invoice_id int
   .then(() => { console.log('prospects.linked_invoice_id ensured'); pool.end(); })
   .catch(e => { console.error('linked_invoice_id migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #241: add Square payment columns to invoices, estimates, prospects, quick_charges (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS square_payment_link_id text')
+  .then(() => pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS square_payment_link_url text'))
+  .then(() => pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS square_paid_at timestamp'))
+  .then(() => pool.query('ALTER TABLE estimates ADD COLUMN IF NOT EXISTS square_payment_link_id text'))
+  .then(() => pool.query('ALTER TABLE estimates ADD COLUMN IF NOT EXISTS square_payment_link_url text'))
+  .then(() => pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS square_payment_link_id text'))
+  .then(() => pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS square_payment_link_url text'))
+  .then(() => pool.query('ALTER TABLE quick_charges ADD COLUMN IF NOT EXISTS square_payment_link_id text'))
+  .then(() => pool.query('ALTER TABLE quick_charges ADD COLUMN IF NOT EXISTS square_payment_link_url text'))
+  .then(() => { console.log('Square payment columns ensured on all tables'); pool.end(); })
+  .catch(e => { console.error('Square columns migration error:', e.message); pool.end(); process.exit(1); });
+")

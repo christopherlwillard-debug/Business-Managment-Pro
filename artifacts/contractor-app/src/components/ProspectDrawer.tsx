@@ -525,7 +525,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     ? (scheduledAddressMap.get(buildFullAddress(p).trim().toLowerCase()) ?? null)
     : null;
 
-  const depositUrl = newDepositUrl ?? p.stripePaymentLinkUrl;
+  const depositUrl = newDepositUrl ?? p.squarePaymentLinkUrl ?? p.stripePaymentLinkUrl;
   const showDepositActions = !p.depositPaidAt && (p.roughQuote != null || depositUrl);
   const showRequestBtn = !depositUrl && !showDepositInput;
 

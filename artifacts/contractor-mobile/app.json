@@ -5,7 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "contractor-mobile",
+    "scheme": [
+      "contractor-mobile",
+      "buildpro"
+    ],
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -39,8 +42,7 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "expo-secure-store",
-      "@stripe/stripe-terminal-react-native"
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

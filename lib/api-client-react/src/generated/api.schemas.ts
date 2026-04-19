@@ -215,6 +215,10 @@ export interface Invoice {
   stripePaymentLinkUrl?: string | null;
   stripePaymentIntentId?: string | null;
   stripePaidAt?: string | null;
+  squarePaymentLinkId?: string | null;
+  squarePaymentLinkUrl?: string | null;
+  squarePaidAt?: string | null;
+  payToken?: string | null;
 }
 
 export type CreateInvoiceRequestStatus =
@@ -523,6 +527,8 @@ export interface Estimate {
   businessLine?: string | null;
   stripePaymentLinkId?: string | null;
   stripePaymentLinkUrl?: string | null;
+  squarePaymentLinkId?: string | null;
+  squarePaymentLinkUrl?: string | null;
   depositPaidAt?: string | null;
   depositPaidAmount?: number | null;
   createdAt: string;
@@ -935,6 +941,8 @@ export interface Prospect {
   linkedInvoiceId?: number | null;
   stripePaymentLinkId?: string | null;
   stripePaymentLinkUrl?: string | null;
+  squarePaymentLinkId?: string | null;
+  squarePaymentLinkUrl?: string | null;
   depositPaidAt?: string | null;
   depositPaidAmount?: number | null;
   lastPaidAt?: string | null;

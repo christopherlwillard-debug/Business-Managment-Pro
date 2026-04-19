@@ -13,7 +13,7 @@ import {
   useListMaterialLists,
   useAttachMaterialListToInvoice,
   useListMaterials,
-  useCreateInvoicePaySession,
+  useCreateInvoicePaymentLink,
   Invoice,
   InvoiceAttachment,
   type MaterialList,
@@ -724,7 +724,7 @@ export default function Invoices() {
       newlyPaid.forEach((inv) => {
         toast({
           title: `Invoice ${inv.invoiceNumber} marked Paid`,
-          description: inv.stripePaidAt ? "Stripe payment received." : "Status updated to paid.",
+          description: (inv.squarePaidAt || inv.stripePaidAt) ? "Square payment received." : "Status updated to paid.",
         });
       });
     }
@@ -741,7 +741,7 @@ export default function Invoices() {
   const updateStatus            = useUpdateInvoiceStatus();
   const deleteInvoice           = useDeleteInvoice();
   const attachMaterialList      = useAttachMaterialListToInvoice();
-  const createPaymentLink       = useCreateInvoicePaySession();
+  const createPaymentLink       = useCreateInvoicePaymentLink();
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string } | null>(null);
   const [generatingLinkId, setGeneratingLinkId] = useState<number | null>(null);
@@ -749,10 +749,8 @@ export default function Invoices() {
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
     setGeneratingLinkId(invoiceId);
     try {
-      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const payPageBaseUrl = `${window.location.origin}${base}/pay/`;
-      const result = await createPaymentLink.mutateAsync({ id: invoiceId, payPageBaseUrl });
-      setPaymentLinkResult({ url: result.payUrl, invoiceNumber });
+      const result = await createPaymentLink.mutateAsync(invoiceId);
+      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber });
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to create payment link";
@@ -1059,9 +1057,9 @@ export default function Invoices() {
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
                               <Check className="w-3 h-3" /> Paid
                             </span>
-                            {inv.stripePaidAt && (
+                            {(inv.squarePaidAt || inv.stripePaidAt) && (
                               <span className="text-[10px] text-emerald-600 font-medium">
-                                {formatDate(inv.stripePaidAt)}
+                                {formatDate((inv.squarePaidAt ?? inv.stripePaidAt)!)}
                               </span>
                             )}
                           </div>
@@ -1085,9 +1083,7 @@ export default function Invoices() {
                           </button>
                           {inv.status !== "paid" && inv.status !== "cancelled" && (() => {
                             const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-                            const payUrl = inv.payToken
-                              ? `${window.location.origin}${base}/pay/${inv.payToken}`
-                              : inv.stripePaymentLinkUrl ?? null;
+                            const payUrl = inv.squarePaymentLinkUrl ?? inv.stripePaymentLinkUrl ?? null;
                             return payUrl ? (
                               <button
                                 onClick={() => {

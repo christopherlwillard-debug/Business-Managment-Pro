@@ -4,4 +4,4 @@ export * from "./hooks/useTaxReports";
 export * from "./hooks/useMaterials";
 export * from "./hooks/useMaterialLists";
 export * from "./hooks/useProspects";
-export * from "./hooks/useStripe";
+export * from "./hooks/useSquare";

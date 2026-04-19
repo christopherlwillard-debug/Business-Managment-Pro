@@ -739,12 +739,12 @@ export function EstimateModal({
                 amount: totalAmount,
                 notes: title ? `Estimate: ${title}` : "Asphalt sealing calculator quote",
               });
-              if (charge.stripePaymentLinkUrl) {
-                setDepositLinkResult({ url: charge.stripePaymentLinkUrl, amount: totalAmount });
+              if (charge.squarePaymentLinkUrl) {
+                setDepositLinkResult({ url: charge.squarePaymentLinkUrl, amount: totalAmount });
                 setShowAsphaltCalc(false);
               }
             } catch {
-              alert("Failed to create payment link. Make sure Stripe is configured.");
+              alert("Failed to create payment link. Make sure Square is configured.");
             }
           }}
         />
@@ -763,7 +763,7 @@ export function EstimateModal({
               </button>
             </div>
             <p className="text-sm text-gray-600">
-              A Stripe payment link for <strong>${depositLinkResult.amount.toFixed(2)}</strong> has been created.
+              A Square payment link for <strong>${depositLinkResult.amount.toFixed(2)}</strong> has been created.
               Share this link with your customer to collect payment.
             </p>
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
@@ -1120,9 +1120,9 @@ export default function Estimates() {
                         Deposit Received{est.depositPaidAmount != null ? ` — ${formatCurrency(Number(est.depositPaidAmount))}` : ""}
                       </div>
                     ) : canEdit("estimates") && (
-                      est.stripePaymentLinkUrl ? (
+                      (est.squarePaymentLinkUrl ?? est.stripePaymentLinkUrl) ? (
                         <button
-                          onClick={() => setDepositLinkResult({ url: est.stripePaymentLinkUrl!, title: est.title })}
+                          onClick={() => setDepositLinkResult({ url: (est.squarePaymentLinkUrl ?? est.stripePaymentLinkUrl)!, title: est.title })}
                           className="flex items-center gap-1 text-xs text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-1.5 font-semibold transition-colors"
                         >
                           <CreditCard className="w-3 h-3" /> Deposit Link
@@ -1204,7 +1204,7 @@ export default function Estimates() {
                 </button>
               </div>
               <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                <p className="text-xs text-gray-500 mb-1 font-medium">Stripe Payment Link (50% Deposit)</p>
+                <p className="text-xs text-gray-500 mb-1 font-medium">Square Payment Link (50% Deposit)</p>
                 <p className="text-sm text-gray-800 break-all font-mono">{depositLinkResult.url}</p>
               </div>
               <div className="flex gap-2">
@@ -1226,7 +1226,7 @@ export default function Estimates() {
                 </a>
               </div>
               <p className="text-xs text-gray-400 text-center">
-                Share this link with the customer to collect the 50% deposit via Stripe.
+                Share this link with the customer to collect the 50% deposit via Square.
               </p>
             </div>
           </div>

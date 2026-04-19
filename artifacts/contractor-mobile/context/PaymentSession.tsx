@@ -1,14 +1,12 @@
 import React, { createContext, useCallback, useContext, useState } from "react";
 
 export interface ReceiptData {
-  paymentIntentId: string;
+  squarePaymentId: string;
   amountCents: number;
   description: string | null;
   invoiceNumber: string | null;
   clientName: string | null;
   paidAt: Date;
-  last4: string | null;
-  brand: string | null;
 }
 
 interface PaymentSession {
@@ -17,8 +15,7 @@ interface PaymentSession {
   invoiceId: number | null;
   invoiceNumber: string | null;
   clientName: string | null;
-  paymentIntentId: string | null;
-  clientSecret: string | null;
+  squarePaymentId: string | null;
   receipt: ReceiptData | null;
 }
 
@@ -28,8 +25,7 @@ const DEFAULT_SESSION: PaymentSession = {
   invoiceId: null,
   invoiceNumber: null,
   clientName: null,
-  paymentIntentId: null,
-  clientSecret: null,
+  squarePaymentId: null,
   receipt: null,
 };
 

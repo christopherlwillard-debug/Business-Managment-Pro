@@ -8,9 +8,8 @@ export interface QuickCharge {
   customerName?: string | null;
   customerEmail?: string | null;
   notes?: string | null;
-  stripePaymentLinkId?: string | null;
-  stripePaymentLinkUrl?: string | null;
-  stripePaymentIntentId?: string | null;
+  squarePaymentLinkId?: string | null;
+  squarePaymentLinkUrl?: string | null;
   payToken?: string | null;
   qrCodeDataUrl?: string | null;
   status: string;
@@ -44,6 +43,22 @@ export interface CreateDepositLinkResponse {
   prospect: unknown;
 }
 
+export interface SquareStatus {
+  connected: boolean;
+  message?: string;
+  merchantId?: string | null;
+  businessName?: string | null;
+  country?: string | null;
+  currency?: string | null;
+}
+
+export interface CreateEstimateDepositLinkResponse {
+  paymentLinkUrl: string;
+  paymentLinkId: string;
+  depositAmount: number;
+  estimate: unknown;
+}
+
 export function useListQuickCharges() {
   return useQuery({
     queryKey: ["/api/quick-charges"],
@@ -52,14 +67,10 @@ export function useListQuickCharges() {
   });
 }
 
-export interface CreateQuickChargeRequestWithBase extends CreateQuickChargeRequest {
-  payPageBaseUrl?: string | null;
-}
-
 export function useCreateQuickCharge() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateQuickChargeRequestWithBase) =>
+    mutationFn: (data: CreateQuickChargeRequest) =>
       customFetch<QuickCharge>("/api/quick-charges", {
         method: "POST",
         body: JSON.stringify(data),
@@ -92,56 +103,11 @@ export function useCreateInvoicePaymentLink() {
   });
 }
 
-export interface StripeStatus {
-  connected: boolean;
-  message?: string;
-  accountId?: string;
-  displayName?: string | null;
-  country?: string | null;
-  chargesEnabled?: boolean;
-  payoutsEnabled?: boolean;
-}
-
-export function useStripeStatus() {
+export function useSquareStatus() {
   return useQuery({
-    queryKey: ["/api/stripe/status"],
-    queryFn: () => customFetch<StripeStatus>("/api/stripe/status", { method: "GET" }),
+    queryKey: ["/api/square/status"],
+    queryFn: () => customFetch<SquareStatus>("/api/square/status", { method: "GET" }),
     staleTime: 60_000,
-  });
-}
-
-export interface CreatePaySessionResponse {
-  payUrl: string;
-  payToken: string;
-}
-
-export function useCreateInvoicePaySession() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, payPageBaseUrl }: { id: number; payPageBaseUrl: string }) =>
-      customFetch<CreatePaySessionResponse>(`/api/invoices/${id}/pay-session`, {
-        method: "POST",
-        body: JSON.stringify({ payPageBaseUrl }),
-        headers: { "Content-Type": "application/json" },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/invoices"] });
-    },
-  });
-}
-
-export function useCreateQuickChargePaySession() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, payPageBaseUrl }: { id: number; payPageBaseUrl: string }) =>
-      customFetch<CreatePaySessionResponse>(`/api/quick-charges/${id}/pay-session`, {
-        method: "POST",
-        body: JSON.stringify({ payPageBaseUrl }),
-        headers: { "Content-Type": "application/json" },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/quick-charges"] });
-    },
   });
 }
 
@@ -158,13 +124,6 @@ export function useCreateProspectDepositLink() {
       qc.invalidateQueries({ queryKey: ["/api/prospects"] });
     },
   });
-}
-
-export interface CreateEstimateDepositLinkResponse {
-  paymentLinkUrl: string;
-  paymentLinkId: string;
-  depositAmount: number;
-  estimate: unknown;
 }
 
 export function useCreateEstimateDepositLink() {

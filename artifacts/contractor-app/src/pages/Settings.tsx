@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useGetSettings, useUpdateSettings, useStripeStatus, type AppSettings } from "@workspace/api-client-react";
+import { useGetSettings, useUpdateSettings, useSquareStatus, type AppSettings } from "@workspace/api-client-react";
 import { RegisteredAgentSection } from "@/components/RegisteredAgentSection";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -926,7 +926,7 @@ export default function Settings() {
   const { data: settings, isLoading } = useGetSettings();
   const updateMutation = useUpdateSettings();
   const { isOwner } = useUserPermissions();
-  const { data: stripeStatus } = useStripeStatus();
+  const { data: squareStatus } = useSquareStatus();
 
   const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
@@ -1124,28 +1124,28 @@ export default function Settings() {
       {/* ── Google (outside form) ── */}
       {activeTab === "google" && <GoogleSection />}
 
-      {/* ── Stripe Payments (outside form) ── */}
+      {/* ── Square Payments (outside form) ── */}
       {activeTab === "payments" && (
         <div className="space-y-5 pb-8">
           <Card className="border-border/50 shadow-md bg-card">
             <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
               <CardTitle className="text-base flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-amber-500" />
-                Stripe Payments
+                Square Payments
               </CardTitle>
-              <CardDescription>Accept card payments on invoices, deposits, and quick charges</CardDescription>
+              <CardDescription>Accept card payments on invoices, deposits, and quick charges via Square</CardDescription>
             </CardHeader>
             <CardContent className="pt-5 space-y-4">
-              {stripeStatus?.connected ? (
+              {squareStatus?.connected ? (
                 <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
                   <div>
                     <p className="text-sm font-semibold text-emerald-800">
-                      Stripe is connected{stripeStatus.displayName ? ` — ${stripeStatus.displayName}` : ""}
+                      Square is connected{squareStatus.businessName ? ` — ${squareStatus.businessName}` : ""}
                     </p>
                     <p className="text-xs text-emerald-700">
-                      {stripeStatus.chargesEnabled ? "Charges enabled" : "Charges not yet enabled"}
-                      {stripeStatus.country ? ` · ${stripeStatus.country}` : ""}
+                      {squareStatus.country ? `${squareStatus.country}` : "Ready to accept payments"}
+                      {squareStatus.currency ? ` · ${squareStatus.currency}` : ""}
                     </p>
                   </div>
                 </div>
@@ -1153,8 +1153,8 @@ export default function Settings() {
                 <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
                   <div>
-                    <p className="text-sm font-semibold text-amber-800">Stripe not connected</p>
-                    <p className="text-xs text-amber-700">{stripeStatus?.message ?? "Add STRIPE_SECRET_KEY to your environment to enable payments"}</p>
+                    <p className="text-sm font-semibold text-amber-800">Square not connected</p>
+                    <p className="text-xs text-amber-700">{squareStatus?.message ?? "Add SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID to your environment to enable payments"}</p>
                   </div>
                 </div>
               )}
@@ -1165,28 +1165,28 @@ export default function Settings() {
                     <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Invoice payment links — get paid online per invoice</li>
                     <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Quick Charge — instant payment links with QR codes</li>
                     <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Prospect deposit links — collect 50% deposits automatically</li>
-                    <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Automatic receipts sent by Stripe to your customers</li>
+                    <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Mobile in-person payments via Square POS deep link</li>
                   </ul>
                 </div>
                 <div className="border-t border-border pt-3">
-                  <p className="text-sm font-semibold text-foreground mb-1">Webhook (optional, for auto-payment confirmation)</p>
+                  <p className="text-sm font-semibold text-foreground mb-1">Webhook (for auto-payment confirmation)</p>
                   <p className="text-xs text-muted-foreground mb-2">
-                    Add this endpoint in your Stripe Dashboard → Developers → Webhooks to automatically mark invoices and charges as paid when a payment completes.
+                    Add this endpoint in your Square Developer Dashboard → Webhooks to automatically mark invoices and charges as paid when a payment completes.
                   </p>
                   <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                     <code className="text-xs text-gray-700 font-mono flex-1 truncate">
-                      {typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/stripe` : "/api/webhooks/stripe"}
+                      {typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/square` : "/api/webhooks/square"}
                     </code>
                     <button
                       type="button"
-                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/stripe`)}
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/square`)}
                       className="text-xs text-amber-600 hover:text-amber-700 font-medium flex-shrink-0"
                     >
                       Copy
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    Events to listen for: <code className="text-xs">checkout.session.completed</code>, <code className="text-xs">payment_intent.succeeded</code>
+                    Events to subscribe to: <code className="text-xs">payment.completed</code>
                   </p>
                 </div>
               </div>

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
+  Linking,
   StyleSheet,
   Text,
   TextInput,
@@ -52,6 +54,16 @@ export default function CollectScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
+
+    const appId = process.env.EXPO_PUBLIC_SQUARE_APP_ID;
+    if (!appId) {
+      Alert.alert(
+        "Setup required",
+        "Square App ID is not configured. Add EXPO_PUBLIC_SQUARE_APP_ID to your environment.",
+      );
+      return;
+    }
+
     setPaymentDetails({
       amountCents,
       description: note.trim(),
@@ -59,7 +71,31 @@ export default function CollectScreen() {
       invoiceNumber: session.invoiceNumber,
       clientName: session.clientName,
     });
-    router.push("/terminal");
+
+    const callbackUrl = "buildpro://square-callback";
+    const posData = JSON.stringify({
+      amount_money: { amount: amountCents, currency_code: "USD" },
+      callback_url: callbackUrl,
+      client_id: appId,
+      version: "1.3",
+      ...(note.trim() ? { notes: note.trim() } : {}),
+    });
+    const encoded = btoa(unescape(encodeURIComponent(posData)));
+    const squareUrl = `square-commerce-v1://payment/create?data=${encoded}`;
+
+    Linking.canOpenURL(squareUrl)
+      .then((canOpen) => {
+        if (canOpen) {
+          return Linking.openURL(squareUrl);
+        }
+        Alert.alert(
+          "Square POS not installed",
+          "Please install the Square Point of Sale app to accept in-person payments.",
+        );
+      })
+      .catch(() => {
+        Alert.alert("Could not launch Square POS", "Please try again.");
+      });
   }
 
   function handleInvoicePicker() {

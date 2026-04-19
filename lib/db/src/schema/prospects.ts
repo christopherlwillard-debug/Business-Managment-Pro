@@ -28,6 +28,8 @@ export const prospectsTable = pgTable(
     linkedInvoiceId: integer("linked_invoice_id"),
     stripePaymentLinkId: text("stripe_payment_link_id"),
     stripePaymentLinkUrl: text("stripe_payment_link_url"),
+    squarePaymentLinkId: text("square_payment_link_id"),
+    squarePaymentLinkUrl: text("square_payment_link_url"),
     depositPaidAt: timestamp("deposit_paid_at"),
     depositPaidAmount: numeric("deposit_paid_amount", { precision: 12, scale: 2 }),
     lastPaidAt: timestamp("last_paid_at"),

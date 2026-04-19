@@ -16,6 +16,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function getPayUrl(charge: QuickCharge): string | null {
+  if (charge.squarePaymentLinkUrl) return charge.squarePaymentLinkUrl;
   if (!charge.payToken) return charge.stripePaymentLinkUrl ?? null;
   return `${window.location.origin}${BASE}/pay/${charge.payToken}`;
 }
@@ -111,7 +112,7 @@ export default function QuickCharge() {
       newlyPaid.forEach((c) => {
         toast({
           title: `"${c.label}" marked Paid`,
-          description: c.paidAt ? "Stripe payment received." : "Status updated to paid.",
+          description: c.paidAt ? "Square payment received." : "Status updated to paid.",
         });
       });
     }

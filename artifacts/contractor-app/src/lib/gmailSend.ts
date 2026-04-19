@@ -170,7 +170,7 @@ export interface BuildInvoiceEmailHtmlOpts {
   total: number;
   notes?: string | null;
   customMessage?: string;
-  stripePaymentLink?: string | null;
+  paymentLink?: string | null;
 }
 
 export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
@@ -257,15 +257,15 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
        </td></tr>`
     : "";
 
-  const paymentLinkHtml = opts.stripePaymentLink
+  const paymentLinkHtml = opts.paymentLink
     ? `<tr><td style="padding:20px 0 0;border-top:1px solid #f3f4f6;">
          <table cellpadding="0" cellspacing="0" width="100%">
            <tr><td align="center">
              <p style="margin:0 0 12px;font-size:12px;font-weight:600;color:#374151;">Pay this invoice securely online:</p>
-             <a href="${esc(opts.stripePaymentLink)}" target="_blank" style="display:inline-block;background:#f59e0b;color:#fff;font-size:14px;font-weight:700;padding:12px 32px;border-radius:8px;text-decoration:none;">
+             <a href="${esc(opts.paymentLink)}" target="_blank" style="display:inline-block;background:#f59e0b;color:#fff;font-size:14px;font-weight:700;padding:12px 32px;border-radius:8px;text-decoration:none;">
                Pay Now — ${fmtCurrency(opts.total)}
              </a>
-             <p style="margin:10px 0 0;font-size:10px;color:#9ca3af;">Powered by Stripe · Secure payment</p>
+             <p style="margin:10px 0 0;font-size:10px;color:#9ca3af;">Square Payments · Secure checkout</p>
            </td></tr>
          </table>
        </td></tr>`

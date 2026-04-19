@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -54,13 +54,58 @@ function isPhoneLike(s: string): boolean {
 }
 
 export default function ReceiptScreen() {
-  const { session, clearSession } = usePaymentSession();
+  const { session, setPaymentDetails, clearSession } = usePaymentSession();
   const { sessionToken } = useAuth();
   const [contact, setContact] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [recording, setRecording] = useState(false);
 
   const receipt = session.receipt;
+
+  useEffect(() => {
+    if (receipt || !session.squarePaymentId || recording) return;
+    setRecording(true);
+    fetch(`${BASE_URL}/api/square/record-payment`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${sessionToken ?? ""}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        squarePaymentId: session.squarePaymentId,
+        amountCents: session.amountCents,
+        invoiceId: session.invoiceId ?? undefined,
+        description: session.description || undefined,
+      }),
+    })
+      .then(() => {
+        setPaymentDetails({
+          receipt: {
+            squarePaymentId: session.squarePaymentId!,
+            amountCents: session.amountCents,
+            description: session.description || null,
+            invoiceNumber: session.invoiceNumber,
+            clientName: session.clientName,
+            paidAt: new Date(),
+          },
+        });
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to record Square payment:", err);
+        setPaymentDetails({
+          receipt: {
+            squarePaymentId: session.squarePaymentId!,
+            amountCents: session.amountCents,
+            description: session.description || null,
+            invoiceNumber: session.invoiceNumber,
+            clientName: session.clientName,
+            paidAt: new Date(),
+          },
+        });
+      })
+      .finally(() => setRecording(false));
+  }, [session.squarePaymentId]);
 
   function handleDone() {
     clearSession();
@@ -92,7 +137,7 @@ export default function ReceiptScreen() {
         receipt.description ? `Description: ${receipt.description}` : null,
         receipt.invoiceNumber ? `Invoice: #${receipt.invoiceNumber}` : null,
         `Date: ${dateStr}`,
-        `Payment ID: ${receipt.paymentIntentId}`,
+        `Payment ID: ${receipt.squarePaymentId}`,
       ]
         .filter(Boolean)
         .join("\n");
@@ -110,16 +155,18 @@ export default function ReceiptScreen() {
 
     setSending(true);
     try {
-      const res = await fetch(`${BASE_URL}/api/terminal/send-receipt`, {
+      const res = await fetch(`${BASE_URL}/api/square/record-payment`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${sessionToken ?? ""}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          paymentIntentId: receipt.paymentIntentId,
-          contact: value,
-          type: "email",
+          squarePaymentId: receipt.squarePaymentId,
+          amountCents: receipt.amountCents,
+          customerEmail: value,
+          customerName: receipt.clientName ?? undefined,
+          description: receipt.description ?? undefined,
         }),
       });
       if (!res.ok) {
@@ -140,10 +187,14 @@ export default function ReceiptScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorWrap}>
-          <Text style={styles.errorText}>No receipt data found.</Text>
-          <TouchableOpacity onPress={handleDone} style={styles.doneBtn}>
-            <Text style={styles.doneBtnText}>Go Home</Text>
-          </TouchableOpacity>
+          <Text style={styles.errorText}>
+            {recording ? "Recording payment…" : "No receipt data found."}
+          </Text>
+          {!recording && (
+            <TouchableOpacity onPress={handleDone} style={styles.doneBtn}>
+              <Text style={styles.doneBtnText}>Go Home</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -219,18 +270,6 @@ export default function ReceiptScreen() {
               </>
             ) : null}
 
-            {receipt.last4 ? (
-              <>
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>Card</Text>
-                  <Text style={styles.rowValue}>
-                    {capitalize(receipt.brand)} •••• {receipt.last4}
-                  </Text>
-                </View>
-                <View style={styles.divider} />
-              </>
-            ) : null}
-
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Payment ID</Text>
               <Text
@@ -238,7 +277,7 @@ export default function ReceiptScreen() {
                 numberOfLines={1}
                 ellipsizeMode="middle"
               >
-                {receipt.paymentIntentId}
+                {receipt.squarePaymentId}
               </Text>
             </View>
           </View>

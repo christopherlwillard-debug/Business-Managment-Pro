@@ -1,0 +1,71 @@
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
+
+const router = Router();
+
+const invoiceSelect = {
+  ...invoicesTable,
+  clientName: clientsTable.name,
+  clientEmail: clientsTable.email,
+};
+
+function buildQuery() {
+  return db.select(invoiceSelect)
+    .from(invoicesTable)
+    .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+    .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id));
+}
+
+router.post("/:id/payment-link", async (req, res) => {
+  try {
+    if (!isSquareConfigured()) {
+      return res.status(400).json({ error: "Square is not configured. Add SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID to your environment." });
+    }
+
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid invoice id" });
+
+    const [[inv], [settings]] = await Promise.all([
+      buildQuery().where(eq(invoicesTable.id, id)),
+      db.select().from(settingsTable).limit(1),
+    ]);
+
+    if (!inv) return res.status(404).json({ error: "Invoice not found" });
+
+    const total = parseFloat(inv.total ?? "0");
+    if (total <= 0) return res.status(400).json({ error: "Invoice total must be greater than zero" });
+
+    const amountCents = Math.round(total * 100);
+    const currency = settings?.currency ?? "USD";
+    const companyName = settings?.companyName ?? "BuildPro";
+    const productName = `${companyName}: Invoice ${inv.invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`;
+
+    const { url, id: linkId } = await createSquarePaymentLink({
+      amountCents,
+      currency,
+      productName,
+      referenceId: `inv_${id}`,
+      customerEmail: inv.clientEmail,
+    });
+
+    await db.update(invoicesTable)
+      .set({
+        squarePaymentLinkId: linkId,
+        squarePaymentLinkUrl: url,
+        status: inv.status === "draft" ? "sent" : inv.status,
+      })
+      .where(eq(invoicesTable.id, id));
+
+    const [updated] = await buildQuery().where(eq(invoicesTable.id, id));
+    res.json({ paymentLinkUrl: url, paymentLinkId: linkId, invoice: updated });
+  } catch (err: unknown) {
+    console.error("Square invoice payment link error:", err);
+    const message = err instanceof Error ? err.message : "Failed to create payment link";
+    res.status(500).json({ error: message });
+  }
+});
+
+export default router;

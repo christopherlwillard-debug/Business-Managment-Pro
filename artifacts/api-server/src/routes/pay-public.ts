@@ -2,7 +2,6 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { invoicesTable, quickChargesTable, settingsTable, clientsTable, jobsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { getStripe, isStripeConfigured } from "../lib/stripe";
 
 const router = Router();
 
@@ -13,13 +12,8 @@ router.get("/:payToken", async (req, res) => {
       return res.status(400).json({ error: "Invalid pay token" });
     }
 
-    if (!isStripeConfigured()) {
-      return res.status(503).json({ error: "Payment processing not configured" });
-    }
-
     const [settings] = await db.select().from(settingsTable).limit(1);
     const businessName = settings?.companyName ?? "Willard's General Contracting";
-    const currency = settings?.currency ?? "USD";
 
     const [inv] = await db
       .select({
@@ -27,8 +21,9 @@ router.get("/:payToken", async (req, res) => {
         invoiceNumber: invoicesTable.invoiceNumber,
         total: invoicesTable.total,
         status: invoicesTable.status,
+        squarePaidAt: invoicesTable.squarePaidAt,
         stripePaidAt: invoicesTable.stripePaidAt,
-        stripePaymentIntentId: invoicesTable.stripePaymentIntentId,
+        squarePaymentLinkUrl: invoicesTable.squarePaymentLinkUrl,
         clientName: clientsTable.name,
         jobTitle: jobsTable.title,
       })
@@ -39,55 +34,34 @@ router.get("/:payToken", async (req, res) => {
       .limit(1);
 
     if (inv) {
-      const isPaid = inv.status === "paid" || inv.stripePaidAt != null;
+      const paidAt = inv.squarePaidAt ?? inv.stripePaidAt;
+      const isPaid = inv.status === "paid" || paidAt != null;
+      const description = `Invoice ${inv.invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`;
+      const amountCents = Math.round(parseFloat(inv.total ?? "0") * 100);
+
       if (isPaid) {
-        const paidAtDate = inv.stripePaidAt ?? new Date();
         return res.json({
           type: "invoice",
-          paidAt: paidAtDate instanceof Date ? paidAtDate.toISOString() : String(paidAtDate),
+          paidAt: (paidAt instanceof Date ? paidAt : new Date()).toISOString(),
           businessName,
-          description: `Invoice ${inv.invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`,
-          amountCents: Math.round(parseFloat(inv.total ?? "0") * 100),
+          description,
+          amountCents,
         });
       }
 
-      if (!inv.stripePaymentIntentId) {
-        return res.status(409).json({
-          error: "Payment session not yet created. Please contact the business to regenerate your payment link.",
-        });
-      }
-
-      const stripe = getStripe();
-      const pi = await stripe.paymentIntents.retrieve(inv.stripePaymentIntentId);
-
-      if (pi.status === "succeeded") {
+      if (inv.squarePaymentLinkUrl) {
         return res.json({
           type: "invoice",
-          paidAt: new Date().toISOString(),
+          squarePaymentLinkUrl: inv.squarePaymentLinkUrl,
+          amountCents,
+          description,
           businessName,
-          description: `Invoice ${inv.invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`,
-          amountCents: pi.amount,
+          paidAt: null,
         });
       }
 
-      if (!pi.client_secret) {
-        return res.status(500).json({ error: "Payment intent is missing client secret" });
-      }
-
-      const description = [
-        `Invoice ${inv.invoiceNumber}`,
-        inv.clientName,
-        inv.jobTitle,
-      ].filter(Boolean).join(" — ");
-
-      return res.json({
-        type: "invoice",
-        clientSecret: pi.client_secret,
-        amountCents: pi.amount,
-        currency: pi.currency ?? currency,
-        description,
-        businessName,
-        paidAt: null,
+      return res.status(409).json({
+        error: "Payment link not yet generated. Please contact the business.",
       });
     }
 
@@ -99,48 +73,32 @@ router.get("/:payToken", async (req, res) => {
 
     if (qc) {
       const isPaid = qc.status === "paid" || qc.paidAt != null;
+      const amountCents = Math.round(parseFloat(qc.amount) * 100);
+
       if (isPaid) {
-        const paidAtDate = qc.paidAt ?? new Date();
+        const paidAt = qc.paidAt ?? new Date();
         return res.json({
           type: "quick_charge",
-          paidAt: paidAtDate instanceof Date ? paidAtDate.toISOString() : String(paidAtDate),
+          paidAt: (paidAt instanceof Date ? paidAt : new Date()).toISOString(),
           businessName,
           description: qc.label,
-          amountCents: Math.round(parseFloat(qc.amount) * 100),
+          amountCents,
         });
       }
 
-      if (!qc.stripePaymentIntentId) {
-        return res.status(409).json({
-          error: "Payment session not yet created. Please contact the business to regenerate your payment link.",
-        });
-      }
-
-      const stripe = getStripe();
-      const pi = await stripe.paymentIntents.retrieve(qc.stripePaymentIntentId);
-
-      if (pi.status === "succeeded") {
+      if (qc.squarePaymentLinkUrl) {
         return res.json({
           type: "quick_charge",
-          paidAt: new Date().toISOString(),
-          businessName,
+          squarePaymentLinkUrl: qc.squarePaymentLinkUrl,
+          amountCents,
           description: qc.label,
-          amountCents: pi.amount,
+          businessName,
+          paidAt: null,
         });
       }
 
-      if (!pi.client_secret) {
-        return res.status(500).json({ error: "Payment intent is missing client secret" });
-      }
-
-      return res.json({
-        type: "quick_charge",
-        clientSecret: pi.client_secret,
-        amountCents: pi.amount,
-        currency: pi.currency ?? currency,
-        description: qc.label,
-        businessName,
-        paidAt: null,
+      return res.status(409).json({
+        error: "Payment link not yet generated. Please contact the business.",
       });
     }
 
