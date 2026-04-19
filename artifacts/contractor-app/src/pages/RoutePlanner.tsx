@@ -785,7 +785,11 @@ export default function RoutePlanner() {
                     const coords = await geocodeAddress(stop.address, BASE);
                     setRetryingGeocodeId(null);
                     if (coords) {
-                      updateStop.mutate({ id: stop.id, data: { lat: coords.lat, lng: coords.lng } });
+                      const label = stop.title || stop.address;
+                      updateStop.mutate(
+                        { id: stop.id, data: { lat: coords.lat, lng: coords.lng } },
+                        { onSuccess: () => toast({ title: `Coordinates found — ${label} is now on the map` }) }
+                      );
                     } else {
                       toast({ title: "Geocoding failed", description: "Could not find coordinates for this address.", variant: "destructive" });
                     }
