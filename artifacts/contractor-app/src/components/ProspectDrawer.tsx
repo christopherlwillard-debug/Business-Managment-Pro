@@ -788,7 +788,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 <FileText className="w-3.5 h-3.5" />
                 View Quote{p.linkedEstimateNumber ? ` — ${p.linkedEstimateNumber}` : ""}
               </button>
-            ) : (
+            ) : (p.status === "cold" || p.status === "contacted" || p.status === "quoted" || p.status === "won") && (
               <button
                 onClick={handleCreateQuote}
                 disabled={isCreatingQuote}
