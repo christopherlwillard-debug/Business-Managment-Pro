@@ -133,7 +133,7 @@ pool.query(\`
   return pool.query(\`
     ALTER TABLE prospects DROP CONSTRAINT IF EXISTS prospects_status_check;
     ALTER TABLE prospects ADD CONSTRAINT prospects_status_check
-      CHECK (status IN ('cold', 'contacted', 'quoted', 'won', 'lost'));
+      CHECK (status IN ('cold', 'contacted', 'quoted', 'won', 'serviced', 'lost'));
     ALTER TABLE prospects DROP CONSTRAINT IF EXISTS prospects_property_type_check;
     ALTER TABLE prospects ADD CONSTRAINT prospects_property_type_check
       CHECK (property_type IN ('Church', 'Retail', 'Apartment', 'Industrial', 'Other'));
@@ -357,4 +357,15 @@ pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_token text')
   .then(() => pool.query('CREATE UNIQUE INDEX IF NOT EXISTS quick_charges_pay_token_unique ON quick_charges (pay_token) WHERE pay_token IS NOT NULL'))
   .then(() => { console.log('pay_token columns ensured'); pool.end(); })
   .catch(e => { console.error('pay_token migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Task #237: final idempotent fix — ensure prospects_status_check includes 'serviced'
+# Earlier blocks re-applied the old constraint without 'serviced'; this block always wins.
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE prospects DROP CONSTRAINT IF EXISTS prospects_status_check')
+  .then(() => pool.query(\"ALTER TABLE prospects ADD CONSTRAINT prospects_status_check CHECK (status IN ('cold', 'contacted', 'quoted', 'won', 'serviced', 'lost'))\"))
+  .then(() => { console.log('prospects_status_check (with serviced) ensured'); pool.end(); })
+  .catch(e => { console.error('prospects_status_check fix error:', e.message); pool.end(); process.exit(1); });
 ")
