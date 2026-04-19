@@ -1379,7 +1379,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                                     <td className="px-4 py-2.5 font-medium text-foreground">{row.description}</td>
                                     <td className="px-4 py-2.5 text-muted-foreground">
                                       {row.clientId
-                                        ? (clientsList.find((c: any) => c.id === row.clientId)?.name ?? row.source ?? "—")
+                                        ? (clientsList.find(c => c.id === row.clientId)?.name ?? row.source ?? "—")
                                         : (row.source || "—")}
                                     </td>
                                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
