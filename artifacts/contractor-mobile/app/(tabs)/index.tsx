@@ -48,15 +48,15 @@ export default function HomeScreen() {
             <Text style={styles.chargeBtnIconText}>⚡</Text>
           </View>
           <Text style={styles.chargeBtnTitle}>Collect Payment</Text>
-          <Text style={styles.chargeBtnSub}>Tap to Pay on iPhone</Text>
+          <Text style={styles.chargeBtnSub}>Opens Square POS to collect</Text>
         </TouchableOpacity>
 
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>About Tap to Pay</Text>
+          <Text style={styles.infoTitle}>About Square POS Payments</Text>
           <View style={styles.infoRow}>
             <Text style={styles.infoEmoji}>📱</Text>
             <Text style={styles.infoText}>
-              Customers tap their card or phone near yours to pay
+              Opens the Square POS app to accept card, tap, or manual entry
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -74,7 +74,7 @@ export default function HomeScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoEmoji}>📋</Text>
             <Text style={styles.infoText}>
-              Requires Expo Dev Client build on iPhone 16+ with iOS 16+
+              Requires the Square Point of Sale app installed on your device
             </Text>
           </View>
         </View>
