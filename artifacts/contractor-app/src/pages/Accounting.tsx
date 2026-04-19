@@ -744,17 +744,21 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   const createOI = useCreateOtherIncome(year);
   const updateOI = useUpdateOtherIncome(year);
   const deleteOI = useDeleteOtherIncome(year);
-  const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; city: string; state: string; notes: string; businessLine: string }>>(null);
+  const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; city: string; state: string; notes: string; businessLine: string; clientId: number | null }>>(null);
   const [oiSaving, setOiSaving] = useState(false);
+  const { data: clientsList = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["clients-list-oi"],
+    queryFn: () => fetch(`${BASE}/api/clients`).then(r => r.json()),
+  });
 
   const { canEdit } = useUserPermissions();
 
   function openAddOI() {
-    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "" });
+    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: null });
     setOpenModule("other_income");
   }
   function openEditOI(row: any) {
-    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "", businessLine: row.businessLine ?? "" });
+    setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "", businessLine: row.businessLine ?? "", clientId: row.clientId ?? null });
     setOpenModule("other_income");
   }
   async function handleSaveOI(e: React.FormEvent) {
@@ -762,7 +766,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     if (!oiForm) return;
     setOiSaving(true);
     try {
-      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", city: oiForm.city || null, state: oiForm.state || null, notes: oiForm.notes || null, businessLine: oiForm.businessLine || null };
+      const payload = { amount: oiForm.amount, date: oiForm.date, description: oiForm.description, source: oiForm.source || null, paymentMethod: oiForm.paymentMethod || "other", city: oiForm.city || null, state: oiForm.state || null, notes: oiForm.notes || null, businessLine: oiForm.businessLine || null, clientId: oiForm.clientId ?? null };
       if (oiForm.id) { await updateOI.mutateAsync({ id: oiForm.id, ...payload }); }
       else { await createOI.mutateAsync(payload); }
       setOiForm(null);
@@ -1230,6 +1234,19 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                               onChange={e => setOiForm(f => f ? { ...f, description: e.target.value } : f)}
                             />
                           </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Client <span className="font-normal">(optional)</span></label>
+                            <select
+                              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                              value={oiForm.clientId ?? ""}
+                              onChange={e => setOiForm(f => f ? { ...f, clientId: e.target.value ? parseInt(e.target.value) : null } : f)}
+                            >
+                              <option value="">— No client —</option>
+                              {clientsList.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">Received From</label>
@@ -1360,7 +1377,11 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                                   <tr key={row.id} className="hover:bg-muted/20 transition-colors">
                                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.date}</td>
                                     <td className="px-4 py-2.5 font-medium text-foreground">{row.description}</td>
-                                    <td className="px-4 py-2.5 text-muted-foreground">{row.source || "—"}</td>
+                                    <td className="px-4 py-2.5 text-muted-foreground">
+                                      {row.clientId
+                                        ? (clientsList.find((c: any) => c.id === row.clientId)?.name ?? row.source ?? "—")
+                                        : (row.source || "—")}
+                                    </td>
                                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
                                       {row.city && row.state ? `${row.city}, ${row.state}` : row.city || "—"}
                                     </td>
