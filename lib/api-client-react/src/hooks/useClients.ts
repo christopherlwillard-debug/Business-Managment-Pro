@@ -78,21 +78,6 @@ export function useClientProfile(id: number | null) {
   });
 }
 
-export function useConvertProspectToClient() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (prospectId: number) =>
-      customFetch<{ id: number; name: string; createdAt: string }>(`/api/prospects/${prospectId}/convert-to-client`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/clients"] });
-      qc.invalidateQueries({ queryKey: ["/api/prospects"] });
-    },
-  });
-}
-
 export function useUpdateClientServiceDate() {
   const qc = useQueryClient();
   return useMutation({
