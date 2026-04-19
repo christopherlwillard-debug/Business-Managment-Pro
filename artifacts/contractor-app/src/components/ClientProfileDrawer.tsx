@@ -3,7 +3,7 @@ import { useClientProfile, useUpdateClientServiceDate } from "@workspace/api-cli
 import {
   X, Phone, Mail, MapPin, Users, Briefcase, Receipt, CreditCard,
   Route, Calendar, Clock, ChevronRight, Edit2, Check, RefreshCw,
-  Link as LinkIcon,
+  Link as LinkIcon, DollarSign,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -364,33 +364,71 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
               )}
 
               {tab === "payments" && (
-                <div className="p-5 space-y-3">
-                  {(data?.squarePayments?.length ?? 0) === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-                      <CreditCard className="w-8 h-8 text-muted-foreground/40" />
-                      <p className="text-sm text-muted-foreground">No Square payments linked</p>
-                      {client.email && (
-                        <p className="text-xs text-muted-foreground/70 max-w-xs">
-                          Payments with email <span className="font-mono text-xs">{client.email}</span> will appear here automatically when matched.
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    data!.squarePayments.map(p => (
-                      <div key={p.id} className="bg-muted/40 rounded-xl p-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-bold text-emerald-600">{formatCents(p.amountCents)}</p>
-                            <p className="text-xs text-muted-foreground">{formatDate(p.paidAt)}</p>
-                          </div>
-                          {p.description && <p className="text-xs text-muted-foreground truncate max-w-[180px]">{p.description}</p>}
-                        </div>
-                        {p.invoiceNumber && (
-                          <p className="text-xs text-muted-foreground mt-1">Invoice #{p.invoiceNumber}</p>
+                <div className="p-5 space-y-5">
+                  {/* Square Payments */}
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5" /> Square Payments
+                    </h3>
+                    {(data?.squarePayments?.length ?? 0) === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-6 gap-2 text-center bg-muted/20 rounded-xl">
+                        <p className="text-sm text-muted-foreground">No Square payments linked</p>
+                        {client.email && (
+                          <p className="text-xs text-muted-foreground/70 max-w-xs">
+                            Payments with email <span className="font-mono text-xs">{client.email}</span> will appear here automatically when matched.
+                          </p>
                         )}
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      <div className="space-y-2">
+                        {data!.squarePayments.map(p => (
+                          <div key={p.id} className="bg-muted/40 rounded-xl p-4">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-bold text-emerald-600">{formatCents(p.amountCents)}</p>
+                                <p className="text-xs text-muted-foreground">{formatDate(p.paidAt)}</p>
+                              </div>
+                              {p.description && <p className="text-xs text-muted-foreground truncate max-w-[180px]">{p.description}</p>}
+                            </div>
+                            {p.invoiceNumber && (
+                              <p className="text-xs text-muted-foreground mt-1">Invoice #{p.invoiceNumber}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Other Income */}
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5" /> Other Income
+                    </h3>
+                    {(data?.otherIncome?.length ?? 0) === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-6 gap-2 text-center bg-muted/20 rounded-xl">
+                        <p className="text-sm text-muted-foreground">No other income linked</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {data!.otherIncome.map((oi) => (
+                          <div key={oi.id} className="bg-muted/40 rounded-xl p-4">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-emerald-600">{formatCurrency(parseFloat(oi.amount))}</p>
+                                <p className="text-xs text-muted-foreground">{formatDate(oi.date)}</p>
+                              </div>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground flex-shrink-0 capitalize">
+                                {oi.paymentMethod.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                            {oi.description && (
+                              <p className="text-xs text-muted-foreground mt-1 truncate">{oi.description}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

@@ -59,6 +59,16 @@ export interface ClientProfile {
     notes: string | null;
     createdAt: string;
   }>;
+  otherIncome: Array<{
+    id: number;
+    date: string;
+    description: string;
+    amount: string;
+    paymentMethod: string;
+    source: string | null;
+    notes: string | null;
+    createdAt: string;
+  }>;
   summary: {
     totalJobs: number;
     totalInvoices: number;
