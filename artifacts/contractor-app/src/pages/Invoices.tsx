@@ -835,66 +835,6 @@ export default function Invoices() {
     }
   }, [invoices]);
 
-  useEffect(() => {
-    const prospectId = searchParams.get("fromProspect");
-    if (!prospectId) return;
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.delete("fromProspect");
-      return next;
-    }, { replace: true });
-    const id = parseInt(prospectId);
-    if (isNaN(id)) return;
-    fetch(`${BASE_URL}/api/prospects/${id}`, { credentials: "include" })
-      .then(r => r.ok ? r.json() : null)
-      .then(async (prospect: any) => {
-        if (!prospect) return;
-        resetForm();
-        setIsNewClient(true);
-        setClientInput(prospect.contactName || prospect.address || "");
-        setFormState(f => ({
-          ...f,
-          city: prospect.city ?? f.city,
-          state: prospect.state ?? f.state,
-          locationName: prospect.address ?? "",
-          businessLine: "asphalt_sealing",
-        }));
-
-        let prefillItems: LineItem[] | null = null;
-        if (prospect.linkedEstimateId) {
-          try {
-            const estRes = await fetch(`${BASE_URL}/api/estimates/${prospect.linkedEstimateId}`, { credentials: "include" });
-            if (estRes.ok) {
-              const est = await estRes.json();
-              if (Array.isArray(est.lineItems) && est.lineItems.length > 0) {
-                prefillItems = (est.lineItems as any[]).map((li: any) => ({
-                  description: li.description ?? "",
-                  quantity: Number(li.quantity ?? 1),
-                  unitPrice: Number(li.unitCost ?? li.unitPrice ?? 0),
-                }));
-              }
-            }
-          } catch {
-          }
-        }
-
-        if (prefillItems) {
-          setLineItems(prefillItems);
-        } else if (prospect.roughQuote != null) {
-          setLineItems([{
-            description: `Asphalt Sealing — ${prospect.address}`,
-            quantity: 1,
-            unitPrice: Number(prospect.roughQuote),
-          }]);
-        }
-        setOpen(true);
-      })
-      .catch(() => {
-        resetForm();
-        setOpen(true);
-      });
-  }, []);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!lineItems.some(l => l.description.trim())) {

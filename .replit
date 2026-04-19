@@ -32,4 +32,3 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-VITE_STRIPE_PUBLISHABLE_KEY = "pk_live_51T6g66FFc7lR0pyIemaE5rn4XeY00mCkVLVz6EAP5EGRIWshp7p3W7w6vPN1xRsTBH01ulHDnTIxk6vo8Wl9EKlf00sjN3HIjH"

@@ -369,3 +369,12 @@ pool.query('ALTER TABLE prospects DROP CONSTRAINT IF EXISTS prospects_status_che
   .then(() => { console.log('prospects_status_check (with serviced) ensured'); pool.end(); })
   .catch(e => { console.error('prospects_status_check fix error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #238: add linked_invoice_id column to prospects (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS linked_invoice_id integer REFERENCES invoices(id) ON DELETE SET NULL')
+  .then(() => { console.log('prospects.linked_invoice_id ensured'); pool.end(); })
+  .catch(e => { console.error('linked_invoice_id migration error:', e.message); pool.end(); process.exit(1); });
+")
