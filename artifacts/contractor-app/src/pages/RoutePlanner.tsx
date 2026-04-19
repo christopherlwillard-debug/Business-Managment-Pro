@@ -7,7 +7,7 @@ import {
   MapPin, Plus, Trash2, ChevronUp, ChevronDown, Route,
   Clock, Calendar,
   Loader2, ChevronLeft, ChevronRight, Navigation,
-  Edit2, X, Save, GripVertical, Users, Link as LinkIcon,
+  Edit2, X, Save, GripVertical, Users, Link as LinkIcon, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -248,6 +248,7 @@ export default function RoutePlanner() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [geocoding, setGeocoding] = useState(false);
+  const [retryingGeocodeId, setRetryingGeocodeId] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [formLinkVal, setFormLinkVal] = useState<string>("");
 
@@ -778,6 +779,17 @@ export default function RoutePlanner() {
                   isSaving={updateStop.isPending}
                   geocoding={geocoding}
                   isOptimized={!!optimizedOrder}
+                  retryGeocoding={retryingGeocodeId === stop.id}
+                  onRetryGeocode={async () => {
+                    setRetryingGeocodeId(stop.id);
+                    const coords = await geocodeAddress(stop.address, BASE);
+                    setRetryingGeocodeId(null);
+                    if (coords) {
+                      updateStop.mutate({ id: stop.id, data: { lat: coords.lat, lng: coords.lng } });
+                    } else {
+                      toast({ title: "Geocoding failed", description: "Could not find coordinates for this address.", variant: "destructive" });
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -890,6 +902,8 @@ interface StopCardProps {
   isSaving: boolean;
   geocoding: boolean;
   isOptimized: boolean;
+  onRetryGeocode: () => void;
+  retryGeocoding: boolean;
 }
 
 function StopCard({
@@ -897,7 +911,7 @@ function StopCard({
   onEdit, onCancelEdit, onSaveEdit, onEditFormChange, onStatusChange,
   onDelete, onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
-  isSaving, geocoding, isOptimized,
+  isSaving, geocoding, isOptimized, onRetryGeocode, retryGeocoding,
 }: StopCardProps) {
   const cfg = STATUS_CONFIG[stop.status];
 
@@ -997,10 +1011,21 @@ function StopCard({
             <span className={cn("inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0", cfg.bg, cfg.color)}>
               {cfg.label}
             </span>
-            {!stop.lat && (
-              <span className="inline-flex items-center text-[9px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
-                No coords
-              </span>
+            {(!stop.lat || !stop.lng) && (
+              <>
+                <span className="inline-flex items-center text-[9px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
+                  No coords
+                </span>
+                <button
+                  onClick={e => { e.stopPropagation(); onRetryGeocode(); }}
+                  disabled={retryGeocoding}
+                  className="inline-flex items-center gap-0.5 text-[9px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-200 flex-shrink-0 hover:bg-blue-100 transition-colors disabled:opacity-60"
+                  title="Retry geocoding this address"
+                >
+                  {retryGeocoding ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                  {retryGeocoding ? "Geocoding…" : "Retry geocode"}
+                </button>
+              </>
             )}
           </div>
           {stop.title && <p className="text-xs text-muted-foreground truncate mt-0.5">{stop.address}</p>}
