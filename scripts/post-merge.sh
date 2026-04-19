@@ -2,7 +2,7 @@
 set -e
 pnpm install --frozen-lockfile
 
-yes | pnpm --filter db push-force || true
+pnpm --filter @workspace/db run push-force </dev/null 2>&1 || true
 
 # Idempotent hotfix: ensure daily_logs.author_name column exists (added in Task #35,
 # migration failed on original post-merge run)
