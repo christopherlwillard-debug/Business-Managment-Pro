@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "wouter";
 import {
   useListInvoices,
   useGetInvoiceTaxReport,
@@ -697,11 +698,14 @@ function DeleteConfirmModal({
 }
 
 
+const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 // ─── Main Invoices page ────────────────────────────────────────────────────────
 export default function Invoices() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
   const [open, setOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { toast } = useToast();
   const prevInvoiceStatuses = useRef<Record<number, string>>({});
@@ -806,6 +810,45 @@ export default function Invoices() {
     setClientInput("");
     setIsNewClient(false);
   }
+
+  useEffect(() => {
+    const prospectId = searchParams.get("fromProspect");
+    if (!prospectId) return;
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete("fromProspect");
+      return next;
+    }, { replace: true });
+    const id = parseInt(prospectId);
+    if (isNaN(id)) return;
+    fetch(`${BASE_URL}/api/prospects/${id}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((prospect: any) => {
+        if (!prospect) return;
+        resetForm();
+        setIsNewClient(true);
+        setClientInput(prospect.contactName || prospect.address || "");
+        setFormState(f => ({
+          ...f,
+          city: prospect.city ?? f.city,
+          state: prospect.state ?? f.state,
+          locationName: prospect.address ?? "",
+          businessLine: "asphalt_sealing",
+        }));
+        if (prospect.roughQuote != null) {
+          setLineItems([{
+            description: `Asphalt Sealing — ${prospect.address}`,
+            quantity: 1,
+            unitPrice: Number(prospect.roughQuote),
+          }]);
+        }
+        setOpen(true);
+      })
+      .catch(() => {
+        resetForm();
+        setOpen(true);
+      });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

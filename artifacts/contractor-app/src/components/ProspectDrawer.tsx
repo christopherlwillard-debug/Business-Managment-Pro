@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import {
   useUpdateProspect,
   useGetProspect,
@@ -42,6 +43,7 @@ import {
   Route,
   Trash2,
   Pencil,
+  Receipt,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -230,6 +232,8 @@ interface ProspectDrawerProps {
   onAddToRoute?: (p: Prospect, date: string) => Promise<void>;
 }
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAddressMap, onAddToRoute }: ProspectDrawerProps) {
   const updateMutation = useUpdateProspect();
   const depositLinkMutation = useCreateProspectDepositLink();
@@ -237,6 +241,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const deleteVisitMutation = useDeleteProspectServiceVisit();
   const updateVisitMutation = useUpdateProspectServiceVisit();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
 
   const detail: (Prospect & { statusHistory?: ProspectDetail["statusHistory"]; serviceVisits?: ProspectDetail["serviceVisits"] }) | null = detailQuery.data ?? prospect;
@@ -261,6 +266,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [editVisitDate, setEditVisitDate] = useState("");
   const [editVisitNotes, setEditVisitNotes] = useState("");
   const [editVisitPrice, setEditVisitPrice] = useState("");
+  const [isCreatingQuote, setIsCreatingQuote] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -379,6 +385,53 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   };
 
   const p = detail ?? prospect;
+
+  const handleCreateQuote = async () => {
+    if (!prospect) return;
+    setIsCreatingQuote(true);
+    try {
+      const lineItems = p.roughQuote != null
+        ? [{ description: `Asphalt Sealing — ${p.address}`, quantity: 1, unitCost: p.roughQuote, category: "Labor" }]
+        : [];
+      const res = await fetch(`${BASE}/api/estimates`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `Quote — ${p.address}`,
+          jobType: "Asphalt Sealing",
+          businessLine: "asphalt_sealing",
+          status: "draft",
+          lineItems,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create estimate");
+      const estimate = await res.json();
+      await updateMutation.mutateAsync({ id: prospect.id, linkedEstimateId: estimate.id } as Parameters<typeof updateMutation.mutateAsync>[0]);
+      detailQuery.refetch();
+      onUpdated();
+      toast({ title: "Quote created", description: "Opening estimate…" });
+      setLocation(`/estimates?open=${estimate.id}`);
+      onClose();
+    } catch {
+      toast({ title: "Failed to create quote", variant: "destructive" });
+    } finally {
+      setIsCreatingQuote(false);
+    }
+  };
+
+  const handleViewQuote = () => {
+    if (!p.linkedEstimateId) return;
+    setLocation(`/estimates?open=${p.linkedEstimateId}`);
+    onClose();
+  };
+
+  const handleCreateInvoice = () => {
+    if (!prospect) return;
+    setLocation(`/invoices?fromProspect=${prospect.id}`);
+    onClose();
+  };
+
   const statusHistory = detailQuery.data?.statusHistory ?? [];
 
   const scheduledDate = scheduledAddressMap
@@ -633,6 +686,41 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
               })()}
             </section>
           )}
+
+          {/* Quote & Invoice Section */}
+          <section className="space-y-2.5">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              Quote & Invoice
+            </h3>
+            {p.linkedEstimateId ? (
+              <button
+                onClick={handleViewQuote}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                View Quote{p.linkedEstimateNumber ? ` — ${p.linkedEstimateNumber}` : ""}
+              </button>
+            ) : (
+              <button
+                onClick={handleCreateQuote}
+                disabled={isCreatingQuote}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-60"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                {isCreatingQuote ? "Creating Quote…" : "Create Quote"}
+              </button>
+            )}
+            {(p.status === "won" || p.status === "serviced") && (
+              <button
+                onClick={handleCreateInvoice}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                Create Invoice
+              </button>
+            )}
+          </section>
 
           {/* Actions Section */}
           {(showDepositActions || p.depositPaidAt || p.status === "won" || p.status === "serviced") && (

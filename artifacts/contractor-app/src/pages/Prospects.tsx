@@ -6,10 +6,8 @@ import {
   useCreateProspect,
   useUpdateProspect,
   useDeleteProspect,
-  useListEstimates,
   useProspectRevenueSummary,
   type Prospect,
-  type Estimate,
   type ProspectStatus,
   type ProspectPropertyType,
 } from "@workspace/api-client-react";
@@ -98,7 +96,6 @@ type FormData = {
   contactPhone: string;
   notes: string;
   status: string;
-  linkedEstimateId: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -113,7 +110,6 @@ const EMPTY_FORM: FormData = {
   contactPhone: "",
   notes: "",
   status: "cold",
-  linkedEstimateId: "",
 };
 
 function prospectToForm(p: Prospect): FormData {
@@ -129,7 +125,6 @@ function prospectToForm(p: Prospect): FormData {
     contactPhone: p.contactPhone ?? "",
     notes: p.notes ?? "",
     status: p.status,
-    linkedEstimateId: p.linkedEstimateId != null ? String(p.linkedEstimateId) : "",
   };
 }
 
@@ -174,7 +169,6 @@ export default function Prospects() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
 
   const { data: prospects = [], isLoading, refetch } = useListProspects();
-  const { data: estimates = [] } = useListEstimates();
   const { data: revenue, isLoading: revenueLoading } = useProspectRevenueSummary();
   const createMutation = useCreateProspect();
   const updateMutation = useUpdateProspect();
@@ -297,7 +291,6 @@ export default function Prospects() {
       contactPhone: form.contactPhone || null,
       notes: form.notes || null,
       status: form.status as ProspectStatus,
-      linkedEstimateId: form.linkedEstimateId ? parseInt(form.linkedEstimateId) : null,
     };
 
     try {
@@ -781,20 +774,6 @@ export default function Prospects() {
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Link to Estimate (optional)</label>
-              <select
-                value={form.linkedEstimateId}
-                onChange={(e) => handleFormChange("linkedEstimateId", e.target.value)}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">None</option>
-                {(estimates as Estimate[]).map((est) => (
-                  <option key={est.id} value={est.id}>{est.title}</option>
-                ))}
-              </select>
             </div>
 
             <div>

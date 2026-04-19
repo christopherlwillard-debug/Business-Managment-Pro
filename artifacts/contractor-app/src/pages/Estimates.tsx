@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "wouter";
 import {
   useListEstimates, useListClients, useGetSettings,
   useCreateEstimate, useUpdateEstimate, useDeleteEstimate, useConvertEstimateToJob,
@@ -828,6 +829,7 @@ export default function Estimates() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data: estimates = [], isLoading } = useListEstimates();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const createMut   = useCreateEstimate();
   const updateMut   = useUpdateEstimate();
@@ -845,6 +847,22 @@ export default function Estimates() {
   const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || isLoading || estimates.length === 0) return;
+    const id = parseInt(openId);
+    if (isNaN(id)) return;
+    const found = estimates.find(e => e.id === id);
+    if (found) {
+      setModal(id);
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete("open");
+        return next;
+      }, { replace: true });
+    }
+  }, [searchParams, estimates, isLoading]);
 
   async function handleCreate(req: CreateEstimateRequest) {
     await createMut.mutateAsync({ data: req });
