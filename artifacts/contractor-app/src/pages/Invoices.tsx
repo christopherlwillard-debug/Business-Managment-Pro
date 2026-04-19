@@ -831,7 +831,7 @@ export default function Invoices() {
     const target = invoices.find(inv => inv.id === pendingOpenId.current);
     if (target) {
       pendingOpenId.current = null;
-      setViewInvoice(target as any);
+      setViewInvoice(target);
     }
   }, [invoices]);
 

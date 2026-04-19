@@ -274,7 +274,7 @@ router.put("/:id", async (req, res) => {
     if (body.notes !== undefined) patch.notes = body.notes ?? null;
     if (body.status !== undefined) patch.status = toProspectStatus(body.status);
     if (body.linkedEstimateId !== undefined) patch.linkedEstimateId = body.linkedEstimateId ?? null;
-    if (body.linkedInvoiceId !== undefined) (patch as any).linkedInvoiceId = body.linkedInvoiceId ?? null;
+    if (body.linkedInvoiceId !== undefined) patch.linkedInvoiceId = body.linkedInvoiceId ?? null;
 
     const isBeingServiced = patch.status === "serviced" && existing.status !== "serviced";
     const resolvedServicedAt = body.servicedAt ?? (isBeingServiced ? new Date().toISOString().slice(0, 10) : undefined);

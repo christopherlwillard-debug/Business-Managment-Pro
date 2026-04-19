@@ -387,13 +387,37 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
 
   const p = detail ?? prospect;
 
+  type EstimateLineItemShape = { description: string; quantity: number; unitCost: number; category?: string };
+  type InvoiceLineItemShape = { description: string; quantity: number; unitPrice: number };
+
+  async function resolveClientId(name: string | null | undefined, email: string | null | undefined, phone: string | null | undefined): Promise<number | undefined> {
+    if (!name?.trim()) return undefined;
+    try {
+      const res = await fetch(`${BASE}/api/clients`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), email: email ?? undefined, phone: phone ?? undefined }),
+      });
+      if (res.ok) {
+        const client = await res.json() as { id: number };
+        return client.id;
+      }
+    } catch {
+    }
+    return undefined;
+  }
+
   const handleCreateQuote = async () => {
     if (!prospect) return;
     setIsCreatingQuote(true);
     try {
-      const lineItems = p.roughQuote != null
+      const lineItems: EstimateLineItemShape[] = p.roughQuote != null
         ? [{ description: `Asphalt Sealing — ${p.address}`, quantity: 1, unitCost: p.roughQuote, category: "Labor" }]
         : [];
+
+      const clientId = await resolveClientId(p.contactName, p.contactEmail, p.contactPhone);
+
       const res = await fetch(`${BASE}/api/estimates`, {
         method: "POST",
         credentials: "include",
@@ -403,12 +427,13 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
           jobType: "Asphalt Sealing",
           businessLine: "asphalt_sealing",
           status: "draft",
+          clientId,
           lineItems,
         }),
       });
       if (!res.ok) throw new Error("Failed to create estimate");
-      const estimate = await res.json();
-      await updateMutation.mutateAsync({ id: prospect.id, linkedEstimateId: estimate.id } as Parameters<typeof updateMutation.mutateAsync>[0]);
+      const estimate = await res.json() as { id: number };
+      await updateMutation.mutateAsync({ id: prospect.id, linkedEstimateId: estimate.id });
       detailQuery.refetch();
       onUpdated();
       toast({ title: "Quote created", description: "Opening estimate…" });
@@ -431,17 +456,17 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     if (!prospect) return;
     setIsCreatingInvoice(true);
     try {
-      let lineItems: { description: string; quantity: number; unitPrice: number }[] = [];
+      let lineItems: InvoiceLineItemShape[] = [];
 
       if (p.linkedEstimateId) {
         const estRes = await fetch(`${BASE}/api/estimates/${p.linkedEstimateId}`, { credentials: "include" });
         if (estRes.ok) {
-          const est = await estRes.json();
+          const est = await estRes.json() as { lineItems?: EstimateLineItemShape[] };
           if (Array.isArray(est.lineItems) && est.lineItems.length > 0) {
-            lineItems = (est.lineItems as any[]).map((li: any) => ({
-              description: li.description ?? "",
-              quantity: Number(li.quantity ?? 1),
-              unitPrice: Number(li.unitCost ?? li.unitPrice ?? 0),
+            lineItems = est.lineItems.map((li) => ({
+              description: li.description,
+              quantity: Number(li.quantity),
+              unitPrice: Number(li.unitCost),
             }));
           }
         }
@@ -454,12 +479,15 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
         lineItems = [{ description: `Asphalt Sealing — ${p.address}`, quantity: 1, unitPrice: 0 }];
       }
 
+      const clientId = await resolveClientId(p.contactName, p.contactEmail, p.contactPhone);
+
       const today = new Date().toISOString().slice(0, 10);
       const invRes = await fetch(`${BASE}/api/invoices`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          clientId,
           issueDate: today,
           status: "draft",
           locationName: p.address,
@@ -470,9 +498,9 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
         }),
       });
       if (!invRes.ok) throw new Error("Failed to create invoice");
-      const invoice = await invRes.json();
+      const invoice = await invRes.json() as { id: number };
 
-      await updateMutation.mutateAsync({ id: prospect.id, linkedInvoiceId: invoice.id } as Parameters<typeof updateMutation.mutateAsync>[0]);
+      await updateMutation.mutateAsync({ id: prospect.id, linkedInvoiceId: invoice.id });
       detailQuery.refetch();
       onUpdated();
       toast({ title: "Invoice created", description: "Opening invoice…" });
