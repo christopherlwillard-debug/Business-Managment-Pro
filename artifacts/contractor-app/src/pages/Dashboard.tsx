@@ -4,10 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert, CheckCircle2, Clock, TrendingUp, TrendingDown, CalendarClock, MapPin } from "lucide-react";
+import {
+  Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert,
+  CheckCircle2, Clock, TrendingUp, TrendingDown, CalendarClock, MapPin,
+  Navigation, Phone, FileText, Sparkles,
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function getTodayStr() {
+  return new Date().toISOString().split("T")[0];
+}
 
 function useComplianceSummary() {
   return useQuery({
@@ -15,9 +23,61 @@ function useComplianceSummary() {
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/compliance-items`);
       if (!res.ok) throw new Error("Failed to load compliance data");
-      return res.json() as Promise<Array<{ computedStatus: string }>>;
+      return res.json() as Promise<Array<{ id: number; title: string; dueDate: string; computedStatus: string; daysUntilDue: number }>>;
     },
     retry: 1,
+  });
+}
+
+function useTodayRouteStops() {
+  const today = getTodayStr();
+  return useQuery({
+    queryKey: ["route-stops-today", today],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/route-stops?date=${today}`);
+      if (!res.ok) throw new Error("Failed to load route stops");
+      return res.json() as Promise<Array<{
+        id: number; title: string | null; address: string; status: string;
+        clientName: string | null; prospectContactName: string | null;
+      }>>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+function useFollowUpProspects() {
+  const today = getTodayStr();
+  return useQuery({
+    queryKey: ["follow-up-prospects", today],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/prospects`);
+      if (!res.ok) throw new Error("Failed to load prospects");
+      const all = await res.json() as Array<{
+        id: number; address: string; contactName: string | null;
+        contactPhone: string | null; followUpDate: string | null; status: string;
+      }>;
+      return all.filter(p =>
+        p.followUpDate &&
+        p.followUpDate <= today &&
+        p.status !== "lost"
+      );
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+function useOverdueInvoicesList() {
+  return useQuery({
+    queryKey: ["overdue-invoices-list"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/invoices?status=overdue`);
+      if (!res.ok) throw new Error("Failed to load overdue invoices");
+      return res.json() as Promise<Array<{
+        id: number; invoiceNumber: string; clientName: string | null;
+        dueDate: string | null; total: number;
+      }>>;
+    },
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -27,6 +87,9 @@ export default function Dashboard() {
   const { data: stats, isLoading } = useGetDashboardStats({ period });
   const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
   const { data: allClients = [] } = useListClients();
+  const { data: todayStops = [] } = useTodayRouteStops();
+  const { data: followUpProspects = [] } = useFollowUpProspects();
+  const { data: overdueInvoices = [] } = useOverdueInvoicesList();
 
   const now = new Date();
   const in90 = new Date(now);
@@ -52,8 +115,20 @@ export default function Dashboard() {
   const completeCount = complianceItems.filter(i => i.computedStatus === "complete").length;
   const hasComplianceIssues = overdueCount > 0 || dueSoonCount > 0;
 
+  const urgentComplianceItems = complianceItems.filter(
+    i => i.computedStatus === "overdue" || (i.computedStatus === "due-soon" && i.daysUntilDue <= 7)
+  );
+
   const periodLabels = { week: "WTD", month: "MTD", quarter: "QTD", year: "YTD" };
   const periodLabel = periodLabels[period];
+
+  const todayFormatted = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  const allClear =
+    todayStops.length === 0 &&
+    followUpProspects.length === 0 &&
+    overdueInvoices.length === 0 &&
+    urgentComplianceItems.length === 0;
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
@@ -63,30 +138,271 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-3xl font-display font-bold text-foreground">Business Overview</h1>
-        <div className="flex gap-2 bg-muted/40 rounded-lg p-1">
-          {(["week", "month", "quarter", "year"] as const).map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                period === p
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {periodLabels[p]}
-            </button>
-          ))}
+
+      {/* ── TODAY COMMAND CENTER ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-foreground">Today</h1>
+            <p className="text-sm text-muted-foreground">{todayFormatted}</p>
+          </div>
         </div>
+
+        {allClear ? (
+          <div className="flex items-center gap-3 px-5 py-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+            <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-emerald-800">You're all caught up</p>
+              <p className="text-xs text-emerald-600">No route stops, follow-ups, overdue invoices, or compliance items today.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+            {/* Route Stops */}
+            <div
+              className={cn(
+                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
+                todayStops.length > 0
+                  ? "bg-blue-50 border-blue-200"
+                  : "bg-muted/30 border-border"
+              )}
+              onClick={() => navigate("/route-planner")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") navigate("/route-planner"); }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={cn("p-1.5 rounded-lg", todayStops.length > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground")}>
+                    <Navigation className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">Route Today</span>
+                </div>
+                <span className={cn(
+                  "text-xs font-bold px-2 py-0.5 rounded-full",
+                  todayStops.length > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"
+                )}>
+                  {todayStops.length} stop{todayStops.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {todayStops.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No stops scheduled for today</p>
+              ) : (
+                <div className="space-y-1.5 mt-2">
+                  {todayStops.slice(0, 3).map(stop => (
+                    <div key={stop.id} className="flex items-start gap-2">
+                      <MapPin className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">
+                          {stop.clientName ?? stop.prospectContactName ?? stop.title ?? stop.address}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate">{stop.address}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {todayStops.length > 3 && (
+                    <p className="text-[10px] text-blue-600 font-medium">+{todayStops.length - 3} more</p>
+                  )}
+                </div>
+              )}
+              <div className="mt-3 flex items-center text-[10px] font-semibold text-blue-600">
+                Open Route Planner <ArrowRight className="w-3 h-3 ml-1" />
+              </div>
+            </div>
+
+            {/* Follow-up Prospects */}
+            <div
+              className={cn(
+                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
+                followUpProspects.length > 0
+                  ? "bg-amber-50 border-amber-200"
+                  : "bg-muted/30 border-border"
+              )}
+              onClick={() => navigate("/prospects")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") navigate("/prospects"); }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={cn("p-1.5 rounded-lg", followUpProspects.length > 0 ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground")}>
+                    <Phone className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">Follow-ups</span>
+                </div>
+                <span className={cn(
+                  "text-xs font-bold px-2 py-0.5 rounded-full",
+                  followUpProspects.length > 0 ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"
+                )}>
+                  {followUpProspects.length} due
+                </span>
+              </div>
+              {followUpProspects.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No follow-ups due today</p>
+              ) : (
+                <div className="space-y-1.5 mt-2">
+                  {followUpProspects.slice(0, 3).map(p => (
+                    <div key={p.id} className="flex items-start gap-2">
+                      <Phone className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">
+                          {p.contactName ?? p.address}
+                        </p>
+                        {p.contactName && (
+                          <p className="text-[10px] text-muted-foreground truncate">{p.address}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {followUpProspects.length > 3 && (
+                    <p className="text-[10px] text-amber-600 font-medium">+{followUpProspects.length - 3} more</p>
+                  )}
+                </div>
+              )}
+              <div className="mt-3 flex items-center text-[10px] font-semibold text-amber-600">
+                Open Prospects <ArrowRight className="w-3 h-3 ml-1" />
+              </div>
+            </div>
+
+            {/* Overdue Invoices */}
+            <div
+              className={cn(
+                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
+                overdueInvoices.length > 0
+                  ? "bg-red-50 border-red-200"
+                  : "bg-muted/30 border-border"
+              )}
+              onClick={() => navigate("/accounting")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") navigate("/accounting"); }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={cn("p-1.5 rounded-lg", overdueInvoices.length > 0 ? "bg-red-100 text-red-700" : "bg-muted text-muted-foreground")}>
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">Overdue Invoices</span>
+                </div>
+                <span className={cn(
+                  "text-xs font-bold px-2 py-0.5 rounded-full",
+                  overdueInvoices.length > 0 ? "bg-red-100 text-red-700" : "bg-muted text-muted-foreground"
+                )}>
+                  {overdueInvoices.length} overdue
+                </span>
+              </div>
+              {overdueInvoices.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No overdue invoices</p>
+              ) : (
+                <div className="space-y-1.5 mt-2">
+                  {overdueInvoices.slice(0, 3).map(inv => (
+                    <div key={inv.id} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-foreground truncate">
+                          #{inv.invoiceNumber}{inv.clientName ? ` · ${inv.clientName}` : ""}
+                        </p>
+                        {inv.dueDate && (
+                          <p className="text-[10px] text-red-500 font-medium">Due {inv.dueDate}</p>
+                        )}
+                      </div>
+                      <p className="text-xs font-bold text-red-700 flex-shrink-0">{formatCurrency(inv.total)}</p>
+                    </div>
+                  ))}
+                  {overdueInvoices.length > 3 && (
+                    <p className="text-[10px] text-red-600 font-medium">+{overdueInvoices.length - 3} more</p>
+                  )}
+                </div>
+              )}
+              <div className="mt-3 flex items-center text-[10px] font-semibold text-red-600">
+                Open Invoices <ArrowRight className="w-3 h-3 ml-1" />
+              </div>
+            </div>
+
+            {/* Compliance Alerts */}
+            <div
+              className={cn(
+                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
+                urgentComplianceItems.length > 0
+                  ? "bg-orange-50 border-orange-200"
+                  : "bg-muted/30 border-border"
+              )}
+              onClick={() => navigate("/accounting?tab=tax-calendar")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") navigate("/accounting?tab=tax-calendar"); }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={cn("p-1.5 rounded-lg", urgentComplianceItems.length > 0 ? "bg-orange-100 text-orange-700" : "bg-muted text-muted-foreground")}>
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">Compliance</span>
+                </div>
+                <span className={cn(
+                  "text-xs font-bold px-2 py-0.5 rounded-full",
+                  urgentComplianceItems.length > 0 ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"
+                )}>
+                  {urgentComplianceItems.length > 0 ? `${urgentComplianceItems.length} urgent` : "All clear"}
+                </span>
+              </div>
+              {complianceLoading ? (
+                <p className="text-xs text-muted-foreground animate-pulse">Loading…</p>
+              ) : urgentComplianceItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No filings due within 7 days</p>
+              ) : (
+                <div className="space-y-1.5 mt-2">
+                  {urgentComplianceItems.slice(0, 3).map(item => (
+                    <div key={item.id} className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium text-foreground truncate flex-1">{item.title}</p>
+                      <span className={cn(
+                        "text-[10px] font-bold flex-shrink-0",
+                        item.computedStatus === "overdue" ? "text-red-600" : "text-orange-600"
+                      )}>
+                        {item.computedStatus === "overdue" ? "Overdue" : `${item.daysUntilDue}d`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 flex items-center text-[10px] font-semibold text-orange-600">
+                Open Compliance <ArrowRight className="w-3 h-3 ml-1" />
+              </div>
+            </div>
+
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title={`Collected (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} href="/accounting" />
-        <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} href="/expenses" />
-        <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} href="/jobs" />
-        <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} href="/accounting" />
+      {/* ── BUSINESS OVERVIEW ── */}
+      <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h2 className="text-lg font-display font-bold text-foreground">Business Overview</h2>
+          <div className="flex gap-2 bg-muted/40 rounded-lg p-1">
+            {(["week", "month", "quarter", "year"] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  period === p
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {periodLabels[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard title={`Collected (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} href="/accounting" />
+          <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} href="/expenses" />
+          <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} href="/jobs" />
+          <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} href="/accounting" />
+        </div>
       </div>
 
       {/* Operational Net Profit card */}
@@ -99,7 +415,7 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Compliance Summary Widget — always visible */}
+      {/* Compliance Summary Widget */}
       <Card
         role="button"
         tabIndex={0}
@@ -232,7 +548,7 @@ export default function Dashboard() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                   <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(val) => `$${val/1000}k`} />
-                  <Tooltip 
+                  <Tooltip
                     cursor={{ fill: 'hsl(var(--muted)/0.4)' }}
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)' }}
                     formatter={(value: number) => formatCurrency(value)}
