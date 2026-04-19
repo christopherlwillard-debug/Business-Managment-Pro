@@ -563,10 +563,6 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       if (!res.ok) throw new Error("Failed to create job");
       const job = await res.json() as { id: number };
 
-      if (p.status !== "won" && p.status !== "serviced") {
-        await updateMutation.mutateAsync({ id: prospect.id, status: "won" });
-      }
-
       const newJobId = job.id;
       setCreatedJobId(newJobId);
       setShowCreateJobPanel(false);
@@ -582,6 +578,15 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
           </ToastAction>
         ),
       });
+
+      // Status update is best-effort — job already created, so don't block or revert
+      if (p.status !== "won" && p.status !== "serviced") {
+        try {
+          await updateMutation.mutateAsync({ id: prospect.id, status: "won" });
+        } catch {
+          toast({ title: "Job created, but status update failed", variant: "destructive" });
+        }
+      }
     } catch {
       toast({ title: "Failed to create job", variant: "destructive" });
     } finally {

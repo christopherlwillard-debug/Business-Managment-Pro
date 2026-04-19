@@ -817,10 +817,9 @@ export default function Invoices() {
         }));
         if (Array.isArray(draft.lineItems) && draft.lineItems.length > 0) {
           setLineItems(draft.lineItems.map((li: any) => ({
-            id: Math.random().toString(36).slice(2),
-            description: li.description ?? "",
-            quantity: String(li.quantity ?? 1),
-            unitPrice: String(li.unitPrice ?? ""),
+            description: String(li.description ?? ""),
+            quantity: parseFloat(li.quantity) || 1,
+            unitPrice: parseFloat(li.unitPrice) || 0,
           })));
         }
         setOpen(true);
