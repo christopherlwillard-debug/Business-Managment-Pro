@@ -71,7 +71,7 @@ const TABS = [
   { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "modules", label: "Modules", icon: Settings2 },
   { key: "notifications", label: "Notifications", icon: Bell },
-  { key: "payments", label: "Payments", icon: DollarSign },
+  { key: "payments", label: "Payments", icon: Receipt },
   { key: "team", label: "Team", icon: Users2 },
   { key: "google", label: "Google", icon: Link2 },
 ];
@@ -920,6 +920,153 @@ function GoogleSection() {
   );
 }
 
+// ─── Square App ID Card ───────────────────────────────────────────────────────
+function SquareAppIdCard() {
+  const [copied, setCopied] = useState(false);
+  const [testState, setTestState] = useState<"idle" | "testing" | "launched" | "error">("idle");
+  const { toast } = useToast();
+
+  function handleCopy() {
+    navigator.clipboard.writeText("EXPO_PUBLIC_SQUARE_APP_ID").then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      toast({ title: "Copy failed", description: "Please select and copy the variable name manually.", variant: "destructive" });
+    });
+  }
+
+  function handleTestLink() {
+    setTestState("testing");
+    const testAmountCents = 100;
+    const posData = JSON.stringify({
+      amount_money: { amount: testAmountCents, currency_code: "USD" },
+      callback_url: "buildpro://square-callback",
+      client_id: "YOUR_APP_ID_HERE",
+      version: "1.3",
+      notes: "Deep link smoke test from BuildPro settings",
+    });
+    try {
+      const encoded = btoa(unescape(encodeURIComponent(posData)));
+      const squareUrl = `square-commerce-v1://payment/create?data=${encoded}`;
+      window.location.href = squareUrl;
+      setTimeout(() => {
+        setTestState("launched");
+        toast({
+          title: "Deep link sent",
+          description: "If Square POS opened on your device, the deep link mechanism works. This test uses a placeholder App ID — set EXPO_PUBLIC_SQUARE_APP_ID to your real ID in the build environment.",
+        });
+        setTimeout(() => setTestState("idle"), 6000);
+      }, 1200);
+    } catch {
+      setTestState("error");
+      toast({ title: "Could not open deep link", description: "Open this page on your mobile device with Square POS installed to test.", variant: "destructive" });
+      setTimeout(() => setTestState("idle"), 3000);
+    }
+  }
+
+  return (
+    <Card className="border-border/50 shadow-md bg-card">
+      <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Smartphone className="w-5 h-5 text-primary" />
+          Square App ID — Mobile In-Person Payments
+        </CardTitle>
+        <CardDescription>
+          Required for the BuildPro mobile app to deep-link into Square POS and collect card payments in person.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-5 space-y-5">
+        {/* Status banner */}
+        <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-amber-800">Build environment variable required</p>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              The <code className="bg-amber-100 px-1 rounded font-mono">EXPO_PUBLIC_SQUARE_APP_ID</code> environment variable must be set before building the mobile app. Without it, the "Charge" button will show a setup error.
+            </p>
+          </div>
+        </div>
+
+        {/* Step 1 — Find your App ID */}
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-bold">1</span>
+            Find your Square App ID
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-7">
+            Log in to your Square Developer Dashboard, open your application (or create one), and copy the <strong>Application ID</strong> from the Credentials tab. It starts with <code className="bg-muted px-1 rounded font-mono">sq0idp-</code>.
+          </p>
+          <div className="pl-7">
+            <a
+              href="https://developer.squareup.com/apps"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+              Open Square Developer Dashboard
+            </a>
+          </div>
+        </div>
+
+        {/* Step 2 — Set in EAS */}
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-bold">2</span>
+            Add it to your EAS / Expo build environment
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-7">
+            Because this is a build-time variable (prefixed with <code className="bg-muted px-1 rounded font-mono">EXPO_PUBLIC_</code>), it must be set in your EAS project secrets or <code className="bg-muted px-1 rounded font-mono">.env</code> file before running a build. It cannot be changed at runtime.
+          </p>
+          <div className="pl-7 space-y-2">
+            <p className="text-xs text-muted-foreground font-semibold">Environment variable name:</p>
+            <div className="flex items-center gap-2 bg-muted/60 border border-border rounded-lg px-3 py-2">
+              <code className="text-xs text-foreground font-mono flex-1">EXPO_PUBLIC_SQUARE_APP_ID</code>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="text-xs text-primary hover:text-primary/80 font-medium flex-shrink-0 flex items-center gap-1"
+              >
+                {copied ? <><Check className="w-3 h-3" /> Copied</> : "Copy"}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              In EAS: go to <strong>expo.dev → your project → Secrets</strong> and add <code className="bg-muted px-1 rounded font-mono">EXPO_PUBLIC_SQUARE_APP_ID</code> with your Application ID as the value. Then trigger a new EAS build.
+            </p>
+          </div>
+        </div>
+
+        {/* Step 3 — Test the link */}
+        <div className="space-y-2 border-t border-border pt-4">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-muted-foreground text-xs font-bold">3</span>
+            Smoke-test the Square POS deep link (optional)
+          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-7">
+            Open this page on your iPhone with Square POS installed, then tap the button below. It sends a $1.00 deep link using a placeholder App ID to verify the URL scheme works on your device — cancel immediately, no real payment is processed. This only confirms the deep link mechanism works; it does not validate your actual App ID.
+          </p>
+          <div className="pl-7">
+            <button
+              type="button"
+              onClick={handleTestLink}
+              disabled={testState === "testing"}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-xl text-sm font-semibold text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
+            >
+              {testState === "testing" ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Opening…</>
+              ) : testState === "launched" ? (
+                <><Check className="w-4 h-4 text-emerald-600" /> Deep link sent</>
+              ) : (
+                <><Send className="w-4 h-4 text-primary" /> Test Square POS Deep Link</>
+              )}
+            </button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Settings ────────────────────────────────────────────────────────────
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -1192,6 +1339,9 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Square App ID — In-Person Payments */}
+          <SquareAppIdCard />
         </div>
       )}
 
