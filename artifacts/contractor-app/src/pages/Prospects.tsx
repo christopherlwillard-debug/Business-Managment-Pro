@@ -362,7 +362,7 @@ export default function Prospects() {
       refetch();
     } catch (err: unknown) {
       console.error(err);
-      let description = "Something went wrong — please try again";
+      let description = "Server temporarily unavailable — please try again";
       if (err && typeof err === "object" && "status" in err) {
         const status = (err as { status: number; data?: unknown }).status;
         const data = (err as { status: number; data?: unknown }).data;
@@ -371,12 +371,12 @@ export default function Prospects() {
             ? (data as { error: string }).error
             : null;
         if (status >= 400 && status < 500) {
+          // Validation / bad-request error — show the server's own message
           description = serverMsg ?? "Please check your input and try again";
-        } else if (status >= 500) {
-          description = serverMsg ?? "Server error — please try again in a moment";
+        } else {
+          // 5xx or unexpected status — server-side issue
+          description = "Server temporarily unavailable — please try again";
         }
-      } else if (err instanceof Error && err.message.toLowerCase().includes("network")) {
-        description = "Connection error — check your internet and try again";
       }
       toast({ title: "Couldn't save prospect", description, variant: "destructive" });
     }
