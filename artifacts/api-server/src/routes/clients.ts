@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { clientsTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable } from "@workspace/db/schema";
+import { clientsTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 const router = Router();
@@ -43,15 +43,18 @@ router.get("/:id/profile", async (req, res) => {
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
     if (!client) return res.status(404).json({ error: "Client not found" });
 
-    const [jobs, invoices, squarePayments, linkedProspects, routeStops] = await Promise.all([
+    const [jobs, invoices, squarePayments, linkedProspects, routeStops, otherIncome] = await Promise.all([
       db.select().from(jobsTable).where(eq(jobsTable.clientId, id)).orderBy(desc(jobsTable.createdAt)),
       db.select().from(invoicesTable).where(eq(invoicesTable.clientId, id)).orderBy(desc(invoicesTable.createdAt)),
       db.select().from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
       db.select().from(prospectsTable).where(eq(prospectsTable.clientId, id)).orderBy(desc(prospectsTable.createdAt)),
       db.select().from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
+      db.select().from(otherIncomeTable).where(eq(otherIncomeTable.clientId, id)).orderBy(desc(otherIncomeTable.date)),
     ]);
 
-    const totalRevenueCents = squarePayments.reduce((sum, p) => sum + p.amountCents, 0);
+    const squareRevenueCents = squarePayments.reduce((sum, p) => sum + p.amountCents, 0);
+    const otherRevenueCents = otherIncome.reduce((sum, oi) => sum + Math.round(parseFloat(oi.amount) * 100), 0);
+    const totalRevenueCents = squareRevenueCents + otherRevenueCents;
     const paidInvoicesTotal = invoices
       .filter(inv => inv.status === "paid")
       .reduce((sum, inv) => {
@@ -66,11 +69,14 @@ router.get("/:id/profile", async (req, res) => {
       squarePayments: squarePayments.map(p => ({ ...p, paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : p.paidAt, createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt })),
       linkedProspects: linkedProspects.map(p => ({ ...p, createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt, updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt })),
       routeStops: routeStops.map(s => ({ ...s, createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt })),
+      otherIncome: otherIncome.map(oi => ({ ...oi, createdAt: oi.createdAt instanceof Date ? oi.createdAt.toISOString() : oi.createdAt })),
       summary: {
         totalJobs: jobs.length,
         totalInvoices: invoices.length,
         paidInvoices: invoices.filter(i => i.status === "paid").length,
         totalRevenueCents,
+        squareRevenueCents,
+        otherRevenueCents,
         paidInvoicesTotal,
         upcomingStops: routeStops.filter(s => s.status === "scheduled").length,
       },

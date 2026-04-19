@@ -9,13 +9,15 @@ const VALID_PAYMENT_METHODS = ["cash", "check", "bank_transfer", "other"] as con
 type PaymentMethod = typeof VALID_PAYMENT_METHODS[number];
 const VALID_BUSINESS_LINES = ["general_contracting", "asphalt_sealing"] as const;
 
-function parseBody(body: any): { amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null; businessLine?: string | null } | null {
-  const { amount, date, description, source, paymentMethod, city, state, notes, businessLine } = body ?? {};
+function parseBody(body: any): { clientId?: number | null; amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null; businessLine?: string | null } | null {
+  const { clientId, amount, date, description, source, paymentMethod, city, state, notes, businessLine } = body ?? {};
   if (!amount || isNaN(parseFloat(String(amount)))) return null;
   if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   if (!description || typeof description !== "string" || description.trim() === "") return null;
   const pm: PaymentMethod = VALID_PAYMENT_METHODS.includes(paymentMethod) ? paymentMethod : "other";
+  const parsedClientId = clientId != null && !isNaN(parseInt(String(clientId))) ? parseInt(String(clientId)) : null;
   return {
+    clientId: parsedClientId,
     amount: String(parseFloat(String(amount))),
     date,
     description: description.trim(),

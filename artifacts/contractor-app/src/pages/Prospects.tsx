@@ -360,9 +360,25 @@ export default function Prospects() {
       }
       closeDialog();
       refetch();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      toast({ title: "Error saving prospect", variant: "destructive" });
+      let description = "Something went wrong — please try again";
+      if (err && typeof err === "object" && "status" in err) {
+        const status = (err as { status: number; data?: unknown }).status;
+        const data = (err as { status: number; data?: unknown }).data;
+        const serverMsg =
+          data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string"
+            ? (data as { error: string }).error
+            : null;
+        if (status >= 400 && status < 500) {
+          description = serverMsg ?? "Please check your input and try again";
+        } else if (status >= 500) {
+          description = serverMsg ?? "Server error — please try again in a moment";
+        }
+      } else if (err instanceof Error && err.message.toLowerCase().includes("network")) {
+        description = "Connection error — check your internet and try again";
+      }
+      toast({ title: "Couldn't save prospect", description, variant: "destructive" });
     }
   };
 

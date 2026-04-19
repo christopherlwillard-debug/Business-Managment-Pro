@@ -1,10 +1,12 @@
-import { pgTable, serial, text, timestamp, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, numeric, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { clientsTable } from "./clients";
 
 export const otherIncomeTable = pgTable("other_income", {
   id: serial("id").primaryKey(),
   businessId: text("business_id"),
+  clientId: integer("client_id").references(() => clientsTable.id, { onDelete: "set null" }),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   date: text("date").notNull(),
   description: text("description").notNull(),

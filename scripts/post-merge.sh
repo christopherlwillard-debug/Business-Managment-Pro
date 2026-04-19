@@ -396,6 +396,15 @@ pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS square_payment_link_id
   .catch(e => { console.error('Square columns migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Task #258: add client_id column to other_income (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE other_income ADD COLUMN IF NOT EXISTS client_id integer REFERENCES clients(id) ON DELETE SET NULL')
+  .then(() => { console.log('other_income.client_id ensured'); pool.end(); })
+  .catch(e => { console.error('other_income.client_id migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Task #244: create square_payments table (idempotent)
 (cd lib/db && node -e "
 const { Pool } = require('pg');
