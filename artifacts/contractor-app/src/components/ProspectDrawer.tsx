@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useUpdateProspect,
   useGetProspect,
@@ -7,6 +8,7 @@ import {
   useAddProspectServiceVisit,
   useDeleteProspectServiceVisit,
   useUpdateProspectServiceVisit,
+  getListJobsQueryKey,
   type Prospect,
   type ProspectDetail,
   type ProspectStatus,
@@ -44,6 +46,7 @@ import {
   Trash2,
   Pencil,
   Receipt,
+  Briefcase,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -240,6 +243,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const addVisitMutation = useAddProspectServiceVisit();
   const deleteVisitMutation = useDeleteProspectServiceVisit();
   const updateVisitMutation = useUpdateProspectServiceVisit();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
@@ -269,6 +273,14 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [isCreatingQuote, setIsCreatingQuote] = useState(false);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
 
+  const [showCreateJobPanel, setShowCreateJobPanel] = useState(false);
+  const [jobTitle, setJobTitle] = useState("");
+  const [jobStartDate, setJobStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [jobNotes, setJobNotes] = useState("");
+  const [jobStatusVal, setJobStatusVal] = useState<"scheduled" | "in_progress">("scheduled");
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
+  const [createdJobId, setCreatedJobId] = useState<number | null>(null);
+
   useEffect(() => {
     if (!open) {
       setShowDepositInput(false);
@@ -286,6 +298,13 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setEditVisitDate("");
       setEditVisitNotes("");
       setEditVisitPrice("");
+      setShowCreateJobPanel(false);
+      setJobTitle("");
+      setJobStartDate(new Date().toISOString().slice(0, 10));
+      setJobNotes("");
+      setJobStatusVal("scheduled");
+      setIsCreatingJob(false);
+      setCreatedJobId(null);
     }
   }, [open]);
 
@@ -517,6 +536,47 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     if (!p.linkedInvoiceId) return;
     setLocation(`/invoices?open=${p.linkedInvoiceId}`);
     onClose();
+  };
+
+  const handleCreateJob = async () => {
+    setIsCreatingJob(true);
+    try {
+      const clientId = await resolveClientId(p.contactName, p.contactEmail, p.contactPhone);
+      const resolvedTitle = jobTitle.trim() || `Job — ${p.address}`;
+      const res = await fetch(`${BASE}/api/jobs`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: resolvedTitle,
+          clientId: clientId ?? null,
+          status: jobStatusVal,
+          address: p.address,
+          city: p.city ?? undefined,
+          state: p.state ?? undefined,
+          startDate: jobStartDate || undefined,
+          notes: jobNotes.trim() || undefined,
+          businessLine: "asphalt_sealing",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create job");
+      const job = await res.json() as { id: number };
+
+      if (p.status !== "won" && p.status !== "serviced") {
+        await updateMutation.mutateAsync({ id: prospect.id, status: "won" });
+      }
+
+      setCreatedJobId(job.id);
+      setShowCreateJobPanel(false);
+      queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      detailQuery.refetch();
+      onUpdated();
+      toast({ title: "Job created!", description: `"${resolvedTitle}" has been added to Jobs.` });
+    } catch {
+      toast({ title: "Failed to create job", variant: "destructive" });
+    } finally {
+      setIsCreatingJob(false);
+    }
   };
 
   const statusHistory = detailQuery.data?.statusHistory ?? [];
@@ -798,7 +858,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 {isCreatingQuote ? "Creating Quote…" : "Create Quote"}
               </button>
             )}
-            {(p.status === "won" || p.status === "serviced") && (
+            {(p.status === "won" || p.status === "serviced") && !createdJobId && (
               p.linkedInvoiceId ? (
                 <button
                   onClick={handleViewInvoice}
@@ -817,6 +877,132 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                   {isCreatingInvoice ? "Creating Invoice…" : "Create Invoice"}
                 </button>
               )
+            )}
+
+            {/* ── Create Job ── */}
+            {(p.status === "quoted" || p.status === "won") && !createdJobId && (
+              showCreateJobPanel ? (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-green-900 flex items-center gap-1.5">
+                      <Briefcase className="w-3.5 h-3.5" />
+                      New Job
+                    </p>
+                    <button
+                      onClick={() => setShowCreateJobPanel(false)}
+                      className="p-1 text-green-700 hover:bg-green-100 rounded transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-green-800">Job Title</label>
+                    <input
+                      type="text"
+                      value={jobTitle}
+                      onChange={e => setJobTitle(e.target.value)}
+                      placeholder={`Job — ${p.address}`}
+                      className="w-full mt-0.5 px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-green-400/30 bg-background"
+                    />
+                  </div>
+
+                  {p.contactName && (
+                    <div className="flex items-center gap-1.5 text-xs text-green-700">
+                      <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                      <span>Client: <strong>{p.contactName}</strong> will be auto-linked</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs font-medium text-green-800">Scheduled Date</label>
+                    <input
+                      type="date"
+                      value={jobStartDate}
+                      onChange={e => setJobStartDate(e.target.value)}
+                      className="w-full mt-0.5 px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-green-400/30 bg-background"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-green-800">Status</label>
+                    <select
+                      value={jobStatusVal}
+                      onChange={e => setJobStatusVal(e.target.value as "scheduled" | "in_progress")}
+                      className="w-full mt-0.5 px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-green-400/30 bg-background"
+                    >
+                      <option value="scheduled">Scheduled</option>
+                      <option value="in_progress">In Progress</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-green-800">Notes (optional)</label>
+                    <textarea
+                      value={jobNotes}
+                      onChange={e => setJobNotes(e.target.value)}
+                      placeholder="Any notes for this job…"
+                      rows={2}
+                      className="w-full mt-0.5 px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-green-400/30 resize-none bg-background"
+                    />
+                  </div>
+
+                  <div className="flex gap-1.5 pt-0.5">
+                    <button
+                      onClick={handleCreateJob}
+                      disabled={isCreatingJob}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-60 transition-colors"
+                    >
+                      <Briefcase className="w-3.5 h-3.5" />
+                      {isCreatingJob ? "Creating…" : "Create Job"}
+                    </button>
+                    <button
+                      onClick={() => setShowCreateJobPanel(false)}
+                      className="px-3 py-2 text-sm text-muted-foreground border border-border rounded-lg hover:bg-muted transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setJobTitle(`Job — ${p.address}`);
+                    setJobStartDate(new Date().toISOString().slice(0, 10));
+                    setShowCreateJobPanel(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  <Briefcase className="w-3.5 h-3.5" />
+                  Create Job
+                </button>
+              )
+            )}
+
+            {/* Job created — View / Invoice CTAs */}
+            {createdJobId && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs font-medium text-green-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                  Job created successfully!
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => { setLocation("/jobs"); onClose(); }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-green-300 bg-green-50 text-green-800 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors"
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    View Job
+                  </button>
+                  <button
+                    onClick={() => { setLocation("/invoices"); onClose(); }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    Create Invoice
+                  </button>
+                </div>
+              </div>
             )}
           </section>
 
