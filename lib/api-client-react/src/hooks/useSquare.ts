@@ -126,6 +126,48 @@ export function useCreateProspectDepositLink() {
   });
 }
 
+export interface SquareTransaction {
+  id: string | null;
+  status: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  amountCents: number;
+  currency: string;
+  buyerEmail: string | null;
+  cardBrand: string | null;
+  last4: string | null;
+  cardholderName: string | null;
+  note: string | null;
+  referenceId: string | null;
+  sourceType: string | null;
+  receiptUrl: string | null;
+  receiptNumber: string | null;
+}
+
+export interface SquareLiveTransactionsResponse {
+  connected: boolean;
+  message?: string;
+  transactions: SquareTransaction[];
+  summary?: {
+    totalCents: number;
+    completedCount: number;
+    totalCount: number;
+    days: number;
+  };
+}
+
+export function useSquareLiveTransactions(days: number = 30) {
+  return useQuery({
+    queryKey: ["/api/square/live-transactions", days],
+    queryFn: () =>
+      customFetch<SquareLiveTransactionsResponse>(
+        `/api/square/live-transactions?days=${days}`,
+        { method: "GET" }
+      ),
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
 export function useCreateEstimateDepositLink() {
   const qc = useQueryClient();
   return useMutation({

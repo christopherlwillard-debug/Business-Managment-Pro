@@ -44,6 +44,7 @@ const BOTTOM_NAV_OPTIONS = [
   { href: "/assets", label: "Assets" },
   { href: "/accounting", label: "Accounting & Tax" },
   { href: "/quick-charge", label: "Quick Charge" },
+  { href: "/square-transactions", label: "Square Transactions" },
   { href: "/settings", label: "Settings" },
 ];
 

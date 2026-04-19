@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, Users,
-  Settings, Menu, X, BookOpen, LogOut, Package, Tag, Route, Target, Wrench, Crosshair, Zap,
+  Settings, Menu, X, BookOpen, LogOut, Package, Tag, Route, Target, Wrench, Crosshair, Zap, CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,7 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/aerial-quote": { name: "Aerial Quote", icon: Crosshair },
   "/accounting": { name: "Accounting & Tax", icon: BookOpen },
   "/quick-charge": { name: "Quick Charge", icon: Zap },
+  "/square-transactions": { name: "Square Transactions", icon: CreditCard },
   "/settings": { name: "Settings", icon: Settings },
 };
 
@@ -72,6 +73,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Aerial Quote", href: "/aerial-quote", icon: Crosshair, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Quick Charge", href: "/quick-charge", icon: Zap, feature: null, section: null, ownerOnly: true, group: "finance" },
+    { name: "Square Transactions", href: "/square-transactions", icon: CreditCard, feature: null, section: null, ownerOnly: true, group: "finance" },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices", group: "finance" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
   ];

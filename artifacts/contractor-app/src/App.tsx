@@ -29,6 +29,7 @@ const SubcontractorPortal = lazy(() => import("./pages/SubcontractorPortal"));
 const AerialQuote = lazy(() => import("./pages/AerialQuote"));
 const Pay = lazy(() => import("./pages/Pay"));
 const QuickCharge = lazy(() => import("./pages/QuickCharge"));
+const SquareTransactions = lazy(() => import("./pages/SquareTransactions"));
 const NotFound = lazy(() => import("./pages/not-found"));
 
 const queryClient = new QueryClient({
@@ -258,6 +259,9 @@ function AdminApp() {
           </Route>
           <Route path="/quick-charge">
             <PermissionGuard ownerOnly><QuickCharge /></PermissionGuard>
+          </Route>
+          <Route path="/square-transactions">
+            <PermissionGuard ownerOnly><SquareTransactions /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

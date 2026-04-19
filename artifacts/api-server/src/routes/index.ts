@@ -51,6 +51,7 @@ import squareDepositRouter from "./square-deposit";
 import squareStatusRouter from "./square-status";
 import payPublicRouter from "./pay-public";
 import squareMobileRouter from "./square-payments";
+import squareTransactionsRouter from "./square-transactions";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -198,5 +199,6 @@ router.use("/quick-charges", requireOwner, quickChargesRouter);
 router.use(requireOwner, squareDepositRouter);
 router.use(requireOwner, squareStatusRouter);
 router.use(requireOwner, squareMobileRouter);
+router.use(requireOwner, squareTransactionsRouter);
 
 export default router;
