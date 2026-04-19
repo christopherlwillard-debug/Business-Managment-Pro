@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -255,6 +255,16 @@ export default function Prospects() {
 
   const [drawerProspectId, setDrawerProspectId] = useState<number | null>(null);
   const drawerProspect = drawerProspectId != null ? (prospects.find((p) => p.id === drawerProspectId) ?? null) : null;
+
+  useEffect(() => {
+    const openId = searchParams.get("openProspect");
+    if (!openId || prospects.length === 0) return;
+    const id = parseInt(openId, 10);
+    if (!isNaN(id)) {
+      setDrawerProspectId(id);
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete("openProspect"); return n; }, { replace: true });
+    }
+  }, [searchParams, prospects]);
 
   const [routeTargetId, setRouteTargetId] = useState<number | null>(null);
   const [routeDateStr, setRouteDateStr] = useState(new Date().toISOString().slice(0, 10));

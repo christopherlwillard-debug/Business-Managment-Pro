@@ -14,7 +14,11 @@ import { Link, useLocation } from "wouter";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function getTodayStr() {
-  return new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function useComplianceSummary() {
@@ -191,9 +195,13 @@ export default function Dashboard() {
               {todayStops.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No stops scheduled for today</p>
               ) : (
-                <div className="space-y-1.5 mt-2">
+                <div className="space-y-1 mt-2">
                   {todayStops.slice(0, 3).map(stop => (
-                    <div key={stop.id} className="flex items-start gap-2">
+                    <button
+                      key={stop.id}
+                      className="w-full flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-blue-100/60 transition-colors text-left"
+                      onClick={e => { e.stopPropagation(); navigate("/route-planner"); }}
+                    >
                       <MapPin className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-foreground truncate">
@@ -201,10 +209,10 @@ export default function Dashboard() {
                         </p>
                         <p className="text-[10px] text-muted-foreground truncate">{stop.address}</p>
                       </div>
-                    </div>
+                    </button>
                   ))}
                   {todayStops.length > 3 && (
-                    <p className="text-[10px] text-blue-600 font-medium">+{todayStops.length - 3} more</p>
+                    <p className="text-[10px] text-blue-600 font-medium pl-2">+{todayStops.length - 3} more</p>
                   )}
                 </div>
               )}
@@ -243,9 +251,13 @@ export default function Dashboard() {
               {followUpProspects.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No follow-ups due today</p>
               ) : (
-                <div className="space-y-1.5 mt-2">
+                <div className="space-y-1 mt-2">
                   {followUpProspects.slice(0, 3).map(p => (
-                    <div key={p.id} className="flex items-start gap-2">
+                    <button
+                      key={p.id}
+                      className="w-full flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-amber-100/60 transition-colors text-left"
+                      onClick={e => { e.stopPropagation(); navigate(`/prospects?openProspect=${p.id}`); }}
+                    >
                       <Phone className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-foreground truncate">
@@ -255,10 +267,10 @@ export default function Dashboard() {
                           <p className="text-[10px] text-muted-foreground truncate">{p.address}</p>
                         )}
                       </div>
-                    </div>
+                    </button>
                   ))}
                   {followUpProspects.length > 3 && (
-                    <p className="text-[10px] text-amber-600 font-medium">+{followUpProspects.length - 3} more</p>
+                    <p className="text-[10px] text-amber-600 font-medium pl-2">+{followUpProspects.length - 3} more</p>
                   )}
                 </div>
               )}
@@ -297,9 +309,13 @@ export default function Dashboard() {
               {overdueInvoices.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No overdue invoices</p>
               ) : (
-                <div className="space-y-1.5 mt-2">
+                <div className="space-y-1 mt-2">
                   {overdueInvoices.slice(0, 3).map(inv => (
-                    <div key={inv.id} className="flex items-center justify-between gap-2">
+                    <button
+                      key={inv.id}
+                      className="w-full flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-red-100/60 transition-colors text-left"
+                      onClick={e => { e.stopPropagation(); navigate(`/invoices?openInvoice=${inv.id}`); }}
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium text-foreground truncate">
                           #{inv.invoiceNumber}{inv.clientName ? ` · ${inv.clientName}` : ""}
@@ -309,10 +325,10 @@ export default function Dashboard() {
                         )}
                       </div>
                       <p className="text-xs font-bold text-red-700 flex-shrink-0">{formatCurrency(inv.total)}</p>
-                    </div>
+                    </button>
                   ))}
                   {overdueInvoices.length > 3 && (
-                    <p className="text-[10px] text-red-600 font-medium">+{overdueInvoices.length - 3} more</p>
+                    <p className="text-[10px] text-red-600 font-medium pl-2">+{overdueInvoices.length - 3} more</p>
                   )}
                 </div>
               )}

@@ -780,6 +780,19 @@ export default function Invoices() {
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting,     setDeleting]     = useState(false);
 
+  useEffect(() => {
+    const openId = searchParams.get("openInvoice");
+    if (!openId || !invoices || invoices.length === 0) return;
+    const id = parseInt(openId, 10);
+    if (!isNaN(id)) {
+      const target = invoices.find(inv => inv.id === id) ?? null;
+      if (target) {
+        setViewInvoice(target);
+        setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete("openInvoice"); return n; }, { replace: true });
+      }
+    }
+  }, [searchParams, invoices]);
+
   const s = settings as any;
   const prefix        = s?.invoicePrefix     ?? "INV-2026-";
   const nextNum       = s?.invoiceNextNumber ?? 1001;
