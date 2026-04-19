@@ -189,7 +189,9 @@ router.post("/", async (req, res) => {
       followUpDate?: string | null;
     };
 
-    console.log("[prospects POST] received:", JSON.stringify({ hasAddress: !!body.address, propertyType: body.propertyType, status: body.status, estimatedSqft: body.estimatedSqft }));
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[prospects POST] received:", JSON.stringify({ hasAddress: !!body.address, propertyType: body.propertyType, status: body.status, estimatedSqft: body.estimatedSqft }));
+    }
 
     if (!body.address) return res.status(400).json({ error: "Address is required" });
 
