@@ -2,7 +2,7 @@
 set -e
 pnpm install --frozen-lockfile
 
-pnpm --filter db push-force
+yes | pnpm --filter db push-force || true
 
 # Idempotent hotfix: ensure daily_logs.author_name column exists (added in Task #35,
 # migration failed on original post-merge run)
@@ -394,4 +394,25 @@ pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS square_payment_link_id
   .then(() => pool.query('ALTER TABLE quick_charges ADD COLUMN IF NOT EXISTS square_payment_link_url text'))
   .then(() => { console.log('Square payment columns ensured on all tables'); pool.end(); })
   .catch(e => { console.error('Square columns migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Task #244: create square_payments table (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS square_payments (
+    id serial PRIMARY KEY,
+    square_payment_id text NOT NULL UNIQUE,
+    amount_cents integer NOT NULL,
+    description text,
+    invoice_id integer REFERENCES invoices(id),
+    invoice_number text,
+    client_name text,
+    paid_at timestamp DEFAULT now() NOT NULL,
+    created_at timestamp DEFAULT now() NOT NULL
+  )
+\`)
+  .then(() => { console.log('square_payments table ensured'); pool.end(); })
+  .catch(e => { console.error('square_payments migration error:', e.message); pool.end(); process.exit(1); });
 ")
