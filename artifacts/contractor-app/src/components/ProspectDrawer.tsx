@@ -1001,7 +1001,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                       disabled={addingToRoute}
                       className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-60 transition-colors"
                     >
-                      {addingToRoute ? "…" : "Add"}
+                      {addingToRoute ? "Locating…" : "Add"}
                     </button>
                     <button
                       onClick={() => setShowRouteInput(false)}
