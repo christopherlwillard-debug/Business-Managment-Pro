@@ -367,6 +367,23 @@ export default function RoutePlanner() {
     onError: () => toast({ title: "Failed to delete stop", variant: "destructive" }),
   });
 
+  const fixGeocoding = useMutation({
+    mutationFn: () => apiFetch("/route-stops/fix-geocoding", { method: "POST" }) as Promise<{ total: number; fixed: number; failed: number }>,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      if (data.fixed > 0) {
+        toast({ title: `Fixed ${data.fixed} map pin${data.fixed !== 1 ? "s" : ""}`, description: data.failed > 0 ? `${data.failed} address(es) couldn't be located` : undefined });
+      } else if (data.total === 0) {
+        toast({ title: "All stops already have map pins" });
+      } else {
+        toast({ title: "Couldn't locate any addresses", description: "Try editing the stop addresses to be more specific", variant: "destructive" });
+      }
+    },
+    onError: () => toast({ title: "Failed to fix map pins", variant: "destructive" }),
+  });
+
+  const hasMissingPins = allStops.some(s => s.lat === null);
+
   function resetForm() {
     setForm({ title: "", address: "", notes: "", scheduledDate: selectedDateStr, estimatedDurationMinutes: 60, status: "scheduled" });
     setFormLinkVal("");
@@ -488,6 +505,23 @@ export default function RoutePlanner() {
           </div>
           <span className="text-xs text-primary-foreground/70">Asphalt Sealing</span>
         </div>
+
+        {hasMissingPins && (
+          <div className="flex items-center justify-between px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800">
+            <div className="flex items-center gap-1.5 text-xs">
+              <MapPin className="w-3.5 h-3.5 text-amber-500" />
+              <span>Some stops are missing map pins</span>
+            </div>
+            <button
+              onClick={() => fixGeocoding.mutate()}
+              disabled={fixGeocoding.isPending}
+              className="text-xs font-medium text-amber-700 hover:text-amber-900 underline disabled:opacity-50 flex items-center gap-1"
+            >
+              {fixGeocoding.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+              Fix now
+            </button>
+          </div>
+        )}
 
         <div className="px-4 py-3 border-b border-border">
           <div className="flex items-center justify-between mb-2">

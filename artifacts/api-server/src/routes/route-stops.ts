@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { routeStopsTable, clientsTable, prospectsTable, type RouteStop as RouteStopRow } from "@workspace/db/schema";
-import { eq, and, gte, lte, SQL } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, SQL } from "drizzle-orm";
+import { geocodeAddressString } from "../geocode-helpers";
 
 const VALID_STATUSES = ["prospect", "scheduled", "completed", "skipped"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -143,6 +144,38 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete route stop" });
+  }
+});
+
+router.post("/fix-geocoding", async (req, res) => {
+  try {
+    const missing = await db
+      .select({ id: routeStopsTable.id, address: routeStopsTable.address })
+      .from(routeStopsTable)
+      .where(isNull(routeStopsTable.lat));
+
+    let fixed = 0;
+    let failed = 0;
+
+    for (const stop of missing) {
+      const coords = await geocodeAddressString(stop.address);
+      if (coords) {
+        await db
+          .update(routeStopsTable)
+          .set({ lat: coords.lat, lng: coords.lng })
+          .where(eq(routeStopsTable.id, stop.id));
+        fixed++;
+        console.log(`[fix-geocoding] Fixed stop ${stop.id}: ${stop.address} → ${coords.lat},${coords.lng}`);
+      } else {
+        failed++;
+        console.warn(`[fix-geocoding] Could not geocode stop ${stop.id}: ${stop.address}`);
+      }
+    }
+
+    res.json({ total: missing.length, fixed, failed });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fix geocoding" });
   }
 });
 
