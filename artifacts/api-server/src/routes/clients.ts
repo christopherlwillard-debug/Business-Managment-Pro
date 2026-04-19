@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { clientsTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable } from "@workspace/db/schema";
+import { clientsTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 const router = Router();
@@ -112,6 +112,14 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    // Nullify FK references on related records before deleting so the DELETE
+    // doesn't fail due to FK constraint violations.
+    await Promise.all([
+      db.update(prospectsTable).set({ clientId: null }).where(eq(prospectsTable.clientId, id)),
+      db.update(estimatesTable).set({ clientId: null }).where(eq(estimatesTable.clientId, id)),
+      db.update(invoicesTable).set({ clientId: null }).where(eq(invoicesTable.clientId, id)),
+      db.update(jobsTable).set({ clientId: null }).where(eq(jobsTable.clientId, id)),
+    ]);
     await db.delete(clientsTable).where(eq(clientsTable.id, id));
     res.status(204).send();
   } catch (err) {
