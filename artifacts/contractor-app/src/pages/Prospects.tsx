@@ -140,6 +140,37 @@ function buildFullAddress(p: Prospect): string {
   return [p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
 }
 
+function parseAddressParts(address: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const zipMatch = address.match(/\b(\d{5})\b/);
+  if (zipMatch) params.postalcode = zipMatch[1];
+  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return params;
+  if (parts.length === 1) { params.street = parts[0]; return params; }
+  params.street = parts[0];
+  const stateMatch = address.match(/\b([A-Za-z]{2})\b(?=\s*(?:\d{5}|,|$))/);
+  if (stateMatch) params.state = stateMatch[1].toUpperCase();
+  if (parts.length >= 2) {
+    let rawCity = parts[1];
+    if (params.state) rawCity = rawCity.replace(new RegExp(`\\b${params.state}\\b`, "i"), "");
+    if (params.postalcode) rawCity = rawCity.replace(params.postalcode, "");
+    const city = rawCity.trim().replace(/,+$/, "").trim();
+    if (city) params.city = city;
+  }
+  return params;
+}
+
+async function geocodeAddress(address: string, base: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const qs = new URLSearchParams(parseAddressParts(address)).toString();
+    const res = await fetch(`${base}/api/geocode?${qs}`, { credentials: "include" });
+    if (!res.ok) return null;
+    const data = await res.json() as Array<{ lat: string; lon: string }>;
+    if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch { /* geocoding failed */ }
+  return null;
+}
+
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -234,6 +265,7 @@ export default function Prospects() {
     setAddingToRouteId(p.id);
     try {
       const fullAddress = buildFullAddress(p);
+      const coords = await geocodeAddress(fullAddress, BASE);
       const res = await fetch(`${BASE}/api/route-stops`, {
         method: "POST",
         credentials: "include",
@@ -244,6 +276,8 @@ export default function Prospects() {
           scheduledDate: effectiveDate,
           status: "scheduled",
           prospectId: p.id,
+          lat: coords?.lat ?? null,
+          lng: coords?.lng ?? null,
         }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -653,7 +687,7 @@ export default function Prospects() {
                           disabled={addingToRouteId === p.id}
                           className="px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-60"
                         >
-                          {addingToRouteId === p.id ? "…" : "Add"}
+                          {addingToRouteId === p.id ? "Locating…" : "Add"}
                         </button>
                         <button
                           onClick={() => setRouteTargetId(null)}
