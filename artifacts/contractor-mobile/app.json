@@ -22,9 +22,6 @@
       "infoPlist": {
         "NSFaceIDUsageDescription": "Use Face ID to unlock the BuildPro payment terminal",
         "NSCameraUsageDescription": "Camera access may be required for card scanning"
-      },
-      "entitlements": {
-        "com.apple.developer.proximity-reader.payment.acceptance": true
       }
     },
     "android": {

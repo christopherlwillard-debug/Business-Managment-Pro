@@ -62,7 +62,7 @@ export default function HomeScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoEmoji}>🔒</Text>
             <Text style={styles.infoText}>
-              Payments are secured by Apple and Stripe
+              Payments are processed securely by Square
             </Text>
           </View>
           <View style={styles.infoRow}>
