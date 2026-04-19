@@ -793,6 +793,42 @@ export default function Invoices() {
     }
   }, [searchParams, invoices]);
 
+  // Deep-link: ?newFromJob=<id> → fetch invoice draft and pre-fill creation form
+  useEffect(() => {
+    const jobIdParam = searchParams.get("newFromJob");
+    if (!jobIdParam) return;
+    const jobId = parseInt(jobIdParam, 10);
+    if (isNaN(jobId)) return;
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete("newFromJob"); return n; }, { replace: true });
+    (async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/jobs/${jobId}/invoice-draft`);
+        if (!res.ok) return;
+        const draft = await res.json();
+        resetForm();
+        setFormState(f => ({
+          ...f,
+          clientId: draft.clientId ? String(draft.clientId) : "",
+          jobId: draft.jobId ? String(draft.jobId) : "",
+          locationName: draft.locationName ?? "",
+          city: draft.city ?? "",
+          state: draft.state ?? "KY",
+          businessLine: draft.businessLine ?? "general_contracting",
+        }));
+        if (Array.isArray(draft.lineItems) && draft.lineItems.length > 0) {
+          setLineItems(draft.lineItems.map((li: any) => ({
+            id: Math.random().toString(36).slice(2),
+            description: li.description ?? "",
+            quantity: String(li.quantity ?? 1),
+            unitPrice: String(li.unitPrice ?? ""),
+          })));
+        }
+        setOpen(true);
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const s = settings as any;
   const prefix        = s?.invoicePrefix     ?? "INV-2026-";
   const nextNum       = s?.invoiceNextNumber ?? 1001;

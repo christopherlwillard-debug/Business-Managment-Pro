@@ -1,4 +1,5 @@
-import { useState, useRef, ReactNode } from "react";
+import { useState, useRef, ReactNode, useEffect } from "react";
+import { useSearchParams } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
@@ -1576,6 +1577,23 @@ export default function Jobs() {
   const completedJobs = completedExpanded
     ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j))
     : [];
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link: ?openJob=<id> → open that job's edit form
+  useEffect(() => {
+    const openId = searchParams.get("openJob");
+    if (!openId || jobs.length === 0) return;
+    const id = parseInt(openId, 10);
+    if (!isNaN(id)) {
+      const target = jobs.find(j => j.id === id) ?? null;
+      if (target) {
+        openEditJob(target);
+        setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete("openJob"); return n; }, { replace: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, jobs]);
 
   function openNewJob() { setEditJob(null); setJobFormOpen(true); }
   function openEditJob(job: Job) { setEditJob(job); setJobFormOpen(true); }

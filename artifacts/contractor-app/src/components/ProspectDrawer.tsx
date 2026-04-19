@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 
 const STATUS_OPTIONS: { value: ProspectStatus; label: string }[] = [
   { value: "cold", label: "Cold" },
@@ -566,12 +567,21 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
         await updateMutation.mutateAsync({ id: prospect.id, status: "won" });
       }
 
-      setCreatedJobId(job.id);
+      const newJobId = job.id;
+      setCreatedJobId(newJobId);
       setShowCreateJobPanel(false);
       queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
       detailQuery.refetch();
       onUpdated();
-      toast({ title: "Job created!", description: `"${resolvedTitle}" has been added to Jobs.` });
+      toast({
+        title: "Job created!",
+        description: `"${resolvedTitle}" has been added to Jobs.`,
+        action: (
+          <ToastAction altText="View Job" onClick={() => { setLocation(`/jobs?openJob=${newJobId}`); onClose(); }}>
+            View Job
+          </ToastAction>
+        ),
+      });
     } catch {
       toast({ title: "Failed to create job", variant: "destructive" });
     } finally {
@@ -988,14 +998,14 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 </div>
                 <div className="flex gap-1.5">
                   <button
-                    onClick={() => { setLocation("/jobs"); onClose(); }}
+                    onClick={() => { setLocation(`/jobs?openJob=${createdJobId}`); onClose(); }}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-green-300 bg-green-50 text-green-800 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors"
                   >
                     <Briefcase className="w-3.5 h-3.5" />
                     View Job
                   </button>
                   <button
-                    onClick={() => { setLocation("/invoices"); onClose(); }}
+                    onClick={() => { setLocation(`/invoices?newFromJob=${createdJobId}`); onClose(); }}
                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
                   >
                     <Receipt className="w-3.5 h-3.5" />
