@@ -1215,7 +1215,7 @@ export default function Invoices() {
               </div>
 
               <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                <p className="text-xs text-gray-500 mb-1 font-medium">Stripe Payment Link</p>
+                <p className="text-xs text-gray-500 mb-1 font-medium">Square Payment Link</p>
                 <p className="text-sm text-gray-800 break-all font-mono">{paymentLinkResult.url}</p>
               </div>
 
@@ -1241,7 +1241,7 @@ export default function Invoices() {
               </div>
 
               <p className="text-xs text-gray-400 text-center">
-                Share this link with your client. Stripe will process the payment and send them a receipt.
+                Share this link with your client. Square will process the payment and send them a receipt.
               </p>
             </div>
           </div>
