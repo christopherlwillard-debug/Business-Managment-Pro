@@ -516,7 +516,7 @@ export default function Prospects() {
                     {p.source === "stripe_payment" && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200">
                         <BadgeCheck className="w-3 h-3" />
-                        Stripe Customer
+                        Online Customer
                       </span>
                     )}
                     {isFollowUpDue(p.followUpDate) && (

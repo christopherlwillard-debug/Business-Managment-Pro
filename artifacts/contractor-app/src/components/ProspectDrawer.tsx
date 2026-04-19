@@ -559,7 +559,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
             {p.source === "stripe_payment" && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200">
                 <BadgeCheck className="w-3 h-3" />
-                Stripe Customer
+                Online Customer
               </span>
             )}
             {isFollowUpDue(p.followUpDate) && (
@@ -575,7 +575,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
             <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-600" />
               <span>
-                <strong>Address looks like an email.</strong> This prospect was likely auto-imported from Stripe — consider updating the address field below.
+                <strong>Address looks like an email.</strong> This prospect was likely auto-imported from an online payment — consider updating the address field below.
               </span>
             </div>
           )}
