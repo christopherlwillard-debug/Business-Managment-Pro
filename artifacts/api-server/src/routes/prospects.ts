@@ -649,12 +649,23 @@ router.post("/:id/convert-to-client", async (req, res) => {
       .where(eq(prospectsTable.id, id));
 
     if (!prospect) return res.status(404).json({ error: "Prospect not found" });
-    if (prospect.status !== "won") return res.status(400).json({ error: "Only won prospects can be converted to clients" });
+
+    if (!["won", "serviced"].includes(prospect.status)) {
+      return res.status(400).json({ error: "Only won or serviced prospects can be converted to clients" });
+    }
+
+    if (prospect.clientId) {
+      const [existing] = await db.select().from(clientsTable).where(eq(clientsTable.id, prospect.clientId));
+      if (existing) {
+        return res.status(409).json({ error: "Already converted", client: { ...existing, createdAt: existing.createdAt.toISOString() } });
+      }
+    }
 
     const [client] = await db
       .insert(clientsTable)
       .values({
         name: prospect.contactName ?? prospect.address,
+        email: prospect.contactEmail ?? null,
         phone: prospect.contactPhone ?? null,
         address: prospect.address,
         city: prospect.city ?? null,
@@ -663,6 +674,10 @@ router.post("/:id/convert-to-client", async (req, res) => {
         notes: prospect.notes ?? null,
       })
       .returning();
+
+    await db.update(prospectsTable)
+      .set({ clientId: client.id })
+      .where(eq(prospectsTable.id, id));
 
     res.status(201).json({ ...client, createdAt: client.createdAt.toISOString() });
   } catch (err) {

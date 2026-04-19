@@ -1,14 +1,18 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { clientsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { clientsTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 const router = Router();
+
+function formatClient(c: typeof clientsTable.$inferSelect) {
+  return { ...c, createdAt: c.createdAt.toISOString() };
+}
 
 router.get("/", async (_req, res) => {
   try {
     const clients = await db.select().from(clientsTable).orderBy(clientsTable.createdAt);
-    res.json(clients.map(c => ({ ...c, createdAt: c.createdAt.toISOString() })));
+    res.json(clients.map(formatClient));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch clients" });
@@ -17,13 +21,63 @@ router.get("/", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, email, phone, address, city, state, zip, notes } = req.body;
+    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
-    const [client] = await db.insert(clientsTable).values({ name, email, phone, address, city, state, zip, notes }).returning();
-    res.status(201).json({ ...client, createdAt: client.createdAt.toISOString() });
+    const [client] = await db.insert(clientsTable).values({
+      name, email, phone, address, city, state, zip, notes,
+      nextServiceDate: nextServiceDate ?? null,
+      serviceIntervalMonths: serviceIntervalMonths ?? null,
+    }).returning();
+    res.status(201).json(formatClient(client));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create client" });
+  }
+});
+
+router.get("/:id/profile", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
+
+    const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
+    if (!client) return res.status(404).json({ error: "Client not found" });
+
+    const [jobs, invoices, squarePayments, linkedProspects, routeStops] = await Promise.all([
+      db.select().from(jobsTable).where(eq(jobsTable.clientId, id)).orderBy(desc(jobsTable.createdAt)),
+      db.select().from(invoicesTable).where(eq(invoicesTable.clientId, id)).orderBy(desc(invoicesTable.createdAt)),
+      db.select().from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
+      db.select().from(prospectsTable).where(eq(prospectsTable.clientId, id)).orderBy(desc(prospectsTable.createdAt)),
+      db.select().from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
+    ]);
+
+    const totalRevenueCents = squarePayments.reduce((sum, p) => sum + p.amountCents, 0);
+    const paidInvoicesTotal = invoices
+      .filter(inv => inv.status === "paid")
+      .reduce((sum, inv) => {
+        const lineItems = Array.isArray(inv.lineItems) ? inv.lineItems as Array<{ quantity: number; unitPrice: number }> : [];
+        return sum + lineItems.reduce((s, li) => s + (li.quantity * li.unitPrice), 0);
+      }, 0);
+
+    res.json({
+      client: formatClient(client),
+      jobs: jobs.map(j => ({ ...j, createdAt: j.createdAt instanceof Date ? j.createdAt.toISOString() : j.createdAt })),
+      invoices: invoices.map(inv => ({ ...inv, createdAt: inv.createdAt instanceof Date ? inv.createdAt.toISOString() : inv.createdAt })),
+      squarePayments: squarePayments.map(p => ({ ...p, paidAt: p.paidAt instanceof Date ? p.paidAt.toISOString() : p.paidAt, createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt })),
+      linkedProspects: linkedProspects.map(p => ({ ...p, createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt, updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt })),
+      routeStops: routeStops.map(s => ({ ...s, createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt })),
+      summary: {
+        totalJobs: jobs.length,
+        totalInvoices: invoices.length,
+        paidInvoices: invoices.filter(i => i.status === "paid").length,
+        totalRevenueCents,
+        paidInvoicesTotal,
+        upcomingStops: routeStops.filter(s => s.status === "scheduled").length,
+      },
+    });
+  } catch (err) {
+    console.error("Client profile error:", err);
+    res.status(500).json({ error: "Failed to fetch client profile" });
   }
 });
 
@@ -32,7 +86,7 @@ router.get("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
     if (!client) return res.status(404).json({ error: "Client not found" });
-    res.json({ ...client, createdAt: client.createdAt.toISOString() });
+    res.json(formatClient(client));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch client" });
@@ -42,10 +96,13 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, email, phone, address, city, state, zip, notes } = req.body;
-    const [client] = await db.update(clientsTable).set({ name, email, phone, address, city, state, zip, notes }).where(eq(clientsTable.id, id)).returning();
+    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths } = req.body;
+    const [client] = await db.update(clientsTable)
+      .set({ name, email, phone, address, city, state, zip, notes, nextServiceDate: nextServiceDate ?? null, serviceIntervalMonths: serviceIntervalMonths ?? null })
+      .where(eq(clientsTable.id, id))
+      .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });
-    res.json({ ...client, createdAt: client.createdAt.toISOString() });
+    res.json(formatClient(client));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update client" });

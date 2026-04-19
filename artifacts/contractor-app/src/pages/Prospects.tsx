@@ -7,6 +7,7 @@ import {
   useUpdateProspect,
   useDeleteProspect,
   useProspectRevenueSummary,
+  useConvertProspectToClient,
   type Prospect,
   type ProspectStatus,
   type ProspectPropertyType,
@@ -15,7 +16,7 @@ import { ProspectDrawer } from "@/components/ProspectDrawer";
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
   Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
-  BadgeCheck, CalendarClock, Route, X, TrendingUp,
+  BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -173,8 +174,28 @@ export default function Prospects() {
   const createMutation = useCreateProspect();
   const updateMutation = useUpdateProspect();
   const deleteMutation = useDeleteProspect();
+  const convertMutation = useConvertProspectToClient();
+  const [convertingId, setConvertingId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  async function handleConvertToClient(p: Prospect, e: React.MouseEvent) {
+    e.stopPropagation();
+    setConvertingId(p.id);
+    try {
+      const client = await convertMutation.mutateAsync(p.id);
+      toast({ title: `${client.name} added to Clients`, description: "Prospect converted successfully" });
+      refetch();
+    } catch (err: any) {
+      if (err?.message?.includes("409") || err?.status === 409) {
+        toast({ title: "Already converted", description: "This prospect is already linked to a client" });
+      } else {
+        toast({ title: "Conversion failed", variant: "destructive" });
+      }
+    } finally {
+      setConvertingId(null);
+    }
+  }
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const { data: routeStops = [] } = useQuery<RouteStop[]>({
@@ -587,6 +608,26 @@ export default function Prospects() {
                         <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
                         Deposit Received{p.depositPaidAmount != null ? ` — $${p.depositPaidAmount.toFixed(2)}` : ""}
                       </div>
+                    </div>
+                  )}
+
+                  {(p.status === "won" || p.status === "serviced") && (
+                    <div className="border-t border-border pt-2">
+                      {(p as any).clientId ? (
+                        <div className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border border-emerald-200 rounded text-xs font-medium text-emerald-700 bg-emerald-50 cursor-default select-none">
+                          <UserCheck className="w-3 h-3" />
+                          Client Created
+                        </div>
+                      ) : (
+                        <button
+                          onClick={e => handleConvertToClient(p, e)}
+                          disabled={convertingId === p.id}
+                          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border border-primary/40 rounded text-xs font-medium text-primary hover:bg-primary/5 transition-colors disabled:opacity-60"
+                        >
+                          {convertingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
+                          {convertingId === p.id ? "Converting…" : "Convert to Client"}
+                        </button>
+                      )}
                     </div>
                   )}
 

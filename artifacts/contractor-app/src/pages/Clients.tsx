@@ -1,12 +1,32 @@
 import { useState } from "react";
 import { useListClients, useCreateClient, useUpdateClient, useDeleteClient } from "@workspace/api-client-react";
-import { Users, Plus, Phone, Mail, MapPin, Edit2, Trash2, AlertTriangle, X } from "lucide-react";
+import { Users, Plus, Phone, Mail, MapPin, Edit2, Trash2, AlertTriangle, ChevronRight, Calendar } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useLocation } from "wouter";
+import { cn } from "@/lib/utils";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function formatDate(s: string | null | undefined): string {
+  if (!s) return "";
+  return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function isDueSoon(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  const in90 = new Date(now);
+  in90.setDate(in90.getDate() + 90);
+  return d <= in90;
+}
 
 export default function Clients() {
   const { canEdit } = useUserPermissions();
+  const [, navigate] = useLocation();
   const { data: clients, isLoading, refetch } = useListClients();
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
@@ -15,6 +35,7 @@ export default function Clients() {
   const [editingClient, setEditingClient] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -32,14 +53,9 @@ export default function Clients() {
 
     try {
       if (editingClient) {
-        await updateMutation.mutateAsync({
-          id: editingClient.id,
-          data: payload
-        });
+        await updateMutation.mutateAsync({ id: editingClient.id, data: payload });
       } else {
-        await createMutation.mutateAsync({
-          data: payload
-        });
+        await createMutation.mutateAsync({ data: payload });
       }
       setIsDialogOpen(false);
       setEditingClient(null);
@@ -49,7 +65,8 @@ export default function Clients() {
     }
   };
 
-  const openEditDialog = (client: any) => {
+  const openEditDialog = (client: any, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setEditingClient(client);
     setIsDialogOpen(true);
   };
@@ -63,9 +80,7 @@ export default function Clients() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      await deleteMutation.mutateAsync({
-        id: deleteTarget.id,
-      });
+      await deleteMutation.mutateAsync({ id: deleteTarget.id });
       refetch();
     } finally {
       setIsDeleting(false);
@@ -81,7 +96,7 @@ export default function Clients() {
           <p className="text-muted-foreground mt-1">Manage your customer relationships.</p>
         </div>
         {canEdit("clients") && (
-          <button 
+          <button
             onClick={() => setIsDialogOpen(true)}
             className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
           >
@@ -92,64 +107,94 @@ export default function Clients() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {isLoading ? (
-           [1,2,3].map(i => <div key={i} className="h-40 bg-card rounded-2xl border border-border/50 animate-pulse"></div>)
+          [1, 2, 3].map(i => <div key={i} className="h-40 bg-card rounded-2xl border border-border/50 animate-pulse" />)
         ) : clients?.length === 0 ? (
           <div className="col-span-full py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card/50">
             <Users className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-foreground">No clients found</h3>
+            <h3 className="text-lg font-medium text-foreground">No clients yet</h3>
+            <p className="text-sm text-muted-foreground mt-1">Add your first client to get started.</p>
           </div>
         ) : (
-          clients?.map(client => (
-            <Card key={client.id} className="border-border/50 shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden group">
-              <div className="h-2 bg-primary/20 group-hover:bg-primary transition-colors"></div>
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4 gap-2">
-                  <h3 className="text-xl font-bold font-display text-foreground truncate flex-1">{client.name}</h3>
-                  {canEdit("clients") && (
+          clients?.map(client => {
+            const c = client as any;
+            const dueSoon = isDueSoon(c.nextServiceDate);
+            return (
+              <Card
+                key={client.id}
+                onClick={() => setProfileClientId(client.id)}
+                className="border-border/50 shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden group cursor-pointer"
+              >
+                <div className={cn("h-2 transition-colors", dueSoon ? "bg-amber-400 group-hover:bg-amber-500" : "bg-primary/20 group-hover:bg-primary")} />
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4 gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xl font-bold font-display text-foreground truncate">{client.name}</h3>
+                      {c.nextServiceDate && (
+                        <p className={cn("text-xs mt-0.5 flex items-center gap-1", dueSoon ? "text-amber-600 font-medium" : "text-muted-foreground")}>
+                          <Calendar className="w-3 h-3" />
+                          Next service: {formatDate(c.nextServiceDate)}
+                        </p>
+                      )}
+                    </div>
                     <div className="flex gap-1 flex-shrink-0">
                       <button
-                        onClick={() => openEditDialog(client)}
+                        onClick={e => openEditDialog(client, e)}
                         className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                         title="Edit client"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => setDeleteTarget(client)}
+                        onClick={e => { e.stopPropagation(); setDeleteTarget(client); }}
                         className="p-2 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors"
                         title="Delete client"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                  )}
-                </div>
-                <div className="space-y-3">
-                  {client.phone && (
-                    <div className="flex items-center text-sm text-muted-foreground">
-                      <Phone className="w-4 h-4 mr-3 text-primary/60" /> {client.phone}
-                    </div>
-                  )}
-                  {client.email && (
-                    <div className="flex items-center text-sm text-muted-foreground truncate">
-                      <Mail className="w-4 h-4 mr-3 text-primary/60 flex-shrink-0" /> <span className="truncate">{client.email}</span>
-                    </div>
-                  )}
-                  {(client.address || client.city || client.state || client.zip) && (
-                    <div className="flex items-start text-sm text-muted-foreground">
-                      <MapPin className="w-4 h-4 mr-3 mt-0.5 text-primary/60 flex-shrink-0" /> 
-                      <span className="line-clamp-2">
-                        {client.address && <>{client.address}<br /></>}
-                        {[client.city, client.state, client.zip].filter(Boolean).join(", ")}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                  </div>
+                  <div className="space-y-2">
+                    {client.phone && (
+                      <div className="flex items-center text-sm text-muted-foreground">
+                        <Phone className="w-4 h-4 mr-3 text-primary/60" /> {client.phone}
+                      </div>
+                    )}
+                    {client.email && (
+                      <div className="flex items-center text-sm text-muted-foreground truncate">
+                        <Mail className="w-4 h-4 mr-3 text-primary/60 flex-shrink-0" /> <span className="truncate">{client.email}</span>
+                      </div>
+                    )}
+                    {(client.address || client.city || client.state || client.zip) && (
+                      <div className="flex items-start text-sm text-muted-foreground">
+                        <MapPin className="w-4 h-4 mr-3 mt-0.5 text-primary/60 flex-shrink-0" />
+                        <span className="line-clamp-2">
+                          {client.address && <>{client.address}<br /></>}
+                          {[client.city, client.state, client.zip].filter(Boolean).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-4 flex items-center text-xs text-primary/60 group-hover:text-primary transition-colors font-medium">
+                    View profile <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
         )}
       </div>
+
+      {/* Client Profile Drawer */}
+      {profileClientId !== null && (
+        <ClientProfileDrawer
+          clientId={profileClientId}
+          onClose={() => setProfileClientId(null)}
+          onAddToRoute={(id) => {
+            setProfileClientId(null);
+            navigate(`${BASE}/route-planner?clientId=${id}`);
+          }}
+        />
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={closeDialog}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl">
@@ -161,68 +206,52 @@ export default function Clients() {
           <form onSubmit={handleSubmit} className="space-y-4 mt-4">
             <div>
               <label className="block text-sm font-medium mb-1">Name / Company *</label>
-              <input 
-                name="name" 
-                required 
+              <input
+                name="name"
+                required
                 defaultValue={editingClient?.name || ""}
-                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Email</label>
-                <input 
-                  name="email" 
-                  type="email" 
+                <input
+                  name="email"
+                  type="email"
                   defaultValue={editingClient?.email || ""}
-                  className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Phone</label>
-                <input 
-                  name="phone" 
+                <input
+                  name="phone"
                   defaultValue={editingClient?.phone || ""}
-                  className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Address</label>
-              <input 
-                name="address" 
+              <input
+                name="address"
                 defaultValue={editingClient?.address || ""}
-                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 mb-3" 
-                placeholder="Street" 
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 mb-3"
+                placeholder="Street"
               />
               <div className="grid grid-cols-5 gap-2">
-                <input 
-                  name="city" 
-                  defaultValue={editingClient?.city || ""}
-                  className="col-span-2 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
-                  placeholder="City" 
-                />
-                <input 
-                  name="state" 
-                  defaultValue={editingClient?.state || ""}
-                  maxLength={2}
-                  className="col-span-1 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 uppercase" 
-                  placeholder="ST" 
-                />
-                <input 
-                  name="zip" 
-                  defaultValue={editingClient?.zip || ""}
-                  className="col-span-2 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" 
-                  placeholder="Zip" 
-                />
+                <input name="city" defaultValue={editingClient?.city || ""} className="col-span-2 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="City" />
+                <input name="state" defaultValue={editingClient?.state || ""} maxLength={2} className="col-span-1 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 uppercase" placeholder="ST" />
+                <input name="zip" defaultValue={editingClient?.zip || ""} className="col-span-2 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="Zip" />
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Notes</label>
-              <textarea 
-                name="notes" 
+              <textarea
+                name="notes"
                 defaultValue={editingClient?.notes || ""}
-                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 resize-none" 
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 resize-none"
                 rows={3}
                 placeholder="Additional notes..."
               />
@@ -255,21 +284,9 @@ export default function Clients() {
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button 
-                onClick={() => setDeleteTarget(null)} 
-                disabled={isDeleting}
-                className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleDeleteConfirmed} 
-                disabled={isDeleting}
-                className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {isDeleting ? "Deleting…" : <>
-                  <Trash2 className="w-4 h-4" /> Delete
-                </>}
+              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
+              <button onClick={handleDeleteConfirmed} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                {isDeleting ? "Deleting…" : <><Trash2 className="w-4 h-4" /> Delete</>}
               </button>
             </div>
           </div>

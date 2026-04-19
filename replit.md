@@ -64,7 +64,7 @@ The `/jobs` route is the unified Jobs + Invoice workflow:
 ## App Features
 
 ### Frontend Pages (artifacts/contractor-app/src/pages/)
-- **Dashboard** - Business health overview with revenue/expense charts, active jobs, overdue invoices
+- **Dashboard** - Business health overview with revenue/expense charts, active jobs, overdue invoices; "Due for Revisit" widget lists clients whose nextServiceDate is within 90 days
 - **Jobs** - Job management with statuses (scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled)
 - **Invoices** - Invoice creation with line items, file attachments (PDF/image upload via /api/uploads), TAX REPORT tab (shows jobs by city/location for operating tax tracking); paperclip badge on list rows
 - **Expenses** - Expense logging with receipt upload + "Click to View Receipt" link
@@ -74,15 +74,27 @@ The `/jobs` route is the unified Jobs + Invoice workflow:
 - **SubcontractorPortal** - Public self-serve portal for subs (no login required, accessed via unique token URL at `/portal/:token`)
 - **Daily Logs** - Field documentation with weather, crew, work completed, photos
 - **Compliance** - Alerts for 1099 thresholds, uncategorized mileage, license expirations
-- **Clients** - Client contact management
+- **Clients** - Client contact management with clickable profile drawer (tabs: Overview, Jobs, Invoices, Payments, Route) showing full history; service schedule (nextServiceDate + serviceIntervalMonths) editable inline
 - **Settings** - Tabbed settings: Business Profile (name, entity type, EIN, address, contact), Logo & Branding (upload, invoice position/size picker with live preview), Invoice Defaults (payment terms, late fee, prefix, tax rate), Financial (mileage rate, 1099 threshold), Feature Modules
 
 ### Settings Feature Toggles
 Users can enable/disable modules from Settings. Disabled modules are hidden from the sidebar.
 Feature keys (stored in DB): `jobs`, `invoices`, `expenses`, `mileage`, `estimates`, `subcontractors`, `daily_logs`, `compliance`, `clients`
 
+## Unified Customer Lifecycle
+
+Prospects → Clients → Jobs → Invoices → Square Payments → Route Planner are all tied together:
+- **Prospects page**: "Convert to Client" button on won/serviced cards — one click creates the client record, copies email, sets prospect.clientId, and shows "Client Created" badge
+- **Client profile drawer** (`ClientProfileDrawer.tsx`): 5 tabs — Overview (summary stats, service schedule, linked prospect), Jobs, Invoices, Payments (Square live transactions matched by email), Route (upcoming stops). Opened by clicking any client card.
+- **Dashboard "Due for Revisit"**: amber card lists clients where nextServiceDate ≤ today + 90 days
+- **Route Planner**: add-stop form has "Link to client or prospect" dropdown (auto-fills address + title); stop cards/popups show blue name badge
+- **Square Transactions**: each row shows a blue "Users" badge when the buyer email matches a BuildPro client
+
 ### Backend Routes (artifacts/api-server/src/routes/)
-- `/api/clients` - CRUD for clients
+- `/api/clients` - CRUD for clients; `GET /:id/profile` returns jobs/invoices/payments/linkedProspect/routeStops with summary
+- `/api/prospects` - CRUD for prospects; `POST /:id/convert-to-client` converts won/serviced prospect to client, sets prospect.clientId
+- `/api/route-stops` - CRUD for route stops; accepts clientId/prospectId FKs; GET returns clientName/prospectContactName via LEFT JOIN
+- `/api/square-transactions` - Proxies Square API; also reads square_payments table
 - `/api/jobs` - CRUD for jobs
 - `/api/invoices` - CRUD for invoices + `/tax-report` endpoint (by city/state)
 - `/api/expenses` - CRUD for expenses + `/:id/receipt` for file upload
@@ -98,9 +110,10 @@ Feature keys (stored in DB): `jobs`, `invoices`, `expenses`, `mileage`, `estimat
 - `/api/storage/objects/*` - Serve uploaded files from GCS Object Storage (authenticated)
 
 ### Database Schema (lib/db/src/schema/)
-Tables: clients, jobs, invoices, expenses, mileage_logs, subcontractors, estimates, daily_logs, settings
+Tables: clients, jobs, invoices, expenses, mileage_logs, subcontractors, estimates, daily_logs, settings, prospects, route_stops, square_payments
 Settings table includes: entity_type, ein, invoice_logo_position, invoice_logo_size columns for branding
 Subcontractors table includes: W-9 fields (w9_legal_name, w9_business_name, w9_tax_classification, w9_llc_type, w9_address, w9_city, w9_state, w9_zip, w9_tax_id_type, w9_tax_id, w9_signature, w9_signed_at) and portal_features jsonb column
+Unified lifecycle FK columns: prospects.client_id (→ clients), clients.next_service_date + clients.service_interval_months, route_stops.client_id (→ clients) + route_stops.prospect_id (→ prospects), square_payments.client_id (→ clients)
 
 ## TypeScript & Composite Projects
 

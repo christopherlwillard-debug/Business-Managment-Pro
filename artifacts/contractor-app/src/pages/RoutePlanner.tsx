@@ -7,7 +7,7 @@ import {
   MapPin, Plus, Trash2, ChevronUp, ChevronDown, Route,
   Clock, Calendar,
   Loader2, ChevronLeft, ChevronRight, Navigation,
-  Edit2, X, Save, GripVertical,
+  Edit2, X, Save, GripVertical, Users, Link as LinkIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -40,7 +40,31 @@ interface RouteStop {
   status: "prospect" | "scheduled" | "completed" | "skipped";
   estimatedDurationMinutes: number | null;
   sortOrder: number;
+  clientId: number | null;
+  prospectId: number | null;
+  clientName: string | null;
+  prospectContactName: string | null;
+  prospectAddress: string | null;
   createdAt: string;
+}
+
+interface ClientOption {
+  id: number;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+}
+
+interface ProspectOption {
+  id: number;
+  contactName: string | null;
+  address: string;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  status: string;
 }
 
 type StopStatus = RouteStop["status"];
@@ -225,6 +249,7 @@ export default function RoutePlanner() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [geocoding, setGeocoding] = useState(false);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [formLinkVal, setFormLinkVal] = useState<string>("");
 
   const [form, setForm] = useState<EditFormState>({
     title: "",
@@ -235,6 +260,46 @@ export default function RoutePlanner() {
     status: "scheduled",
   });
   const [editForm, setEditForm] = useState<Partial<EditFormState>>({});
+
+  const { data: clientOptions = [] } = useQuery<ClientOption[]>({
+    queryKey: ["/api/clients"],
+    queryFn: () => fetch(`${BASE}/api/clients`, { credentials: "include" }).then(r => r.json()),
+    staleTime: 60_000,
+  });
+
+  const { data: prospectOptions = [] } = useQuery<ProspectOption[]>({
+    queryKey: ["/api/prospects"],
+    queryFn: () => fetch(`${BASE}/api/prospects`, { credentials: "include" }).then(r => r.json()),
+    staleTime: 60_000,
+    select: (data: any[]) => data.filter((p: any) => p.status === "won" || p.status === "serviced"),
+  });
+
+  function parsedLinkIds(val: string): { clientId: number | null; prospectId: number | null } {
+    if (!val) return { clientId: null, prospectId: null };
+    const [type, id] = val.split(":");
+    if (type === "client") return { clientId: parseInt(id), prospectId: null };
+    if (type === "prospect") return { clientId: null, prospectId: parseInt(id) };
+    return { clientId: null, prospectId: null };
+  }
+
+  function handleLinkChange(val: string) {
+    setFormLinkVal(val);
+    if (!val) return;
+    const [type, id] = val.split(":");
+    if (type === "client") {
+      const c = clientOptions.find(c => c.id === parseInt(id));
+      if (c) {
+        const addr = [c.address, c.city, c.state, c.zip].filter(Boolean).join(", ");
+        setForm(f => ({ ...f, title: c.name, address: addr || f.address }));
+      }
+    } else if (type === "prospect") {
+      const p = prospectOptions.find(p => p.id === parseInt(id));
+      if (p) {
+        const addr = [p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
+        setForm(f => ({ ...f, title: p.contactName || p.address, address: addr || f.address }));
+      }
+    }
+  }
 
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
   const weekStart = format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
@@ -304,6 +369,7 @@ export default function RoutePlanner() {
 
   function resetForm() {
     setForm({ title: "", address: "", notes: "", scheduledDate: selectedDateStr, estimatedDurationMinutes: 60, status: "scheduled" });
+    setFormLinkVal("");
   }
 
   async function persistSortOrder(ordered: RouteStop[]) {
@@ -325,7 +391,8 @@ export default function RoutePlanner() {
     setGeocoding(true);
     const coords = await geocodeAddress(form.address, BASE);
     setGeocoding(false);
-    createStop.mutate({ ...form, lat: coords?.lat ?? null, lng: coords?.lng ?? null });
+    const { clientId, prospectId } = parsedLinkIds(formLinkVal);
+    createStop.mutate({ ...form, lat: coords?.lat ?? null, lng: coords?.lng ?? null, clientId, prospectId } as any);
   }
 
   async function handleOptimize() {
@@ -522,6 +589,36 @@ export default function RoutePlanner() {
                 <X className="w-4 h-4" />
               </button>
             </div>
+            {(clientOptions.length > 0 || prospectOptions.length > 0) && (
+              <div>
+                <label className="text-[10px] text-muted-foreground flex items-center gap-1 mb-0.5">
+                  <LinkIcon className="w-3 h-3" /> Link to client or prospect
+                </label>
+                <select
+                  value={formLinkVal}
+                  onChange={e => handleLinkChange(e.target.value)}
+                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">— No link —</option>
+                  {clientOptions.length > 0 && (
+                    <optgroup label="Clients">
+                      {clientOptions.map(c => (
+                        <option key={`client:${c.id}`} value={`client:${c.id}`}>{c.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {prospectOptions.length > 0 && (
+                    <optgroup label="Prospects (won / serviced)">
+                      {(prospectOptions as ProspectOption[]).map(p => (
+                        <option key={`prospect:${p.id}`} value={`prospect:${p.id}`}>
+                          {p.contactName || p.address}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+            )}
             <input
               value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
@@ -696,6 +793,11 @@ export default function RoutePlanner() {
                     {label !== undefined && <span className="text-xs text-muted-foreground font-medium">Stop #{label}</span>}
                     <p className="font-semibold text-foreground">{stop.title || stop.address}</p>
                     {stop.title && <p className="text-xs text-muted-foreground">{stop.address}</p>}
+                    {(stop.clientName || stop.prospectContactName) && (
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        {stop.clientName ? `Client: ${stop.clientName}` : `Prospect: ${stop.prospectContactName}`}
+                      </p>
+                    )}
                     <div className={cn("inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border mt-1", cfg.bg, cfg.color)}>
                       {cfg.label}
                     </div>
@@ -868,6 +970,12 @@ function StopCard({
             )}
           </div>
           {stop.title && <p className="text-xs text-muted-foreground truncate mt-0.5">{stop.address}</p>}
+          {(stop.clientName || stop.prospectContactName || stop.prospectAddress) && (
+            <p className="text-[10px] text-primary/70 mt-0.5 flex items-center gap-0.5 truncate">
+              <Users className="w-2.5 h-2.5 flex-shrink-0" />
+              {stop.clientName ? `Client: ${stop.clientName}` : `Prospect: ${stop.prospectContactName || stop.prospectAddress}`}
+            </p>
+          )}
           <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
             {stop.scheduledDate && (
               <span className="flex items-center gap-0.5">

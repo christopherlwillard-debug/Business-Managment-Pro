@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   useSquareLiveTransactions,
   useSquareStatus,
+  useListClients,
   type SquareTransaction,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   CreditCard, RefreshCw, ExternalLink, AlertCircle,
-  TrendingUp, CheckCircle2, XCircle, Clock, Wifi,
+  TrendingUp, CheckCircle2, XCircle, Clock, Wifi, Users,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -74,7 +75,7 @@ function StatusBadge({ status }: { status: string | null }) {
   );
 }
 
-function TransactionRow({ tx }: { tx: SquareTransaction }) {
+function TransactionRow({ tx, matchedClientName }: { tx: SquareTransaction; matchedClientName: string | null }) {
   const cardLabel = tx.cardBrand ? (CARD_BRAND_LABELS[tx.cardBrand] ?? tx.cardBrand) : null;
   const sourceLabel = tx.sourceType ? (SOURCE_LABELS[tx.sourceType] ?? tx.sourceType) : null;
 
@@ -93,6 +94,12 @@ function TransactionRow({ tx }: { tx: SquareTransaction }) {
             {payerName || "Unknown customer"}
           </span>
           <StatusBadge status={tx.status} />
+          {matchedClientName && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+              <Users className="w-3 h-3" />
+              {matchedClientName}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
           <span>{tx.createdAt ? formatDate(tx.createdAt) : "—"}</span>
@@ -131,6 +138,23 @@ export default function SquareTransactions() {
   const [days, setDays] = useState(30);
   const { data: status } = useSquareStatus();
   const { data, isLoading, isError, refetch, isFetching } = useSquareLiveTransactions(days);
+  const { data: clients = [] } = useListClients();
+
+  const emailToClientName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of clients as any[]) {
+      if (c.email) map.set(c.email.toLowerCase().trim(), c.name);
+    }
+    return map;
+  }, [clients]);
+
+  function getMatchedClient(tx: SquareTransaction): string | null {
+    if (tx.buyerEmail) {
+      const name = emailToClientName.get(tx.buyerEmail.toLowerCase().trim());
+      if (name) return name;
+    }
+    return null;
+  }
 
   const summary = data?.summary;
   const transactions = data?.transactions ?? [];
@@ -276,7 +300,7 @@ export default function SquareTransactions() {
               </span>
             </div>
             {transactions.map((tx) => (
-              <TransactionRow key={tx.id ?? tx.createdAt} tx={tx} />
+              <TransactionRow key={tx.id ?? tx.createdAt} tx={tx} matchedClientName={getMatchedClient(tx)} />
             ))}
           </div>
         )}

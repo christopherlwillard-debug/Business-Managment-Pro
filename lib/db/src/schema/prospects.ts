@@ -1,6 +1,7 @@
 import { pgTable, serial, text, timestamp, integer, numeric, check, date } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { estimatesTable } from "./estimates";
+import { clientsTable } from "./clients";
 
 export const PROSPECT_PROPERTY_TYPES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
 export type ProspectPropertyType = typeof PROSPECT_PROPERTY_TYPES[number];
@@ -26,6 +27,7 @@ export const prospectsTable = pgTable(
     status: text("status").notNull().default("cold"),
     linkedEstimateId: integer("linked_estimate_id").references(() => estimatesTable.id),
     linkedInvoiceId: integer("linked_invoice_id"),
+    clientId: integer("client_id").references(() => clientsTable.id),
     stripePaymentLinkId: text("stripe_payment_link_id"),
     stripePaymentLinkUrl: text("stripe_payment_link_url"),
     squarePaymentLinkId: text("square_payment_link_id"),
