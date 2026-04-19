@@ -31,3 +31,4 @@ export * from "./assets";
 export * from "./quick-charges";
 export * from "./prospect-events";
 export * from "./prospect-service-visits";
+export * from "./square-payments";

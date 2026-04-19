@@ -50,7 +50,7 @@ import quickChargesRouter from "./quick-charges";
 import squareDepositRouter from "./square-deposit";
 import squareStatusRouter from "./square-status";
 import payPublicRouter from "./pay-public";
-import squareMobileRouter from "./square-mobile";
+import squareMobileRouter from "./square-payments";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
