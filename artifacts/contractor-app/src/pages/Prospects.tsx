@@ -243,12 +243,14 @@ export default function Prospects() {
           address: fullAddress,
           scheduledDate: effectiveDate,
           status: "scheduled",
+          prospectId: p.id,
         }),
       });
       if (!res.ok) throw new Error("Failed");
       toast({ title: "Added to Route Plan", description: `${p.address} scheduled for ${effectiveDate}. Open Route Planner to optimize.` });
       setRouteTargetId(null);
       queryClient.invalidateQueries({ queryKey: ["route-stops-upcoming"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/route-stops"] });
     } catch {
       toast({ title: "Failed to add to route", variant: "destructive" });
     } finally {
