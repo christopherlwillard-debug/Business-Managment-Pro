@@ -91,9 +91,9 @@ export default function Dashboard() {
   const { data: stats, isLoading } = useGetDashboardStats({ period });
   const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
   const { data: allClients = [] } = useListClients();
-  const { data: todayStops = [] } = useTodayRouteStops();
-  const { data: followUpProspects = [] } = useFollowUpProspects();
-  const { data: overdueInvoices = [] } = useOverdueInvoicesList();
+  const { data: todayStops = [], isLoading: stopsLoading } = useTodayRouteStops();
+  const { data: followUpProspects = [], isLoading: followUpsLoading } = useFollowUpProspects();
+  const { data: overdueInvoices = [], isLoading: overdueLoading } = useOverdueInvoicesList();
 
   const now = new Date();
   const in90 = new Date(now);
@@ -128,7 +128,9 @@ export default function Dashboard() {
 
   const todayFormatted = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
+  const todayDataLoading = stopsLoading || followUpsLoading || overdueLoading || complianceLoading;
   const allClear =
+    !todayDataLoading &&
     todayStops.length === 0 &&
     followUpProspects.length === 0 &&
     overdueInvoices.length === 0 &&
@@ -369,9 +371,13 @@ export default function Dashboard() {
               ) : urgentComplianceItems.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No filings due within 7 days</p>
               ) : (
-                <div className="space-y-1.5 mt-2">
+                <div className="space-y-1 mt-2">
                   {urgentComplianceItems.slice(0, 3).map(item => (
-                    <div key={item.id} className="flex items-start justify-between gap-2">
+                    <button
+                      key={item.id}
+                      className="w-full flex items-start justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-orange-100/60 transition-colors text-left"
+                      onClick={e => { e.stopPropagation(); navigate("/accounting?tab=tax-calendar"); }}
+                    >
                       <p className="text-xs font-medium text-foreground truncate flex-1">{item.title}</p>
                       <span className={cn(
                         "text-[10px] font-bold flex-shrink-0",
@@ -379,7 +385,7 @@ export default function Dashboard() {
                       )}>
                         {item.computedStatus === "overdue" ? "Overdue" : `${item.daysUntilDue}d`}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
