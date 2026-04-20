@@ -990,7 +990,7 @@ function JobCard({
                 {invoiceSummary.total != null && ` · ${formatCurrency(invoiceSummary.total)}`}
                 {squarePaid && (
                   <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
-                    via Square
+                    Paid via Square
                   </span>
                 )}
               </span>
