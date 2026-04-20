@@ -365,6 +365,26 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
 
               {tab === "payments" && (
                 <div className="p-5 space-y-5">
+                  {/* Total collected summary */}
+                  {summary && (
+                    <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Total collected</p>
+                        <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCents(summary.totalRevenueCents)}</p>
+                      </div>
+                      <div className="flex items-center gap-4 mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-800">
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+                          <CreditCard className="w-3 h-3" />
+                          <span>Square: {formatCents(summary.squareRevenueCents)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+                          <DollarSign className="w-3 h-3" />
+                          <span>Other: {formatCents(summary.otherRevenueCents)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Square Payments */}
                   <div className="space-y-2">
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">

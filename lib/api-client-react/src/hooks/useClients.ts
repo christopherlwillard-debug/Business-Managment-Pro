@@ -74,6 +74,8 @@ export interface ClientProfile {
     totalInvoices: number;
     paidInvoices: number;
     totalRevenueCents: number;
+    squareRevenueCents: number;
+    otherRevenueCents: number;
     paidInvoicesTotal: number;
     upcomingStops: number;
   };
