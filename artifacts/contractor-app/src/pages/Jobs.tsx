@@ -895,7 +895,8 @@ function JobCard({
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
-  const squarePaid = !!(invoiceSummary as any)?.squarePaidAt;
+  const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
+  const squarePaid = !!inv?.squarePaidAt;
 
   return (
     <>
@@ -994,7 +995,7 @@ function JobCard({
                 )}
               </span>
             ) : (
-              <span className="text-muted-foreground/60 italic">No invoice</span>
+              <span className="text-muted-foreground/60 italic">Not Invoiced</span>
             )}
           </div>
         </div>
@@ -1852,7 +1853,7 @@ export default function Jobs() {
                       materialListCount={materialListCountByJob[job.id] ?? 0}
                       onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                       invoiceSummary={invoiceByJobId.get(job.id) ?? null}
-                      onCreateInvoice={() => navigate(`${BASE}/invoices?newFromJob=${job.id}`)}
+                      onCreateInvoice={() => handleReviewInvoice(job)}
                       onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
                   );
                 })}
@@ -1887,7 +1888,7 @@ export default function Jobs() {
                         materialListCount={materialListCountByJob[job.id] ?? 0}
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                         invoiceSummary={invoiceByJobId.get(job.id) ?? null}
-                        onCreateInvoice={() => navigate(`${BASE}/invoices?newFromJob=${job.id}`)}
+                        onCreateInvoice={() => handleReviewInvoice(job)}
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
                     );
                   }) : (
