@@ -411,20 +411,28 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                     ) : (
                       <div className="space-y-2">
                         {data!.otherIncome.map((oi) => (
-                          <div key={oi.id} className="bg-muted/40 rounded-xl p-4">
+                          <Link
+                            key={oi.id}
+                            href={`${BASE}/accounting?module=other_income&editId=${oi.id}&year=${new Date(oi.date).getFullYear()}`}
+                            onClick={onClose}
+                            className="block bg-muted/40 rounded-xl p-4 hover:bg-muted/70 transition-colors group cursor-pointer"
+                          >
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-bold text-emerald-600">{formatCurrency(parseFloat(oi.amount))}</p>
                                 <p className="text-xs text-muted-foreground">{formatDate(oi.date)}</p>
                               </div>
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground flex-shrink-0 capitalize">
-                                {oi.paymentMethod.replace(/_/g, " ")}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">
+                                  {oi.paymentMethod.replace(/_/g, " ")}
+                                </span>
+                                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                              </div>
                             </div>
                             {oi.description && (
                               <p className="text-xs text-muted-foreground mt-1 truncate">{oi.description}</p>
                             )}
-                          </div>
+                          </Link>
                         ))}
                       </div>
                     )}

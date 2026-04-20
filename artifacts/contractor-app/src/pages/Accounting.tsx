@@ -735,7 +735,12 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
 type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income" | "business_line";
 
 function OverviewTab({ data, year }: { data: any; year: number }) {
-  const [openModule, setOpenModule] = useState<ModuleKey | null>(null);
+  const [openModule, setOpenModule] = useState<ModuleKey | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mod = params.get("module");
+    if (mod === "other_income") return "other_income";
+    return null;
+  });
   const s = data?.summary ?? {};
   const netProfit = s.netProfit ?? 0;
   const otherIncomeTotal: number = s.otherIncomeTotal ?? 0;
@@ -746,12 +751,34 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   const deleteOI = useDeleteOtherIncome(year);
   const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; city: string; state: string; notes: string; businessLine: string; clientId: number | null }>>(null);
   const [oiSaving, setOiSaving] = useState(false);
+  const [pendingEditId, setPendingEditId] = useState<number | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get("editId");
+    return editId ? parseInt(editId, 10) : null;
+  });
   const { data: clientsList = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["clients-list-oi"],
     queryFn: () => fetch(`${BASE}/api/clients`).then(r => r.json()),
   });
 
   const { canEdit } = useUserPermissions();
+
+  useEffect(() => {
+    if (pendingEditId == null || oiLoading) return;
+    const clearParams = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("module");
+      url.searchParams.delete("editId");
+      url.searchParams.delete("year");
+      window.history.replaceState({}, "", url.toString());
+    };
+    const row = otherIncomeRows.find((r: any) => r.id === pendingEditId);
+    if (row) {
+      openEditOI(row);
+    }
+    setPendingEditId(null);
+    clearParams();
+  }, [pendingEditId, oiLoading, otherIncomeRows]);
 
   function openAddOI() {
     setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: null });
@@ -3679,11 +3706,19 @@ function getInitialTab(): AccountingTab {
   return "overview";
 }
 
+function getInitialYear(currentYear: number): number {
+  const params = new URLSearchParams(window.location.search);
+  const y = parseInt(params.get("year") ?? "", 10);
+  if (!isNaN(y) && y >= 2000 && y <= currentYear + 1) return y;
+  return currentYear;
+}
+
 export default function Accounting() {
   const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(currentYear);
+  const [year, setYear] = useState(() => getInitialYear(currentYear));
   const [activeTab, setActiveTab] = useState<AccountingTab>(getInitialTab);
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+  const defaultYears = Array.from({ length: 5 }, (_, i) => currentYear - i);
+  const years = defaultYears.includes(year) ? defaultYears : [year, ...defaultYears].sort((a, b) => b - a);
   const { isOwner } = useUserPermissions();
 
   const { data, isLoading, error } = useQuery({
