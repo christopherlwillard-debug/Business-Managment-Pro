@@ -983,10 +983,10 @@ function JobCard({
                 invoiceSummary.status === "paid"
                   ? "text-emerald-600"
                   : invoiceSummary.status === "sent"
-                  ? "text-blue-600"
-                  : "text-amber-600"
+                  ? "text-amber-600"
+                  : "text-muted-foreground"
               }`}>
-                {invoiceSummary.status === "paid" ? "Paid" : invoiceSummary.status === "sent" ? "Invoice Sent" : "Invoice Draft"}
+                {invoiceSummary.status === "paid" ? "Paid" : invoiceSummary.status === "sent" ? "Invoice Sent" : "Draft"}
                 {invoiceSummary.total != null && ` · ${formatCurrency(invoiceSummary.total)}`}
                 {squarePaid && (
                   <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
@@ -1583,7 +1583,6 @@ export default function Jobs() {
   const updateJob                         = useUpdateJob();
   const { data: allLogs = [] }            = useListDailyLogs();
   const { data: allMaterialLists = [] }   = useListMaterialLists();
-  const { data: allInvoices = [] }        = useListInvoices();
 
   // Compute per-job log indicators
   const logsByJob = allLogs.reduce<Record<number, DailyLog[]>>((acc, log) => {
@@ -1599,20 +1598,6 @@ export default function Jobs() {
     return acc;
   }, {});
 
-  // Build jobId → invoice summary lookup (picks the most recent invoice per job)
-  const invoiceByJobId = useMemo(() => {
-    const map = new Map<number, Invoice>();
-    for (const inv of allInvoices) {
-      if (inv.jobId == null) continue;
-      const existing = map.get(inv.jobId);
-      // Prefer paid > sent > draft; otherwise first wins
-      if (!existing || inv.status === "paid" || (inv.status === "sent" && existing.status !== "paid")) {
-        map.set(inv.jobId, inv);
-      }
-    }
-    return map;
-  }, [allInvoices]);
-
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const [jobSearch, setJobSearch]       = useState("");
@@ -1627,6 +1612,9 @@ export default function Jobs() {
   const [invoiceDraftData, setInvoiceDraftData]         = useState<InvoiceDraft | null>(null);
   const [selectedExistingInvoice, setSelectedExistingInvoice] = useState<Invoice | null>(null);
   const [invoiceFetching, setInvoiceFetching]           = useState(false);
+
+  type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
+  const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
 
   const searchLower   = jobSearch.toLowerCase().trim();
   const jobMatchesSearch = (j: Job) => {
@@ -1644,6 +1632,33 @@ export default function Jobs() {
   const completedJobs = completedExpanded
     ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j))
     : [];
+
+  // Fetch invoice summaries for each visible job via /api/invoices?jobId=<id>
+  const visibleJobIds = useMemo(
+    () => [...scheduledJobs, ...completedJobs].map(j => j.id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scheduledJobs.map(j => j.id).join(","), completedJobs.map(j => j.id).join(",")]
+  );
+
+  useEffect(() => {
+    if (visibleJobIds.length === 0) { setInvoiceSummaryMap(new Map()); return; }
+    const controller = new AbortController();
+    Promise.all(
+      visibleJobIds.map(jobId =>
+        fetch(`${BASE}/api/invoices?jobId=${jobId}`, { signal: controller.signal })
+          .then(r => r.ok ? r.json() as Promise<InvoiceWithSquare[]> : [])
+          .then(invs => {
+            const best = invs.find(i => i.status === "paid") ?? invs.find(i => i.status === "sent") ?? invs[0] ?? null;
+            return [jobId, best] as [number, InvoiceWithSquare | null];
+          })
+          .catch(() => [jobId, null] as [number, InvoiceWithSquare | null])
+      )
+    ).then(entries => {
+      if (!controller.signal.aborted) setInvoiceSummaryMap(new Map(entries));
+    });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleJobIds.join(",")]);
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1852,7 +1867,7 @@ export default function Jobs() {
                       logCount={jobLogs.length} lastLogDate={lastLog?.date}
                       materialListCount={materialListCountByJob[job.id] ?? 0}
                       onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
-                      invoiceSummary={invoiceByJobId.get(job.id) ?? null}
+                      invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                       onCreateInvoice={() => handleReviewInvoice(job)}
                       onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
                   );
@@ -1887,7 +1902,7 @@ export default function Jobs() {
                         logCount={jobLogs.length} lastLogDate={lastLog?.date}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
-                        invoiceSummary={invoiceByJobId.get(job.id) ?? null}
+                        invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         onCreateInvoice={() => handleReviewInvoice(job)}
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
                     );
