@@ -1,5 +1,5 @@
-import { useState, useRef, ReactNode, useEffect } from "react";
-import { useSearchParams } from "wouter";
+import { useState, useRef, ReactNode, useEffect, useMemo } from "react";
+import { useSearchParams, useLocation } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
@@ -18,6 +18,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
+import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
 import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
@@ -26,7 +27,7 @@ import {
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
-  Calculator, DollarSign,
+  Calculator, DollarSign, Receipt,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -874,6 +875,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, onLoadEstimateIntoInvoice,
+  invoiceSummary, onCreateInvoice, onClientClick,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -884,12 +886,16 @@ function JobCard({
   lastLogDate?: string;
   materialListCount: number;
   onLoadEstimateIntoInvoice?: (job: Job, estimates: Estimate[]) => void;
+  invoiceSummary?: Invoice | null;
+  onCreateInvoice?: () => void;
+  onClientClick?: (clientId: number) => void;
 }) {
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
+  const squarePaid = !!(invoiceSummary as any)?.squarePaidAt;
 
   return (
     <>
@@ -937,7 +943,16 @@ function JobCard({
           {job.clientName && (
             <div className="flex items-center gap-1.5">
               <Users className="w-3 h-3 flex-shrink-0" />
-              <span>{job.clientName}</span>
+              {job.clientId && onClientClick ? (
+                <button
+                  onClick={() => onClientClick(job.clientId!)}
+                  className="text-primary hover:underline font-medium truncate"
+                >
+                  {job.clientName}
+                </button>
+              ) : (
+                <span>{job.clientName}</span>
+              )}
             </div>
           )}
           {(job.locationName || job.city || job.state) && (
@@ -958,6 +973,30 @@ function JobCard({
               <span>{job.subcontractorNames.join(", ")}</span>
             </div>
           )}
+
+          {/* Invoice status indicator */}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <Receipt className="w-3 h-3 flex-shrink-0" />
+            {invoiceSummary ? (
+              <span className={`inline-flex items-center gap-1 font-medium ${
+                invoiceSummary.status === "paid"
+                  ? "text-emerald-600"
+                  : invoiceSummary.status === "sent"
+                  ? "text-blue-600"
+                  : "text-amber-600"
+              }`}>
+                {invoiceSummary.status === "paid" ? "Paid" : invoiceSummary.status === "sent" ? "Invoice Sent" : "Invoice Draft"}
+                {invoiceSummary.total != null && ` · ${formatCurrency(invoiceSummary.total)}`}
+                {squarePaid && (
+                  <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
+                    via Square
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground/60 italic">No invoice</span>
+            )}
+          </div>
         </div>
 
         {/* Daily Log button + indicator */}
@@ -998,8 +1037,17 @@ function JobCard({
           <span className="text-[10px] text-muted-foreground">View / Build</span>
         </button>
 
+        {/* Create Invoice quick action — shown when no invoice exists */}
+        {!invoiceSummary && canEdit("invoices") && onCreateInvoice && (
+          <button
+            onClick={onCreateInvoice}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold hover:bg-primary/20 transition-colors">
+            <Receipt className="w-3.5 h-3.5" /> Create Invoice
+          </button>
+        )}
+
         {isCompleted ? (
-          canEdit("invoices") && (
+          canEdit("invoices") && invoiceSummary && (
             <button
               onClick={() => onReviewInvoice(job)}
               className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
@@ -1526,6 +1574,7 @@ export default function Jobs() {
   const { canEdit, canView } = useUserPermissions();
   const canEditJobs = canEdit("jobs");
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const { data: jobs = [],    isLoading } = useListJobs();
   const { data: clients = [] }            = useListClients();
   const { data: subcontractors = [] }     = useListSubcontractors();
@@ -1533,6 +1582,7 @@ export default function Jobs() {
   const updateJob                         = useUpdateJob();
   const { data: allLogs = [] }            = useListDailyLogs();
   const { data: allMaterialLists = [] }   = useListMaterialLists();
+  const { data: allInvoices = [] }        = useListInvoices();
 
   // Compute per-job log indicators
   const logsByJob = allLogs.reduce<Record<number, DailyLog[]>>((acc, log) => {
@@ -1547,6 +1597,22 @@ export default function Jobs() {
     acc[list.jobId] = (acc[list.jobId] ?? 0) + 1;
     return acc;
   }, {});
+
+  // Build jobId → invoice summary lookup (picks the most recent invoice per job)
+  const invoiceByJobId = useMemo(() => {
+    const map = new Map<number, Invoice>();
+    for (const inv of allInvoices) {
+      if (inv.jobId == null) continue;
+      const existing = map.get(inv.jobId);
+      // Prefer paid > sent > draft; otherwise first wins
+      if (!existing || inv.status === "paid" || (inv.status === "sent" && existing.status !== "paid")) {
+        map.set(inv.jobId, inv);
+      }
+    }
+    return map;
+  }, [allInvoices]);
+
+  const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const [jobSearch, setJobSearch]       = useState("");
   const [completedExpanded, setCompletedExpanded] = useState(false);
@@ -1784,7 +1850,10 @@ export default function Jobs() {
                       onMarkCompleted={handleMarkCompleted}
                       logCount={jobLogs.length} lastLogDate={lastLog?.date}
                       materialListCount={materialListCountByJob[job.id] ?? 0}
-                      onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice} />
+                      onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
+                      invoiceSummary={invoiceByJobId.get(job.id) ?? null}
+                      onCreateInvoice={() => navigate(`${BASE}/invoices?newFromJob=${job.id}`)}
+                      onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
                   );
                 })}
               </div>
@@ -1816,7 +1885,10 @@ export default function Jobs() {
                         onMarkCompleted={handleMarkCompleted}
                         logCount={jobLogs.length} lastLogDate={lastLog?.date}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
-                        onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice} />
+                        onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
+                        invoiceSummary={invoiceByJobId.get(job.id) ?? null}
+                        onCreateInvoice={() => navigate(`${BASE}/invoices?newFromJob=${job.id}`)}
+                        onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -1904,6 +1976,17 @@ export default function Jobs() {
                 : "No additional records are linked to this job.";
             })()
           ) : undefined}
+        />
+      )}
+
+      {profileClientId !== null && (
+        <ClientProfileDrawer
+          clientId={profileClientId}
+          onClose={() => setProfileClientId(null)}
+          onAddToRoute={(id) => {
+            setProfileClientId(null);
+            navigate(`${BASE}/route-planner?clientId=${id}`);
+          }}
         />
       )}
     </div>
