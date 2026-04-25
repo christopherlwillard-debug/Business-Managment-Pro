@@ -32,9 +32,16 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Mileage deduction is always shown YTD regardless of the period selector
     const ytdStart = `${now.getFullYear()}-01-01`;
 
+    // For the YTD ("year") period, query expenses across the full calendar year
+    // so the write-off totals match what the Expenses page shows (which groups by year,
+    // not capped at today).  For week/month/quarter, use the period end date as usual.
+    const expenseEndDate = period === "year"
+      ? `${now.getFullYear()}-12-31`
+      : endDate;
+
     const [allInvoices, allExpenses, allMileage, allOtherIncome, activeJobsRows, recentJobsRows, recentInvoicesRows] = await Promise.all([
       db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate))),
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
       db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
       db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
