@@ -432,6 +432,7 @@ export default function Dashboard() {
         <NetProfitCard
           operationalNetProfit={stats.operationalNetProfit}
           excludedFromProfit={stats.excludedFromProfit ?? 0}
+          formulaExcludedFromProfit={stats.formulaExcludedFromProfit ?? stats.excludedFromProfit ?? 0}
           excludedCount={stats.excludedExpenseCount ?? 0}
           periodLabel={periodLabel}
         />
@@ -614,9 +615,10 @@ export default function Dashboard() {
   );
 }
 
-function NetProfitCard({ operationalNetProfit, excludedFromProfit, excludedCount, periodLabel }: {
+function NetProfitCard({ operationalNetProfit, excludedFromProfit, formulaExcludedFromProfit, excludedCount, periodLabel }: {
   operationalNetProfit: number;
   excludedFromProfit: number;
+  formulaExcludedFromProfit: number;
   excludedCount: number;
   periodLabel: string;
 }) {
@@ -645,9 +647,9 @@ function NetProfitCard({ operationalNetProfit, excludedFromProfit, excludedCount
             {isPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
           </div>
         </div>
-        {excludedCount > 0 && (
+        {formulaExcludedFromProfit > 0 && (
           <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/50">
-            Total expenses including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - excludedFromProfit)}</span> net profit
+            Total expenses including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - formulaExcludedFromProfit)}</span> net profit
           </p>
         )}
       </CardContent>

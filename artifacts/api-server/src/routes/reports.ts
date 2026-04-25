@@ -58,11 +58,19 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // separately via mileageLogsTable to avoid double-counting in net profit.
     const nonMileageExpenses = allExpenses.filter(e => e.category !== "mileage");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    const excludedFromProfit = nonMileageExpenses
+    // Used in the net-profit formula — mileage-category expenses are already
+    // excluded from totalExpenses (tracked via mileageDeduction instead).
+    const excludedFromProfitFormula = nonMileageExpenses
       .filter(e => e.excludeFromNetProfit)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Display total — includes mileage-category expenses the user explicitly marked
+    // as excluded so the number matches what the Expenses page shows.
+    const excludedFromProfit = allExpenses
+      .filter(e => e.excludeFromNetProfit)
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const excludedExpenseCount = allExpenses.filter(e => e.excludeFromNetProfit).length;
     const mileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
-    const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfit) - mileageDeduction;
+    const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageDeduction;
     const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
@@ -86,8 +94,6 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       });
     }
 
-    const excludedExpenseCount = nonMileageExpenses.filter(e => e.excludeFromNetProfit).length;
-
     res.json({
       totalRevenue,
       pendingInvoices,
@@ -99,6 +105,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       overdueInvoices,
       operationalNetProfit,
       excludedFromProfit,
+      formulaExcludedFromProfit: excludedFromProfitFormula,
       excludedExpenseCount,
       recentJobs: recentJobsRows.map(j => ({ ...j, createdAt: j.createdAt.toISOString() })),
       recentInvoices: recentInvoicesRows.map(i => ({

@@ -696,6 +696,7 @@ export interface DashboardStats {
   monthlyRevenue: DashboardStatsMonthlyRevenueItem[];
   operationalNetProfit?: number;
   excludedFromProfit?: number;
+  formulaExcludedFromProfit?: number;
   excludedExpenseCount?: number;
 }
 
