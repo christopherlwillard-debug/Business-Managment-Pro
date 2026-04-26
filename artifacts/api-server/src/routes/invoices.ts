@@ -2,7 +2,7 @@ import { Router } from "express";
 import nodemailer from "nodemailer";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -177,6 +177,48 @@ router.post("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create invoice" });
+  }
+});
+
+// ── Batch invoice summaries (one request for many jobs) ────────────────────────
+// GET /api/invoices/summaries?jobIds=1,2,3
+// Returns { [jobId]: Invoice | null } with the "best" invoice per job:
+//   paid > sent > (first available)
+router.get("/summaries", async (req, res) => {
+  try {
+    const raw = (req.query.jobIds as string) ?? "";
+    const jobIds = raw
+      .split(",")
+      .map(s => parseInt(s.trim(), 10))
+      .filter(n => !isNaN(n) && n > 0);
+
+    if (jobIds.length === 0) return res.json({});
+
+    const uniqueJobIds = [...new Set(jobIds)];
+    const invoices = await buildInvoiceQuery()
+      .where(inArray(invoicesTable.jobId, uniqueJobIds))
+      .orderBy(desc(invoicesTable.createdAt));
+    const formatted = invoices.map(fmt);
+
+    const result: Record<number, ReturnType<typeof fmt> | null> = {};
+    for (const jobId of uniqueJobIds) result[jobId] = null;
+
+    for (const inv of formatted) {
+      if (inv.jobId == null) continue;
+      const current = result[inv.jobId];
+      if (current === null) {
+        result[inv.jobId] = inv;
+      } else if (inv.status === "paid" && current.status !== "paid") {
+        result[inv.jobId] = inv;
+      } else if (inv.status === "sent" && current.status !== "paid" && current.status !== "sent") {
+        result[inv.jobId] = inv;
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch invoice summaries" });
   }
 });
 

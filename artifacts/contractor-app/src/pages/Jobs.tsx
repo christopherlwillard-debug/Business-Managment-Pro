@@ -1633,7 +1633,7 @@ export default function Jobs() {
     ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j))
     : [];
 
-  // Fetch invoice summaries for each visible job via /api/invoices?jobId=<id>
+  // Fetch invoice summaries for all visible jobs in a single batch request
   const visibleJobIds = useMemo(
     () => [...scheduledJobs, ...completedJobs].map(j => j.id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1643,19 +1643,20 @@ export default function Jobs() {
   useEffect(() => {
     if (visibleJobIds.length === 0) { setInvoiceSummaryMap(new Map()); return; }
     const controller = new AbortController();
-    Promise.all(
-      visibleJobIds.map(jobId =>
-        fetch(`${BASE}/api/invoices?jobId=${jobId}`, { signal: controller.signal })
-          .then(r => r.ok ? r.json() as Promise<InvoiceWithSquare[]> : [])
-          .then(invs => {
-            const best = invs.find(i => i.status === "paid") ?? invs.find(i => i.status === "sent") ?? invs[0] ?? null;
-            return [jobId, best] as [number, InvoiceWithSquare | null];
-          })
-          .catch(() => [jobId, null] as [number, InvoiceWithSquare | null])
-      )
-    ).then(entries => {
-      if (!controller.signal.aborted) setInvoiceSummaryMap(new Map(entries));
-    });
+    fetch(`${BASE}/api/invoices/summaries?jobIds=${visibleJobIds.join(",")}`, { signal: controller.signal })
+      .then(r => r.ok ? r.json() as Promise<Record<string, InvoiceWithSquare | null>> : Promise.reject())
+      .then(summaryObj => {
+        if (controller.signal.aborted) return;
+        const entries = Object.entries(summaryObj).map(
+          ([id, inv]) => [parseInt(id, 10), inv] as [number, InvoiceWithSquare | null]
+        );
+        setInvoiceSummaryMap(new Map(entries));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setInvoiceSummaryMap(new Map(visibleJobIds.map(id => [id, null])));
+        }
+      });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleJobIds.join(",")]);
