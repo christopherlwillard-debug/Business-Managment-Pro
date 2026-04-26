@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useUpdateProspect,
   useGetProspect,
@@ -257,6 +257,29 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const { isConnected: googleConnected, getToken, signIn: googleSignIn } = useGoogleAuth();
 
   const detail: (Prospect & { statusHistory?: ProspectDetail["statusHistory"]; serviceVisits?: ProspectDetail["serviceVisits"] }) | null = detailQuery.data ?? prospect;
+
+  type EstimateDetail = {
+    id: number;
+    title: string;
+    status: string;
+    estimateNumber?: string | null;
+    total: number;
+    subtotal: number;
+    createdAt: string;
+    lineItems: Array<{ id: number; description: string; quantity: number; unitCost: number; total: number; category?: string | null }>;
+  };
+
+  const linkedEstimateId = detail?.linkedEstimateId ?? prospect?.linkedEstimateId;
+  const linkedEstimateQuery = useQuery<EstimateDetail>({
+    queryKey: ["estimate-inline", linkedEstimateId],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/estimates/${linkedEstimateId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch estimate");
+      return res.json() as Promise<EstimateDetail>;
+    },
+    enabled: !!linkedEstimateId,
+    staleTime: 60_000,
+  });
 
   const [showDepositInput, setShowDepositInput] = useState(false);
   const [depositAmtStr, setDepositAmtStr] = useState("50");
@@ -530,22 +553,15 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       if (!res.ok) throw new Error("Failed to create estimate");
       const estimate = await res.json() as { id: number };
       await updateMutation.mutateAsync({ id: prospect.id, linkedEstimateId: estimate.id });
-      detailQuery.refetch();
+      await detailQuery.refetch();
+      linkedEstimateQuery.refetch();
       onUpdated();
-      toast({ title: "Quote created", description: "Opening estimate…" });
-      setLocation(`/estimates?open=${estimate.id}`);
-      onClose();
+      toast({ title: "Quote created", description: "Showing quote below — open in Estimates to edit or send." });
     } catch {
       toast({ title: "Failed to create quote", variant: "destructive" });
     } finally {
       setIsCreatingQuote(false);
     }
-  };
-
-  const handleViewQuote = () => {
-    if (!p.linkedEstimateId) return;
-    setLocation(`/estimates?open=${p.linkedEstimateId}`);
-    onClose();
   };
 
   const handleCreateInvoice = async () => {
@@ -931,14 +947,84 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
               <FileText className="w-3.5 h-3.5" />
               Quote & Invoice
             </h3>
+
+            {/* Inline linked estimate card */}
             {p.linkedEstimateId ? (
-              <button
-                onClick={handleViewQuote}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                View Quote{p.linkedEstimateNumber ? ` — ${p.linkedEstimateNumber}` : ""}
-              </button>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 overflow-hidden">
+                {/* Card header */}
+                <div className="flex items-center justify-between px-3 py-2 bg-amber-100 border-b border-amber-200">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3.5 h-3.5 text-amber-700" />
+                    <span className="text-xs font-semibold text-amber-900">
+                      {p.linkedEstimateNumber ? `Quote ${p.linkedEstimateNumber}` : "Quote"}
+                    </span>
+                    {linkedEstimateQuery.data && (
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${
+                        linkedEstimateQuery.data.status === "approved" || linkedEstimateQuery.data.status === "won"
+                          ? "bg-green-100 text-green-700 border-green-200"
+                          : linkedEstimateQuery.data.status === "sent"
+                          ? "bg-blue-100 text-blue-700 border-blue-200"
+                          : linkedEstimateQuery.data.status === "declined"
+                          ? "bg-red-100 text-red-700 border-red-200"
+                          : "bg-slate-100 text-slate-600 border-slate-200"
+                      }`}>
+                        {linkedEstimateQuery.data.status.charAt(0).toUpperCase() + linkedEstimateQuery.data.status.slice(1)}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { setLocation(`/estimates?open=${p.linkedEstimateId}`); onClose(); }}
+                    className="text-xs text-amber-700 hover:text-amber-900 font-medium flex items-center gap-1"
+                  >
+                    Open in Estimates <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Card body */}
+                {linkedEstimateQuery.isLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-4 text-xs text-amber-700">
+                    <span className="w-3 h-3 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
+                    Loading quote…
+                  </div>
+                ) : linkedEstimateQuery.isError ? (
+                  <div className="px-3 py-3 text-xs text-amber-700">
+                    Couldn't load quote details.{" "}
+                    <button onClick={() => linkedEstimateQuery.refetch()} className="underline">Retry</button>
+                  </div>
+                ) : linkedEstimateQuery.data ? (
+                  <div className="px-3 py-2.5 space-y-2">
+                    {/* Line items */}
+                    {linkedEstimateQuery.data.lineItems.length > 0 ? (
+                      <table className="w-full text-xs">
+                        <tbody>
+                          {linkedEstimateQuery.data.lineItems.map((li) => (
+                            <tr key={li.id} className="border-b border-amber-100 last:border-0">
+                              <td className="py-1 pr-2 text-amber-900 font-medium">{li.description}</td>
+                              <td className="py-1 pr-2 text-amber-700 text-right whitespace-nowrap">
+                                {li.quantity} × {formatCurrency(li.unitCost)}
+                              </td>
+                              <td className="py-1 text-amber-900 font-semibold text-right whitespace-nowrap">
+                                {formatCurrency(li.total)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="text-xs text-amber-700 italic">No line items yet</p>
+                    )}
+                    {/* Total row */}
+                    <div className="flex items-center justify-between pt-1 border-t border-amber-200">
+                      <span className="text-xs font-semibold text-amber-900">Total</span>
+                      <span className="text-sm font-bold text-amber-900">{formatCurrency(linkedEstimateQuery.data.total)}</span>
+                    </div>
+                    {/* Created date */}
+                    <p className="text-xs text-amber-600">
+                      Created {formatDate(linkedEstimateQuery.data.createdAt)}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             ) : (p.status === "cold" || p.status === "contacted" || p.status === "quoted" || p.status === "won") && (
               <button
                 onClick={handleCreateQuote}
