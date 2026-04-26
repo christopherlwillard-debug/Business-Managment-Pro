@@ -52,6 +52,7 @@ import {
   Briefcase,
   Send,
   Eye,
+  Map,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -1029,14 +1030,31 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 ) : null}
               </div>
             ) : (p.status === "cold" || p.status === "contacted" || p.status === "quoted" || p.status === "won") && (
-              <button
-                onClick={handleCreateQuote}
-                disabled={isCreatingQuote}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-60"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                {isCreatingQuote ? "Creating Quote…" : "Create Quote"}
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    params.set("prospectId", String(p.id));
+                    if (p.address) params.set("address", p.address);
+                    if (p.city) params.set("city", p.city);
+                    if (p.contactName) params.set("name", p.contactName);
+                    setLocation(`/aerial-quote?${params.toString()}`);
+                    onClose();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
+                >
+                  <Map className="w-3.5 h-3.5" />
+                  Measure &amp; Quote
+                </button>
+                <button
+                  onClick={handleCreateQuote}
+                  disabled={isCreatingQuote}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-60"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  {isCreatingQuote ? "Creating Quote…" : "Quick Quote"}
+                </button>
+              </div>
             )}
             {(p.status === "won" || p.status === "serviced") && !createdJobId && (
               p.linkedInvoiceId ? (

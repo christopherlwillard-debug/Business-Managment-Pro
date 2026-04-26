@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useLocation } from "wouter";
 import { MapContainer, TileLayer, Polygon, Polyline, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -7,7 +8,7 @@ import {
   PenLine, Check, Trash2, X, Search, Layers,
   DollarSign, Ruler, Plus, Minus, ChevronDown, ChevronUp,
   Printer, FileText, AlertCircle, RotateCcw,
-  HardHat, Loader2,
+  HardHat, Loader2, ArrowLeft, UserCheck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
@@ -149,6 +150,7 @@ async function geocodeAddress(
 
 export default function AerialQuote() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("Owensboro");
@@ -180,6 +182,42 @@ export default function AerialQuote() {
 
   const [saving, setSaving] = useState(false);
   const [savedEstimateId, setSavedEstimateId] = useState<number | null>(null);
+  const [savedLinked, setSavedLinked] = useState(false);
+
+  const [linkedProspectId, setLinkedProspectId] = useState<number | null>(null);
+  const [linkedProspectName, setLinkedProspectName] = useState("");
+  const [linkedProspectAddress, setLinkedProspectAddress] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get("prospectId");
+    const addr = params.get("address") ?? "";
+    const c    = params.get("city") ?? "";
+    const name = params.get("name") ?? "";
+
+    if (!pid) return;
+
+    setLinkedProspectId(Number(pid));
+    setLinkedProspectName(name);
+    setLinkedProspectAddress([addr, c].filter(Boolean).join(", "));
+
+    if (addr) setStreet(addr);
+    if (c)    setCity(c);
+    if (name) setClientName(name);
+
+    const fullAddr = [addr, c].filter(Boolean).join(", ");
+    if (fullAddr) setJobAddress(fullAddr);
+
+    if (addr || c) {
+      geocodeAddress(addr, c || "Owensboro", "KY", "").then(results => {
+        if (results.length > 0) {
+          const r = results[0];
+          setFlyTo([r.lat, r.lon]);
+          setFlyZoom(zoomForType(r.type));
+        }
+      });
+    }
+  }, []);
 
   const measurements = useMemo(() => {
     let totalSqFt = 0;
@@ -377,7 +415,26 @@ export default function AerialQuote() {
       if (!res.ok) throw new Error("Failed to save");
       const saved = await res.json();
       setSavedEstimateId(saved.id);
-      toast({ title: "Estimate saved!", description: `Draft estimate created (ID #${saved.id}). View it in Estimates.` });
+
+      if (linkedProspectId) {
+        try {
+          await fetch(`${BASE}/api/prospects/${linkedProspectId}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              linkedEstimateId: saved.id,
+              roughQuote: Math.round(quote.total),
+            }),
+          });
+          setSavedLinked(true);
+          toast({ title: "Quote saved & linked!", description: `Estimate linked to ${linkedProspectName || "prospect"}.` });
+        } catch {
+          toast({ title: "Estimate saved", description: "Couldn't auto-link to prospect — open the prospect to link manually.", variant: "destructive" });
+        }
+      } else {
+        toast({ title: "Estimate saved!", description: `Draft estimate created (ID #${saved.id}). View it in Estimates.` });
+      }
     } catch {
       toast({ title: "Failed to save estimate", variant: "destructive" });
     } finally {
@@ -405,6 +462,27 @@ export default function AerialQuote() {
               <p className="text-[11px] text-muted-foreground">Willard's Asphalt Sealing</p>
             </div>
           </div>
+
+          {linkedProspectId && (
+            <div className="flex items-start gap-2 px-2.5 py-2 rounded-xl bg-blue-50 border border-blue-200 mb-1">
+              <UserCheck className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-blue-800 truncate">
+                  Measuring for: {linkedProspectName || "Prospect"}
+                </p>
+                {linkedProspectAddress && (
+                  <p className="text-[11px] text-blue-600 truncate">{linkedProspectAddress}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setLocation(`/prospects?openProspect=${linkedProspectId}`)}
+                className="text-blue-500 hover:text-blue-700 flex-shrink-0 mt-0.5"
+                title="Back to Prospect"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           <div ref={searchBoxRef} className="relative">
             <form onSubmit={handleSearch} className="space-y-2">
@@ -831,11 +909,28 @@ export default function AerialQuote() {
                 </button>
 
                 {savedEstimateId && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/60 text-xs">
-                    <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <span className="text-emerald-800 dark:text-emerald-300 font-medium">
-                      Saved as Draft Estimate #{savedEstimateId} — open Jobs &rarr; Estimates tab to view.
-                    </span>
+                  <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/60 text-xs">
+                    <Check className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      {savedLinked ? (
+                        <>
+                          <p className="text-emerald-800 dark:text-emerald-300 font-semibold">
+                            Estimate linked to {linkedProspectName || "prospect"}!
+                          </p>
+                          <button
+                            onClick={() => setLocation(`/prospects?openProspect=${linkedProspectId}`)}
+                            className="flex items-center gap-1 text-emerald-700 hover:text-emerald-900 font-medium underline underline-offset-2"
+                          >
+                            <ArrowLeft className="w-3 h-3" />
+                            Back to Prospect
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-emerald-800 dark:text-emerald-300 font-medium">
+                          Saved as Draft Estimate #{savedEstimateId} — open Jobs &rarr; Estimates tab to view.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
 
