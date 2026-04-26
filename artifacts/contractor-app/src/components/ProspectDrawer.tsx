@@ -956,7 +956,10 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                   <div className="flex items-center gap-2">
                     <FileText className="w-3.5 h-3.5 text-amber-700" />
                     <span className="text-xs font-semibold text-amber-900">
-                      {p.linkedEstimateNumber ? `Quote ${p.linkedEstimateNumber}` : "Quote"}
+                      {(() => {
+                        const num = linkedEstimateQuery.data?.estimateNumber ?? p.linkedEstimateNumber;
+                        return num ? `Quote ${num}` : "Quote";
+                      })()}
                     </span>
                     {linkedEstimateQuery.data && (
                       <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${
