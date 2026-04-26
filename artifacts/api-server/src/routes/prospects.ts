@@ -202,14 +202,44 @@ const AI_IMPORT_JSON_SCHEMA = {
   },
 } as const;
 
+const MAX_IMAGE_BASE64_BYTES = 5 * 1024 * 1024; // ~3.75 MB original image
+
 router.post("/ai-import", async (req, res) => {
   try {
-    const { text } = req.body as { text?: string };
-    if (!text || typeof text !== "string" || text.trim().length < 5) {
-      return res.status(400).json({ error: "text is required" });
+    const { text, imageBase64, imageMimeType } = req.body as {
+      text?: string;
+      imageBase64?: string;
+      imageMimeType?: string;
+    };
+
+    const hasText = typeof text === "string" && text.trim().length >= 5;
+    const hasImage = typeof imageBase64 === "string" && imageBase64.length > 0;
+
+    if (!hasText && !hasImage) {
+      return res.status(400).json({ error: "Provide text, an image, or both." });
     }
-    if (text.length > 20000) {
+    if (hasText && text!.length > 20000) {
       return res.status(400).json({ error: "Text too long (max 20,000 characters)" });
+    }
+    if (hasImage && imageBase64!.length > MAX_IMAGE_BASE64_BYTES) {
+      return res.status(400).json({ error: "Image too large (max ~3.75 MB)" });
+    }
+
+    const safeType = (imageMimeType ?? "image/jpeg").replace(/[^a-z/]/g, "");
+    const imageDataUrl = hasImage ? `data:${safeType};base64,${imageBase64}` : null;
+
+    type UserContentPart =
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string; detail: "high" } };
+
+    const userContent: UserContentPart[] = [];
+    if (imageDataUrl) {
+      userContent.push({ type: "image_url", image_url: { url: imageDataUrl, detail: "high" } });
+    }
+    if (hasText) {
+      userContent.push({ type: "text", text: text!.trim() });
+    } else {
+      userContent.push({ type: "text", text: "Extract all business prospects visible in the image." });
     }
 
     const response = await openai.chat.completions.create({
@@ -218,7 +248,7 @@ router.post("/ai-import", async (req, res) => {
       response_format: { type: "json_schema", json_schema: AI_IMPORT_JSON_SCHEMA },
       messages: [
         { role: "system", content: AI_IMPORT_SYSTEM_PROMPT },
-        { role: "user", content: text.trim() },
+        { role: "user", content: userContent },
       ],
     });
 

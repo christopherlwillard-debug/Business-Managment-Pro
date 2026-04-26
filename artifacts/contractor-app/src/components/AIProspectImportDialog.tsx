@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, Sparkles, AlertCircle, CheckSquare, Square, ChevronRight } from "lucide-react";
+import { Loader2, Sparkles, AlertCircle, CheckSquare, Square, ChevronRight, ImagePlus, X } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const PROPERTY_TYPES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
 type PropertyType = typeof PROPERTY_TYPES[number];
+
+const MAX_IMAGE_BYTES = 3.75 * 1024 * 1024;
 
 type ParsedProspect = {
   address: string;
@@ -31,18 +33,41 @@ type Props = {
   onImported: () => void;
 };
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/");
+}
+
 export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
   const [step, setStep] = useState<"paste" | "review">("paste");
   const [text, setText] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [prospects, setProspects] = useState<ParsedProspect[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function reset() {
     setStep("paste");
     setText("");
+    setImageFile(null);
+    setImagePreviewUrl(null);
+    setIsDragging(false);
     setIsExtracting(false);
     setExtractError(null);
     setProspects([]);
@@ -55,17 +80,94 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
     onClose();
   }
 
+  function applyImageFile(file: File) {
+    if (!isImageFile(file)) {
+      setExtractError("Please select an image file (JPG, PNG, GIF, WebP, etc.).");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setExtractError("Image is too large — please use an image under 3.75 MB.");
+      return;
+    }
+    setExtractError(null);
+    setImageFile(file);
+    const url = URL.createObjectURL(file);
+    setImagePreviewUrl(url);
+  }
+
+  function removeImage() {
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    setImageFile(null);
+    setImagePreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const handlePaste = useCallback((e: ClipboardEvent) => {
+    if (step !== "paste") return;
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageItem = items.find((i) => i.type.startsWith("image/"));
+    if (imageItem) {
+      const file = imageItem.getAsFile();
+      if (file) {
+        e.preventDefault();
+        applyImageFile(file);
+      }
+    }
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (open) {
+      document.addEventListener("paste", handlePaste);
+      return () => document.removeEventListener("paste", handlePaste);
+    }
+  }, [open, handlePaste]);
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) applyImageFile(file);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) applyImageFile(file);
+  }
+
+  const canExtract = text.trim().length >= 5 || imageFile !== null;
+
   async function handleExtract() {
-    if (!text.trim()) return;
+    if (!canExtract) return;
     setIsExtracting(true);
     setExtractError(null);
 
     try {
+      let imageBase64: string | undefined;
+      let imageMimeType: string | undefined;
+
+      if (imageFile) {
+        imageBase64 = await fileToBase64(imageFile);
+        imageMimeType = imageFile.type;
+      }
+
       const res = await fetch(`${BASE}/api/prospects/ai-import`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text: text.trim() || undefined,
+          imageBase64,
+          imageMimeType,
+        }),
       });
 
       const data = await res.json() as { prospects?: object[]; error?: string };
@@ -190,24 +292,67 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
         {step === "paste" ? (
           <div className="flex flex-col gap-4 mt-2">
             <p className="text-sm text-muted-foreground">
-              Paste any messy list of businesses, addresses, or contacts below — Google Maps results,
-              a spreadsheet copy, a notes list, anything. The AI will extract structured prospects for you to review.
+              Paste a list of businesses below, attach a photo or screenshot, or both. The AI will extract structured prospects for you to review.
             </p>
+
             <textarea
               value={text}
               onChange={(e) => { setText(e.target.value); setExtractError(null); }}
-              placeholder="Paste a list of businesses, addresses, or contacts here...
-
-Example:
-First Baptist Church
-1234 Main St, Owensboro KY 42301
-Contact: Pastor Mike — (270) 555-1234
-
-Westfield Mall
-456 Commerce Blvd
-Owensboro, KY 42303"
-              rows={12}
+              placeholder="Paste a list of businesses, addresses, or contacts here... (optional if uploading an image)"
+              rows={6}
               className="w-full px-3 py-2.5 border border-input rounded-lg text-sm bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono leading-relaxed"
+            />
+
+            {/* Image upload area */}
+            {imagePreviewUrl ? (
+              <div className="relative flex items-start gap-3 px-3 py-3 border border-border rounded-lg bg-muted/30">
+                <img
+                  src={imagePreviewUrl}
+                  alt="Selected image"
+                  className="h-24 w-auto max-w-[180px] rounded object-cover border border-border flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{imageFile?.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {imageFile ? `${(imageFile.size / 1024).toFixed(0)} KB` : ""}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Image will be analyzed by AI alongside any pasted text.</p>
+                </div>
+                <button
+                  onClick={removeImage}
+                  className="flex-shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  title="Remove image"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex flex-col items-center justify-center gap-2 px-4 py-5 border-2 border-dashed rounded-lg cursor-pointer transition-colors select-none ${
+                  isDragging
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50 hover:bg-muted/30"
+                }`}
+              >
+                <ImagePlus className="w-6 h-6 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground text-center">
+                  <span className="font-medium text-foreground">Attach a photo or screenshot</span>
+                  {" "}— drag & drop, click to browse, or paste (Ctrl+V)
+                </p>
+                <p className="text-xs text-muted-foreground">JPG, PNG, WebP · Max 3.75 MB · Optional</p>
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
             />
 
             {extractError && (
@@ -226,7 +371,7 @@ Owensboro, KY 42303"
               </button>
               <button
                 onClick={handleExtract}
-                disabled={isExtracting || !text.trim()}
+                disabled={isExtracting || !canExtract}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
                 {isExtracting ? (
