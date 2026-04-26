@@ -25,15 +25,23 @@ function buildContainer(inv: PrintableInvoice, settings: PrintableSettings): HTM
   return div;
 }
 
+function suppressScrollbars(): () => void {
+  const prev = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  return () => { document.body.style.overflow = prev; };
+}
+
 export async function downloadInvoiceHtmlPdf(
   inv: PrintableInvoice,
   settings: PrintableSettings,
   filename: string,
 ): Promise<void> {
   const div = buildContainer(inv, settings);
+  const restoreScroll = suppressScrollbars();
   try {
     await html2pdf().set({ ...BASE_PDF_OPTS, filename }).from(div).save();
   } finally {
+    restoreScroll();
     document.body.removeChild(div);
   }
 }
@@ -43,6 +51,7 @@ export async function invoiceHtmlPdfToBase64(
   settings: PrintableSettings,
 ): Promise<string> {
   const div = buildContainer(inv, settings);
+  const restoreScroll = suppressScrollbars();
   try {
     const dataUri: string = await html2pdf()
       .set(BASE_PDF_OPTS)
@@ -50,6 +59,7 @@ export async function invoiceHtmlPdfToBase64(
       .outputPdf("datauristring");
     return dataUri.split(",")[1] ?? "";
   } finally {
+    restoreScroll();
     document.body.removeChild(div);
   }
 }
