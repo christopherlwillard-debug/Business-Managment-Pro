@@ -182,6 +182,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
       setTimeout(() => {
         setShowGmailCompose(false);
         setGmailSent(false);
+        setGmailPreview(false);
       }, 2000);
     } catch (err: any) {
       toast({ title: "Gmail send failed", description: err?.message ?? "An error occurred.", variant: "destructive" });
@@ -192,8 +193,9 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
 
   function handleGmailButtonClick() {
     if (!googleConnected) {
-      signIn(() => setShowGmailCompose(true));
+      signIn(() => { setShowGmailCompose(true); setGmailPreview(false); });
     } else {
+      if (showGmailCompose) setGmailPreview(false);
       setShowGmailCompose(v => !v);
     }
   }
