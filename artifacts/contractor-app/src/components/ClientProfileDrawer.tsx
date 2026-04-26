@@ -42,7 +42,6 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
   const [editingServiceDate, setEditingServiceDate] = useState(false);
   const [serviceDateVal, setServiceDateVal] = useState("");
   const [serviceIntervalVal, setServiceIntervalVal] = useState("");
-
   const [oiFormOpen, setOiFormOpen] = useState(false);
   const [oiAmount, setOiAmount] = useState("");
   const [oiDate, setOiDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -51,6 +50,8 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
   const [oiSaving, setOiSaving] = useState(false);
   const [oiError, setOiError] = useState<string | null>(null);
 
+  const [filterStart, setFilterStart] = useState("");
+  const [filterEnd, setFilterEnd] = useState("");
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
   const updateServiceDate = useUpdateClientServiceDate();
@@ -454,23 +455,81 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                 </div>
               )}
 
-              {tab === "payments" && (
+              {tab === "payments" && (() => {
+                const startMs = filterStart ? new Date(filterStart).getTime() : null;
+                const endMs = filterEnd ? new Date(filterEnd + "T23:59:59").getTime() : null;
+
+                function inRange(dateStr: string | null | undefined): boolean {
+                  if (!dateStr) return true;
+                  const t = new Date(dateStr).getTime();
+                  if (startMs !== null && t < startMs) return false;
+                  if (endMs !== null && t > endMs) return false;
+                  return true;
+                }
+
+                const filteredSquare = (data?.squarePayments ?? []).filter(p => inRange(p.paidAt));
+                const filteredOther = (data?.otherIncome ?? []).filter(oi => inRange(oi.date));
+                const isFiltered = !!(filterStart || filterEnd);
+
+                const filteredSquareCents = filteredSquare.reduce((s, p) => s + p.amountCents, 0);
+                const filteredOtherCents = filteredOther.reduce((s, oi) => s + Math.round(parseFloat(oi.amount) * 100), 0);
+                const filteredTotalCents = filteredSquareCents + filteredOtherCents;
+
+                return (
                 <div className="p-5 space-y-5">
+                  {/* Date range filter */}
+                  <div className="bg-muted/40 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" /> Filter by date
+                      </p>
+                      {isFiltered && (
+                        <button
+                          onClick={() => { setFilterStart(""); setFilterEnd(""); }}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={filterStart}
+                        onChange={e => setFilterStart(e.target.value)}
+                        className="flex-1 px-2 py-1.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+                        placeholder="From"
+                      />
+                      <span className="text-xs text-muted-foreground">to</span>
+                      <input
+                        type="date"
+                        value={filterEnd}
+                        onChange={e => setFilterEnd(e.target.value)}
+                        className="flex-1 px-2 py-1.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
+                        placeholder="To"
+                      />
+                    </div>
+                  </div>
+
                   {/* Total collected summary */}
                   {summary && (
                     <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Total collected</p>
-                        <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCents(summary.totalRevenueCents)}</p>
+                        <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                          {isFiltered ? "Total in range" : "Total collected"}
+                        </p>
+                        <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
+                          {isFiltered ? formatCents(filteredTotalCents) : formatCents(summary.totalRevenueCents)}
+                        </p>
                       </div>
                       <div className="flex items-center gap-4 mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-800">
                         <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
                           <CreditCard className="w-3 h-3" />
-                          <span>Square: {formatCents(summary.squareRevenueCents)}</span>
+                          <span>Square: {isFiltered ? formatCents(filteredSquareCents) : formatCents(summary.squareRevenueCents)}</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
                           <DollarSign className="w-3 h-3" />
-                          <span>Other: {formatCents(summary.otherRevenueCents)}</span>
+                          <span>Other: {isFiltered ? formatCents(filteredOtherCents) : formatCents(summary.otherRevenueCents)}</span>
                         </div>
                       </div>
                     </div>
@@ -481,10 +540,12 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                       <CreditCard className="w-3.5 h-3.5" /> Square Payments
                     </h3>
-                    {(data?.squarePayments?.length ?? 0) === 0 ? (
+                    {filteredSquare.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-6 gap-2 text-center bg-muted/20 rounded-xl">
-                        <p className="text-sm text-muted-foreground">No Square payments linked</p>
-                        {client.email && (
+                        <p className="text-sm text-muted-foreground">
+                          {isFiltered ? "No Square payments in this range" : "No Square payments linked"}
+                        </p>
+                        {!isFiltered && client.email && (
                           <p className="text-xs text-muted-foreground/70 max-w-xs">
                             Payments with email <span className="font-mono text-xs">{client.email}</span> will appear here automatically when matched.
                           </p>
@@ -492,7 +553,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {data!.squarePayments.map(p => (
+                        {filteredSquare.map(p => (
                           <div key={p.id} className="bg-muted/40 rounded-xl p-4">
                             <div className="flex items-start justify-between gap-2">
                               <div>
@@ -525,7 +586,6 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                         </button>
                       )}
                     </div>
-
                     {oiFormOpen && (
                       <form onSubmit={handleSaveOI} className="bg-muted/20 border border-border rounded-xl p-4 space-y-3">
                         <h4 className="text-xs font-semibold text-foreground">New Other Income</h4>
@@ -604,13 +664,15 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                       </form>
                     )}
 
-                    {(data?.otherIncome?.length ?? 0) === 0 && !oiFormOpen ? (
+                    {filteredOther.length === 0 && !oiFormOpen ? (
                       <div className="flex flex-col items-center justify-center py-6 gap-2 text-center bg-muted/20 rounded-xl">
-                        <p className="text-sm text-muted-foreground">No other income linked</p>
+                        <p className="text-sm text-muted-foreground">
+                          {isFiltered ? "No other income in this range" : "No other income linked"}
+                        </p>
                       </div>
-                    ) : (data?.otherIncome?.length ?? 0) > 0 ? (
+                    ) : filteredOther.length > 0 ? (
                       <div className="space-y-2">
-                        {data!.otherIncome.map((oi) => (
+                        {filteredOther.map((oi) => (
                           <Link
                             key={oi.id}
                             href={`${BASE}/accounting?module=other_income&editId=${oi.id}&year=${new Date(oi.date).getFullYear()}`}
@@ -638,7 +700,8 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                     ) : null}
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {tab === "route" && (
                 <div className="p-5 space-y-3">
