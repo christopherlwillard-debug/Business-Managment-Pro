@@ -54,6 +54,19 @@ function getAppBaseUrl(): string {
   return `http://localhost:${port}`;
 }
 
+const PRIVATE_IP_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|fc|fd)/i;
+
+function isSafeExternalUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    if (u.protocol !== "https:") return false;
+    if (PRIVATE_IP_RE.test(u.hostname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function loadLogoDataUri(logoUrl: string): Promise<string | null> {
   try {
     if (logoUrl.startsWith("/api/uploads/")) {
@@ -86,6 +99,7 @@ async function loadLogoDataUri(logoUrl: string): Promise<string | null> {
     }
 
     if (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) {
+      if (!isSafeExternalUrl(logoUrl)) return null;
       const resp = await fetch(logoUrl, { signal: AbortSignal.timeout(5000) });
       if (!resp.ok) return null;
       const buf = Buffer.from(await resp.arrayBuffer());
