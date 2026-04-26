@@ -66,7 +66,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
     setStep("paste");
     setText("");
     setImageFile(null);
-    setImagePreviewUrl(null);
+    setImagePreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setIsDragging(false);
     setIsExtracting(false);
     setExtractError(null);
@@ -91,16 +91,23 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
     }
     setExtractError(null);
     setImageFile(file);
-    const url = URL.createObjectURL(file);
-    setImagePreviewUrl(url);
+    setImagePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
   }
 
   function removeImage() {
-    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    setImagePreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setImageFile(null);
-    setImagePreviewUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
+
+  useEffect(() => {
+    return () => {
+      setImagePreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    };
+  }, []);
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
     if (step !== "paste") return;
