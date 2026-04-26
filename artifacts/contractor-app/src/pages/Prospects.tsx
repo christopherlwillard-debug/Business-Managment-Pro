@@ -179,7 +179,7 @@ function formatShortDate(dateStr: string): string {
 }
 
 export default function Prospects() {
-  const { isOwner } = useUserPermissions();
+  const { canEdit } = useUserPermissions();
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -421,7 +421,7 @@ export default function Prospects() {
           <p className="text-muted-foreground mt-1">Willard's Asphalt Sealing — customer pipeline &amp; job history</p>
         </div>
         <div className="flex items-center gap-2">
-          {isOwner && (
+          {canEdit("clients") && (
             <button
               onClick={() => setIsImportDialogOpen(true)}
               className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
