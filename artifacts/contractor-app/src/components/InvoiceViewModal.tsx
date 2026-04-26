@@ -2,8 +2,7 @@ import { useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
 import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
-import { resolveLogoUrl, fetchLogoDataUri } from "@/lib/generateInvoicePdf";
-import { downloadInvoiceHtmlPdf, invoiceHtmlPdfToBase64 } from "@/lib/htmlToPdf";
+import { resolveLogoUrl, fetchLogoDataUri, generateInvoicePdf, invoicePdfToBase64 } from "@/lib/generateInvoicePdf";
 import {
   FileText, Trash2, X,
   Building2, MapPin, Printer, Download, Mail, Phone,
@@ -102,15 +101,55 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     return { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyState, companyZip, logoSize, logoPosition: logoPos };
   }
 
-  async function handleDownloadPdf() {
+  function buildInvoicePdfData() {
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate,
+      terms: invoice.terms,
+      clientName: invoice.clientName,
+      clientEmail: invoice.clientEmail,
+      clientPhone: invoice.clientPhone,
+      clientAddress: invoice.clientAddress,
+      clientCity: invoice.clientCity,
+      clientState: invoice.clientState,
+      clientZip: invoice.clientZip,
+      jobTitle: invoice.jobTitle,
+      locationName: invoice.locationName,
+      city: invoice.city,
+      state: invoice.state,
+      lineItems,
+      subtotal,
+      taxRate,
+      taxAmount,
+      total,
+      notes: invoice.notes,
+      businessLine: invoice.businessLine ?? null,
+    };
+  }
+
+  async function buildJsPdfSettings() {
     const pdfSettings = buildPdfSettings();
     const effectiveRelUrl = resolveLogoUrl(pdfSettings, invoice.businessLine);
     const logoDataUri = await fetchLogoDataUri(effectiveRelUrl ? `${window.location.origin}${base}${effectiveRelUrl}` : null);
-    await downloadInvoiceHtmlPdf(
-      buildPrintableInvoice(),
-      { ...buildPrintableSettings(), logoAbsoluteUrl: logoDataUri ?? null },
-      `Invoice-${invoice.invoiceNumber}.pdf`,
-    );
+    return {
+      companyName,
+      companyAddress,
+      companyCity,
+      companyState,
+      companyZip,
+      companyPhone,
+      companyEmail,
+      logoUrl: pdfSettings.logoUrl,
+      dbaLogoUrl: pdfSettings.dbaLogoUrl,
+      logoDataUri: logoDataUri ?? undefined,
+    };
+  }
+
+  async function handleDownloadPdf() {
+    const settings = await buildJsPdfSettings();
+    const doc = generateInvoicePdf(buildInvoicePdfData(), settings);
+    doc.save(`Invoice-${invoice.invoiceNumber}.pdf`);
   }
 
   function handlePrint() {
@@ -163,9 +202,14 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         customMessage: gmailMessage.trim() || undefined,
         paymentLink: invoice.squarePaymentLinkUrl ?? invoice.stripePaymentLinkUrl ?? null,
       });
-      const pdfBase64 = await invoiceHtmlPdfToBase64(
-        buildPrintableInvoice(),
-        { ...buildPrintableSettings(), logoAbsoluteUrl: logoDataUri ?? null },
+      const pdfBase64 = invoicePdfToBase64(
+        buildInvoicePdfData(),
+        {
+          companyName, companyAddress, companyCity, companyState, companyZip, companyPhone, companyEmail,
+          logoUrl: pdfSettings.logoUrl,
+          dbaLogoUrl: pdfSettings.dbaLogoUrl,
+          logoDataUri: logoDataUri ?? undefined,
+        },
       );
       const pdfFilename = `Invoice-${invoice.invoiceNumber}.pdf`;
       await sendViaGmail({
