@@ -145,7 +145,6 @@ export interface BuildInvoiceEmailHtmlOpts {
   companyZip?: string;
   companyPhone?: string;
   companyEmail?: string;
-  logoDataUri?: string | null;
   invoiceNumber: string;
   issueDate?: string | null;
   dueDate?: string | null;
@@ -179,10 +178,6 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
   const displayCompanyName = opts.businessLine === "asphalt_sealing"
     ? `${opts.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
     : (opts.companyName || "");
-
-  const logoHtml = opts.logoDataUri
-    ? `<img src="${opts.logoDataUri}" alt="${esc(displayCompanyName)}" style="height:80px;width:auto;max-width:200px;display:block;border:0;margin-bottom:6px;" />`
-    : ``;
 
   const contactLines: string[] = [];
   if (displayCompanyName) {
@@ -289,8 +284,7 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="vertical-align:top;padding-right:20px;">
-                ${logoHtml}
-                ${contactLines.length > 0 ? `<table cellpadding="0" cellspacing="0" style="margin-top:${opts.logoDataUri ? "8" : "0"}px;">${contactLines.join("")}</table>` : ""}
+                ${contactLines.length > 0 ? `<table cellpadding="0" cellspacing="0">${contactLines.join("")}</table>` : ""}
               </td>
               <td style="vertical-align:top;text-align:right;white-space:nowrap;">
                 <p style="margin:0;font-size:34px;font-weight:900;letter-spacing:0.08em;color:#1f2937;line-height:1;text-transform:uppercase;">INVOICE</p>

@@ -13,7 +13,7 @@ function buildContainer(inv: PrintableInvoice, settings: PrintableSettings): HTM
   div.style.cssText = [
     "position:absolute",
     "left:-9999px",
-    "top:-9999px",
+    "top:0",
     "width:816px",
     "background:#fff",
     "font-family:Arial,Helvetica,sans-serif",
