@@ -756,6 +756,15 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     const editId = params.get("editId");
     return editId ? parseInt(editId, 10) : null;
   });
+  const [pendingNewEntry, setPendingNewEntry] = useState<{ clientId: number | null } | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("newEntry") === "true" && params.get("module") === "other_income") {
+      const clientIdRaw = params.get("clientId");
+      const clientIdParsed = clientIdRaw ? parseInt(clientIdRaw, 10) : NaN;
+      return { clientId: Number.isFinite(clientIdParsed) ? clientIdParsed : null };
+    }
+    return null;
+  });
   const { data: clientsList = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["clients-list-oi"],
     queryFn: () => fetch(`${BASE}/api/clients`).then(r => r.json()),
@@ -779,6 +788,23 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     setPendingEditId(null);
     clearParams();
   }, [pendingEditId, oiLoading, otherIncomeRows]);
+
+  useEffect(() => {
+    if (pendingNewEntry == null) return;
+    const clearParams = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("module");
+      url.searchParams.delete("newEntry");
+      url.searchParams.delete("clientId");
+      window.history.replaceState({}, "", url.toString());
+    };
+    if (canEdit("invoices")) {
+      setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: pendingNewEntry.clientId });
+      setOpenModule("other_income");
+    }
+    setPendingNewEntry(null);
+    clearParams();
+  }, [pendingNewEntry, canEdit]);
 
   function openAddOI() {
     setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: null });

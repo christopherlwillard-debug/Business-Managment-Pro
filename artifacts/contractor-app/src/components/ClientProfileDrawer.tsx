@@ -8,6 +8,7 @@ import {
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -42,6 +43,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
   const [serviceDateVal, setServiceDateVal] = useState("");
   const [serviceIntervalVal, setServiceIntervalVal] = useState("");
   const { toast } = useToast();
+  const { canEdit } = useUserPermissions();
   const updateServiceDate = useUpdateClientServiceDate();
 
   const { data, isLoading, refetch } = useClientProfile(clientId);
@@ -421,9 +423,20 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
 
                   {/* Other Income */}
                   <div className="space-y-2">
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <DollarSign className="w-3.5 h-3.5" /> Other Income
-                    </h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5" /> Other Income
+                      </h3>
+                      {canEdit("invoices") && (
+                        <Link
+                          href={`${BASE}/accounting?module=other_income&newEntry=true&clientId=${client.id}`}
+                          onClick={onClose}
+                          className="text-xs text-primary hover:underline font-medium"
+                        >
+                          Add Other Income
+                        </Link>
+                      )}
+                    </div>
                     {(data?.otherIncome?.length ?? 0) === 0 ? (
                       <div className="flex flex-col items-center justify-center py-6 gap-2 text-center bg-muted/20 rounded-xl">
                         <p className="text-sm text-muted-foreground">No other income linked</p>
