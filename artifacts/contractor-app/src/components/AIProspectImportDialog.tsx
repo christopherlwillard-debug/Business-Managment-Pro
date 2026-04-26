@@ -19,6 +19,7 @@ type ParsedProspect = {
   zip: string;
   contactName: string;
   contactPhone: string;
+  contactEmail: string;
   propertyType: PropertyType;
   notes: string;
   selected: boolean;
@@ -89,6 +90,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
           zip: String(p.zip ?? ""),
           contactName: String(p.contactName ?? ""),
           contactPhone: String(p.contactPhone ?? ""),
+          contactEmail: String(p.contactEmail ?? ""),
           propertyType: (PROPERTY_TYPES.includes(p.propertyType as PropertyType)
             ? p.propertyType
             : "Other") as PropertyType,
@@ -148,6 +150,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
             zip: p.zip.trim() || null,
             contactName: p.contactName.trim() || null,
             contactPhone: p.contactPhone.trim() || null,
+            contactEmail: p.contactEmail.trim() || null,
             propertyType: p.propertyType,
             notes: p.notes.trim() || null,
             status: "cold",
@@ -176,7 +179,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
@@ -247,7 +250,7 @@ Owensboro, KY 42303"
             </p>
 
             <div className="overflow-auto flex-1 border border-border rounded-lg">
-              <table className="w-full text-xs min-w-[700px]">
+              <table className="w-full text-xs min-w-[900px]">
                 <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
                   <tr>
                     <th className="w-8 px-2 py-2 text-left">
@@ -261,11 +264,12 @@ Owensboro, KY 42303"
                     </th>
                     <th className="px-2 py-2 text-left font-medium text-muted-foreground">Address</th>
                     <th className="px-2 py-2 text-left font-medium text-muted-foreground w-24">City</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-12">St</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-16">Zip</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-32">Contact</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-28">Phone</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-24">Type</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-10">St</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-14">Zip</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-28">Contact</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-26">Phone</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-36">Email</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-22">Type</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -324,6 +328,14 @@ Owensboro, KY 42303"
                         <input
                           value={p.contactPhone}
                           onChange={(e) => updateProspect(idx, "contactPhone", e.target.value)}
+                          className="w-full px-1.5 py-0.5 border border-transparent rounded hover:border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 bg-transparent text-xs"
+                        />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input
+                          value={p.contactEmail}
+                          onChange={(e) => updateProspect(idx, "contactEmail", e.target.value)}
+                          type="email"
                           className="w-full px-1.5 py-0.5 border border-transparent rounded hover:border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 bg-transparent text-xs"
                         />
                       </td>
