@@ -296,6 +296,26 @@ router.post("/ai-import", async (req, res) => {
   }
 });
 
+router.post("/check-duplicates", async (req, res) => {
+  try {
+    const { addresses } = req.body as { addresses?: unknown };
+    if (!Array.isArray(addresses) || addresses.length === 0) {
+      return res.json({ matchedAddresses: [] });
+    }
+    const rows = await db
+      .select({ address: prospectsTable.address })
+      .from(prospectsTable);
+    const existingSet = new Set(rows.map((r) => r.address.toLowerCase().trim()));
+    const matched = (addresses as unknown[])
+      .filter((a): a is string => typeof a === "string")
+      .filter((a) => existingSet.has(a.toLowerCase().trim()));
+    res.json({ matchedAddresses: matched });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to check duplicates" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

@@ -60,6 +60,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
   const [prospects, setProspects] = useState<ParsedProspect[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [duplicateSet, setDuplicateSet] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function reset() {
@@ -73,6 +74,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
     setProspects([]);
     setIsCreating(false);
     setCreateError(null);
+    setDuplicateSet(new Set());
   }
 
   function handleClose() {
@@ -191,23 +193,38 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
         return;
       }
 
-      setProspects(
-        raw.map((p) => ({
-          address: String(p.address ?? ""),
-          city: String(p.city ?? ""),
-          state: String(p.state ?? ""),
-          zip: String(p.zip ?? ""),
-          contactName: String(p.contactName ?? ""),
-          contactPhone: String(p.contactPhone ?? ""),
-          contactEmail: String(p.contactEmail ?? ""),
-          propertyType: (PROPERTY_TYPES.includes(p.propertyType as PropertyType)
-            ? p.propertyType
-            : "Other") as PropertyType,
-          notes: String(p.notes ?? ""),
-          selected: true,
-        }))
-      );
+      const parsed = raw.map((p) => ({
+        address: String(p.address ?? ""),
+        city: String(p.city ?? ""),
+        state: String(p.state ?? ""),
+        zip: String(p.zip ?? ""),
+        contactName: String(p.contactName ?? ""),
+        contactPhone: String(p.contactPhone ?? ""),
+        contactEmail: String(p.contactEmail ?? ""),
+        propertyType: (PROPERTY_TYPES.includes(p.propertyType as PropertyType)
+          ? p.propertyType
+          : "Other") as PropertyType,
+        notes: String(p.notes ?? ""),
+        selected: true,
+      }));
+      setProspects(parsed);
       setStep("review");
+
+      const addresses = parsed.map((p) => p.address).filter(Boolean);
+      if (addresses.length > 0) {
+        fetch(`${BASE}/api/prospects/check-duplicates`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ addresses }),
+        })
+          .then((r) => r.ok ? r.json() : Promise.resolve({ matchedAddresses: [] }))
+          .then((d: { matchedAddresses?: string[] }) => {
+            const matched = d.matchedAddresses ?? [];
+            setDuplicateSet(new Set(matched.map((a) => a.toLowerCase().trim())));
+          })
+          .catch(() => { /* silently ignore — warning is informational only */ });
+      }
     } catch {
       setExtractError("Failed to connect to server. Please try again.");
     } finally {
@@ -445,6 +462,12 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
                           onChange={(e) => updateProspect(idx, "address", e.target.value)}
                           className="w-full px-1.5 py-0.5 border border-transparent rounded hover:border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 bg-transparent text-xs"
                         />
+                        {duplicateSet.has(p.address.toLowerCase().trim()) && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-600 mt-0.5">
+                            <AlertCircle className="w-2.5 h-2.5 flex-shrink-0" />
+                            May already exist
+                          </span>
+                        )}
                       </td>
                       <td className="px-1 py-1">
                         <input
