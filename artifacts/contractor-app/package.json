@@ -44,7 +44,6 @@
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
-    "@types/html2pdf.js": "^0.10.0",
     "@types/leaflet": "^1.9.21",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
@@ -80,7 +79,6 @@
   "dependencies": {
     "@turf/turf": "^7.3.4",
     "heic2any": "^0.0.4",
-    "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
     "react-leaflet": "^5.0.0"
