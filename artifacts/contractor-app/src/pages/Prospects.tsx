@@ -13,10 +13,12 @@ import {
   type ProspectPropertyType,
 } from "@workspace/api-client-react";
 import { ProspectDrawer } from "@/components/ProspectDrawer";
+import { AIProspectImportDialog } from "@/components/AIProspectImportDialog";
+import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
   Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
-  BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2,
+  BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2, ListPlus,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -177,6 +179,8 @@ function formatShortDate(dateStr: string): string {
 }
 
 export default function Prospects() {
+  const { canEdit } = useUserPermissions();
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchParams, setSearchParams] = useSearchParams();
   const locationSearch = searchParams.get("location") ?? "";
@@ -416,13 +420,24 @@ export default function Prospects() {
           <h1 className="text-3xl font-display font-bold text-foreground">Prospects</h1>
           <p className="text-muted-foreground mt-1">Willard's Asphalt Sealing — customer pipeline &amp; job history</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Log Prospect
-        </button>
+        <div className="flex items-center gap-2">
+          {canEdit("invoices") && (
+            <button
+              onClick={() => setIsImportDialogOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <ListPlus className="w-4 h-4" />
+              Import from List
+            </button>
+          )}
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Log Prospect
+          </button>
+        </div>
       </div>
 
       {/* Revenue summary */}
@@ -736,6 +751,13 @@ export default function Prospects() {
           })}
         </div>
       )}
+
+      {/* AI Import Dialog */}
+      <AIProspectImportDialog
+        open={isImportDialogOpen}
+        onClose={() => setIsImportDialogOpen(false)}
+        onImported={() => { refetch(); }}
+      />
 
       {/* Prospect Profile Drawer */}
       <ProspectDrawer

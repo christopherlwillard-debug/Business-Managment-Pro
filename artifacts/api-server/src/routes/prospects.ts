@@ -11,6 +11,7 @@ import {
   type Prospect as ProspectRow,
 } from "@workspace/db/schema";
 import { eq, asc, desc, and, ilike, or, max, sql } from "drizzle-orm";
+import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router = Router();
 
@@ -124,6 +125,79 @@ router.get("/revenue-summary", async (_req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch revenue summary" });
+  }
+});
+
+const AI_IMPORT_SYSTEM_PROMPT = `You are a data extraction assistant for a contractor business app.
+Given raw pasted text, extract all distinct business/property prospects and return them as a JSON array.
+
+For each prospect found, extract:
+- address: street address (required — skip entries with no identifiable street address)
+- city: city name or null
+- state: 2-letter US state abbreviation or null
+- zip: 5-digit zip code or null
+- contactName: person or business name or null
+- contactPhone: phone number in any format or null
+- contactEmail: email address or null
+- propertyType: one of "Church", "Retail", "Apartment", "Industrial", "Other" — infer from context clues. Default to "Other"
+- notes: any other relevant details or null
+
+Rules:
+- Only include entries that have at least a recognizable street address
+- Do not invent or assume data — only extract what is present
+- Return ONLY a valid JSON array, no markdown fences, no explanation
+- If nothing useful is found, return an empty array []`;
+
+router.post("/ai-import", async (req, res) => {
+  try {
+    const { text } = req.body as { text?: string };
+    if (!text || typeof text !== "string" || text.trim().length < 5) {
+      return res.status(400).json({ error: "text is required" });
+    }
+    if (text.length > 20000) {
+      return res.status(400).json({ error: "Text too long (max 20,000 characters)" });
+    }
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 4096,
+      messages: [
+        { role: "system", content: AI_IMPORT_SYSTEM_PROMPT },
+        { role: "user", content: text.trim() },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "[]";
+    const VALID_TYPES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
+
+    let prospects: object[] = [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error("Not an array");
+      prospects = parsed
+        .filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null)
+        .filter((p) => typeof p.address === "string" && (p.address as string).trim().length > 0)
+        .map((p) => ({
+          address: String(p.address ?? "").trim(),
+          city: p.city ? String(p.city).trim() : null,
+          state: p.state ? String(p.state).trim().toUpperCase().slice(0, 2) : null,
+          zip: p.zip ? String(p.zip).trim().replace(/\D/g, "").slice(0, 5) : null,
+          contactName: p.contactName ? String(p.contactName).trim() : null,
+          contactPhone: p.contactPhone ? String(p.contactPhone).trim() : null,
+          contactEmail: p.contactEmail ? String(p.contactEmail).trim() : null,
+          propertyType: VALID_TYPES.includes(p.propertyType as typeof VALID_TYPES[number])
+            ? p.propertyType
+            : "Other",
+          notes: p.notes ? String(p.notes).trim() : null,
+        }));
+    } catch {
+      return res.status(422).json({ error: "AI returned an unparseable response", prospects: [] });
+    }
+
+    res.json({ prospects });
+  } catch (err) {
+    console.error("[prospects/ai-import]", err);
+    res.status(500).json({ error: "Failed to extract prospects" });
   }
 });
 
