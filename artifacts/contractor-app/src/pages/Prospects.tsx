@@ -183,15 +183,15 @@ export default function Prospects() {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchParams, setSearchParams] = useSearchParams();
-  const locationSearch = searchParams.get("location") ?? "";
-  function setLocationSearch(value: string) {
+  const cityFilter = searchParams.get("city") ?? "";
+  function setCityFilter(value: string) {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         if (value) {
-          next.set("location", value);
+          next.set("city", value);
         } else {
-          next.delete("location");
+          next.delete("city");
         }
         return next;
       },
@@ -306,20 +306,22 @@ export default function Prospects() {
     }
   }
 
-  const hasLocationFilter = locationSearch.trim().length > 0;
-
-  const locationFiltered = prospects.filter((p) => {
-    if (hasLocationFilter) {
-      const q = locationSearch.trim().toLowerCase();
-      const inCity = p.city?.toLowerCase().includes(q) ?? false;
-      const inState = p.state?.toLowerCase().includes(q) ?? false;
-      const inZip = p.zip?.toLowerCase().includes(q) ?? false;
-      if (!inCity && !inState && !inZip) return false;
+  const uniqueCities = useMemo(() => {
+    const cities = new Set<string>();
+    for (const p of prospects) {
+      if (p.city?.trim()) cities.add(p.city.trim());
     }
-    return true;
+    return Array.from(cities).sort((a, b) => a.localeCompare(b));
+  }, [prospects]);
+
+  const hasCityFilter = cityFilter !== "";
+
+  const cityFiltered = prospects.filter((p) => {
+    if (!hasCityFilter) return true;
+    return (p.city?.trim() ?? "") === cityFilter;
   });
 
-  const filtered = locationFiltered.filter((p) => {
+  const filtered = cityFiltered.filter((p) => {
     if (statusFilter === "follow_up_due" && !isFollowUpDue(p.followUpDate)) return false;
     if (statusFilter === "due_for_resealing" && !isDueForResealing(p)) return false;
     if (statusFilter && statusFilter !== "follow_up_due" && statusFilter !== "due_for_resealing" && p.status !== statusFilter) return false;
@@ -466,71 +468,74 @@ export default function Prospects() {
         ))}
       </div>
 
-      {/* Status filter tabs */}
-      <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {FILTER_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => setStatusFilter(opt.value)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-              statusFilter === opt.value
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card text-muted-foreground border-border hover:bg-muted"
-            }`}
-          >
-            {opt.label}
-            {opt.value === "" && (
-              <span className="ml-1.5 text-xs opacity-70">({locationFiltered.length})</span>
-            )}
-            {opt.value === "follow_up_due" && (
-              <span className="ml-1.5 text-xs opacity-70">
-                ({locationFiltered.filter((p) => isFollowUpDue(p.followUpDate)).length})
-              </span>
-            )}
-            {opt.value === "due_for_resealing" && (
-              <span className="ml-1.5 text-xs opacity-70">
-                ({locationFiltered.filter((p) => isDueForResealing(p)).length})
-              </span>
-            )}
-            {opt.value !== "" && opt.value !== "follow_up_due" && opt.value !== "due_for_resealing" && (
-              <span className="ml-1.5 text-xs opacity-70">
-                ({locationFiltered.filter((p) => p.status === opt.value).length})
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      {hasLocationFilter && (
-        <div className="flex items-center gap-1.5 text-xs text-primary font-medium">
-          <MapPin className="w-3 h-3 flex-shrink-0" />
-          <span>Filtered by: <span className="font-semibold">{locationSearch.trim()}</span> — counts reflect this location only</span>
-        </div>
-      )}
-      </div>
-
-      {/* Location search */}
-      <div className="flex items-center gap-2">
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card transition-colors focus-within:ring-2 focus-within:ring-primary/20 ${
-          hasLocationFilter ? "border-primary" : "border-border"
-        }`}>
-          <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-          <input
-            type="text"
-            value={locationSearch}
-            onChange={(e) => setLocationSearch(e.target.value)}
-            placeholder="Filter by city, state, or zip…"
-            className="text-sm bg-transparent outline-none placeholder:text-muted-foreground w-48 sm:w-64"
-          />
-          {hasLocationFilter && (
-            <button
-              onClick={() => setLocationSearch("")}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Clear location filter"
+      {/* City filter + status filter */}
+      <div className="flex flex-col gap-3">
+        {/* City dropdown */}
+        <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card transition-colors ${
+            hasCityFilter ? "border-primary" : "border-border"
+          }`}>
+            <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <select
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              className="text-sm bg-transparent outline-none text-foreground cursor-pointer pr-1"
             >
-              <X className="w-3.5 h-3.5" />
-            </button>
+              <option value="">All cities</option>
+              {uniqueCities.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
+            {hasCityFilter && (
+              <button
+                onClick={() => setCityFilter("")}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Clear city filter"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {hasCityFilter && (
+            <span className="text-xs text-primary font-medium">
+              {cityFiltered.length} prospect{cityFiltered.length !== 1 ? "s" : ""} in {cityFilter}
+            </span>
           )}
+        </div>
+
+        {/* Status pills */}
+        <div className="flex flex-wrap gap-2">
+          {FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                statusFilter === opt.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted"
+              }`}
+            >
+              {opt.label}
+              {opt.value === "" && (
+                <span className="ml-1.5 text-xs opacity-70">({cityFiltered.length})</span>
+              )}
+              {opt.value === "follow_up_due" && (
+                <span className="ml-1.5 text-xs opacity-70">
+                  ({cityFiltered.filter((p) => isFollowUpDue(p.followUpDate)).length})
+                </span>
+              )}
+              {opt.value === "due_for_resealing" && (
+                <span className="ml-1.5 text-xs opacity-70">
+                  ({cityFiltered.filter((p) => isDueForResealing(p)).length})
+                </span>
+              )}
+              {opt.value !== "" && opt.value !== "follow_up_due" && opt.value !== "due_for_resealing" && (
+                <span className="ml-1.5 text-xs opacity-70">
+                  ({cityFiltered.filter((p) => p.status === opt.value).length})
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -542,9 +547,15 @@ export default function Prospects() {
         <div className="flex flex-col items-center justify-center h-48 gap-3 text-muted-foreground">
           <Target className="w-10 h-10 opacity-30" />
           <p className="text-sm">
-            {statusFilter ? `No ${statusFilter} prospects` : "No prospects yet"}
+            {hasCityFilter && statusFilter
+              ? `No ${statusFilter} prospects in ${cityFilter}`
+              : hasCityFilter
+              ? `No prospects in ${cityFilter}`
+              : statusFilter
+              ? `No ${statusFilter} prospects`
+              : "No prospects yet"}
           </p>
-          {!statusFilter && (
+          {!statusFilter && !hasCityFilter && (
             <button
               onClick={openCreate}
               className="text-sm text-primary hover:underline"
