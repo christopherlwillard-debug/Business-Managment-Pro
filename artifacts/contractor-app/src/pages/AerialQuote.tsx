@@ -418,8 +418,8 @@ export default function AerialQuote() {
 
       if (linkedProspectId) {
         try {
-          await fetch(`${BASE}/api/prospects/${linkedProspectId}`, {
-            method: "PATCH",
+          const linkRes = await fetch(`${BASE}/api/prospects/${linkedProspectId}`, {
+            method: "PUT",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -427,10 +427,12 @@ export default function AerialQuote() {
               roughQuote: Math.round(quote.total),
             }),
           });
+          if (!linkRes.ok) throw new Error(`Server returned ${linkRes.status}`);
           setSavedLinked(true);
           toast({ title: "Quote saved & linked!", description: `Estimate linked to ${linkedProspectName || "prospect"}.` });
-        } catch {
-          toast({ title: "Estimate saved", description: "Couldn't auto-link to prospect — open the prospect to link manually.", variant: "destructive" });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          toast({ title: "Estimate saved", description: `Couldn't auto-link to prospect (${msg}) — open the prospect to link manually.`, variant: "destructive" });
         }
       } else {
         toast({ title: "Estimate saved!", description: `Draft estimate created (ID #${saved.id}). View it in Estimates.` });
