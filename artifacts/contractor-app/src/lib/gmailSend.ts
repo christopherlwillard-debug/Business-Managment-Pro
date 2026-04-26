@@ -345,3 +345,93 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
 </body>
 </html>`;
 }
+
+export interface BuildDepositEmailHtmlOpts {
+  companyName?: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  prospectAddress?: string;
+  contactName?: string | null;
+  roughQuote?: number | null;
+  depositUrl: string;
+  customMessage?: string;
+}
+
+export function buildDepositEmailHtml(opts: BuildDepositEmailHtmlOpts): string {
+  const displayCompanyName = opts.companyName || "Your Contractor";
+
+  const contactInfoRows: string[] = [];
+  if (opts.companyPhone) contactInfoRows.push(`<span style="margin:0 6px;">&middot;</span>${esc(opts.companyPhone)}`);
+  if (opts.companyEmail) contactInfoRows.push(`<span style="margin:0 6px;">&middot;</span>${esc(opts.companyEmail)}`);
+
+  const greetingName = opts.contactName ? ` ${esc(opts.contactName)},` : ",";
+
+  const amountLine = opts.roughQuote != null && opts.roughQuote > 0
+    ? `<p style="margin:0 0 6px;font-size:13px;color:#374151;">A deposit is required before we begin work on your property. Quoted amount: <strong>${fmtCurrency(opts.roughQuote)}</strong>.</p>`
+    : `<p style="margin:0 0 6px;font-size:13px;color:#374151;">A deposit is required before we begin work on your property.</p>`;
+
+  const customMsgHtml = opts.customMessage
+    ? `<p style="margin:0 0 20px;font-size:13px;color:#555;line-height:1.6;">${esc(opts.customMessage).replace(/\n/g, "<br>")}</p>`
+    : "";
+
+  const propertySection = opts.prospectAddress
+    ? `<table cellpadding="0" cellspacing="0" width="100%" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:20px;">
+        <tr><td style="padding:14px 16px;">
+          <p style="margin:0 0 4px;font-size:9px;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.08em;">&#x1f4cd; Property Address</p>
+          <p style="margin:0;font-size:13px;font-weight:700;color:#1f2937;">${esc(opts.prospectAddress)}</p>
+        </td></tr>
+      </table>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
+    <tr><td align="center">
+      <table width="580" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+
+        <tr><td style="height:7px;background:linear-gradient(to right,#f59e0b,#fbbf24);font-size:0;">&nbsp;</td></tr>
+
+        <tr><td style="padding:32px 40px 24px;">
+          <p style="margin:0 0 4px;font-size:18px;font-weight:800;color:#111827;">${esc(displayCompanyName)}</p>
+          <p style="margin:0;font-size:11px;color:#6b7280;">Deposit Request</p>
+        </td></tr>
+
+        <tr><td style="padding:0 40px 32px;">
+          ${customMsgHtml}
+          <p style="margin:0 0 16px;font-size:15px;color:#111827;">Hi${greetingName}</p>
+          ${amountLine}
+          <p style="margin:0 0 24px;font-size:13px;color:#374151;">Please use the link below to pay your deposit securely online.</p>
+
+          ${propertySection}
+
+          <table cellpadding="0" cellspacing="0" width="100%">
+            <tr><td align="center" style="padding:4px 0 28px;">
+              <a href="${esc(opts.depositUrl)}" target="_blank"
+                style="display:inline-block;background:#f59e0b;color:#ffffff;font-size:15px;font-weight:700;padding:14px 36px;border-radius:8px;text-decoration:none;">
+                Pay Deposit Now &#x2192;
+              </a>
+              <p style="margin:10px 0 0;font-size:10px;color:#9ca3af;">Secure online payment &middot; Takes just a minute</p>
+            </td></tr>
+          </table>
+
+          <p style="margin:0;font-size:12px;color:#9ca3af;border-top:1px solid #f3f4f6;padding-top:16px;">
+            Questions? Reply to this email or contact us at
+            ${opts.companyPhone ? `<strong>${esc(opts.companyPhone)}</strong>` : "your contractor"}${opts.companyEmail ? ` &middot; ${esc(opts.companyEmail)}` : ""}.
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:14px 40px;background:#fafafa;border-top:1px solid #f0f0f0;">
+          <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;">
+            ${esc(displayCompanyName)}${contactInfoRows.join("")}
+          </p>
+        </td></tr>
+
+        <tr><td style="height:6px;background:linear-gradient(to right,#fbbf24,#f59e0b);font-size:0;">&nbsp;</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}

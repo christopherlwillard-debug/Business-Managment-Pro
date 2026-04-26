@@ -8,12 +8,15 @@ import {
   useAddProspectServiceVisit,
   useDeleteProspectServiceVisit,
   useUpdateProspectServiceVisit,
+  useGetSettings,
   getListJobsQueryKey,
   type Prospect,
   type ProspectDetail,
   type ProspectStatus,
   type ProspectPropertyType,
 } from "@workspace/api-client-react";
+import { useGoogleAuth } from "@/contexts/GoogleAuth";
+import { sendViaGmail, buildDepositEmailHtml } from "@/lib/gmailSend";
 import {
   Sheet,
   SheetContent,
@@ -47,6 +50,9 @@ import {
   Pencil,
   Receipt,
   Briefcase,
+  Mail,
+  Send,
+  Eye,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -248,6 +254,8 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const detailQuery = useGetProspect(open && prospect ? prospect.id : null);
+  const { data: settings } = useGetSettings();
+  const { isConnected: googleConnected, getToken, signIn: googleSignIn } = useGoogleAuth();
 
   const detail: (Prospect & { statusHistory?: ProspectDetail["statusHistory"]; serviceVisits?: ProspectDetail["serviceVisits"] }) | null = detailQuery.data ?? prospect;
 
@@ -273,6 +281,14 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [editVisitPrice, setEditVisitPrice] = useState("");
   const [isCreatingQuote, setIsCreatingQuote] = useState(false);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+
+  const [showDepositEmail, setShowDepositEmail] = useState(false);
+  const [depositEmailTo, setDepositEmailTo] = useState("");
+  const [depositEmailSubject, setDepositEmailSubject] = useState("");
+  const [depositEmailMessage, setDepositEmailMessage] = useState("");
+  const [depositEmailSending, setDepositEmailSending] = useState(false);
+  const [depositEmailSent, setDepositEmailSent] = useState(false);
+  const [depositEmailTab, setDepositEmailTab] = useState<"compose" | "preview">("compose");
 
   const [showCreateJobPanel, setShowCreateJobPanel] = useState(false);
   const [jobTitle, setJobTitle] = useState("");
@@ -306,6 +322,13 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setJobStatusVal("scheduled");
       setIsCreatingJob(false);
       setCreatedJobId(null);
+      setShowDepositEmail(false);
+      setDepositEmailTo("");
+      setDepositEmailSubject("");
+      setDepositEmailMessage("");
+      setDepositEmailSending(false);
+      setDepositEmailSent(false);
+      setDepositEmailTab("compose");
     }
   }, [open]);
 
@@ -362,6 +385,60 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       toast({ title: msg, variant: "destructive" });
     } finally {
       setIsGeneratingDeposit(false);
+    }
+  };
+
+  const activeDepositUrl =
+    newDepositUrl ??
+    (detail as unknown as { squarePaymentLinkUrl?: string | null; stripePaymentLinkUrl?: string | null })?.squarePaymentLinkUrl ??
+    (detail as unknown as { squarePaymentLinkUrl?: string | null; stripePaymentLinkUrl?: string | null })?.stripePaymentLinkUrl ??
+    null;
+
+  const openDepositEmail = (depositUrl: string) => {
+    const p = detail ?? prospect;
+    const addr = buildFullAddress(p);
+    setDepositEmailTo(p.contactEmail ?? "");
+    setDepositEmailSubject(`Deposit request — ${addr}`);
+    setDepositEmailMessage("");
+    setDepositEmailTab("compose");
+    setDepositEmailSent(false);
+    setShowDepositEmail(true);
+  };
+
+  const handleDepositEmailSend = async () => {
+    if (!activeDepositUrl) return;
+    const p = detail ?? prospect;
+    if (!googleConnected) { googleSignIn(); return; }
+    const token = await getToken();
+    if (!token) { toast({ title: "Could not get Google token", variant: "destructive" }); return; }
+    setDepositEmailSending(true);
+    try {
+      const html = buildDepositEmailHtml({
+        companyName: settings?.companyName ?? undefined,
+        companyPhone: settings?.companyPhone ?? undefined,
+        companyEmail: settings?.companyEmail ?? undefined,
+        prospectAddress: buildFullAddress(p),
+        contactName: p.contactName,
+        roughQuote: p.roughQuote,
+        depositUrl: activeDepositUrl,
+        customMessage: depositEmailMessage.trim() || undefined,
+      });
+      await sendViaGmail({
+        token,
+        to: depositEmailTo,
+        subject: depositEmailSubject,
+        htmlBody: html,
+      });
+      setDepositEmailSent(true);
+      setTimeout(() => {
+        setShowDepositEmail(false);
+        setDepositEmailSent(false);
+      }, 2500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send email";
+      toast({ title: msg, variant: "destructive" });
+    } finally {
+      setDepositEmailSending(false);
     }
   };
 
@@ -1047,6 +1124,13 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                       <Copy className="w-3.5 h-3.5" />
                       Copy Deposit Link
                     </button>
+                    <button
+                      onClick={() => showDepositEmail ? setShowDepositEmail(false) : openDepositEmail(depositUrl)}
+                      className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${showDepositEmail ? "bg-blue-600 text-white border-blue-600" : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                      title="Send via Gmail"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                    </button>
                     <a
                       href={depositUrl}
                       target="_blank"
@@ -1057,6 +1141,114 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                   </div>
+
+                  {/* Gmail compose + preview panel */}
+                  {showDepositEmail && (
+                    <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 bg-blue-100 border-b border-blue-200">
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-blue-600" />
+                          <span className="text-xs font-semibold text-blue-800">Send deposit link via Gmail</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex text-xs rounded overflow-hidden border border-blue-300">
+                            <button
+                              onClick={() => setDepositEmailTab("compose")}
+                              className={`px-2.5 py-1 ${depositEmailTab === "compose" ? "bg-blue-600 text-white" : "bg-white text-blue-700 hover:bg-blue-50"}`}
+                            >
+                              Compose
+                            </button>
+                            <button
+                              onClick={() => setDepositEmailTab("preview")}
+                              className={`px-2.5 py-1 flex items-center gap-1 ${depositEmailTab === "preview" ? "bg-blue-600 text-white" : "bg-white text-blue-700 hover:bg-blue-50"}`}
+                            >
+                              <Eye className="w-3 h-3" />
+                              Preview
+                            </button>
+                          </div>
+                          <button onClick={() => setShowDepositEmail(false)} className="text-blue-500 hover:text-blue-800 p-0.5">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {depositEmailTab === "compose" ? (
+                        <div className="p-3 space-y-2">
+                          <div>
+                            <label className="text-xs font-medium text-blue-700">To</label>
+                            <input
+                              type="email"
+                              value={depositEmailTo}
+                              onChange={(e) => setDepositEmailTo(e.target.value)}
+                              placeholder="recipient@email.com"
+                              className="mt-0.5 w-full px-2.5 py-1.5 text-xs border border-blue-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-300/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-blue-700">Subject</label>
+                            <input
+                              type="text"
+                              value={depositEmailSubject}
+                              onChange={(e) => setDepositEmailSubject(e.target.value)}
+                              className="mt-0.5 w-full px-2.5 py-1.5 text-xs border border-blue-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-300/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-blue-700">Message <span className="font-normal text-blue-500">(optional)</span></label>
+                            <textarea
+                              rows={3}
+                              value={depositEmailMessage}
+                              onChange={(e) => setDepositEmailMessage(e.target.value)}
+                              placeholder="Add a personal note to the email…"
+                              className="mt-0.5 w-full px-2.5 py-1.5 text-xs border border-blue-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-300/50 resize-none"
+                            />
+                          </div>
+                          {!googleConnected && (
+                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                              Connect Google to send emails.
+                            </p>
+                          )}
+                          {depositEmailSent ? (
+                            <div className="flex items-center justify-center gap-2 py-2 text-emerald-700 text-xs font-medium">
+                              <CheckCircle2 className="w-4 h-4" />
+                              Email sent!
+                            </div>
+                          ) : (
+                            <button
+                              onClick={handleDepositEmailSend}
+                              disabled={depositEmailSending || !depositEmailTo.trim()}
+                              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                            >
+                              {depositEmailSending ? (
+                                <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
+                              ) : (
+                                <><Send className="w-3 h-3" />Send Email</>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-3">
+                          <iframe
+                            sandbox=""
+                            srcDoc={buildDepositEmailHtml({
+                              companyName: settings?.companyName ?? undefined,
+                              companyPhone: settings?.companyPhone ?? undefined,
+                              companyEmail: settings?.companyEmail ?? undefined,
+                              prospectAddress: buildFullAddress(p),
+                              contactName: p.contactName,
+                              roughQuote: p.roughQuote,
+                              depositUrl,
+                              customMessage: depositEmailMessage.trim() || undefined,
+                            })}
+                            className="w-full rounded border border-blue-200 bg-white"
+                            style={{ height: 380 }}
+                            title="Email preview"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : showRequestBtn ? (
                 /* Request deposit button */
