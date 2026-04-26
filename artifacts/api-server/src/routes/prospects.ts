@@ -130,7 +130,7 @@ router.get("/revenue-summary", async (_req, res) => {
 });
 
 const AI_IMPORT_SYSTEM_PROMPT = `You are a data extraction assistant for a contractor business app.
-Given raw pasted text, extract all distinct business/property prospects and return them as a JSON array.
+Given raw pasted text, extract all distinct business/property prospects and return them as a JSON object with a "prospects" array.
 
 For each prospect found, extract:
 - address: street address (required — skip entries with no identifiable street address)
@@ -146,8 +146,8 @@ For each prospect found, extract:
 Rules:
 - Only include entries that have at least a recognizable street address
 - Do not invent or assume data — only extract what is present
-- Return ONLY a valid JSON array, no markdown fences, no explanation
-- If nothing useful is found, return an empty array []`;
+- Return ONLY a valid JSON object matching the schema: { "prospects": [...] }
+- If nothing useful is found, return { "prospects": [] }`;
 
 const PROPERTY_TYPE_VALUES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
 
