@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import fs from "node:fs";
 import path from "node:path";
+import { ObjectStorageService } from "./objectStorage.js";
 
 export interface InvoicePdfLineItem {
   description: string;
@@ -44,6 +45,15 @@ export interface InvoicePdfSettings {
   logoUrl?: string | null;
 }
 
+const objectStorage = new ObjectStorageService();
+
+function getAppBaseUrl(): string {
+  const domain = process.env.REPLIT_DEV_DOMAIN ?? process.env.REPLIT_DOMAINS?.split(",")[0] ?? "";
+  if (domain) return `https://${domain}`;
+  const port = process.env.PORT ?? "8080";
+  return `http://localhost:${port}`;
+}
+
 async function loadLogoDataUri(logoUrl: string): Promise<string | null> {
   try {
     if (logoUrl.startsWith("/api/uploads/")) {
@@ -54,6 +64,27 @@ async function loadLogoDataUri(logoUrl: string): Promise<string | null> {
       const mime = ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
       return `data:${mime};base64,${buf.toString("base64")}`;
     }
+
+    if (logoUrl.startsWith("/api/storage/objects/")) {
+      const wildcardPath = logoUrl.slice("/api/storage/objects/".length);
+      const objectPath = `/objects/${wildcardPath}`;
+      const file = await objectStorage.getObjectEntityFile(objectPath);
+      const [buf] = await file.download();
+      const [meta] = await file.getMetadata();
+      const mime = (meta.contentType as string | undefined) ?? "image/png";
+      return `data:${mime};base64,${(buf as Buffer).toString("base64")}`;
+    }
+
+    if (logoUrl.startsWith("/")) {
+      const absoluteUrl = `${getAppBaseUrl()}${logoUrl}`;
+      const resp = await fetch(absoluteUrl, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) return null;
+      const buf = Buffer.from(await resp.arrayBuffer());
+      const ct = resp.headers.get("content-type") ?? "image/png";
+      const mime = ct.split(";")[0].trim();
+      return `data:${mime};base64,${buf.toString("base64")}`;
+    }
+
     if (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) {
       const resp = await fetch(logoUrl, { signal: AbortSignal.timeout(5000) });
       if (!resp.ok) return null;
@@ -62,6 +93,7 @@ async function loadLogoDataUri(logoUrl: string): Promise<string | null> {
       const mime = ct.split(";")[0].trim();
       return `data:${mime};base64,${buf.toString("base64")}`;
     }
+
     return null;
   } catch {
     return null;
