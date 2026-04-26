@@ -7,7 +7,7 @@ import { downloadInvoiceHtmlPdf, invoiceHtmlPdfToBase64 } from "@/lib/htmlToPdf"
 import {
   FileText, Trash2, X,
   Building2, MapPin, Printer, Download, Mail, Phone,
-  Paperclip, Send, Check,
+  Paperclip, Send, Check, Eye,
 } from "lucide-react";
 import { Invoice, InvoiceLineItem, InvoiceAttachment, AppSettings } from "@workspace/api-client-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
@@ -60,6 +60,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
   const [gmailMessage, setGmailMessage] = useState("");
   const [gmailSending, setGmailSending] = useState(false);
   const [gmailSent, setGmailSent] = useState(false);
+  const [gmailPreview, setGmailPreview] = useState(false);
 
   function buildPdfSettings() {
     return {
@@ -350,7 +351,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                   </span>
                 )}
               </p>
-              <button onClick={() => { setShowGmailCompose(false); setGmailSent(false); }}
+              <button onClick={() => { setShowGmailCompose(false); setGmailSent(false); setGmailPreview(false); }}
                 className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:bg-blue-100 hover:text-blue-600 transition-colors">
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -360,54 +361,119 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                 <Check className="w-4 h-4" /> Sent successfully!
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="col-span-2 sm:col-span-1">
-                    <label className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">To</label>
-                    <input
-                      type="email"
-                      value={gmailTo}
-                      onChange={e => setGmailTo(e.target.value)}
-                      placeholder="client@example.com"
-                      className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  </div>
-                  <div className="col-span-2 sm:col-span-1">
-                    <label className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Subject</label>
-                    <input
-                      type="text"
-                      value={gmailSubject}
-                      onChange={e => setGmailSubject(e.target.value)}
-                      className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Message (optional)</label>
-                  <textarea
-                    value={gmailMessage}
-                    onChange={e => setGmailMessage(e.target.value)}
-                    rows={2}
-                    placeholder="Hi, please find your invoice attached…"
-                    className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
-                  />
-                </div>
-                <div className="flex items-center gap-2 pt-0.5">
+              <>
+                {/* Compose / Preview tabs */}
+                <div className="flex gap-0 border-b border-blue-200 -mb-1">
                   <button
-                    onClick={handleGmailSend}
-                    disabled={gmailSending || !gmailTo.trim()}
-                    className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    onClick={() => setGmailPreview(false)}
+                    className={`flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors ${!gmailPreview ? "border-blue-600 text-blue-700" : "border-transparent text-blue-400 hover:text-blue-600"}`}
                   >
-                    {gmailSending ? (
-                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Send className="w-3 h-3" />
-                    )}
-                    {gmailSending ? "Sending…" : "Send Invoice"}
+                    <Send className="w-3 h-3" /> Compose
                   </button>
-                  <p className="text-[10px] text-blue-600">The invoice will be sent from your Gmail account</p>
+                  <button
+                    onClick={() => setGmailPreview(true)}
+                    className={`flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold border-b-2 transition-colors ${gmailPreview ? "border-blue-600 text-blue-700" : "border-transparent text-blue-400 hover:text-blue-600"}`}
+                  >
+                    <Eye className="w-3 h-3" /> Preview
+                  </button>
                 </div>
-              </div>
+
+                {gmailPreview ? (
+                  <div className="border border-blue-200 rounded-lg overflow-hidden bg-white">
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-blue-100/60 border-b border-blue-200">
+                      <span className="text-[10px] text-blue-600 font-medium">Email body preview — exactly what the recipient will see</span>
+                    </div>
+                    <iframe
+                      title="Email preview"
+                      sandbox=""
+                      srcDoc={buildInvoiceEmailHtml({
+                        companyName,
+                        companyAddress,
+                        companyCity,
+                        companyState,
+                        companyZip,
+                        companyPhone,
+                        companyEmail,
+                        invoiceNumber: invoice.invoiceNumber,
+                        issueDate: invoice.issueDate,
+                        dueDate: invoice.dueDate,
+                        terms: invoice.terms ?? undefined,
+                        clientName: invoice.clientName ?? undefined,
+                        clientEmail: invoice.clientEmail ?? undefined,
+                        clientPhone: invoice.clientPhone ?? undefined,
+                        clientAddress: invoice.clientAddress ?? undefined,
+                        clientCity: invoice.clientCity ?? undefined,
+                        clientState: invoice.clientState ?? undefined,
+                        clientZip: invoice.clientZip ?? undefined,
+                        clientNotes: invoice.clientNotes ?? undefined,
+                        jobTitle: invoice.jobTitle ?? undefined,
+                        locationName: invoice.locationName ?? undefined,
+                        city: invoice.city ?? undefined,
+                        state: invoice.state ?? undefined,
+                        businessLine: invoice.businessLine ?? undefined,
+                        lineItems: lineItems.map(li => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice })),
+                        subtotal,
+                        taxRate,
+                        taxAmount,
+                        total,
+                        notes: invoice.notes ?? undefined,
+                        customMessage: gmailMessage.trim() || undefined,
+                        paymentLink: invoice.squarePaymentLinkUrl ?? invoice.stripePaymentLinkUrl ?? null,
+                      })}
+                      style={{ width: "100%", height: "380px", border: "none", display: "block" }}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">To</label>
+                        <input
+                          type="email"
+                          value={gmailTo}
+                          onChange={e => setGmailTo(e.target.value)}
+                          placeholder="client@example.com"
+                          className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        />
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Subject</label>
+                        <input
+                          type="text"
+                          value={gmailSubject}
+                          onChange={e => setGmailSubject(e.target.value)}
+                          className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Message (optional)</label>
+                      <textarea
+                        value={gmailMessage}
+                        onChange={e => setGmailMessage(e.target.value)}
+                        rows={2}
+                        placeholder="Hi, please find your invoice attached…"
+                        className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <button
+                        onClick={handleGmailSend}
+                        disabled={gmailSending || !gmailTo.trim()}
+                        className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {gmailSending ? (
+                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Send className="w-3 h-3" />
+                        )}
+                        {gmailSending ? "Sending…" : "Send Invoice"}
+                      </button>
+                      <p className="text-[10px] text-blue-600">The invoice will be sent from your Gmail account</p>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
