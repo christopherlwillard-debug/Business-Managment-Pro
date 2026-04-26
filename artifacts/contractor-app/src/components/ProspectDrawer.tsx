@@ -320,6 +320,10 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [linkExistingSearch, setLinkExistingSearch] = useState("");
   const [isLinkingExisting, setIsLinkingExisting] = useState(false);
 
+  const [showLinkExistingInvoicePanel, setShowLinkExistingInvoicePanel] = useState(false);
+  const [linkExistingInvoiceSearch, setLinkExistingInvoiceSearch] = useState("");
+  const [isLinkingExistingInvoice, setIsLinkingExistingInvoice] = useState(false);
+
   const allEstimatesQuery = useQuery<Array<{ id: number; title: string; status: string; total: number; clientName?: string | null; createdAt: string }>>({
     queryKey: ["estimates-list"],
     queryFn: async () => {
@@ -328,6 +332,17 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       return res.json();
     },
     enabled: showLinkExistingPanel || showSwapQuotePanel,
+    staleTime: 30_000,
+  });
+
+  const allInvoicesQuery = useQuery<Array<{ id: number; invoiceNumber: string; status: string; total: number; clientName?: string | null; locationName?: string | null; createdAt: string }>>({
+    queryKey: ["invoices-list"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/invoices`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch invoices");
+      return res.json();
+    },
+    enabled: showLinkExistingInvoicePanel,
     staleTime: 30_000,
   });
 
@@ -360,6 +375,8 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setEditVisitPrice("");
       setShowLinkExistingPanel(false);
       setLinkExistingSearch("");
+      setShowLinkExistingInvoicePanel(false);
+      setLinkExistingInvoiceSearch("");
       setShowCreateJobPanel(false);
       setJobTitle("");
       setJobStartDate(new Date().toISOString().slice(0, 10));
@@ -603,6 +620,23 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       toast({ title: "Failed to link quote", variant: "destructive" });
     } finally {
       setIsLinkingExisting(false);
+    }
+  };
+
+  const handleLinkExistingInvoice = async (invoiceId: number) => {
+    if (!prospect) return;
+    setIsLinkingExistingInvoice(true);
+    try {
+      await updateMutation.mutateAsync({ id: prospect.id, linkedInvoiceId: invoiceId });
+      await detailQuery.refetch();
+      setShowLinkExistingInvoicePanel(false);
+      setLinkExistingInvoiceSearch("");
+      onUpdated();
+      toast({ title: "Invoice linked", description: "The existing invoice has been linked to this prospect." });
+    } catch {
+      toast({ title: "Failed to link invoice", variant: "destructive" });
+    } finally {
+      setIsLinkingExistingInvoice(false);
     }
   };
 
@@ -1312,14 +1346,100 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                   View Invoice
                 </button>
               ) : (
-                <button
-                  onClick={handleCreateInvoice}
-                  disabled={isCreatingInvoice}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
-                >
-                  <Receipt className="w-3.5 h-3.5" />
-                  {isCreatingInvoice ? "Creating Invoice…" : "Create Invoice"}
-                </button>
+                <>
+                  <button
+                    onClick={handleCreateInvoice}
+                    disabled={isCreatingInvoice}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    {isCreatingInvoice ? "Creating Invoice…" : "Create Invoice"}
+                  </button>
+                  <button
+                    onClick={() => { setShowLinkExistingInvoicePanel((v) => !v); setLinkExistingInvoiceSearch(""); }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    <Link className="w-3.5 h-3.5" />
+                    Link Existing Invoice
+                  </button>
+                  {showLinkExistingInvoicePanel && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-blue-900 flex items-center gap-1.5">
+                          <Link className="w-3 h-3" />
+                          Link Existing Invoice
+                        </p>
+                        <button
+                          onClick={() => { setShowLinkExistingInvoicePanel(false); setLinkExistingInvoiceSearch(""); }}
+                          className="p-0.5 rounded text-blue-700 hover:bg-blue-100 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={linkExistingInvoiceSearch}
+                        onChange={(e) => setLinkExistingInvoiceSearch(e.target.value)}
+                        placeholder="Search by invoice # or client…"
+                        className="w-full px-2.5 py-1.5 text-xs border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300/40 bg-white"
+                        autoFocus
+                      />
+                      {allInvoicesQuery.isLoading ? (
+                        <p className="text-xs text-blue-700 text-center py-2">Loading invoices…</p>
+                      ) : allInvoicesQuery.isError ? (
+                        <p className="text-xs text-red-600 text-center py-2">Failed to load invoices</p>
+                      ) : (() => {
+                        const search = linkExistingInvoiceSearch.toLowerCase().trim();
+                        const filtered = (allInvoicesQuery.data ?? []).filter((inv) => {
+                          if (!search) return true;
+                          return (
+                            inv.invoiceNumber.toLowerCase().includes(search) ||
+                            (inv.clientName ?? "").toLowerCase().includes(search) ||
+                            (inv.locationName ?? "").toLowerCase().includes(search)
+                          );
+                        });
+                        if (filtered.length === 0) {
+                          return <p className="text-xs text-blue-700 text-center py-2">No matching invoices found</p>;
+                        }
+                        return (
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {filtered.map((inv) => (
+                              <button
+                                key={inv.id}
+                                onClick={() => handleLinkExistingInvoice(inv.id)}
+                                disabled={isLinkingExistingInvoice}
+                                className="w-full text-left px-2.5 py-2 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50 group"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium text-blue-900 truncate">{inv.invoiceNumber}</p>
+                                    {inv.clientName && (
+                                      <p className="text-xs text-blue-700 truncate">{inv.clientName}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex-shrink-0 text-right">
+                                    <p className="text-xs font-semibold text-blue-900">{formatCurrency(inv.total)}</p>
+                                    <span className={`inline-block text-xs px-1 rounded border ${
+                                      inv.status === "paid"
+                                        ? "bg-green-100 text-green-700 border-green-200"
+                                        : inv.status === "sent"
+                                        ? "bg-blue-100 text-blue-700 border-blue-200"
+                                        : inv.status === "overdue"
+                                        ? "bg-red-100 text-red-700 border-red-200"
+                                        : "bg-slate-100 text-slate-600 border-slate-200"
+                                    }`}>
+                                      {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </>
               )
             )}
 
