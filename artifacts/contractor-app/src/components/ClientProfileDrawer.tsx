@@ -111,6 +111,10 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
       setOiError("Enter a date.");
       return;
     }
+    if (!oiDescription.trim()) {
+      setOiError("Description is required.");
+      return;
+    }
     setOiSaving(true);
     setOiError(null);
     try {
@@ -122,16 +126,24 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
           amount: oiAmount,
           date: oiDate,
           paymentMethod: oiMethod,
-          description: oiDescription.trim() || null,
+          description: oiDescription.trim(),
           clientId: client.id,
         }),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) {
+        let msg = "Failed to save. Please try again.";
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch { /* ignore parse error */ }
+        setOiError(msg);
+        return;
+      }
       closeOIForm();
       refetch();
       toast({ title: "Other income added" });
     } catch {
-      setOiError("Failed to save. Please try again.");
+      setOiError("Network error. Please try again.");
     } finally {
       setOiSaving(false);
     }
@@ -560,13 +572,14 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                           </select>
                         </div>
                         <div>
-                          <label className="text-xs text-muted-foreground block mb-1">Description</label>
+                          <label className="text-xs text-muted-foreground block mb-1">Description *</label>
                           <input
                             type="text"
                             placeholder="e.g. Pre-app cash payment, retainer…"
                             value={oiDescription}
                             onChange={(e) => setOiDescription(e.target.value)}
                             className="w-full px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            required
                           />
                         </div>
                         {oiError && (
