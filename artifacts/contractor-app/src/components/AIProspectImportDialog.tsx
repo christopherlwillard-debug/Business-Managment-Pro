@@ -211,6 +211,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
       setStep("review");
 
       const addresses = parsed.map((p) => p.address).filter(Boolean);
+      setDuplicateSet(new Set());
       if (addresses.length > 0) {
         fetch(`${BASE}/api/prospects/check-duplicates`, {
           method: "POST",
