@@ -931,6 +931,7 @@ export interface Prospect {
   zip?: string | null;
   propertyType: ProspectPropertyType;
   estimatedSqft?: number | null;
+  measuredSqFt?: number | null;
   roughQuote?: number | null;
   contactName?: string | null;
   contactPhone?: string | null;
@@ -961,6 +962,7 @@ export interface CreateProspectRequest {
   zip?: string | null;
   propertyType?: ProspectPropertyType;
   estimatedSqft?: number | null;
+  measuredSqFt?: number | null;
   roughQuote?: number | null;
   contactName?: string | null;
   contactPhone?: string | null;

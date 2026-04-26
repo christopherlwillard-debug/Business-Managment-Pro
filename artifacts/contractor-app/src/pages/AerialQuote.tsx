@@ -426,6 +426,7 @@ export default function AerialQuote() {
             body: JSON.stringify({
               linkedEstimateId: saved.id,
               roughQuote: Math.round(quote.total),
+              measuredSqFt: Math.round(measurements.totalSqFt),
             }),
           });
           if (!linkRes.ok) throw new Error(`Server returned ${linkRes.status}`);

@@ -653,6 +653,12 @@ export default function Prospects() {
                         <span>{formatCurrency(p.roughQuote)}</span>
                       </div>
                     )}
+                    {p.measuredSqFt != null && (
+                      <div className="flex items-center gap-1.5 text-muted-foreground col-span-2">
+                        <Maximize2 className="w-3.5 h-3.5 flex-shrink-0 text-blue-500" />
+                        <span className="text-blue-600 font-medium">{p.measuredSqFt.toLocaleString()} SF measured</span>
+                      </div>
+                    )}
                     {p.contactName && (
                       <div className="flex items-center gap-1.5 text-muted-foreground col-span-2">
                         <span className="font-medium text-foreground">{p.contactName}</span>

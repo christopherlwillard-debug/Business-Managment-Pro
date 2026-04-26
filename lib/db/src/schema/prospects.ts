@@ -16,6 +16,7 @@ export const prospectsTable = pgTable(
     address: text("address").notNull(),
     propertyType: text("property_type").notNull().default("Other"),
     estimatedSqft: integer("estimated_sqft"),
+    measuredSqFt: integer("measured_sq_ft"),
     roughQuote: numeric("rough_quote", { precision: 12, scale: 2 }),
     city: text("city"),
     state: text("state"),

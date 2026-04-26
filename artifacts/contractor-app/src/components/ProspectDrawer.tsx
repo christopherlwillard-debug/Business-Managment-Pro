@@ -1636,6 +1636,12 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 placeholder="e.g. 2500"
                 onSave={saveField("roughQuote")}
               />
+              {p.measuredSqFt != null && (
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground font-medium">Measured SF</span>
+                  <span className="text-sm text-foreground">{p.measuredSqFt.toLocaleString()} SF measured</span>
+                </div>
+              )}
             </div>
           </section>
 

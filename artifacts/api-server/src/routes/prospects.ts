@@ -41,6 +41,7 @@ function format(p: ProspectWithEstimate) {
     zip: p.zip ?? null,
     propertyType: p.propertyType,
     estimatedSqft: p.estimatedSqft ?? null,
+    measuredSqFt: p.measuredSqFt ?? null,
     roughQuote: p.roughQuote != null ? parseFloat(p.roughQuote) : null,
     contactName: p.contactName ?? null,
     contactPhone: p.contactPhone ?? null,
@@ -432,6 +433,7 @@ router.put("/:id", async (req, res) => {
       zip?: string | null;
       propertyType?: string;
       estimatedSqft?: number | null;
+      measuredSqFt?: number | null;
       roughQuote?: number | null;
       contactName?: string | null;
       contactPhone?: string | null;
@@ -460,6 +462,7 @@ router.put("/:id", async (req, res) => {
     if (body.zip !== undefined) patch.zip = body.zip ?? null;
     if (body.propertyType !== undefined) patch.propertyType = toProspectPropertyType(body.propertyType);
     if (body.estimatedSqft !== undefined) patch.estimatedSqft = body.estimatedSqft ?? null;
+    if (body.measuredSqFt !== undefined) patch.measuredSqFt = body.measuredSqFt ?? null;
     if (body.roughQuote !== undefined) patch.roughQuote = body.roughQuote != null ? body.roughQuote.toString() : null;
     if (body.contactName !== undefined) patch.contactName = body.contactName ?? null;
     if (body.contactPhone !== undefined) patch.contactPhone = body.contactPhone ?? null;
