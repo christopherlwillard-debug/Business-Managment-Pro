@@ -425,3 +425,12 @@ pool.query(\`
   .then(() => { console.log('square_payments table ensured'); pool.end(); })
   .catch(e => { console.error('square_payments migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #293: add measured_sq_ft column to prospects (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS measured_sq_ft integer')
+  .then(() => { console.log('prospects.measured_sq_ft ensured'); pool.end(); })
+  .catch(e => { console.error('measured_sq_ft migration error:', e.message); pool.end(); process.exit(1); });
+")
