@@ -2,7 +2,6 @@ import { useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
 import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
-import { resolveLogoUrl, fetchLogoDataUri, generateInvoicePdf, invoicePdfToBase64 } from "@/lib/generateInvoicePdf";
 import {
   FileText, Trash2, X,
   Building2, MapPin, Printer, Download, Mail, Phone,
@@ -61,14 +60,6 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
   const [gmailSent, setGmailSent] = useState(false);
   const [gmailPreview, setGmailPreview] = useState(false);
 
-  function buildPdfSettings() {
-    return {
-      companyName, companyAddress, companyCity, companyState, companyZip, companyPhone, companyEmail,
-      logoUrl: s.logoUrl ?? null,
-      dbaLogoUrl: s.dbaLogoUrl ?? null,
-    };
-  }
-
   function buildPrintableInvoice() {
     return {
       invoiceNumber: invoice.invoiceNumber,
@@ -101,55 +92,77 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     return { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyState, companyZip, logoSize, logoPosition: logoPos };
   }
 
-  function buildInvoicePdfData() {
+  function buildRenderPdfBody() {
+    const effectiveLogoUrl = invoice.businessLine === "asphalt_sealing"
+      ? (s.dbaLogoUrl ?? s.logoUrl ?? null)
+      : (s.logoUrl ?? null);
     return {
-      invoiceNumber: invoice.invoiceNumber,
-      issueDate: invoice.issueDate,
-      dueDate: invoice.dueDate,
-      terms: invoice.terms,
-      clientName: invoice.clientName,
-      clientEmail: invoice.clientEmail,
-      clientPhone: invoice.clientPhone,
-      clientAddress: invoice.clientAddress,
-      clientCity: invoice.clientCity,
-      clientState: invoice.clientState,
-      clientZip: invoice.clientZip,
-      jobTitle: invoice.jobTitle,
-      locationName: invoice.locationName,
-      city: invoice.city,
-      state: invoice.state,
-      lineItems,
-      subtotal,
-      taxRate,
-      taxAmount,
-      total,
-      notes: invoice.notes,
-      businessLine: invoice.businessLine ?? null,
+      invoice: {
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        terms: invoice.terms,
+        clientName: invoice.clientName,
+        clientEmail: invoice.clientEmail,
+        clientPhone: invoice.clientPhone,
+        clientAddress: invoice.clientAddress,
+        clientCity: invoice.clientCity,
+        clientState: invoice.clientState,
+        clientZip: invoice.clientZip,
+        jobTitle: invoice.jobTitle,
+        locationName: invoice.locationName,
+        city: invoice.city,
+        state: invoice.state,
+        lineItems: lineItems.map(li => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice })),
+        subtotal,
+        taxRate,
+        taxAmount,
+        total,
+        notes: invoice.notes,
+        businessLine: invoice.businessLine ?? null,
+      },
+      settings: {
+        companyName,
+        companyAddress,
+        companyCity,
+        companyState,
+        companyZip,
+        companyPhone,
+        companyEmail,
+        logoUrl: effectiveLogoUrl,
+      },
     };
   }
 
-  async function buildJsPdfSettings() {
-    const pdfSettings = buildPdfSettings();
-    const effectiveRelUrl = resolveLogoUrl(pdfSettings, invoice.businessLine);
-    const logoDataUri = await fetchLogoDataUri(effectiveRelUrl ? `${window.location.origin}${base}${effectiveRelUrl}` : null);
-    return {
-      companyName,
-      companyAddress,
-      companyCity,
-      companyState,
-      companyZip,
-      companyPhone,
-      companyEmail,
-      logoUrl: pdfSettings.logoUrl,
-      dbaLogoUrl: pdfSettings.dbaLogoUrl,
-      logoDataUri: logoDataUri ?? undefined,
-    };
+  async function fetchPdfBase64(): Promise<string> {
+    const resp = await fetch(`${base}/api/invoices/render-pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(buildRenderPdfBody()),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error ?? `Server PDF error ${resp.status}`);
+    }
+    const { pdfBase64 } = await resp.json();
+    return pdfBase64;
   }
 
   async function handleDownloadPdf() {
-    const settings = await buildJsPdfSettings();
-    const doc = generateInvoicePdf(buildInvoicePdfData(), settings);
-    doc.save(`Invoice-${invoice.invoiceNumber}.pdf`);
+    try {
+      const pdfBase64 = await fetchPdfBase64();
+      const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Invoice-${invoice.invoiceNumber}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({ title: "PDF download failed", description: err?.message ?? "Could not generate PDF", variant: "destructive" });
+    }
   }
 
   function handlePrint() {
@@ -165,9 +178,6 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     setGmailSending(true);
     try {
       const token = await getToken();
-      const pdfSettings = buildPdfSettings();
-      const effectiveRelUrl = resolveLogoUrl(pdfSettings, invoice.businessLine);
-      const logoDataUri = await fetchLogoDataUri(effectiveRelUrl ? `${window.location.origin}${base}${effectiveRelUrl}` : null);
       const html = buildInvoiceEmailHtml({
         companyName,
         companyAddress,
@@ -202,15 +212,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         customMessage: gmailMessage.trim() || undefined,
         paymentLink: invoice.squarePaymentLinkUrl ?? invoice.stripePaymentLinkUrl ?? null,
       });
-      const pdfBase64 = invoicePdfToBase64(
-        buildInvoicePdfData(),
-        {
-          companyName, companyAddress, companyCity, companyState, companyZip, companyPhone, companyEmail,
-          logoUrl: pdfSettings.logoUrl,
-          dbaLogoUrl: pdfSettings.dbaLogoUrl,
-          logoDataUri: logoDataUri ?? undefined,
-        },
-      );
+      const pdfBase64 = await fetchPdfBase64();
       const pdfFilename = `Invoice-${invoice.invoiceNumber}.pdf`;
       await sendViaGmail({
         token,
