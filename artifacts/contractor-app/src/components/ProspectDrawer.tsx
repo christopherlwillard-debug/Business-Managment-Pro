@@ -50,7 +50,6 @@ import {
   Pencil,
   Receipt,
   Briefcase,
-  Mail,
   Send,
   Eye,
 } from "lucide-react";
@@ -427,7 +426,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
         token,
         to: depositEmailTo,
         subject: depositEmailSubject,
-        htmlBody: html,
+        html,
       });
       setDepositEmailSent(true);
       setTimeout(() => {
