@@ -53,6 +53,7 @@ import {
   Send,
   Eye,
   Map,
+  RefreshCw,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -299,6 +300,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
 
   const [confirmDeleteVisitId, setConfirmDeleteVisitId] = useState<number | null>(null);
   const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
+  const [showSwapQuotePanel, setShowSwapQuotePanel] = useState(false);
   const [editingVisitId, setEditingVisitId] = useState<number | null>(null);
   const [editVisitDate, setEditVisitDate] = useState("");
   const [editVisitNotes, setEditVisitNotes] = useState("");
@@ -325,7 +327,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       if (!res.ok) throw new Error("Failed to fetch estimates");
       return res.json();
     },
-    enabled: showLinkExistingPanel,
+    enabled: showLinkExistingPanel || showSwapQuotePanel,
     staleTime: 30_000,
   });
 
@@ -351,6 +353,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       setRouteDateStr(new Date().toISOString().slice(0, 10));
       setConfirmDeleteVisitId(null);
       setShowUnlinkConfirm(false);
+      setShowSwapQuotePanel(false);
       setEditingVisitId(null);
       setEditVisitDate("");
       setEditVisitNotes("");
@@ -592,6 +595,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
       await detailQuery.refetch();
       linkedEstimateQuery.refetch();
       setShowLinkExistingPanel(false);
+      setShowSwapQuotePanel(false);
       setLinkExistingSearch("");
       onUpdated();
       toast({ title: "Quote linked", description: "The existing quote has been linked to this prospect." });
@@ -1022,7 +1026,14 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                         Open <ArrowRight className="w-3 h-3" />
                       </button>
                       <button
-                        onClick={() => setShowUnlinkConfirm(true)}
+                        onClick={() => { setShowSwapQuotePanel((v) => !v); setShowUnlinkConfirm(false); setLinkExistingSearch(""); }}
+                        className="p-0.5 rounded text-amber-600 hover:text-amber-900 hover:bg-amber-200 transition-colors"
+                        title="Change linked quote"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => { setShowUnlinkConfirm(true); setShowSwapQuotePanel(false); }}
                         className="p-0.5 rounded text-amber-600 hover:text-red-600 hover:bg-red-50 transition-colors"
                         title="Unlink quote"
                       >
@@ -1055,6 +1066,83 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                       >
                         Cancel
                       </button>
+                    </div>
+                  )}
+                  {showSwapQuotePanel && (
+                    <div className="mt-2 pt-2 border-t border-amber-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-amber-900 flex items-center gap-1.5">
+                          <RefreshCw className="w-3 h-3" />
+                          Swap Quote
+                        </p>
+                        <button
+                          onClick={() => { setShowSwapQuotePanel(false); setLinkExistingSearch(""); }}
+                          className="p-0.5 rounded text-amber-700 hover:bg-amber-200 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={linkExistingSearch}
+                        onChange={(e) => setLinkExistingSearch(e.target.value)}
+                        placeholder="Search by title or client…"
+                        className="w-full px-2.5 py-1.5 text-xs border border-amber-200 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-300/40 bg-white"
+                        autoFocus
+                      />
+                      {allEstimatesQuery.isLoading ? (
+                        <p className="text-xs text-amber-700 text-center py-2">Loading estimates…</p>
+                      ) : allEstimatesQuery.isError ? (
+                        <p className="text-xs text-red-600 text-center py-2">Failed to load estimates</p>
+                      ) : (() => {
+                        const search = linkExistingSearch.toLowerCase().trim();
+                        const filtered = (allEstimatesQuery.data ?? []).filter((e) => {
+                          if (e.id === p.linkedEstimateId) return false;
+                          if (!search) return true;
+                          return (
+                            e.title.toLowerCase().includes(search) ||
+                            (e.clientName ?? "").toLowerCase().includes(search)
+                          );
+                        });
+                        if (filtered.length === 0) {
+                          return <p className="text-xs text-amber-700 text-center py-2">No other estimates found</p>;
+                        }
+                        return (
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {filtered.map((e) => (
+                              <button
+                                key={e.id}
+                                onClick={() => handleLinkExistingQuote(e.id)}
+                                disabled={isLinkingExisting}
+                                className="w-full text-left px-2.5 py-2 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50 group"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium text-amber-900 truncate">{e.title}</p>
+                                    {e.clientName && (
+                                      <p className="text-xs text-amber-700 truncate">{e.clientName}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex-shrink-0 text-right">
+                                    <p className="text-xs font-semibold text-amber-900">{formatCurrency(e.total)}</p>
+                                    <span className={`inline-block text-xs px-1 rounded border ${
+                                      e.status === "approved" || e.status === "won"
+                                        ? "bg-green-100 text-green-700 border-green-200"
+                                        : e.status === "sent"
+                                        ? "bg-blue-100 text-blue-700 border-blue-200"
+                                        : e.status === "declined"
+                                        ? "bg-red-100 text-red-700 border-red-200"
+                                        : "bg-slate-100 text-slate-600 border-slate-200"
+                                    }`}>
+                                      {e.status.charAt(0).toUpperCase() + e.status.slice(1)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
