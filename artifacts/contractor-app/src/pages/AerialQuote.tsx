@@ -336,6 +336,7 @@ export default function AerialQuote() {
       return;
     }
     setSaving(true);
+    setSavedLinked(false);
     try {
       const lineItems = [
         {
