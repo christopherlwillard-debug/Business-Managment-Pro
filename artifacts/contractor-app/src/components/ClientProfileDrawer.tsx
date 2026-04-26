@@ -302,27 +302,35 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                     </div>
                   ) : (
                     data!.jobs.map(job => (
-                      <div key={job.id} className="bg-muted/40 rounded-xl p-4">
+                      <Link
+                        key={job.id}
+                        href={`${BASE}/jobs?openJob=${job.id}`}
+                        onClick={onClose}
+                        className="block bg-muted/40 rounded-xl p-4 hover:bg-muted/70 transition-colors group cursor-pointer"
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{job.title}</p>
                             {job.address && <p className="text-xs text-muted-foreground truncate">{job.address}</p>}
                           </div>
-                          <span className={cn(
-                            "text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0",
-                            job.status === "active" ? "bg-blue-100 text-blue-700" :
-                            job.status === "completed" ? "bg-emerald-100 text-emerald-700" :
-                            "bg-muted text-muted-foreground"
-                          )}>
-                            {job.status}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className={cn(
+                              "text-xs px-2 py-0.5 rounded-full font-medium",
+                              job.status === "active" ? "bg-blue-100 text-blue-700" :
+                              job.status === "completed" ? "bg-emerald-100 text-emerald-700" :
+                              "bg-muted text-muted-foreground"
+                            )}>
+                              {job.status}
+                            </span>
+                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                          </div>
                         </div>
                         {job.scheduledDate && (
                           <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                             <Calendar className="w-3 h-3" /> {formatDate(job.scheduledDate)}
                           </p>
                         )}
-                      </div>
+                      </Link>
                     ))
                   )}
                 </div>
@@ -340,25 +348,33 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                       const lineItems = Array.isArray(inv.lineItems) ? inv.lineItems as Array<{ quantity: number; unitPrice: number; description: string }> : [];
                       const total = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
                       return (
-                        <div key={inv.id} className="bg-muted/40 rounded-xl p-4">
+                        <Link
+                          key={inv.id}
+                          href={`${BASE}/invoices?openInvoice=${inv.id}`}
+                          onClick={onClose}
+                          className="block bg-muted/40 rounded-xl p-4 hover:bg-muted/70 transition-colors group cursor-pointer"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="text-sm font-medium">#{inv.invoiceNumber}</p>
                               {inv.issueDate && <p className="text-xs text-muted-foreground">{formatDate(inv.issueDate)}</p>}
                             </div>
-                            <div className="text-right">
-                              <p className="text-sm font-bold">{formatCurrency(total)}</p>
-                              <span className={cn(
-                                "text-xs px-2 py-0.5 rounded-full font-medium",
-                                inv.status === "paid" ? "bg-emerald-100 text-emerald-700" :
-                                inv.status === "overdue" ? "bg-red-100 text-red-700" :
-                                "bg-amber-100 text-amber-700"
-                              )}>
-                                {inv.status}
-                              </span>
+                            <div className="flex items-center gap-1.5">
+                              <div className="text-right">
+                                <p className="text-sm font-bold">{formatCurrency(total)}</p>
+                                <span className={cn(
+                                  "text-xs px-2 py-0.5 rounded-full font-medium",
+                                  inv.status === "paid" ? "bg-emerald-100 text-emerald-700" :
+                                  inv.status === "overdue" ? "bg-red-100 text-red-700" :
+                                  "bg-amber-100 text-amber-700"
+                                )}>
+                                  {inv.status}
+                                </span>
+                              </div>
+                              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0" />
                             </div>
                           </div>
-                        </div>
+                        </Link>
                       );
                     })
                   )}
