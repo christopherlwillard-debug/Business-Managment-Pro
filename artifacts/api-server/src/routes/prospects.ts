@@ -212,6 +212,11 @@ router.post("/ai-import", async (req, res) => {
       imageMimeType?: string;
     };
 
+    const ALLOWED_MIME_TYPES = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/bmp", "image/tiff",
+    ]);
+
     const hasText = typeof text === "string" && text.trim().length >= 5;
     const hasImage = typeof imageBase64 === "string" && imageBase64.length > 0;
 
@@ -225,8 +230,10 @@ router.post("/ai-import", async (req, res) => {
       return res.status(400).json({ error: "Image too large (max ~3.75 MB)" });
     }
 
-    const safeType = (imageMimeType ?? "image/jpeg").replace(/[^a-z/]/g, "");
-    const imageDataUrl = hasImage ? `data:${safeType};base64,${imageBase64}` : null;
+    const resolvedMimeType = imageMimeType && ALLOWED_MIME_TYPES.has(imageMimeType)
+      ? imageMimeType
+      : "image/jpeg";
+    const imageDataUrl = hasImage ? `data:${resolvedMimeType};base64,${imageBase64}` : null;
 
     type UserContentPart =
       | { type: "text"; text: string }
@@ -236,14 +243,15 @@ router.post("/ai-import", async (req, res) => {
     if (imageDataUrl) {
       userContent.push({ type: "image_url", image_url: { url: imageDataUrl, detail: "high" } });
     }
-    if (hasText) {
-      userContent.push({ type: "text", text: text!.trim() });
+    const trimmedText = typeof text === "string" ? text.trim() : "";
+    if (trimmedText.length > 0) {
+      userContent.push({ type: "text", text: trimmedText });
     } else {
       userContent.push({ type: "text", text: "Extract all business prospects visible in the image." });
     }
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       max_completion_tokens: 4096,
       response_format: { type: "json_schema", json_schema: AI_IMPORT_JSON_SCHEMA },
       messages: [
