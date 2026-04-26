@@ -42,6 +42,15 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
   const [editingServiceDate, setEditingServiceDate] = useState(false);
   const [serviceDateVal, setServiceDateVal] = useState("");
   const [serviceIntervalVal, setServiceIntervalVal] = useState("");
+
+  const [oiFormOpen, setOiFormOpen] = useState(false);
+  const [oiAmount, setOiAmount] = useState("");
+  const [oiDate, setOiDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [oiMethod, setOiMethod] = useState("cash");
+  const [oiDescription, setOiDescription] = useState("");
+  const [oiSaving, setOiSaving] = useState(false);
+  const [oiError, setOiError] = useState<string | null>(null);
+
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
   const updateServiceDate = useUpdateClientServiceDate();
@@ -74,6 +83,58 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
     setServiceDateVal(client?.nextServiceDate ?? "");
     setServiceIntervalVal(client?.serviceIntervalMonths?.toString() ?? "");
     setEditingServiceDate(true);
+  }
+
+  function openOIForm() {
+    setOiAmount("");
+    setOiDate(new Date().toISOString().split("T")[0]);
+    setOiMethod("cash");
+    setOiDescription("");
+    setOiError(null);
+    setOiFormOpen(true);
+  }
+
+  function closeOIForm() {
+    setOiFormOpen(false);
+    setOiError(null);
+  }
+
+  async function handleSaveOI(e: React.FormEvent) {
+    e.preventDefault();
+    if (!client) return;
+    const amount = parseFloat(oiAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setOiError("Enter a valid amount.");
+      return;
+    }
+    if (!oiDate) {
+      setOiError("Enter a date.");
+      return;
+    }
+    setOiSaving(true);
+    setOiError(null);
+    try {
+      const res = await fetch(`${BASE}/api/other-income`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: oiAmount,
+          date: oiDate,
+          paymentMethod: oiMethod,
+          description: oiDescription.trim() || null,
+          clientId: client.id,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      closeOIForm();
+      refetch();
+      toast({ title: "Other income added" });
+    } catch {
+      setOiError("Failed to save. Please try again.");
+    } finally {
+      setOiSaving(false);
+    }
   }
 
   return (
@@ -443,21 +504,98 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                         <DollarSign className="w-3.5 h-3.5" /> Other Income
                       </h3>
-                      {canEdit("invoices") && (
-                        <Link
-                          href={`${BASE}/accounting?module=other_income&newEntry=true&clientId=${client.id}`}
-                          onClick={onClose}
+                      {canEdit("invoices") && !oiFormOpen && (
+                        <button
+                          onClick={openOIForm}
                           className="text-xs text-primary hover:underline font-medium"
                         >
-                          Add Other Income
-                        </Link>
+                          + Add
+                        </button>
                       )}
                     </div>
-                    {(data?.otherIncome?.length ?? 0) === 0 ? (
+
+                    {oiFormOpen && (
+                      <form onSubmit={handleSaveOI} className="bg-muted/20 border border-border rounded-xl p-4 space-y-3">
+                        <h4 className="text-xs font-semibold text-foreground">New Other Income</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Amount *</label>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                placeholder="0.00"
+                                value={oiAmount}
+                                onChange={(e) => setOiAmount(e.target.value)}
+                                className="w-full pl-6 pr-2 py-1.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                required
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Date *</label>
+                            <input
+                              type="date"
+                              value={oiDate}
+                              onChange={(e) => setOiDate(e.target.value)}
+                              className="w-full px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground block mb-1">Payment Method</label>
+                          <select
+                            value={oiMethod}
+                            onChange={(e) => setOiMethod(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          >
+                            <option value="cash">Cash</option>
+                            <option value="check">Check</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground block mb-1">Description</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Pre-app cash payment, retainer…"
+                            value={oiDescription}
+                            onChange={(e) => setOiDescription(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-sm border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                        {oiError && (
+                          <p className="text-xs text-destructive">{oiError}</p>
+                        )}
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={closeOIForm}
+                            className="px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={oiSaving}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors font-medium"
+                          >
+                            {oiSaving ? <><span className="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</> : <><Check className="w-3 h-3" /> Save</>}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {(data?.otherIncome?.length ?? 0) === 0 && !oiFormOpen ? (
                       <div className="flex flex-col items-center justify-center py-6 gap-2 text-center bg-muted/20 rounded-xl">
                         <p className="text-sm text-muted-foreground">No other income linked</p>
                       </div>
-                    ) : (
+                    ) : (data?.otherIncome?.length ?? 0) > 0 ? (
                       <div className="space-y-2">
                         {data!.otherIncome.map((oi) => (
                           <Link
@@ -484,7 +622,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                           </Link>
                         ))}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               )}
