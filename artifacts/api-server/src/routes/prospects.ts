@@ -12,6 +12,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, asc, desc, and, ilike, or, max, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { z } from "zod";
 
 const router = Router();
 
@@ -148,6 +149,59 @@ Rules:
 - Return ONLY a valid JSON array, no markdown fences, no explanation
 - If nothing useful is found, return an empty array []`;
 
+const PROPERTY_TYPE_VALUES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
+
+const prospectItemSchema = z.object({
+  address: z.string().min(1),
+  city: z.string().nullable().default(null),
+  state: z.string().max(2).nullable().default(null),
+  zip: z.string().max(5).nullable().default(null),
+  contactName: z.string().nullable().default(null),
+  contactPhone: z.string().nullable().default(null),
+  contactEmail: z.string().nullable().default(null),
+  propertyType: z.enum(PROPERTY_TYPE_VALUES).default("Other"),
+  notes: z.string().nullable().default(null),
+});
+
+const aiImportResponseSchema = z.object({
+  prospects: z.array(prospectItemSchema),
+});
+
+const AI_IMPORT_JSON_SCHEMA = {
+  name: "prospect_list",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      prospects: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            address: { type: "string", description: "Street address of the property" },
+            city: { type: ["string", "null"], description: "City name or null if unknown" },
+            state: { type: ["string", "null"], description: "Two-letter state abbreviation or null" },
+            zip: { type: ["string", "null"], description: "5-digit zip code or null" },
+            contactName: { type: ["string", "null"], description: "Full name of primary contact or null" },
+            contactPhone: { type: ["string", "null"], description: "Phone number or null" },
+            contactEmail: { type: ["string", "null"], description: "Email address or null" },
+            propertyType: {
+              type: "string",
+              enum: ["Church", "Retail", "Apartment", "Industrial", "Other"],
+              description: "Best-fit category for the property",
+            },
+            notes: { type: ["string", "null"], description: "Any other useful info or null" },
+          },
+          required: ["address", "city", "state", "zip", "contactName", "contactPhone", "contactEmail", "propertyType", "notes"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["prospects"],
+    additionalProperties: false,
+  },
+} as const;
+
 router.post("/ai-import", async (req, res) => {
   try {
     const { text } = req.body as { text?: string };
@@ -159,40 +213,43 @@ router.post("/ai-import", async (req, res) => {
     }
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 4096,
+      response_format: { type: "json_schema", json_schema: AI_IMPORT_JSON_SCHEMA },
       messages: [
         { role: "system", content: AI_IMPORT_SYSTEM_PROMPT },
         { role: "user", content: text.trim() },
       ],
     });
 
-    const raw = response.choices[0]?.message?.content ?? "[]";
-    const VALID_TYPES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
+    const raw = response.choices[0]?.message?.content ?? "{}";
 
-    let prospects: object[] = [];
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) throw new Error("Not an array");
-      prospects = parsed
-        .filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null)
-        .filter((p) => typeof p.address === "string" && (p.address as string).trim().length > 0)
-        .map((p) => ({
-          address: String(p.address ?? "").trim(),
-          city: p.city ? String(p.city).trim() : null,
-          state: p.state ? String(p.state).trim().toUpperCase().slice(0, 2) : null,
-          zip: p.zip ? String(p.zip).trim().replace(/\D/g, "").slice(0, 5) : null,
-          contactName: p.contactName ? String(p.contactName).trim() : null,
-          contactPhone: p.contactPhone ? String(p.contactPhone).trim() : null,
-          contactEmail: p.contactEmail ? String(p.contactEmail).trim() : null,
-          propertyType: VALID_TYPES.includes(p.propertyType as typeof VALID_TYPES[number])
-            ? p.propertyType
-            : "Other",
-          notes: p.notes ? String(p.notes).trim() : null,
-        }));
+      parsed = JSON.parse(raw);
     } catch {
       return res.status(422).json({ error: "AI returned an unparseable response", prospects: [] });
     }
+
+    const validated = aiImportResponseSchema.safeParse(parsed);
+    if (!validated.success) {
+      console.error("[prospects/ai-import] schema validation failed:", validated.error.issues);
+      return res.status(422).json({ error: "AI response did not match expected schema", prospects: [] });
+    }
+
+    const prospects = validated.data.prospects
+      .filter((p) => p.address.trim().length > 0)
+      .map((p) => ({
+        address: p.address.trim(),
+        city: p.city?.trim() || null,
+        state: p.state?.trim().toUpperCase().slice(0, 2) || null,
+        zip: p.zip?.trim().replace(/\D/g, "").slice(0, 5) || null,
+        contactName: p.contactName?.trim() || null,
+        contactPhone: p.contactPhone?.trim() || null,
+        contactEmail: p.contactEmail?.trim() || null,
+        propertyType: p.propertyType,
+        notes: p.notes?.trim() || null,
+      }));
 
     res.json({ prospects });
   } catch (err) {

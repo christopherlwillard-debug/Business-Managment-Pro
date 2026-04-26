@@ -210,7 +210,7 @@ importers:
         version: 8.0.3
       openai:
         specifier: ^6.32.0
-        version: 6.32.0(zod@4.3.6)
+        version: 6.32.0(zod@3.25.76)
       openid-client:
         specifier: ^6.8.2
         version: 6.8.2
@@ -229,6 +229,9 @@ importers:
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
     devDependencies:
       '@types/bcryptjs':
         specifier: ^3.0.0
@@ -8366,6 +8369,10 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
+
+  openai@6.32.0(zod@3.25.76):
+    optionalDependencies:
+      zod: 3.25.76
 
   openai@6.32.0(zod@4.3.6):
     optionalDependencies:

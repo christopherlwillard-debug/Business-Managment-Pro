@@ -752,12 +752,14 @@ export default function Prospects() {
         </div>
       )}
 
-      {/* AI Import Dialog */}
-      <AIProspectImportDialog
-        open={isImportDialogOpen}
-        onClose={() => setIsImportDialogOpen(false)}
-        onImported={() => { refetch(); }}
-      />
+      {/* AI Import Dialog — only mounted for users with write access */}
+      {canEdit("clients") && (
+        <AIProspectImportDialog
+          open={isImportDialogOpen}
+          onClose={() => setIsImportDialogOpen(false)}
+          onImported={() => { refetch(); }}
+        />
+      )}
 
       {/* Prospect Profile Drawer */}
       <ProspectDrawer
