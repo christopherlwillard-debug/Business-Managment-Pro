@@ -307,18 +307,22 @@ export default function Prospects() {
   }
 
   const uniqueCities = useMemo(() => {
-    const cities = new Set<string>();
+    const seen = new Map<string, string>();
     for (const p of prospects) {
-      if (p.city?.trim()) cities.add(p.city.trim());
+      const city = p.city?.trim();
+      if (city) {
+        const key = city.toLowerCase();
+        if (!seen.has(key)) seen.set(key, city);
+      }
     }
-    return Array.from(cities).sort((a, b) => a.localeCompare(b));
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
   }, [prospects]);
 
   const hasCityFilter = cityFilter !== "";
 
   const cityFiltered = prospects.filter((p) => {
     if (!hasCityFilter) return true;
-    return (p.city?.trim() ?? "") === cityFilter;
+    return (p.city?.trim() ?? "").toLowerCase() === cityFilter.toLowerCase();
   });
 
   const filtered = cityFiltered.filter((p) => {
