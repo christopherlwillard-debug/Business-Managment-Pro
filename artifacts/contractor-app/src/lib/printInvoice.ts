@@ -227,7 +227,7 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
   </div>`;
 }
 
-function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
+export function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
   const bodyContent = buildInvoiceBodyHtml(inv, settings);
   return `<!DOCTYPE html>
 <html lang="en">

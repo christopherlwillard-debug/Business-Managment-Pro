@@ -1,5 +1,6 @@
 import { Router } from "express";
 import nodemailer from "nodemailer";
+import puppeteer from "puppeteer";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
@@ -414,6 +415,36 @@ router.post("/:id/send", async (req, res) => {
   } catch (err: any) {
     console.error("Email send error:", err);
     res.status(500).json({ error: err.message || "Failed to send email" });
+  }
+});
+
+router.post("/render-html-pdf", async (req, res) => {
+  try {
+    const { html } = req.body as { html: string };
+    if (!html || typeof html !== "string") {
+      res.status(400).json({ error: "html required" });
+      return;
+    }
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+      const pdfBuffer = await page.pdf({
+        format: "Letter",
+        printBackground: true,
+        preferCSSPageSize: true,
+      });
+      const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+      res.json({ pdfBase64 });
+    } finally {
+      await browser.close();
+    }
+  } catch (err: any) {
+    console.error("render-html-pdf error:", err);
+    res.status(500).json({ error: err.message || "PDF render failed" });
   }
 });
 

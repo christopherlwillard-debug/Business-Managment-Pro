@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { printInvoiceWindow } from "@/lib/printInvoice";
+import { printInvoiceWindow, buildInvoiceHtml } from "@/lib/printInvoice";
 import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
 import {
   FileText, Trash2, X,
@@ -92,77 +92,8 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     return { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyState, companyZip, logoSize, logoPosition: logoPos };
   }
 
-  function buildRenderPdfBody() {
-    const effectiveLogoUrl = invoice.businessLine === "asphalt_sealing"
-      ? (s.dbaLogoUrl ?? s.logoUrl ?? null)
-      : (s.logoUrl ?? null);
-    return {
-      invoice: {
-        invoiceNumber: invoice.invoiceNumber,
-        issueDate: invoice.issueDate,
-        dueDate: invoice.dueDate,
-        terms: invoice.terms,
-        clientName: invoice.clientName,
-        clientEmail: invoice.clientEmail,
-        clientPhone: invoice.clientPhone,
-        clientAddress: invoice.clientAddress,
-        clientCity: invoice.clientCity,
-        clientState: invoice.clientState,
-        clientZip: invoice.clientZip,
-        jobTitle: invoice.jobTitle,
-        locationName: invoice.locationName,
-        city: invoice.city,
-        state: invoice.state,
-        lineItems: lineItems.map(li => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice })),
-        subtotal,
-        taxRate,
-        taxAmount,
-        total,
-        notes: invoice.notes,
-        businessLine: invoice.businessLine ?? null,
-      },
-      settings: {
-        companyName,
-        companyAddress,
-        companyCity,
-        companyState,
-        companyZip,
-        companyPhone,
-        companyEmail,
-        logoUrl: effectiveLogoUrl,
-      },
-    };
-  }
-
-  async function fetchPdfBase64(): Promise<string> {
-    const resp = await fetch(`${base}/api/invoices/render-pdf`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(buildRenderPdfBody()),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error ?? `Server PDF error ${resp.status}`);
-    }
-    const { pdfBase64 } = await resp.json();
-    return pdfBase64;
-  }
-
-  async function handleDownloadPdf() {
-    try {
-      const pdfBase64 = await fetchPdfBase64();
-      const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Invoice-${invoice.invoiceNumber}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      toast({ title: "PDF download failed", description: err?.message ?? "Could not generate PDF", variant: "destructive" });
-    }
+  function handleDownloadPdf() {
+    handlePrint();
   }
 
   function handlePrint() {
@@ -228,7 +159,25 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         paymentLink: invoice.squarePaymentLinkUrl ?? invoice.stripePaymentLinkUrl ?? null,
         logoSrc: logoDataUri,
       });
-      const pdfBase64 = await fetchPdfBase64();
+      let pdfBase64: string | undefined;
+      try {
+        const printHtml = buildInvoiceHtml(
+          buildPrintableInvoice(),
+          { ...buildPrintableSettings(), logoAbsoluteUrl: logoDataUri },
+        );
+        const pdfResp = await fetch(`${base}/api/invoices/render-html-pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ html: printHtml }),
+        });
+        if (pdfResp.ok) {
+          const data = await pdfResp.json();
+          pdfBase64 = data.pdfBase64 ?? undefined;
+        }
+      } catch {
+        // PDF render failed — send email without attachment rather than blocking
+      }
       const pdfFilename = `Invoice-${invoice.invoiceNumber}.pdf`;
       await sendViaGmail({
         token,
@@ -240,7 +189,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         pdfFilename,
       });
       setGmailSent(true);
-      toast({ title: "Invoice sent via Gmail", description: `Delivered to ${gmailTo.trim()} with PDF attached` });
+      toast({ title: "Invoice sent via Gmail", description: pdfBase64 ? `Delivered to ${gmailTo.trim()} with PDF attached` : `Delivered to ${gmailTo.trim()}` });
       setTimeout(() => {
         setShowGmailCompose(false);
         setGmailSent(false);
