@@ -178,6 +178,21 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
     setGmailSending(true);
     try {
       const token = await getToken();
+
+      let logoDataUri: string | null = null;
+      if (logoUrl) {
+        try {
+          const blParam = invoice.businessLine ? `?businessLine=${encodeURIComponent(invoice.businessLine)}` : "";
+          const logoResp = await fetch(`${base}/api/settings/logo-data-uri${blParam}`, { credentials: "include" });
+          if (logoResp.ok) {
+            const { dataUri } = await logoResp.json();
+            logoDataUri = dataUri ?? null;
+          }
+        } catch {
+          // If logo fetch fails, send email without logo rather than blocking send
+        }
+      }
+
       const html = buildInvoiceEmailHtml({
         companyName,
         companyAddress,
@@ -211,6 +226,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
         notes: invoice.notes ?? undefined,
         customMessage: gmailMessage.trim() || undefined,
         paymentLink: invoice.squarePaymentLinkUrl ?? invoice.stripePaymentLinkUrl ?? null,
+        logoSrc: logoDataUri,
       });
       const pdfBase64 = await fetchPdfBase64();
       const pdfFilename = `Invoice-${invoice.invoiceNumber}.pdf`;
