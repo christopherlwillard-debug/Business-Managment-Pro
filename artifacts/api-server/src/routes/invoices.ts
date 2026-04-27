@@ -4,7 +4,6 @@ import puppeteer from "puppeteer";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
-import { generateInvoicePdfBase64 } from "../lib/generateInvoicePdf.js";
 
 const router = Router();
 
@@ -456,24 +455,6 @@ router.post("/render-html-pdf", async (req, res) => {
   } catch (err: any) {
     console.error("render-html-pdf error:", err);
     res.status(500).json({ error: err.message || "PDF render failed" });
-  }
-});
-
-router.post("/render-pdf", async (req, res) => {
-  try {
-    const { invoice, settings } = req.body as {
-      invoice: Parameters<typeof generateInvoicePdfBase64>[0];
-      settings: Parameters<typeof generateInvoicePdfBase64>[1];
-    };
-    if (!invoice || !invoice.invoiceNumber) {
-      res.status(400).json({ error: "Missing invoice data" });
-      return;
-    }
-    const pdfBase64 = await generateInvoicePdfBase64(invoice, settings ?? {});
-    res.json({ pdfBase64 });
-  } catch (err: any) {
-    console.error("render-pdf error:", err);
-    res.status(500).json({ error: err.message || "PDF generation failed" });
   }
 });
 

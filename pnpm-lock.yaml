@@ -199,9 +199,6 @@ importers:
       google-auth-library:
         specifier: ^10.6.2
         version: 10.6.2
-      jspdf:
-        specifier: ^4.2.1
-        version: 4.2.1
       multer:
         specifier: ^2.1.1
         version: 2.1.1
