@@ -431,6 +431,17 @@ router.post("/render-html-pdf", async (req, res) => {
     });
     try {
       const page = await browser.newPage();
+      // Block all network requests — HTML is self-contained; logo is embedded as
+      // a data URI. This prevents SSRF via injected <img src="http://..."> tags.
+      await page.setRequestInterception(true);
+      page.on("request", (req) => {
+        const url = req.url();
+        if (url.startsWith("data:") || url === "about:blank") {
+          req.continue();
+        } else {
+          req.abort();
+        }
+      });
       await page.setContent(html, { waitUntil: "domcontentloaded" });
       const pdfBuffer = await page.pdf({
         format: "Letter",
