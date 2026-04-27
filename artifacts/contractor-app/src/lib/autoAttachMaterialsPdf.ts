@@ -43,7 +43,7 @@ export async function autoAttachMaterialsPdf(
 
   if (nonEmptyLists.length > 0) {
     // 4. Generate the combined materials PDF
-    const pdfBlob = generateJobMaterialsPdf(nonEmptyLists, jobTitle, companyName);
+    const pdfBlob = await generateJobMaterialsPdf(nonEmptyLists, jobTitle, companyName);
     const safeTitle = jobTitle.replace(/[^a-z0-9]/gi, "-").toLowerCase();
     const filename = `materials-${safeTitle}.pdf`;
 

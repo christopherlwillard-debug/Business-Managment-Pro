@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { renderHtmlToPdf } from "./renderHtmlToPdf";
 
 export interface Payer1099 {
   name: string;
@@ -16,7 +16,7 @@ export interface Payee1099 {
   city?: string | null;
   state?: string | null;
   zip?: string | null;
-  tinType?: string | null; // SSN | EIN
+  tinType?: string | null;
   tinLastFour?: string | null;
 }
 
@@ -24,169 +24,159 @@ export interface Form1099NecData {
   taxYear: number;
   payer: Payer1099;
   payee: Payee1099;
-  nonemployeeCompensation: number; // Box 1
+  nonemployeeCompensation: number;
 }
 
-function box(doc: jsPDF, x: number, y: number, w: number, h: number, label: string, value: string, small = false) {
-  doc.setDrawColor(100);
-  doc.rect(x, y, w, h);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(80);
-  doc.text(label, x + 1.5, y + 3.5);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(small ? 8 : 10);
-  doc.setTextColor(20);
-  if (value) doc.text(value, x + 1.5, y + h - 2.5);
+function esc(s: string | null | undefined): string {
+  return (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export function generate1099NecPdf(data: Form1099NecData): Blob {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+function fmtCurrency(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
 
-  const pageW = doc.internal.pageSize.getWidth();
-  const margin = 12;
-  const formW = pageW - margin * 2;
+function addrLine(parts: (string | null | undefined)[]): string {
+  return parts.filter(Boolean).join(", ");
+}
 
-  // ── Header ──────────────────────────────────────────────────────────────────
-  doc.setFillColor(230, 240, 255);
-  doc.rect(margin, 10, formW, 12, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(20);
-  doc.text(`Form 1099-NEC`, margin + 3, 18);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(60);
-  doc.text(`Nonemployee Compensation — Tax Year ${data.taxYear}`, margin + 3, 23);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(20);
-  doc.text(`${data.taxYear}`, pageW - margin - 3, 21, { align: "right" });
+function formBox(label: string, value: string): string {
+  return `
+    <div style="border:1px solid #9ca3af;padding:6px 8px;">
+      <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">${esc(label)}</div>
+      <div style="font-size:11px;font-weight:700;color:#111827;">${esc(value)}</div>
+    </div>`;
+}
 
-  const col1 = margin;
-  const col2 = margin + formW * 0.5;
-  const col2w = formW * 0.5;
-  const col1w = formW * 0.5;
+export async function generate1099NecPdf(data: Form1099NecData): Promise<Blob> {
+  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
-  let y = 26;
+  const payerAddrLine = addrLine([data.payer.address]);
+  const payerCityLine = addrLine([data.payer.city, data.payer.state, data.payer.zip]);
+  const payeeAddrLine = addrLine([data.payee.address]);
+  const payeeCityLine = addrLine([data.payee.city, data.payee.state, data.payee.zip]);
 
-  // ── Payer section ─────────────────────────────────────────────────────────
-  const payerAddr = [
-    data.payer.address,
-    [data.payer.city, data.payer.state, data.payer.zip].filter(Boolean).join(", "),
-    data.payer.phone,
-  ].filter(Boolean).join("\n");
+  const tinDisplay = data.payee.tinLastFour
+    ? `${data.payee.tinType === "EIN" ? "EIN" : "SSN"}: ***-**-${data.payee.tinLastFour}`
+    : "Not on file";
 
-  doc.setDrawColor(100);
-  doc.rect(col1, y, col1w, 42);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(80);
-  doc.text("PAYER'S name, street address, city or town, state or province, country, ZIP or foreign postal code, and telephone no.", col1 + 1.5, y + 3.5);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(20);
-  doc.text(data.payer.name || "", col1 + 1.5, y + 9);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  const payerLines = payerAddr.split("\n");
-  payerLines.forEach((line, i) => doc.text(line, col1 + 1.5, y + 14 + i * 4.5));
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Form 1099-NEC — ${esc(data.payee.name)} — ${data.taxYear}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; background: white; }
+    .page { max-width: 750px; margin: 0 auto; padding: 48px; }
+    @media print {
+      @page { size: letter portrait; margin: 0.5in; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div style="height:6px;background:linear-gradient(to right,#1d4ed8,#3b82f6);"></div>
+  <div class="page">
 
-  // Payer TIN box
-  box(doc, col2, y, col2w / 2, 14,
-    "PAYER'S TIN",
-    data.payer.ein ? `EIN: ${data.payer.ein}` : ""
-  );
+    <!-- Header -->
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-start;">
+      <div>
+        <div style="font-size:20px;font-weight:900;color:#1e3a8a;letter-spacing:0.05em;">Form 1099-NEC</div>
+        <div style="font-size:11px;color:#3b82f6;margin-top:2px;">Nonemployee Compensation &mdash; Tax Year ${data.taxYear}</div>
+      </div>
+      <div style="font-size:36px;font-weight:900;color:#bfdbfe;letter-spacing:0.1em;line-height:1;">${data.taxYear}</div>
+    </div>
 
-  // Recipient TIN box
-  box(doc, col2 + col2w / 2, y, col2w / 2, 14,
-    "RECIPIENT'S TIN",
-    data.payee.tinLastFour
-      ? `${data.payee.tinType === "EIN" ? "EIN" : "SSN"}: ***-**-${data.payee.tinLastFour}`
-      : "Not on file"
-  );
+    <!-- Payer & TIN row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:0;border:1px solid #9ca3af;">
+      <div style="padding:10px 12px;border-right:1px solid #9ca3af;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:6px;">PAYER'S name, street address, city or town, state or province, country, ZIP or foreign postal code, and telephone no.</div>
+        <div style="font-size:12px;font-weight:700;color:#111827;">${esc(data.payer.name)}</div>
+        ${payerAddrLine ? `<div style="font-size:10px;color:#4b5563;margin-top:3px;">${esc(payerAddrLine)}</div>` : ""}
+        ${payerCityLine ? `<div style="font-size:10px;color:#4b5563;">${esc(payerCityLine)}</div>` : ""}
+        ${data.payer.phone ? `<div style="font-size:10px;color:#4b5563;">${esc(data.payer.phone)}</div>` : ""}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-left:1px solid #9ca3af;">
+        ${formBox("PAYER'S TIN", data.payer.ein ? `EIN: ${data.payer.ein}` : "Not on file")}
+        ${formBox("RECIPIENT'S TIN", tinDisplay)}
+      </div>
+    </div>
 
-  y += 14;
+    <!-- Recipient name -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #9ca3af;border-top:none;">
+      <div style="padding:10px 12px;border-right:1px solid #9ca3af;">
+        <!-- empty left column at this row -->
+      </div>
+      <div style="padding:10px 12px;border-left:1px solid #9ca3af;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:6px;">RECIPIENT'S name</div>
+        <div style="font-size:12px;font-weight:700;color:#111827;">${esc(data.payee.name)}</div>
+      </div>
+    </div>
 
-  // ── Recipient section ─────────────────────────────────────────────────────
-  const recipAddr = [
-    data.payee.address,
-    [data.payee.city, data.payee.state, data.payee.zip].filter(Boolean).join(", "),
-  ].filter(Boolean).join("\n");
+    <!-- Recipient address -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #9ca3af;border-top:none;margin-bottom:16px;">
+      <div style="padding:10px 12px;border-right:1px solid #9ca3af;">
+        <!-- empty left column -->
+      </div>
+      <div style="padding:10px 12px;border-left:1px solid #9ca3af;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:6px;">Street address (including apt. no.)</div>
+        ${payeeAddrLine ? `<div style="font-size:10px;color:#4b5563;">${esc(payeeAddrLine)}</div>` : ""}
+        ${payeeCityLine ? `<div style="font-size:10px;color:#4b5563;">${esc(payeeCityLine)}</div>` : ""}
+      </div>
+    </div>
 
-  doc.setDrawColor(100);
-  doc.rect(col2, y, col2w, 14);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(80);
-  doc.text("RECIPIENT'S name", col2 + 1.5, y + 3.5);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(20);
-  doc.text(data.payee.name || "", col2 + 1.5, y + 9);
+    <!-- Boxes row 1 -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid #9ca3af;margin-bottom:0;">
+      <div style="background:#f0fdf4;border-right:1px solid #9ca3af;padding:8px;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">1 &nbsp; Nonemployee compensation</div>
+        <div style="font-size:14px;font-weight:800;color:#15803d;">${fmtCurrency(data.nonemployeeCompensation)}</div>
+      </div>
+      <div style="border-right:1px solid #9ca3af;padding:8px;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">2 &nbsp; Direct sales (see instructions)</div>
+        <div style="font-size:11px;color:#d1d5db;">&nbsp;</div>
+      </div>
+      <div style="border-right:1px solid #9ca3af;padding:8px;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">3 &nbsp; Other income</div>
+        <div style="font-size:11px;color:#d1d5db;">&nbsp;</div>
+      </div>
+      <div style="padding:8px;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">4 &nbsp; Federal income tax withheld</div>
+        <div style="font-size:11px;font-weight:700;color:#111827;">$0.00</div>
+      </div>
+    </div>
 
-  y += 14;
+    <!-- Boxes row 2 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:0;border:1px solid #9ca3af;border-top:none;margin-bottom:24px;">
+      <div style="border-right:1px solid #9ca3af;padding:8px;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">5 &nbsp; State tax withheld</div>
+        <div style="font-size:11px;color:#d1d5db;">&nbsp;</div>
+      </div>
+      <div style="border-right:1px solid #9ca3af;padding:8px;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">6 &nbsp; State/Payer's state no.</div>
+        <div style="font-size:11px;color:#d1d5db;">&nbsp;</div>
+      </div>
+      <div style="padding:8px;">
+        <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">7 &nbsp; State income</div>
+        <div style="font-size:11px;color:#d1d5db;">&nbsp;</div>
+      </div>
+    </div>
 
-  // Recipient address
-  doc.setDrawColor(100);
-  doc.rect(col2, y, col2w, 14);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(80);
-  doc.text("Street address (including apt. no.)", col2 + 1.5, y + 3.5);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(20);
-  const recipLines = recipAddr.split("\n");
-  recipLines.forEach((line, i) => doc.text(line, col2 + 1.5, y + 8 + i * 4.5));
+    <!-- Instructions note -->
+    <div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:6px;padding:12px 14px;margin-bottom:20px;">
+      <div style="font-size:9px;color:#4b5563;line-height:1.6;">
+        <strong>COPY B &mdash; For Recipient.</strong> This is important tax information and is being furnished to the IRS. If you are required to file a return,
+        a negligence penalty or other sanction may be imposed on you if this income is taxable and you fail to report it.
+      </div>
+    </div>
 
-  // ── Boxes row ─────────────────────────────────────────────────────────────
-  y = 26 + 42;
+    <!-- Footer -->
+    <div style="border-top:1px solid #e5e7eb;padding-top:10px;font-size:9px;color:#9ca3af;">
+      Generated ${esc(today)} &middot; ${data.taxYear} Tax Year &middot; For informational purposes only.
+    </div>
+  </div>
+  <div style="height:4px;background:linear-gradient(to right,#3b82f6,#1d4ed8);margin-top:32px;"></div>
+</body>
+</html>`;
 
-  const boxH = 16;
-  const boxW = formW / 4;
-
-  // Box 1 — Nonemployee compensation (main value)
-  doc.setFillColor(245, 250, 245);
-  doc.rect(col1, y, boxW, boxH, "F");
-  box(doc, col1, y, boxW, boxH, "1  Nonemployee compensation", `$${data.nonemployeeCompensation.toFixed(2)}`);
-
-  // Box 2 — Payer made direct sales totaling $5,000 or more
-  box(doc, col1 + boxW, y, boxW, boxH, "2  Direct sales (see instructions)", "");
-
-  // Box 3
-  box(doc, col1 + boxW * 2, y, boxW, boxH, "3  Other income", "");
-
-  // Box 4 — Federal income tax withheld
-  box(doc, col1 + boxW * 3, y, boxW, boxH, "4  Federal income tax withheld", "$0.00");
-
-  y += boxH;
-
-  // Boxes 5–7
-  box(doc, col1, y, boxW, boxH, "5  State tax withheld", "", true);
-  box(doc, col1 + boxW, y, boxW, boxH, "6  State/Payer's state no.", "", true);
-  box(doc, col1 + boxW * 2, y, boxW * 2, boxH, "7  State income", "", true);
-
-  y += boxH + 6;
-
-  // ── Instructions note ─────────────────────────────────────────────────────
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(80);
-  doc.text(
-    "COPY B — For Recipient. This is important tax information and is being furnished to the IRS. If you are required to file a return,\na negligence penalty or other sanction may be imposed on you if this income is taxable and you fail to report it.",
-    margin, y, { maxWidth: formW }
-  );
-
-  y += 14;
-
-  // ── Footer ────────────────────────────────────────────────────────────────
-  doc.setDrawColor(180);
-  doc.line(margin, y, pageW - margin, y);
-  y += 4;
-  doc.setFontSize(7.5);
-  doc.setTextColor(100);
-  doc.text(`Generated ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })} · ${data.taxYear} Tax Year · For informational purposes only.`, margin, y);
-
-  return doc.output("blob");
+  return renderHtmlToPdf(html);
 }

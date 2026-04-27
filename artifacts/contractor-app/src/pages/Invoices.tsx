@@ -930,7 +930,7 @@ export default function Invoices() {
         let attachmentName: string | undefined;
         let attachmentSize: number | undefined;
         try {
-          const pdfBlob = generateMaterialListPdf(
+          const pdfBlob = await generateMaterialListPdf(
             pendingMaterialList,
             undefined,
             (settings as any)?.companyName ?? undefined

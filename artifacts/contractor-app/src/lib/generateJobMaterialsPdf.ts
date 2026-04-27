@@ -1,127 +1,111 @@
-import jsPDF from "jspdf";
 import type { MaterialList } from "@workspace/api-client-react";
+import { renderHtmlToPdf } from "./renderHtmlToPdf";
 
-export function generateJobMaterialsPdf(
+function esc(s: string | null | undefined): string {
+  return (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function fmtCurrency(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+export async function generateJobMaterialsPdf(
   lists: MaterialList[],
   jobTitle: string,
   companyName?: string
-): Blob {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
-  const pageW = doc.internal.pageSize.getWidth();
-  const margin = 20;
-  let y = margin;
-
-  if (companyName) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(80);
-    doc.text(companyName, margin, y);
-    y += 6;
-  }
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(20);
-  doc.text("Materials Summary", margin, y);
-  y += 7;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(100);
+): Promise<Blob> {
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  doc.text(`Job: ${jobTitle}   |   Date: ${today}`, margin, y);
-  y += 8;
-
-  doc.setDrawColor(160);
-  doc.line(margin, y, pageW - margin, y);
-  y += 6;
-
-  const colX = [margin, margin + 65, margin + 92, margin + 120, margin + 143];
-  const colW = [65, 27, 28, 23, 28];
 
   let grandTotal = 0;
 
-  for (const list of lists) {
-    if (list.items.length === 0) continue;
+  const listsHtml = lists
+    .filter(list => list.items.length > 0)
+    .map(list => {
+      const markupMult = list.markup / 100 + 1;
+      let listTotal = 0;
 
-    const markupMult = list.markup / 100 + 1;
+      const rowsHtml = list.items.map((it, i) => {
+        const extended = it.unitCostSnapshot * it.qty;
+        const extendedWithMarkup = extended * markupMult;
+        listTotal += extendedWithMarkup;
+        return `
+          <tr style="${i % 2 === 1 ? "background:#f9fafb;" : ""}">
+            <td style="padding:7px 10px 7px 0;color:#1f2937;font-size:11px;">${esc(it.nameSnapshot)}</td>
+            <td style="padding:7px 8px;color:#6b7280;font-size:11px;">${esc(it.unitSnapshot || "ea")}</td>
+            <td style="padding:7px 0 7px 8px;text-align:right;color:#6b7280;font-size:11px;">${fmtCurrency(it.unitCostSnapshot)}</td>
+            <td style="padding:7px 0 7px 8px;text-align:right;color:#6b7280;font-size:11px;">${it.qty}</td>
+            <td style="padding:7px 0 7px 8px;text-align:right;font-weight:600;color:#111827;font-size:11px;">${fmtCurrency(extendedWithMarkup)}</td>
+          </tr>`;
+      }).join("");
 
-    if (y > 220) {
-      doc.addPage();
-      y = margin;
+      grandTotal += listTotal;
+
+      const markupLabel = list.markup > 0 ? ` <span style="font-size:10px;font-weight:400;color:#6b7280;">(${list.markup}% markup)</span>` : "";
+
+      return `
+        <div style="margin-bottom:24px;page-break-inside:avoid;">
+          <div style="font-weight:700;font-size:13px;color:#1f2937;margin-bottom:6px;">${esc(list.name)}${markupLabel}</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:2px solid #1f2937;">
+                <th style="text-align:left;padding:6px 10px 6px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;width:40%;">Item</th>
+                <th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;width:10%;">Unit</th>
+                <th style="text-align:right;padding:6px 0 6px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;width:18%;">Unit Cost</th>
+                <th style="text-align:right;padding:6px 0 6px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;width:10%;">Qty</th>
+                <th style="text-align:right;padding:6px 0 6px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;width:22%;">Extended</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot>
+              <tr style="border-top:1px solid #e5e7eb;">
+                <td colspan="4" style="text-align:right;padding:7px 8px 7px 0;font-size:11px;font-weight:600;color:#374151;">List Total:</td>
+                <td style="text-align:right;padding:7px 0 7px 8px;font-size:11px;font-weight:700;color:#111827;">${fmtCurrency(listTotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+    }).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Materials Summary — ${esc(jobTitle)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; background: white; }
+    .page { max-width: 750px; margin: 0 auto; padding: 48px; }
+    @media print {
+      @page { size: letter portrait; margin: 0.5in; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
+  </style>
+</head>
+<body>
+  <div style="height:6px;background:linear-gradient(to right,#f59e0b,#fbbf24);"></div>
+  <div class="page">
+    ${companyName ? `<div style="font-weight:700;font-size:11px;color:#6b7280;margin-bottom:4px;">${esc(companyName)}</div>` : ""}
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+      <div>
+        <div style="font-size:28px;font-weight:900;letter-spacing:0.05em;color:#1f2937;text-transform:uppercase;line-height:1;">Materials Summary</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:6px;">Job: ${esc(jobTitle)} &nbsp;|&nbsp; Date: ${esc(today)}</div>
+      </div>
+    </div>
+    <div style="height:1px;background:#e5e7eb;margin-bottom:24px;"></div>
+    ${listsHtml}
+    <div style="height:1px;background:#1f2937;margin:8px 0 12px;"></div>
+    <div style="display:flex;justify-content:flex-end;">
+      <table style="font-size:13px;border-collapse:collapse;">
+        <tr>
+          <td style="text-align:right;padding:4px 16px 4px 0;font-weight:800;color:#1f2937;">Grand Total:</td>
+          <td style="text-align:right;padding:4px 0;font-weight:800;color:#d97706;">${fmtCurrency(grandTotal)}</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div style="height:4px;background:linear-gradient(to right,#fbbf24,#f59e0b);margin-top:32px;"></div>
+</body>
+</html>`;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(40);
-    const markupLabel = list.markup > 0 ? `  (${list.markup}% markup)` : "";
-    doc.text(`${list.name}${markupLabel}`, margin, y);
-    y += 5;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(60);
-    doc.text("Item", colX[0], y);
-    doc.text("Unit", colX[1], y);
-    doc.text("Unit Cost", colX[2] + colW[2], y, { align: "right" } as never);
-    doc.text("Qty", colX[3] + colW[3], y, { align: "right" } as never);
-    doc.text("Extended", colX[4] + colW[4], y, { align: "right" } as never);
-    y += 4;
-
-    doc.setDrawColor(200);
-    doc.line(margin, y, pageW - margin, y);
-    y += 4;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(30);
-
-    let listTotal = 0;
-    for (const it of list.items) {
-      if (y > 240) {
-        doc.addPage();
-        y = margin;
-      }
-      const extended = it.unitCostSnapshot * it.qty;
-      const extendedWithMarkup = extended * markupMult;
-      listTotal += extendedWithMarkup;
-
-      const label = it.nameSnapshot.length > 45 ? it.nameSnapshot.substring(0, 43) + "…" : it.nameSnapshot;
-      doc.text(label, colX[0], y);
-      doc.text(it.unitSnapshot || "ea", colX[1], y);
-      doc.text(`$${it.unitCostSnapshot.toFixed(2)}`, colX[2] + colW[2], y, { align: "right" } as never);
-      doc.text(String(it.qty), colX[3] + colW[3], y, { align: "right" } as never);
-      doc.text(`$${extendedWithMarkup.toFixed(2)}`, colX[4] + colW[4], y, { align: "right" } as never);
-      y += 5;
-
-      doc.setDrawColor(230);
-      doc.line(margin, y - 1, pageW - margin, y - 1);
-    }
-
-    grandTotal += listTotal;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(60);
-    doc.text(`List Total:`, pageW - margin - 28, y + 3, { align: "right" } as never);
-    doc.text(`$${listTotal.toFixed(2)}`, pageW - margin, y + 3, { align: "right" } as never);
-    y += 10;
-
-    doc.setDrawColor(180);
-    doc.line(margin, y, pageW - margin, y);
-    y += 6;
-  }
-
-  if (y > 250) {
-    doc.addPage();
-    y = margin;
-  }
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(20);
-  doc.text("Grand Total:", pageW - margin - 28, y + 3, { align: "right" } as never);
-  doc.text(`$${grandTotal.toFixed(2)}`, pageW - margin, y + 3, { align: "right" } as never);
-
-  return doc.output("blob");
+  return renderHtmlToPdf(html);
 }

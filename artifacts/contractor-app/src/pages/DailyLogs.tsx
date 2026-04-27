@@ -97,7 +97,7 @@ export default function DailyLogs() {
     let attachmentName: string | undefined;
     let attachmentSize: number | undefined;
     try {
-      const pdfBlob = generateMaterialListPdf(list, log.jobTitle ?? undefined, settings?.companyName ?? undefined);
+      const pdfBlob = await generateMaterialListPdf(list, log.jobTitle ?? undefined, settings?.companyName ?? undefined);
       const fd = new FormData();
       fd.append("file", pdfBlob, `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`);
       const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });

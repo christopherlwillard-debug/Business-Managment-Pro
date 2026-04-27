@@ -57,7 +57,7 @@ export default function Subcontractors() {
     setGenerating1099(sub.subcontractorId);
     try {
       const payer = report1099Data?.payerSettings ?? {};
-      const blob = generate1099NecPdf({
+      const blob = await generate1099NecPdf({
         taxYear: report1099Year,
         payer: {
           name: payer.companyName || "Contractor",
@@ -143,7 +143,7 @@ export default function Subcontractors() {
     try {
       for (const sub of pending) {
         const payer = report1099Data.payerSettings ?? {};
-        const blob = generate1099NecPdf({
+        const blob = await generate1099NecPdf({
           taxYear: report1099Year,
           payer: {
             name: payer.companyName || "Contractor",

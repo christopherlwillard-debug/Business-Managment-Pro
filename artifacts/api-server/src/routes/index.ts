@@ -52,6 +52,7 @@ import squareStatusRouter from "./square-status";
 import payPublicRouter from "./pay-public";
 import squareMobileRouter from "./square-payments";
 import squareTransactionsRouter from "./square-transactions";
+import pdfRouter from "./pdf";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -162,6 +163,7 @@ router.use(requireAccess);
 
 router.use("/uploads", express.static(path.resolve("uploads")));
 
+router.use("/pdf", pdfRouter);
 router.use("/clients", sectionGuard("clients"), clientsRouter);
 router.use("/jobs", sectionGuard("jobs"), jobsRouter);
 router.use("/invoices", sectionGuard("invoices"), invoicesRouter);

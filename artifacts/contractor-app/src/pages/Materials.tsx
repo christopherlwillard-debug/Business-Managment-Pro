@@ -347,7 +347,7 @@ function MaterialListCard({
 
       let pdfUploadFailed = false;
       try {
-        const pdfBlob = generateMaterialListPdf(list, undefined, settings?.companyName ?? undefined);
+        const pdfBlob = await generateMaterialListPdf(list, undefined, settings?.companyName ?? undefined);
         const fd = new FormData();
         const filename = `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
         fd.append("file", pdfBlob, filename);
