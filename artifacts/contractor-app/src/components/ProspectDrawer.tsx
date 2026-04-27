@@ -315,6 +315,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [depositEmailSending, setDepositEmailSending] = useState(false);
   const [depositEmailSent, setDepositEmailSent] = useState(false);
   const [depositEmailTab, setDepositEmailTab] = useState<"compose" | "preview">("compose");
+  const [depositLogoDataUri, setDepositLogoDataUri] = useState<string | null>(null);
 
   const [showLinkExistingPanel, setShowLinkExistingPanel] = useState(false);
   const [linkExistingSearch, setLinkExistingSearch] = useState("");
@@ -464,7 +465,14 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     setDepositEmailMessage("");
     setDepositEmailTab("compose");
     setDepositEmailSent(false);
+    setDepositLogoDataUri(null);
     setShowDepositEmail(true);
+    if (settings?.logoUrl) {
+      fetch(`${BASE}/api/settings/logo-data-uri`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.dataUri) setDepositLogoDataUri(data.dataUri); })
+        .catch(() => {/* ignore */});
+    }
   };
 
   const handleDepositEmailSend = async () => {
@@ -484,6 +492,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
         roughQuote: p.roughQuote,
         depositUrl: activeDepositUrl,
         customMessage: depositEmailMessage.trim() || undefined,
+        logoSrc: depositLogoDataUri,
       });
       await sendViaGmail({
         token,
@@ -1712,6 +1721,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                               roughQuote: p.roughQuote,
                               depositUrl,
                               customMessage: depositEmailMessage.trim() || undefined,
+                              logoSrc: depositLogoDataUri,
                             })}
                             className="w-full rounded border border-blue-200 bg-white"
                             style={{ height: 380 }}

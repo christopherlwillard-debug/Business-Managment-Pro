@@ -358,6 +358,7 @@ export interface BuildDepositEmailHtmlOpts {
   roughQuote?: number | null;
   depositUrl: string;
   customMessage?: string;
+  logoSrc?: string | null;
 }
 
 export function buildDepositEmailHtml(opts: BuildDepositEmailHtmlOpts): string {
@@ -397,7 +398,10 @@ export function buildDepositEmailHtml(opts: BuildDepositEmailHtmlOpts): string {
         <tr><td style="height:7px;background:linear-gradient(to right,#f59e0b,#fbbf24);font-size:0;">&nbsp;</td></tr>
 
         <tr><td style="padding:32px 40px 24px;">
-          <p style="margin:0 0 4px;font-size:18px;font-weight:800;color:#111827;">${esc(displayCompanyName)}</p>
+          ${opts.logoSrc
+            ? `<img src="${esc(opts.logoSrc)}" alt="${esc(displayCompanyName)}" style="max-height:70px;max-width:200px;width:auto;height:auto;display:block;object-fit:contain;margin-bottom:6px;" />`
+            : `<p style="margin:0 0 4px;font-size:18px;font-weight:800;color:#111827;">${esc(displayCompanyName)}</p>`
+          }
           <p style="margin:0;font-size:11px;color:#6b7280;">Deposit Request</p>
         </td></tr>
 
