@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import fs from "node:fs";
 import path from "node:path";
 import { ObjectStorageService } from "./objectStorage.js";

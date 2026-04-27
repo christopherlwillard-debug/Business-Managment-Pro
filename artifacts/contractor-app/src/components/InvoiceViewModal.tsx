@@ -433,7 +433,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                     </div>
                     <iframe
                       title="Email preview"
-                      sandbox=""
+                      sandbox="allow-same-origin"
                       srcDoc={buildInvoiceEmailHtml({
                         companyName,
                         companyAddress,
@@ -467,6 +467,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                         notes: invoice.notes ?? undefined,
                         customMessage: gmailMessage.trim() || undefined,
                         paymentLink: invoice.squarePaymentLinkUrl ?? invoice.stripePaymentLinkUrl ?? null,
+                        logoSrc: logoUrl ? `${base}${logoUrl}` : null,
                       })}
                       style={{ width: "100%", height: "380px", border: "none", display: "block" }}
                     />
