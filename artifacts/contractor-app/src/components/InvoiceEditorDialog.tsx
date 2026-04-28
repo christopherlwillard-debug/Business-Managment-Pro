@@ -4,24 +4,12 @@ import {
   useListJobs, useGetSettings,
   Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest, InvoiceAttachment,
 } from "@workspace/api-client-react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
 import {
-  Building2, MapPin, Check, X, Plus, Trash2, Lock, Printer, Paperclip, Upload, BookOpen, ChevronDown, ChevronUp,
+  Building2, MapPin, Check, X, Plus, Trash2, Lock, Printer, Paperclip, Upload,
 } from "lucide-react";
-
-interface ServiceAddOn { name: string; price: number; }
-interface CatalogService {
-  id: number;
-  name: string;
-  category: string | null;
-  description: string | null;
-  basePrice: string | null;
-  unit: string | null;
-  addOns: ServiceAddOn[] | null;
-  active: boolean;
-}
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
 function emptyLine(): LineItem { return { description: "", quantity: 1, unitPrice: 0 }; }
@@ -153,20 +141,6 @@ export function InvoiceEditorDialog({
   const [showClientDrop, setShowClientDrop] = useState(false);
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showServicePicker, setShowServicePicker] = useState(false);
-  const [pickerSearch, setPickerSearch] = useState("");
-
-  const { data: catalogServices = [] } = useQuery<CatalogService[]>({
-    queryKey: ["catalog-services-for-invoice"],
-    queryFn: async () => {
-      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const res = await fetch(`${base}/api/public-services`);
-      if (!res.ok) return [];
-      const all: CatalogService[] = await res.json();
-      return all.filter(s => s.active);
-    },
-  });
-
   useEffect(() => {
     if (open) {
       setFormState(makeInitialForm());
@@ -702,87 +676,6 @@ export function InvoiceEditorDialog({
 
                 {/* Line items */}
                 <div>
-                  {/* Service catalog picker */}
-                  <div className="print-hide mb-3">
-                    <button
-                      type="button"
-                      onClick={() => { setShowServicePicker(p => !p); setPickerSearch(""); }}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors"
-                    >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      Pick from My Services
-                      {showServicePicker ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
-                    {showServicePicker && (
-                      <div className="mt-2 border border-amber-200 rounded-xl bg-amber-50 overflow-hidden">
-                        <div className="p-2 border-b border-amber-100">
-                          <input
-                            type="text"
-                            placeholder="Search services…"
-                            value={pickerSearch}
-                            onChange={e => setPickerSearch(e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-amber-200 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
-                          />
-                        </div>
-                        <div className="max-h-52 overflow-y-auto divide-y divide-amber-100">
-                          {catalogServices
-                            .filter(s => !pickerSearch || s.name.toLowerCase().includes(pickerSearch.toLowerCase()) || (s.category ?? "").toLowerCase().includes(pickerSearch.toLowerCase()))
-                            .map(s => (
-                              <div key={s.id} className="p-2.5">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-semibold text-gray-800">{s.name}</p>
-                                    {s.category && <p className="text-[10px] text-gray-400">{s.category}</p>}
-                                  </div>
-                                  <div className="flex items-center gap-2 flex-shrink-0">
-                                    {s.basePrice && (
-                                      <span className="text-xs font-bold text-amber-700">${parseFloat(s.basePrice).toFixed(2)}{s.unit ? `/${s.unit}` : ""}</span>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const price = s.basePrice ? parseFloat(s.basePrice) : 0;
-                                        const desc = s.name;
-                                        setLineItems(ls => {
-                                          const lastEmpty = ls.findIndex(l => !l.description.trim());
-                                          if (lastEmpty >= 0) {
-                                            return ls.map((l, i) => i === lastEmpty ? { ...l, description: desc, unitPrice: price } : l);
-                                          }
-                                          return [...ls, { description: desc, quantity: 1, unitPrice: price }];
-                                        });
-                                      }}
-                                      className="px-2 py-0.5 text-[10px] font-bold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors whitespace-nowrap"
-                                    >
-                                      + Add
-                                    </button>
-                                  </div>
-                                </div>
-                                {(s.addOns ?? []).length > 0 && (
-                                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                    {(s.addOns ?? []).map((ao, i) => (
-                                      <button
-                                        key={i}
-                                        type="button"
-                                        onClick={() => {
-                                          setLineItems(ls => [...ls, { description: ao.name, quantity: 1, unitPrice: ao.price }]);
-                                        }}
-                                        className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full border border-amber-300 bg-white text-amber-700 hover:bg-amber-100 transition-colors"
-                                      >
-                                        <Plus className="w-2.5 h-2.5" />{ao.name}{ao.price > 0 ? ` — $${ao.price.toFixed(2)}` : ""}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          {catalogServices.filter(s => !pickerSearch || s.name.toLowerCase().includes(pickerSearch.toLowerCase())).length === 0 && (
-                            <p className="px-3 py-3 text-xs text-gray-400 text-center">No services found.</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b-2 border-gray-800">
