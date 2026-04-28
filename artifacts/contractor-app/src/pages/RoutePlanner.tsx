@@ -483,14 +483,13 @@ export default function RoutePlanner() {
     // Auto-split into blocks after optimizing, then compute per-block drive times
     try {
       setIsSplitting(true);
-      await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize: 9 }) });
+      await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize }) });
       await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
       // Compute drive times per block from the already-ordered result
-      const BLOCK_SIZE = 9;
       const blockTimesMap = new Map<number, number | null>();
-      for (let i = 0; i < ordered.length; i += BLOCK_SIZE) {
-        const blockStops = ordered.slice(i, i + BLOCK_SIZE);
-        const blockNum = Math.floor(i / BLOCK_SIZE) + 1;
+      for (let i = 0; i < ordered.length; i += blockSize) {
+        const blockStops = ordered.slice(i, i + blockSize);
+        const blockNum = Math.floor(i / blockSize) + 1;
         const blockRoute = await fetchOsrmRoute(blockStops);
         blockTimesMap.set(blockNum, blockRoute?.durationSecs ?? null);
       }
