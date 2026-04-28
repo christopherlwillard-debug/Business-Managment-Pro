@@ -15,6 +15,7 @@ export interface ClientProfile {
     nextServiceDate: string | null;
     serviceIntervalMonths: number | null;
     businessLine: string | null;
+    squareCustomerId: string | null;
     createdAt: string;
   };
   jobs: Array<{

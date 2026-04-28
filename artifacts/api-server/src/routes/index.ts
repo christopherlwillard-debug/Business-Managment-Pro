@@ -52,6 +52,7 @@ import squareStatusRouter from "./square-status";
 import payPublicRouter from "./pay-public";
 import squareMobileRouter from "./square-payments";
 import squareTransactionsRouter from "./square-transactions";
+import squareCustomersRouter from "./square-customers";
 import pdfRouter from "./pdf";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
@@ -202,5 +203,6 @@ router.use(requireOwner, squareDepositRouter);
 router.use(requireOwner, squareStatusRouter);
 router.use(requireOwner, squareMobileRouter);
 router.use(requireOwner, squareTransactionsRouter);
+router.use("/square/customers", requireOwner, squareCustomersRouter);
 
 export default router;

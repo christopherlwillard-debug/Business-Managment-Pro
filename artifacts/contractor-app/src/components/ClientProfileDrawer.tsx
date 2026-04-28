@@ -3,7 +3,7 @@ import { useClientProfile, useUpdateClientServiceDate } from "@workspace/api-cli
 import {
   X, Phone, Mail, MapPin, Users, Briefcase, Receipt, CreditCard,
   Route, Calendar, Clock, ChevronRight, Edit2, Check, RefreshCw,
-  Link as LinkIcon, DollarSign,
+  Link as LinkIcon, DollarSign, Upload,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -52,6 +52,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
 
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
+  const [syncing, setSyncing] = useState(false);
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
   const updateServiceDate = useUpdateClientServiceDate();
@@ -78,6 +79,29 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
         onError: () => toast({ title: "Failed to save", variant: "destructive" }),
       }
     );
+  }
+
+  async function handleSyncToSquare() {
+    if (!clientId) return;
+    setSyncing(true);
+    try {
+      const res = await fetch(`${BASE}/api/square/customers/sync/${clientId}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let msg = "Failed to sync";
+        try { const b = await res.json(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+        toast({ title: msg, variant: "destructive" });
+        return;
+      }
+      await refetch();
+      toast({ title: "Client synced to Square" });
+    } catch {
+      toast({ title: "Network error syncing to Square", variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
   }
 
   function openEditServiceDate() {
@@ -171,6 +195,26 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
             )}
           </div>
           <div className="flex items-center gap-1 ml-2">
+            {client && (
+              <button
+                onClick={handleSyncToSquare}
+                disabled={syncing}
+                title={client.squareCustomerId ? "Re-sync to Square" : "Sync to Square Customer Directory"}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                  client.squareCustomerId
+                    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400"
+                    : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {syncing ? (
+                  <span className="inline-block w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                <span className="hidden sm:inline">{client.squareCustomerId ? "Synced" : "Sync"}</span>
+              </button>
+            )}
             <button onClick={() => refetch()} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Refresh">
               <RefreshCw className="w-4 h-4" />
             </button>

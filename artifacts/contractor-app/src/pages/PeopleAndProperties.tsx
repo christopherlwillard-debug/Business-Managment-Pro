@@ -29,7 +29,7 @@ import {
   Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
   BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2,
   ListPlus, Search, Users, Mail, ChevronRight, Calendar, AlertTriangle,
-  HardHat, Layers,
+  HardHat, Layers, Upload,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -269,6 +269,7 @@ export default function PeopleAndProperties() {
   const [prospectSort, setProspectSort] = useState<"newest" | "az">("newest");
   const [clientDueFilter, setClientDueFilter] = useState(false);
   const [clientSort, setClientSort] = useState<"newest" | "az">("newest");
+  const [syncingAll, setSyncingAll] = useState(false);
 
   const uniqueCities = useMemo(() => {
     const seen = new Map<string, string>();
@@ -470,6 +471,33 @@ export default function PeopleAndProperties() {
   const [isDeletingClient, setIsDeletingClient] = useState(false);
   const [clientFormLine, setClientFormLine] = useState<BusinessLine>("");
   const [clientFormLineError, setClientFormLineError] = useState(false);
+
+  async function handleSyncAllToSquare() {
+    setSyncingAll(true);
+    try {
+      const res = await fetch(`${BASE}/api/square/customers/sync-all`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let msg = "Failed to sync clients to Square";
+        try { const b = await res.json(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+        toast({ title: msg, variant: "destructive" });
+        return;
+      }
+      const body = await res.json() as { synced: number; failed: number };
+      toast({
+        title: body.failed === 0
+          ? `${body.synced} client${body.synced !== 1 ? "s" : ""} synced to Square`
+          : `${body.synced} synced, ${body.failed} failed`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+    } catch {
+      toast({ title: "Network error syncing to Square", variant: "destructive" });
+    } finally {
+      setSyncingAll(false);
+    }
+  }
 
   function openCreateClient(prefillAddress = "") {
     setEditingClient(null);
@@ -856,6 +884,15 @@ export default function PeopleAndProperties() {
             >
               <Calendar className="w-3.5 h-3.5 inline mr-1.5" />Due for service
             </button>
+            <button
+              onClick={handleSyncAllToSquare}
+              disabled={syncingAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-border bg-card text-muted-foreground hover:bg-muted transition-colors disabled:opacity-60"
+              title="Sync all unsynced clients to Square Customer Directory"
+            >
+              {syncingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              Sync All to Square
+            </button>
             <div className="flex items-center rounded-lg border border-border overflow-hidden text-xs font-medium ml-auto">
               <button onClick={() => setClientSort("newest")} className={`px-3 py-1.5 transition-colors ${clientSort === "newest" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>Newest</button>
               <button onClick={() => setClientSort("az")} className={`px-3 py-1.5 transition-colors ${clientSort === "az" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>A–Z</button>
@@ -905,7 +942,14 @@ export default function PeopleAndProperties() {
                           </button>
                         </div>
                       </div>
-                      <div className="mb-3"><BusinessLineBadge line={client.businessLine} /></div>
+                      <div className="mb-3 flex items-center gap-2 flex-wrap">
+                        <BusinessLineBadge line={client.businessLine} />
+                        {client.squareCustomerId && (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                            <Upload className="w-3 h-3" /> Square
+                          </span>
+                        )}
+                      </div>
                       <div className="space-y-2">
                         {client.phone && <div className="flex items-center text-sm text-muted-foreground"><Phone className="w-4 h-4 mr-3 text-primary/60" />{client.phone}</div>}
                         {client.email && <div className="flex items-center text-sm text-muted-foreground truncate"><Mail className="w-4 h-4 mr-3 text-primary/60 flex-shrink-0" /><span className="truncate">{client.email}</span></div>}
