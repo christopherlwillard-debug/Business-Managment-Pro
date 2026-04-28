@@ -776,7 +776,7 @@ export function InvoiceEditorDialog({
                               </div>
                             ))}
                           {catalogServices.filter(s => !pickerSearch || s.name.toLowerCase().includes(pickerSearch.toLowerCase())).length === 0 && (
-                            <p className="px-3 py-3 text-xs text-gray-400 text-center">No services found. Add them in the Pricing Guide.</p>
+                            <p className="px-3 py-3 text-xs text-gray-400 text-center">No services found.</p>
                           )}
                         </div>
                       </div>

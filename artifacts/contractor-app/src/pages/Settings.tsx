@@ -38,7 +38,6 @@ const BOTTOM_NAV_OPTIONS = [
   { href: "/clients", label: "Clients" },
   { href: "/subcontractors", label: "Subcontractors" },
   { href: "/materials", label: "Materials" },
-  { href: "/pricing-guide", label: "Services Guide" },
   { href: "/route-planner", label: "Route Planner" },
   { href: "/prospects", label: "Prospects" },
   { href: "/assets", label: "Assets" },

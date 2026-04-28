@@ -21,7 +21,6 @@ const Accounting = lazy(() => import("./pages/Accounting"));
 const Estimates = lazy(() => import("./pages/Estimates"));
 const Invoices = lazy(() => import("./pages/Invoices"));
 const Materials = lazy(() => import("./pages/Materials"));
-const PricingGuide = lazy(() => import("./pages/PricingGuide"));
 const RoutePlanner = lazy(() => import("./pages/RoutePlanner"));
 const Prospects = lazy(() => import("./pages/Prospects"));
 const Assets = lazy(() => import("./pages/Assets"));
@@ -241,9 +240,6 @@ function AdminApp() {
           </Route>
           <Route path="/materials">
             <PermissionGuard ownerOnly><Materials /></PermissionGuard>
-          </Route>
-          <Route path="/pricing-guide">
-            <PermissionGuard ownerOnly><PricingGuide /></PermissionGuard>
           </Route>
           <Route path="/route-planner">
             <PermissionGuard ownerOnly><RoutePlanner /></PermissionGuard>

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, Users,
-  Settings, Menu, X, BookOpen, LogOut, Package, Tag, Route, Target, Wrench, Crosshair, Zap, CreditCard,
+  Settings, Menu, X, BookOpen, LogOut, Package, Route, Target, Wrench, Crosshair, Zap, CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,6 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/clients": { name: "Clients", icon: Users },
   "/subcontractors": { name: "Subcontractors", icon: HardHat },
   "/materials": { name: "Materials", icon: Package },
-  "/pricing-guide": { name: "Services Guide", icon: Tag },
   "/route-planner": { name: "Route Planner", icon: Route },
   "/prospects": { name: "Prospects", icon: Target },
   "/assets": { name: "Assets", icon: Wrench },
@@ -67,7 +66,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Clients", href: "/clients", icon: Users, feature: "clients", section: "clients", group: "operations" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors", group: "operations" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true, group: "business_tools" },
-    { name: "Services Guide", href: "/pricing-guide", icon: Tag, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Prospects", href: "/prospects", icon: Target, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },
