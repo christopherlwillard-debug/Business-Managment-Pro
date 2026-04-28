@@ -690,15 +690,21 @@ export default function PeopleAndProperties() {
     setIsBulkWorking(true);
     setBulkSubAction(null);
     try {
-      await Promise.all([...selectedProspectIds].map(id =>
+      const results = await Promise.all([...selectedProspectIds].map(id =>
         fetch(`${BASE}/api/prospects/${id}`, {
           method: "PUT", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ businessLine: line || null }),
-        })
+        }).then(r => r.ok)
       ));
+      const succeeded = results.filter(Boolean).length;
+      const failed = results.length - succeeded;
       const bl = BUSINESS_LINES.find(b => b.value === line);
-      toast({ title: `${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""} assigned to ${bl?.shortLabel ?? line}` });
+      if (failed === 0) {
+        toast({ title: `${succeeded} prospect${succeeded !== 1 ? "s" : ""} assigned to ${bl?.shortLabel ?? line}` });
+      } else {
+        toast({ title: `${succeeded} assigned, ${failed} failed`, variant: failed === results.length ? "destructive" : "default" });
+      }
       clearSelection();
       refetchProspects();
     } catch {
@@ -713,14 +719,20 @@ export default function PeopleAndProperties() {
     setIsBulkWorking(true);
     setBulkSubAction(null);
     try {
-      await Promise.all([...selectedProspectIds].map(id =>
+      const results = await Promise.all([...selectedProspectIds].map(id =>
         fetch(`${BASE}/api/prospects/${id}`, {
           method: "PUT", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status }),
-        })
+        }).then(r => r.ok)
       ));
-      toast({ title: `${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""} marked as ${status}` });
+      const succeeded = results.filter(Boolean).length;
+      const failed = results.length - succeeded;
+      if (failed === 0) {
+        toast({ title: `${succeeded} prospect${succeeded !== 1 ? "s" : ""} marked as ${status}` });
+      } else {
+        toast({ title: `${succeeded} updated, ${failed} failed`, variant: failed === results.length ? "destructive" : "default" });
+      }
       clearSelection();
       refetchProspects();
     } catch {
@@ -766,14 +778,20 @@ export default function PeopleAndProperties() {
     setIsBulkWorking(true);
     setBulkSubAction(null);
     try {
-      await Promise.all([...selectedProspectIds].map(id =>
+      const results = await Promise.all([...selectedProspectIds].map(id =>
         fetch(`${BASE}/api/prospects/${id}`, {
           method: "PUT", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ followUpDate: bulkFollowUpDateInput }),
-        })
+        }).then(r => r.ok)
       ));
-      toast({ title: `Follow-up date set for ${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""}` });
+      const succeeded = results.filter(Boolean).length;
+      const failed = results.length - succeeded;
+      if (failed === 0) {
+        toast({ title: `Follow-up date set for ${succeeded} prospect${succeeded !== 1 ? "s" : ""}` });
+      } else {
+        toast({ title: `${succeeded} updated, ${failed} failed`, variant: failed === results.length ? "destructive" : "default" });
+      }
       clearSelection();
       refetchProspects();
     } catch {
@@ -788,10 +806,17 @@ export default function PeopleAndProperties() {
     setIsBulkWorking(true);
     setBulkSubAction(null);
     try {
-      await Promise.all([...selectedProspectIds].map(id =>
+      const results = await Promise.all([...selectedProspectIds].map(id =>
         fetch(`${BASE}/api/prospects/${id}`, { method: "DELETE", credentials: "include" })
+          .then(r => r.ok)
       ));
-      toast({ title: `${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""} deleted` });
+      const succeeded = results.filter(Boolean).length;
+      const failed = results.length - succeeded;
+      if (failed === 0) {
+        toast({ title: `${succeeded} prospect${succeeded !== 1 ? "s" : ""} deleted` });
+      } else {
+        toast({ title: `${succeeded} deleted, ${failed} failed`, variant: failed === results.length ? "destructive" : "default" });
+      }
       clearSelection();
       refetchProspects();
     } catch {
