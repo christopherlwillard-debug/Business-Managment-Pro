@@ -21,7 +21,6 @@ export * from "./access-requests";
 export * from "./other-income";
 export * from "./portfolio-photos";
 export * from "./inquiries";
-export * from "./services";
 export * from "./featured-clients";
 export * from "./route-stops";
 export * from "./prospects";

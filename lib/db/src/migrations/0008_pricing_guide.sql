@@ -1,6 +1,4 @@
 -- Task #91: Services & Pricing Guide
--- Extends the services table with richer pricing fields and converts
--- add_ons / whats_included from text to jsonb for structured CMS export
 
 ALTER TABLE "services"
   ADD COLUMN IF NOT EXISTS "category" text,
