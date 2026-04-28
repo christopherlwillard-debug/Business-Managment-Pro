@@ -1,6 +1,6 @@
 import puppeteer from "puppeteer";
 import { existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { join } from "node:path";
 import app from "./app";
 import { startRecurringExpensesJob } from "./jobs/recurringExpenses.js";
@@ -20,12 +20,24 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function ensureChrome(): Promise<void> {
+  // Prefer system chromium installed via Nix — runs natively on NixOS without
+  // library path issues that affect the puppeteer-downloaded binary.
+  try {
+    const nixChrome = execSync("which chromium", { encoding: "utf8" }).trim();
+    if (nixChrome && existsSync(nixChrome)) {
+      console.log(`Chrome (system) ready at ${nixChrome}`);
+      return;
+    }
+  } catch {}
+
+  // Fall back to puppeteer's downloaded Chrome (works on standard Linux).
   const execPath = puppeteer.executablePath();
   if (existsSync(execPath)) {
     console.log(`Chrome ready at ${execPath}`);
     return;
   }
-  console.log(`Chrome not found at ${execPath} — downloading now (this may take a minute)...`);
+
+  console.log(`Chrome not found — downloading now (this may take a minute)...`);
   const candidates = [
     join(process.cwd(), "node_modules/puppeteer/install.mjs"),
     join(process.cwd(), "artifacts/api-server/node_modules/puppeteer/install.mjs"),

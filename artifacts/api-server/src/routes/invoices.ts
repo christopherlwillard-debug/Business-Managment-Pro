@@ -1,6 +1,6 @@
 import { Router } from "express";
 import nodemailer from "nodemailer";
-import puppeteer from "puppeteer";
+import { launchBrowser } from "../lib/launchBrowser.js";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
@@ -424,10 +424,7 @@ router.post("/render-html-pdf", async (req, res) => {
       res.status(400).json({ error: "html required" });
       return;
     }
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    });
+    const browser = await launchBrowser();
     try {
       const page = await browser.newPage();
       // Block all network requests — HTML is self-contained; logo is embedded as

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import puppeteer from "puppeteer";
+import { launchBrowser } from "../lib/launchBrowser.js";
 
 const router = Router();
 
@@ -10,10 +10,7 @@ router.post("/render-html", async (req, res) => {
       res.status(400).json({ error: "html required" });
       return;
     }
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    });
+    const browser = await launchBrowser();
     try {
       const page = await browser.newPage();
       await page.setRequestInterception(true);
