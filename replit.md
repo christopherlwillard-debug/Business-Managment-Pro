@@ -74,7 +74,7 @@ The `/jobs` route is the unified Jobs + Invoice workflow:
 - **SubcontractorPortal** - Public self-serve portal for subs (no login required, accessed via unique token URL at `/portal/:token`)
 - **Daily Logs** - Field documentation with weather, crew, work completed, photos
 - **Compliance** - Alerts for 1099 thresholds, uncategorized mileage, license expirations
-- **Clients** - Client contact management with clickable profile drawer (tabs: Overview, Jobs, Invoices, Payments, Route) showing full history; service schedule (nextServiceDate + serviceIntervalMonths) editable inline
+- **People & Properties** (`/people`) - Unified tabbed page combining Prospects and Clients. Features: business line toggle (Willard's Asphalt / Willard's Contracting), shared search bar (address/name/phone), Prospects tab (status/city filters, revenue summary, convert-to-client, add-to-route), Clients tab (due-for-service filter, A–Z/newest sort). Owners see both tabs; non-owners with "clients" permission see only the Clients tab. Routes `/prospects` and `/clients` redirect to the unified `/people?tab=...` page.
 - **Settings** - Tabbed settings: Business Profile (name, entity type, EIN, address, contact), Logo & Branding (upload, invoice position/size picker with live preview), Invoice Defaults (payment terms, late fee, prefix, tax rate), Financial (mileage rate, 1099 threshold), Feature Modules
 
 ### Settings Feature Toggles
@@ -84,7 +84,7 @@ Feature keys (stored in DB): `jobs`, `invoices`, `expenses`, `mileage`, `estimat
 ## Unified Customer Lifecycle
 
 Prospects → Clients → Jobs → Invoices → Square Payments → Route Planner are all tied together:
-- **Prospects page**: "Convert to Client" button on won/serviced cards — one click creates the client record, copies email, sets prospect.clientId, and shows "Client Created" badge
+- **People & Properties page** (`/people`): Unified view with Prospects + Clients tabs. Business line toggle (asphalt/contracting) filters both. "Convert to Client" on won/serviced prospect cards — creates client record and shows "Client Created" badge. `business_line` column added to both `prospects` and `clients` tables.
 - **Client profile drawer** (`ClientProfileDrawer.tsx`): 5 tabs — Overview (summary stats, service schedule, linked prospect), Jobs, Invoices, Payments (Square live transactions matched by email), Route (upcoming stops). Opened by clicking any client card.
 - **Dashboard "Due for Revisit"**: amber card lists clients where nextServiceDate ≤ today + 90 days
 - **Route Planner**: add-stop form has "Link to client or prospect" dropdown (auto-fills address + title); stop cards/popups show blue name badge

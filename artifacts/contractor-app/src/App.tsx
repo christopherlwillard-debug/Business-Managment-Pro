@@ -23,6 +23,7 @@ const Invoices = lazy(() => import("./pages/Invoices"));
 const Materials = lazy(() => import("./pages/Materials"));
 const RoutePlanner = lazy(() => import("./pages/RoutePlanner"));
 const Prospects = lazy(() => import("./pages/Prospects"));
+const PeopleAndProperties = lazy(() => import("./pages/PeopleAndProperties"));
 const Assets = lazy(() => import("./pages/Assets"));
 const SubcontractorPortal = lazy(() => import("./pages/SubcontractorPortal"));
 const AerialQuote = lazy(() => import("./pages/AerialQuote"));
@@ -137,6 +138,14 @@ function LegacyRedirect({ to, hash }: { to: string; hash: string }) {
   return null;
 }
 
+function TabRedirect({ tab }: { tab: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(`/people?tab=${tab}`, { replace: true });
+  }, []);
+  return null;
+}
+
 function HomeRoute() {
   const { isOwner, permissions } = useUserPermissions();
   const [, setLocation] = useLocation();
@@ -224,7 +233,10 @@ function AdminApp() {
             <PermissionGuard section="subcontractors"><Subcontractors /></PermissionGuard>
           </Route>
           <Route path="/clients">
-            <PermissionGuard section="clients"><Clients /></PermissionGuard>
+            <TabRedirect tab="clients" />
+          </Route>
+          <Route path="/people">
+            <PeopleAndProperties />
           </Route>
           <Route path="/settings">
             <PermissionGuard ownerOnly><Settings /></PermissionGuard>
@@ -245,7 +257,7 @@ function AdminApp() {
             <PermissionGuard ownerOnly><RoutePlanner /></PermissionGuard>
           </Route>
           <Route path="/prospects">
-            <PermissionGuard ownerOnly><Prospects /></PermissionGuard>
+            <TabRedirect tab="prospects" />
           </Route>
           <Route path="/assets">
             <PermissionGuard ownerOnly><Assets /></PermissionGuard>

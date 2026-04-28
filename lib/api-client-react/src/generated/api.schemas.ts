@@ -61,6 +61,9 @@ export interface Client {
   state?: string | null;
   zip?: string | null;
   notes?: string | null;
+  nextServiceDate?: string | null;
+  serviceIntervalMonths?: number | null;
+  businessLine?: string | null;
   createdAt: string;
 }
 
@@ -73,6 +76,7 @@ export interface CreateClientRequest {
   state?: string | null;
   zip?: string | null;
   notes?: string | null;
+  businessLine?: string | null;
 }
 
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
@@ -951,6 +955,7 @@ export interface Prospect {
   servicedAt?: string | null;
   followUpDate?: string | null;
   source?: string | null;
+  businessLine?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -973,6 +978,7 @@ export interface CreateProspectRequest {
   linkedInvoiceId?: number | null;
   servicedAt?: string | null;
   followUpDate?: string | null;
+  businessLine?: string | null;
 }
 
 export type UpdateProspectRequest = Partial<CreateProspectRequest>;

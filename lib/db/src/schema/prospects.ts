@@ -39,6 +39,7 @@ export const prospectsTable = pgTable(
     servicedAt: date("serviced_at"),
     followUpDate: date("follow_up_date"),
     source: text("source").default("manual"),
+    businessLine: text("business_line"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

@@ -14,6 +14,7 @@ export const clientsTable = pgTable("clients", {
   notes: text("notes"),
   nextServiceDate: date("next_service_date"),
   serviceIntervalMonths: integer("service_interval_months"),
+  businessLine: text("business_line"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -59,6 +59,7 @@ function format(p: ProspectWithEstimate) {
     servicedAt: p.servicedAt ?? null,
     followUpDate: p.followUpDate ?? null,
     source: p.source ?? "manual",
+    businessLine: p.businessLine ?? null,
     createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt,
   };
@@ -377,6 +378,7 @@ router.post("/", async (req, res) => {
       status?: string;
       linkedEstimateId?: number | null;
       followUpDate?: string | null;
+      businessLine?: string | null;
     };
 
     if (process.env.NODE_ENV !== "production") {
@@ -402,6 +404,7 @@ router.post("/", async (req, res) => {
         status: toProspectStatus(body.status),
         linkedEstimateId: body.linkedEstimateId ?? null,
         followUpDate: body.followUpDate ?? null,
+        businessLine: body.businessLine ?? null,
       })
       .returning();
 
@@ -444,6 +447,7 @@ router.put("/:id", async (req, res) => {
       linkedInvoiceId?: number | null;
       servicedAt?: string | null;
       followUpDate?: string | null;
+      businessLine?: string | null;
     };
 
     const [existing] = await db
@@ -471,6 +475,7 @@ router.put("/:id", async (req, res) => {
     if (body.status !== undefined) patch.status = toProspectStatus(body.status);
     if (body.linkedEstimateId !== undefined) patch.linkedEstimateId = body.linkedEstimateId ?? null;
     if (body.linkedInvoiceId !== undefined) patch.linkedInvoiceId = body.linkedInvoiceId ?? null;
+    if (body.businessLine !== undefined) patch.businessLine = body.businessLine ?? null;
 
     const isBeingServiced = patch.status === "serviced" && existing.status !== "serviced";
     const resolvedServicedAt = body.servicedAt ?? (isBeingServiced ? new Date().toISOString().slice(0, 10) : undefined);

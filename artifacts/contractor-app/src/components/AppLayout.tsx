@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
-  HardHat, Users,
+  HardHat, UsersRound,
   Settings, Menu, X, BookOpen, LogOut, Package, Route, Target, Wrench, Crosshair, Zap, CreditCard,
   type LucideIcon,
 } from "lucide-react";
@@ -16,11 +16,10 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/jobs": { name: "Jobs", icon: Briefcase },
   "/expenses": { name: "Expenses", icon: Receipt },
   "/mileage": { name: "Mileage", icon: Navigation },
-  "/clients": { name: "Clients", icon: Users },
+  "/people": { name: "People", icon: UsersRound },
   "/subcontractors": { name: "Subcontractors", icon: HardHat },
   "/materials": { name: "Materials", icon: Package },
   "/route-planner": { name: "Route Planner", icon: Route },
-  "/prospects": { name: "Prospects", icon: Target },
   "/assets": { name: "Assets", icon: Wrench },
   "/aerial-quote": { name: "Aerial Quote", icon: Crosshair },
   "/accounting": { name: "Accounting & Tax", icon: BookOpen },
@@ -29,7 +28,7 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/settings": { name: "Settings", icon: Settings },
 };
 
-const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/prospects", "/accounting"];
+const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/people", "/accounting"];
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -63,11 +62,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs", group: "operations" },
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses", group: "operations" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage", group: "operations" },
-    { name: "Clients", href: "/clients", icon: Users, feature: "clients", section: "clients", group: "operations" },
+    { name: "People", href: "/people", icon: UsersRound, feature: null, section: "clients", ownerOnly: false, group: "operations" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors", group: "operations" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
-    { name: "Prospects", href: "/prospects", icon: Target, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Aerial Quote", href: "/aerial-quote", icon: Crosshair, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Quick Charge", href: "/quick-charge", icon: Zap, feature: null, section: null, ownerOnly: true, group: "finance" },
@@ -131,7 +129,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     const nonOwnerItems: BottomNavItem[] = [
       { name: "Home", href: "/", icon: LayoutDashboard, section: null },
       { name: "Jobs", href: "/jobs", icon: Briefcase, section: "jobs" },
-      { name: "Clients", href: "/clients", icon: Users, section: "clients" },
+      { name: "People", href: "/people", icon: UsersRound, section: "clients" },
       { name: "Mileage", href: "/mileage", icon: Navigation, section: "mileage" },
       { name: "Expenses", href: "/expenses", icon: Receipt, section: "expenses" },
       { name: "More", href: "#", icon: Menu, action: () => setMobileMenuOpen(true), section: null },
