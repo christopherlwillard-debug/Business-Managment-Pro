@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useClientProfile, useUpdateClientServiceDate } from "@workspace/api-client-react";
+import { useClientProfile, useUpdateClientServiceDate, useSquareStatus } from "@workspace/api-client-react";
 import {
   X, Phone, Mail, MapPin, Users, Briefcase, Receipt, CreditCard,
   Route, Calendar, Clock, ChevronRight, Edit2, Check, RefreshCw,
-  Link as LinkIcon, DollarSign, Upload,
+  Link as LinkIcon, DollarSign, Upload, Zap,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -53,11 +53,13 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [chargingSquare, setChargingSquare] = useState(false);
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
   const updateServiceDate = useUpdateClientServiceDate();
 
   const { data, isLoading, refetch } = useClientProfile(clientId);
+  const { data: squareStatus } = useSquareStatus();
 
   const client = data?.client;
   const summary = data?.summary;
@@ -102,6 +104,48 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
     } finally {
       setSyncing(false);
     }
+  }
+
+  async function handleChargeWithSquare() {
+    if (!clientId || !client) return;
+    let squareId = client.squareCustomerId;
+
+    if (!squareId) {
+      setChargingSquare(true);
+      try {
+        const res = await fetch(`${BASE}/api/square/customers/sync/${clientId}`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          let msg = "Failed to sync client to Square";
+          try { const b = await res.json(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+          toast({ title: msg, variant: "destructive" });
+          return;
+        }
+        const body = await res.json();
+        squareId = body.squareCustomerId as string | null | undefined;
+        if (!squareId) {
+          toast({ title: "Sync succeeded but Square returned no customer ID", variant: "destructive" });
+          return;
+        }
+        await refetch();
+        toast({ title: "Client synced — opening Square" });
+      } catch {
+        toast({ title: "Network error. Could not sync to Square.", variant: "destructive" });
+        return;
+      } finally {
+        setChargingSquare(false);
+      }
+    }
+
+    if (!squareId) {
+      toast({ title: "No Square customer ID — try syncing first", variant: "destructive" });
+      return;
+    }
+
+    const deepLink = `square-commerce-v1://payment/create?amount=0&currency_code=USD&customer_id=${encodeURIComponent(squareId)}`;
+    window.location.href = deepLink;
   }
 
   function openEditServiceDate() {
@@ -196,24 +240,43 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
           </div>
           <div className="flex items-center gap-1 ml-2">
             {client && (
-              <button
-                onClick={handleSyncToSquare}
-                disabled={syncing}
-                title={client.squareCustomerId ? "Re-sync to Square" : "Sync to Square Customer Directory"}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                  client.squareCustomerId
-                    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400"
-                    : "text-muted-foreground hover:bg-muted"
-                )}
-              >
-                {syncing ? (
-                  <span className="inline-block w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                ) : (
-                  <Upload className="w-3.5 h-3.5" />
-                )}
-                <span className="hidden sm:inline">{client.squareCustomerId ? "Synced" : "Sync"}</span>
-              </button>
+              <>
+                <button
+                  onClick={handleChargeWithSquare}
+                  disabled={chargingSquare}
+                  title={client.squareCustomerId ? "Charge with Square (Tap to Pay)" : "Sync to Square, then open Square POS"}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                    "bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-950/40 dark:text-sky-400",
+                    !squareStatus?.connected && "md:hidden"
+                  )}
+                >
+                  {chargingSquare ? (
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Charge</span>
+                </button>
+                <button
+                  onClick={handleSyncToSquare}
+                  disabled={syncing}
+                  title={client.squareCustomerId ? "Re-sync to Square" : "Sync to Square Customer Directory"}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                    client.squareCustomerId
+                      ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400"
+                      : "text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  {syncing ? (
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">{client.squareCustomerId ? "Synced" : "Sync"}</span>
+                </button>
+              </>
             )}
             <button onClick={() => refetch()} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Refresh">
               <RefreshCw className="w-4 h-4" />
