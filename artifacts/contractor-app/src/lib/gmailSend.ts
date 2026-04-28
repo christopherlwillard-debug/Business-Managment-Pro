@@ -29,6 +29,15 @@ export interface GmailSendOptions {
 export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
   const { token, to, subject, html, text, pdfBase64, pdfFilename } = opts;
 
+  // Base64-encode the HTML body so that = characters in data URIs (logo) are
+  // not misinterpreted as quoted-printable escape sequences by email clients.
+  const encodeBase64Body = (str: string): string => {
+    const bytes = new TextEncoder().encode(str);
+    let binary = "";
+    bytes.forEach(b => { binary += String.fromCharCode(b); });
+    return btoa(binary).match(/.{1,76}/g)?.join("\r\n") ?? btoa(binary);
+  };
+
   let rfcLines: string[];
 
   if (pdfBase64 && pdfFilename) {
@@ -55,9 +64,9 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
       ``,
       `--${inner}`,
       `Content-Type: text/html; charset="UTF-8"`,
-      `Content-Transfer-Encoding: quoted-printable`,
+      `Content-Transfer-Encoding: base64`,
       ``,
-      html,
+      encodeBase64Body(html),
       ``,
       `--${inner}--`,
       ``,
@@ -87,9 +96,9 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
       ``,
       `--${boundary}`,
       `Content-Type: text/html; charset="UTF-8"`,
-      `Content-Transfer-Encoding: quoted-printable`,
+      `Content-Transfer-Encoding: base64`,
       ``,
-      html,
+      encodeBase64Body(html),
       ``,
       `--${boundary}--`,
     ];
