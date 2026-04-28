@@ -196,7 +196,7 @@ function nearestNeighborRoute(stops: RouteStop[]): RouteStop[] {
 }
 
 async function fetchOsrmRoute(stops: RouteStop[]): Promise<{ coords: [number, number][]; durationSecs: number } | null> {
-  const geo = stops.filter(s => s.lat && s.lng);
+  const geo = stops.filter(s => s.lat != null && s.lng != null);
   if (geo.length < 2) return null;
   try {
     const waypoints = geo.map(s => `${s.lng},${s.lat}`).join(";");
