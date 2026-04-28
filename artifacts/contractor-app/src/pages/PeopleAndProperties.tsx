@@ -30,11 +30,14 @@ import {
   BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2,
   ListPlus, Search, Users, Mail, ChevronRight, Calendar, AlertTriangle,
   HardHat, Layers, Upload, LayoutList, LayoutGrid,
+  CheckSquare2, Square, Send, Tag, CalendarPlus, CheckCheck,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useGoogleAuth } from "@/contexts/GoogleAuth";
+import { sendViaGmail } from "@/lib/gmailSend";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -198,6 +201,7 @@ export default function PeopleAndProperties() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const googleAuth = useGoogleAuth();
 
   const rawTab = (searchParams.get("tab") ?? (isOwner ? "prospects" : "clients")) as TabKey;
   const activeTab = (!isOwner && rawTab === "prospects") ? "clients" : rawTab;
@@ -290,6 +294,38 @@ export default function PeopleAndProperties() {
   function toggleClientView(mode: "list" | "card") {
     setClientViewMode(mode);
     try { localStorage.setItem("buildpro_client_view", mode); } catch { /* ignore */ }
+  }
+
+  const [selectedProspectIds, setSelectedProspectIds] = useState<Set<number>>(new Set());
+  const [bulkSubAction, setBulkSubAction] = useState<null | "assignLine" | "updateStatus" | "addRoute" | "followUp" | "confirmDelete">(null);
+  const [bulkRouteDateInput, setBulkRouteDateInput] = useState(todayStr);
+  const [bulkFollowUpDateInput, setBulkFollowUpDateInput] = useState(todayStr);
+  const [isBulkWorking, setIsBulkWorking] = useState(false);
+  const [emailBlastOpen, setEmailBlastOpen] = useState(false);
+  const [emailBlastSubject, setEmailBlastSubject] = useState("");
+  const [emailBlastBody, setEmailBlastBody] = useState("");
+  const [isSendingBlast, setIsSendingBlast] = useState(false);
+
+  function toggleSelectProspect(id: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setSelectedProspectIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllProspects() {
+    if (selectedProspectIds.size === filteredProspects.length && filteredProspects.length > 0) {
+      setSelectedProspectIds(new Set());
+    } else {
+      setSelectedProspectIds(new Set(filteredProspects.map(p => p.id)));
+    }
+  }
+
+  function clearSelection() {
+    setSelectedProspectIds(new Set());
+    setBulkSubAction(null);
   }
 
   const uniqueCities = useMemo(() => {
@@ -644,6 +680,168 @@ export default function PeopleAndProperties() {
     }
   }
 
+  const selectedProspects = useMemo(
+    () => prospects.filter(p => selectedProspectIds.has(p.id)),
+    [prospects, selectedProspectIds]
+  );
+
+  async function handleBulkAssignLine(line: BusinessLine) {
+    if (selectedProspectIds.size === 0) return;
+    setIsBulkWorking(true);
+    setBulkSubAction(null);
+    try {
+      await Promise.all([...selectedProspectIds].map(id =>
+        fetch(`${BASE}/api/prospects/${id}`, {
+          method: "PUT", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ businessLine: line || null }),
+        })
+      ));
+      const bl = BUSINESS_LINES.find(b => b.value === line);
+      toast({ title: `${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""} assigned to ${bl?.shortLabel ?? line}` });
+      clearSelection();
+      refetchProspects();
+    } catch {
+      toast({ title: "Failed to assign business line", variant: "destructive" });
+    } finally {
+      setIsBulkWorking(false);
+    }
+  }
+
+  async function handleBulkUpdateStatus(status: ProspectStatus) {
+    if (selectedProspectIds.size === 0) return;
+    setIsBulkWorking(true);
+    setBulkSubAction(null);
+    try {
+      await Promise.all([...selectedProspectIds].map(id =>
+        fetch(`${BASE}/api/prospects/${id}`, {
+          method: "PUT", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        })
+      ));
+      toast({ title: `${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""} marked as ${status}` });
+      clearSelection();
+      refetchProspects();
+    } catch {
+      toast({ title: "Failed to update status", variant: "destructive" });
+    } finally {
+      setIsBulkWorking(false);
+    }
+  }
+
+  async function handleBulkAddToRoute() {
+    if (selectedProspectIds.size === 0) return;
+    setIsBulkWorking(true);
+    setBulkSubAction(null);
+    let added = 0;
+    try {
+      for (const p of selectedProspects) {
+        const fullAddress = buildFullAddress(p);
+        const coords = await geocodeAddress(fullAddress);
+        const res = await fetch(`${BASE}/api/route-stops`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: p.contactName ?? p.address, address: fullAddress,
+            scheduledDate: bulkRouteDateInput, status: "scheduled",
+            prospectId: p.id, lat: coords?.lat ?? null, lng: coords?.lng ?? null,
+          }),
+        });
+        if (res.ok) added++;
+      }
+      toast({ title: `${added} stop${added !== 1 ? "s" : ""} added to route for ${bulkRouteDateInput}` });
+      clearSelection();
+      queryClient.invalidateQueries({ queryKey: ["route-stops-upcoming"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/route-stops"] });
+    } catch {
+      toast({ title: "Failed to add to route", variant: "destructive" });
+    } finally {
+      setIsBulkWorking(false);
+    }
+  }
+
+  async function handleBulkSetFollowUp() {
+    if (selectedProspectIds.size === 0) return;
+    setIsBulkWorking(true);
+    setBulkSubAction(null);
+    try {
+      await Promise.all([...selectedProspectIds].map(id =>
+        fetch(`${BASE}/api/prospects/${id}`, {
+          method: "PUT", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ followUpDate: bulkFollowUpDateInput }),
+        })
+      ));
+      toast({ title: `Follow-up date set for ${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""}` });
+      clearSelection();
+      refetchProspects();
+    } catch {
+      toast({ title: "Failed to set follow-up date", variant: "destructive" });
+    } finally {
+      setIsBulkWorking(false);
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedProspectIds.size === 0) return;
+    setIsBulkWorking(true);
+    setBulkSubAction(null);
+    try {
+      await Promise.all([...selectedProspectIds].map(id =>
+        fetch(`${BASE}/api/prospects/${id}`, { method: "DELETE", credentials: "include" })
+      ));
+      toast({ title: `${selectedProspectIds.size} prospect${selectedProspectIds.size !== 1 ? "s" : ""} deleted` });
+      clearSelection();
+      refetchProspects();
+    } catch {
+      toast({ title: "Failed to delete prospects", variant: "destructive" });
+    } finally {
+      setIsBulkWorking(false);
+    }
+  }
+
+  async function handleSendEmailBlast() {
+    const recipients = selectedProspects.filter(p => p.contactEmail);
+    if (recipients.length === 0) {
+      toast({ title: "No email addresses", description: "None of the selected prospects have an email on file", variant: "destructive" });
+      return;
+    }
+    if (!emailBlastSubject.trim() || !emailBlastBody.trim()) {
+      toast({ title: "Subject and message are required", variant: "destructive" });
+      return;
+    }
+    setIsSendingBlast(true);
+    let sent = 0;
+    let failed = 0;
+    try {
+      const token = await googleAuth.getToken();
+      for (const p of recipients) {
+        try {
+          await sendViaGmail({
+            token,
+            to: p.contactEmail!,
+            subject: emailBlastSubject,
+            html: `<p style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;">${emailBlastBody.replace(/\n/g, "<br>")}</p>`,
+            text: emailBlastBody,
+          });
+          sent++;
+        } catch {
+          failed++;
+        }
+      }
+      toast({ title: `${sent} email${sent !== 1 ? "s" : ""} sent${failed > 0 ? `, ${failed} failed` : ""}` });
+      setEmailBlastOpen(false);
+      setEmailBlastSubject("");
+      setEmailBlastBody("");
+      clearSelection();
+    } catch {
+      toast({ title: "Could not connect to Gmail. Please sign in with Google.", variant: "destructive" });
+    } finally {
+      setIsSendingBlast(false);
+    }
+  }
+
   const isSavingProspect = createProspect.isPending || updateProspect.isPending;
   const isSavingClient = createClient.isPending || updateClient.isPending;
 
@@ -783,6 +981,22 @@ export default function PeopleAndProperties() {
                   </button>
                 )}
               </div>
+              {filteredProspects.length > 0 && (
+                <button
+                  onClick={selectAllProspects}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors",
+                    selectedProspectIds.size === filteredProspects.length && filteredProspects.length > 0
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-muted-foreground border-border hover:bg-muted"
+                  )}
+                >
+                  {selectedProspectIds.size === filteredProspects.length && filteredProspects.length > 0
+                    ? <CheckCheck className="w-3.5 h-3.5" />
+                    : <CheckSquare2 className="w-3.5 h-3.5" />}
+                  {selectedProspectIds.size === filteredProspects.length && filteredProspects.length > 0 ? "Deselect All" : "Select All"}
+                </button>
+              )}
               <div className="flex items-center rounded-lg border border-border overflow-hidden text-xs font-medium ml-auto">
                 <button onClick={() => setProspectSort("newest")} className={`px-3 py-1.5 transition-colors ${prospectSort === "newest" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>Newest</button>
                 <button onClick={() => setProspectSort("az")} className={`px-3 py-1.5 transition-colors ${prospectSort === "az" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>A–Z</button>
@@ -835,20 +1049,42 @@ export default function PeopleAndProperties() {
                 const propColor = PROPERTY_TYPE_COLORS[p.propertyType] ?? PROPERTY_TYPE_COLORS.Other;
                 const fullAddr = buildFullAddress(p);
                 const scheduledDate = scheduledAddressMap.get(fullAddr.trim().toLowerCase()) ?? null;
+                const isSelected = selectedProspectIds.has(p.id);
                 return (
-                  <Card key={p.id} className="border border-border hover:shadow-md transition-shadow cursor-pointer" onClick={() => setDrawerProspectId(p.id)}>
+                  <Card
+                    key={p.id}
+                    className={cn(
+                      "border hover:shadow-md transition-all cursor-pointer",
+                      isSelected ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "border-border"
+                    )}
+                    onClick={() => setDrawerProspectId(p.id)}
+                  >
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start gap-1.5 text-muted-foreground mb-1">
-                            <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                            <div className="min-w-0">
-                              <span className="text-sm font-medium text-foreground block truncate">{p.address}</span>
-                              {(p.city || p.state || p.zip) && (
-                                <span className="text-xs text-muted-foreground">
-                                  {[p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
-                                </span>
-                              )}
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <button
+                            onClick={e => toggleSelectProspect(p.id, e)}
+                            className={cn(
+                              "flex-shrink-0 mt-0.5 p-0.5 rounded transition-colors",
+                              isSelected ? "text-primary" : "text-muted-foreground/40 hover:text-muted-foreground"
+                            )}
+                            title={isSelected ? "Deselect" : "Select"}
+                          >
+                            {isSelected
+                              ? <CheckSquare2 className="w-4 h-4" />
+                              : <Square className="w-4 h-4" />}
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start gap-1.5 text-muted-foreground mb-1">
+                              <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                              <div className="min-w-0">
+                                <span className="text-sm font-medium text-foreground block truncate">{p.address}</span>
+                                {(p.city || p.state || p.zip) && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {[p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1230,6 +1466,188 @@ export default function PeopleAndProperties() {
           })()}
         </div>
       )}
+
+      {/* ── Floating Bulk Action Bar ── */}
+      {selectedProspectIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100vw-2rem)] max-w-2xl">
+          <div className="bg-gray-900 text-white rounded-2xl shadow-2xl border border-white/10 overflow-visible">
+            {/* Sub-action panels */}
+            {bulkSubAction === "assignLine" && (
+              <div className="px-4 pt-4 pb-3 border-b border-white/10">
+                <p className="text-xs text-white/60 mb-2 font-medium">Assign to business line:</p>
+                <div className="flex gap-2">
+                  {BUSINESS_LINES.map(bl => (
+                    <button key={bl.value} onClick={() => handleBulkAssignLine(bl.value)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${bl.color}`}>
+                      {bl.value === "asphalt" ? <HardHat className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
+                      {bl.shortLabel}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {bulkSubAction === "updateStatus" && (
+              <div className="px-4 pt-4 pb-3 border-b border-white/10">
+                <p className="text-xs text-white/60 mb-2 font-medium">Set status to:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {STATUS_OPTIONS.map(s => (
+                    <button key={s.value} onClick={() => handleBulkUpdateStatus(s.value as ProspectStatus)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${STATUS_BADGE[s.value as ProspectStatus].className}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {bulkSubAction === "addRoute" && (
+              <div className="px-4 pt-4 pb-3 border-b border-white/10 flex items-center gap-3">
+                <p className="text-xs text-white/60 font-medium flex-shrink-0">Route date:</p>
+                <input type="date" value={bulkRouteDateInput} onChange={e => setBulkRouteDateInput(e.target.value)}
+                  className="flex-1 px-2.5 py-1.5 rounded-lg text-sm bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                <button onClick={handleBulkAddToRoute} disabled={isBulkWorking}
+                  className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 flex-shrink-0">
+                  {isBulkWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
+                </button>
+              </div>
+            )}
+            {bulkSubAction === "followUp" && (
+              <div className="px-4 pt-4 pb-3 border-b border-white/10 flex items-center gap-3">
+                <p className="text-xs text-white/60 font-medium flex-shrink-0">Follow-up date:</p>
+                <input type="date" value={bulkFollowUpDateInput} onChange={e => setBulkFollowUpDateInput(e.target.value)}
+                  className="flex-1 px-2.5 py-1.5 rounded-lg text-sm bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                <button onClick={handleBulkSetFollowUp} disabled={isBulkWorking}
+                  className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 flex-shrink-0">
+                  {isBulkWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : "Set"}
+                </button>
+              </div>
+            )}
+            {bulkSubAction === "confirmDelete" && (
+              <div className="px-4 pt-4 pb-3 border-b border-white/10 flex items-center justify-between gap-3">
+                <p className="text-sm text-white/80">
+                  Delete <span className="font-bold text-white">{selectedProspectIds.size}</span> prospect{selectedProspectIds.size !== 1 ? "s" : ""}? This cannot be undone.
+                </p>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button onClick={() => setBulkSubAction(null)} className="px-3 py-1.5 rounded-lg border border-white/20 text-sm text-white/70 hover:bg-white/10">Cancel</button>
+                  <button onClick={handleBulkDelete} disabled={isBulkWorking}
+                    className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-60">
+                    {isBulkWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {/* Main action row */}
+            <div className="flex items-center gap-2 px-3 py-3">
+              <span className="text-sm font-semibold text-white flex-shrink-0 pl-1">
+                {selectedProspectIds.size} selected
+              </span>
+              <div className="flex gap-1 flex-wrap flex-1 justify-center">
+                <button onClick={() => setBulkSubAction(bulkSubAction === "assignLine" ? null : "assignLine")}
+                  className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors", bulkSubAction === "assignLine" ? "bg-white text-gray-900" : "bg-white/10 text-white hover:bg-white/20")}>
+                  <Tag className="w-3.5 h-3.5" />Assign Business
+                </button>
+                <button onClick={() => setBulkSubAction(bulkSubAction === "updateStatus" ? null : "updateStatus")}
+                  className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors", bulkSubAction === "updateStatus" ? "bg-white text-gray-900" : "bg-white/10 text-white hover:bg-white/20")}>
+                  <CheckCircle2 className="w-3.5 h-3.5" />Status
+                </button>
+                <button onClick={() => setBulkSubAction(bulkSubAction === "addRoute" ? null : "addRoute")}
+                  className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors", bulkSubAction === "addRoute" ? "bg-white text-gray-900" : "bg-white/10 text-white hover:bg-white/20")}>
+                  <Route className="w-3.5 h-3.5" />Route
+                </button>
+                <button onClick={() => setBulkSubAction(bulkSubAction === "followUp" ? null : "followUp")}
+                  className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors", bulkSubAction === "followUp" ? "bg-white text-gray-900" : "bg-white/10 text-white hover:bg-white/20")}>
+                  <CalendarPlus className="w-3.5 h-3.5" />Follow-up
+                </button>
+                <button onClick={() => { setEmailBlastOpen(true); setBulkSubAction(null); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-white hover:bg-white/20 transition-colors">
+                  <Mail className="w-3.5 h-3.5" />Email
+                </button>
+                <button onClick={() => setBulkSubAction(bulkSubAction === "confirmDelete" ? null : "confirmDelete")}
+                  className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors", bulkSubAction === "confirmDelete" ? "bg-red-500 text-white" : "bg-white/10 text-white hover:bg-red-500/80")}>
+                  <Trash2 className="w-3.5 h-3.5" />Delete
+                </button>
+              </div>
+              <button onClick={clearSelection} className="flex-shrink-0 p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors" title="Clear selection">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Email Blast Dialog ── */}
+      <Dialog open={emailBlastOpen} onOpenChange={open => { if (!open) { setEmailBlastOpen(false); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="w-5 h-5" />Email Blast
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {(() => {
+              const withEmail = selectedProspects.filter(p => p.contactEmail);
+              const withoutEmail = selectedProspects.filter(p => !p.contactEmail);
+              return (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-foreground mb-1.5">Sending to:</p>
+                    <div className="bg-muted rounded-lg px-3 py-2 text-xs space-y-1 max-h-28 overflow-y-auto">
+                      {withEmail.length === 0
+                        ? <p className="text-muted-foreground italic">None of the selected prospects have an email on file.</p>
+                        : withEmail.map(p => (
+                          <div key={p.id} className="flex items-center gap-2">
+                            <Mail className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                            <span className="text-foreground font-medium truncate">{p.contactEmail}</span>
+                            {p.contactName && <span className="text-muted-foreground truncate">({p.contactName})</span>}
+                          </div>
+                        ))
+                      }
+                    </div>
+                    {withoutEmail.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        <AlertCircle className="w-3 h-3 inline mr-1" />
+                        {withoutEmail.length} prospect{withoutEmail.length !== 1 ? "s" : ""} will be skipped (no email on file)
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Subject</label>
+                    <input type="text" value={emailBlastSubject} onChange={e => setEmailBlastSubject(e.target.value)}
+                      placeholder="e.g. Special offer for your property"
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Message</label>
+                    <textarea value={emailBlastBody} onChange={e => setEmailBlastBody(e.target.value)}
+                      placeholder="Write your message here…"
+                      rows={5}
+                      className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
+                  </div>
+                  {!googleAuth.isConnected && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      You need to connect Gmail first.
+                      <button onClick={() => googleAuth.signIn()} className="underline font-medium ml-1">Sign in</button>
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button onClick={() => setEmailBlastOpen(false)} className="px-4 py-2 text-sm border border-border rounded-lg text-muted-foreground hover:bg-muted transition-colors">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSendEmailBlast}
+                      disabled={isSendingBlast || withEmail.length === 0}
+                      className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+                    >
+                      {isSendingBlast ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {isSendingBlast ? "Sending…" : `Send to ${withEmail.length}`}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Drawers ── */}
       <ProspectDrawer
