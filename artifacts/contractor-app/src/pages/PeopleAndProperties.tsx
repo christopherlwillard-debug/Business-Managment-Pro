@@ -29,7 +29,7 @@ import {
   Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
   BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2,
   ListPlus, Search, Users, Mail, ChevronRight, Calendar, AlertTriangle,
-  HardHat, Layers, Upload,
+  HardHat, Layers, Upload, LayoutList, LayoutGrid,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -271,6 +271,14 @@ export default function PeopleAndProperties() {
   const [clientSort, setClientSort] = useState<"newest" | "az">("newest");
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncingClientId, setSyncingClientId] = useState<number | null>(null);
+  const [clientViewMode, setClientViewMode] = useState<"list" | "card">(() => {
+    try { return (localStorage.getItem("buildpro_client_view") as "list" | "card") || "list"; } catch { return "list"; }
+  });
+
+  function toggleClientView(mode: "list" | "card") {
+    setClientViewMode(mode);
+    try { localStorage.setItem("buildpro_client_view", mode); } catch { /* ignore */ }
+  }
 
   const uniqueCities = useMemo(() => {
     const seen = new Map<string, string>();
@@ -306,7 +314,11 @@ export default function PeopleAndProperties() {
 
   const filteredClients = useMemo(() => {
     let list = (clients ?? []).filter((c: Client) => {
-      if (activeLine && c.businessLine !== activeLine) return false;
+      if (activeLine) {
+        if (c.businessLine !== activeLine) return false;
+      } else {
+        if (c.businessLine) return false;
+      }
       if (clientDueFilter && !isDueSoon(c.nextServiceDate)) return false;
       if (!matchesSearch([c.name, c.address, c.city, c.phone, c.email].filter(Boolean).join(" "))) return false;
       return true;
@@ -637,7 +649,7 @@ export default function PeopleAndProperties() {
               : "bg-card text-muted-foreground border-border hover:bg-muted"
           }`}
         >
-          All Lines
+          {activeTab === "clients" ? "Unassigned" : "All Lines"}
         </button>
         {BUSINESS_LINES.map(bl => (
           <button
@@ -912,7 +924,7 @@ export default function PeopleAndProperties() {
               onClick={handleSyncAllToSquare}
               disabled={syncingAll}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-border bg-card text-muted-foreground hover:bg-muted transition-colors disabled:opacity-60"
-              title="Sync all unsynced clients to Square Customer Directory"
+              title="Sync all clients to Square Customer Directory"
             >
               {syncingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               Sync All to Square
@@ -921,96 +933,205 @@ export default function PeopleAndProperties() {
               <button onClick={() => setClientSort("newest")} className={`px-3 py-1.5 transition-colors ${clientSort === "newest" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>Newest</button>
               <button onClick={() => setClientSort("az")} className={`px-3 py-1.5 transition-colors ${clientSort === "az" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>A–Z</button>
             </div>
+            <div className="flex items-center rounded-lg border border-border overflow-hidden">
+              <button onClick={() => toggleClientView("list")} title="List view" className={`p-1.5 transition-colors ${clientViewMode === "list" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}><LayoutList className="w-4 h-4" /></button>
+              <button onClick={() => toggleClientView("card")} title="Card view" className={`p-1.5 transition-colors ${clientViewMode === "card" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}><LayoutGrid className="w-4 h-4" /></button>
+            </div>
           </div>
 
-          {clientsLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {[1, 2, 3].map(i => <div key={i} className="h-40 bg-card rounded-2xl border border-border/50 animate-pulse" />)}
-            </div>
-          ) : filteredClients.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground border-2 border-dashed border-border rounded-2xl bg-card/50">
-              <Users className="w-12 h-12 opacity-30 mx-auto" />
-              <p className="text-sm">{searchHasText ? `No clients match "${searchQuery}"` : "No clients found"}</p>
-              {searchHasText && (
-                <button
-                  onClick={() => openCreateClient(searchQuery)}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                >
-                  <Plus className="w-4 h-4" /> Add as new client
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredClients.map(client => {
-                const dueSoon = isDueSoon(client.nextServiceDate);
-                return (
-                  <Card key={client.id} onClick={() => setProfileClientId(client.id)} className="border-border/50 shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden group cursor-pointer">
-                    <div className={cn("h-2 transition-colors", dueSoon ? "bg-amber-400 group-hover:bg-amber-500" : "bg-primary/20 group-hover:bg-primary")} />
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-3 gap-2">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-xl font-bold font-display text-foreground truncate">{client.name}</h3>
-                          {client.nextServiceDate && (
-                            <p className={cn("text-xs mt-0.5 flex items-center gap-1", dueSoon ? "text-amber-600 font-medium" : "text-muted-foreground")}>
-                              <Calendar className="w-3 h-3" />Next service: {formatDate(client.nextServiceDate)}
-                            </p>
-                          )}
+          {(() => {
+            const activeLineLabel = activeLine
+              ? (BUSINESS_LINES.find(b => b.value === activeLine)?.shortLabel ?? activeLine)
+              : "Unassigned";
+            const emptyLabel = searchHasText
+              ? `No clients match "${searchQuery}"`
+              : `No ${activeLineLabel.toLowerCase()} clients`;
+
+            if (clientsLoading) {
+              return clientViewMode === "list" ? (
+                <div className="space-y-1">
+                  {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-12 bg-card rounded-xl border border-border/50 animate-pulse" />)}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {[1, 2, 3].map(i => <div key={i} className="h-40 bg-card rounded-2xl border border-border/50 animate-pulse" />)}
+                </div>
+              );
+            }
+
+            if (filteredClients.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground border-2 border-dashed border-border rounded-2xl bg-card/50">
+                  <Users className="w-12 h-12 opacity-30 mx-auto" />
+                  <p className="text-sm">{emptyLabel}</p>
+                  {searchHasText && (
+                    <button
+                      onClick={() => openCreateClient(searchQuery)}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" /> Add as new client
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
+            if (clientViewMode === "list") {
+              return (
+                <div className="rounded-xl border border-border overflow-hidden bg-card">
+                  {filteredClients.map((client, idx) => {
+                    const dueSoon = isDueSoon(client.nextServiceDate);
+                    return (
+                      <div
+                        key={client.id}
+                        onClick={() => setProfileClientId(client.id)}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors",
+                          idx !== 0 && "border-t border-border/50"
+                        )}
+                      >
+                        {/* Overdue dot */}
+                        <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", dueSoon ? "bg-amber-400" : "bg-transparent")} />
+
+                        {/* Name */}
+                        <span className="font-medium text-sm text-foreground truncate min-w-0 flex-1">{client.name}</span>
+
+                        {/* Business line badge — hidden on small screens */}
+                        <div className="hidden sm:block flex-shrink-0">
+                          <BusinessLineBadge line={client.businessLine} />
                         </div>
-                        <div className="flex gap-1 flex-shrink-0">
+
+                        {/* Phone */}
+                        {client.phone ? (
+                          <a
+                            href={`tel:${client.phone}`}
+                            onClick={e => e.stopPropagation()}
+                            className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors flex-shrink-0 w-32"
+                          >
+                            <Phone className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{client.phone}</span>
+                          </a>
+                        ) : (
+                          <span className="hidden md:block w-32 flex-shrink-0" />
+                        )}
+
+                        {/* City */}
+                        {client.city ? (
+                          <span className="hidden lg:block text-xs text-muted-foreground truncate flex-shrink-0 w-24">{client.city}</span>
+                        ) : (
+                          <span className="hidden lg:block w-24 flex-shrink-0" />
+                        )}
+
+                        {/* Next service */}
+                        {client.nextServiceDate ? (
+                          <span className={cn("hidden xl:block text-xs flex-shrink-0 w-24", dueSoon ? "text-amber-600 font-medium" : "text-muted-foreground")}>
+                            {formatDate(client.nextServiceDate)}
+                          </span>
+                        ) : (
+                          <span className="hidden xl:block w-24 flex-shrink-0" />
+                        )}
+
+                        {/* Square sync dot */}
+                        {client.squareCustomerId && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" title="Synced to Square" />
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex gap-0.5 flex-shrink-0 ml-1">
                           <button
                             onClick={e => handleSyncClient(client.id, e)}
                             disabled={syncingClientId === client.id}
-                            title={client.squareCustomerId ? "Re-sync to Square" : "Sync to Square Customer Directory"}
-                            className={cn(
-                              "p-2 rounded-lg transition-colors",
-                              client.squareCustomerId
-                                ? "text-emerald-600 hover:bg-emerald-50"
-                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                            )}
+                            title={client.squareCustomerId ? "Re-sync to Square" : "Sync to Square"}
+                            className={cn("p-1.5 rounded-lg transition-colors", client.squareCustomerId ? "text-emerald-600 hover:bg-emerald-50" : "text-muted-foreground hover:bg-muted")}
                           >
-                            {syncingClientId === client.id
-                              ? <Loader2 className="w-4 h-4 animate-spin" />
-                              : <Upload className="w-4 h-4" />}
+                            {syncingClientId === client.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                           </button>
-                          <button onClick={e => openEditClient(client, e)} className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" title="Edit client">
-                            <Edit2 className="w-4 h-4" />
+                          <button onClick={e => openEditClient(client, e)} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Edit">
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={e => { e.stopPropagation(); setDeleteClientTarget(client); }} className="p-2 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors" title="Delete client">
-                            <Trash2 className="w-4 h-4" />
+                          <button onClick={e => { e.stopPropagation(); setDeleteClientTarget(client); }} className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
-                      <div className="mb-3 flex items-center gap-2 flex-wrap">
-                        <BusinessLineBadge line={client.businessLine} />
-                        {client.squareCustomerId && (
-                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                            <Upload className="w-3 h-3" /> Square
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        {client.phone && <div className="flex items-center text-sm text-muted-foreground"><Phone className="w-4 h-4 mr-3 text-primary/60" />{client.phone}</div>}
-                        {client.email && <div className="flex items-center text-sm text-muted-foreground truncate"><Mail className="w-4 h-4 mr-3 text-primary/60 flex-shrink-0" /><span className="truncate">{client.email}</span></div>}
-                        {(client.address || client.city || client.state || client.zip) && (
-                          <div className="flex items-start text-sm text-muted-foreground">
-                            <MapPin className="w-4 h-4 mr-3 mt-0.5 text-primary/60 flex-shrink-0" />
-                            <span className="line-clamp-2">
-                              {client.address && <>{client.address}<br /></>}
-                              {[client.city, client.state, client.zip].filter(Boolean).join(", ")}
-                            </span>
+                    );
+                  })}
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredClients.map(client => {
+                  const dueSoon = isDueSoon(client.nextServiceDate);
+                  return (
+                    <Card key={client.id} onClick={() => setProfileClientId(client.id)} className="border-border/50 shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden group cursor-pointer">
+                      <div className={cn("h-2 transition-colors", dueSoon ? "bg-amber-400 group-hover:bg-amber-500" : "bg-primary/20 group-hover:bg-primary")} />
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-3 gap-2">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-xl font-bold font-display text-foreground truncate">{client.name}</h3>
+                            {client.nextServiceDate && (
+                              <p className={cn("text-xs mt-0.5 flex items-center gap-1", dueSoon ? "text-amber-600 font-medium" : "text-muted-foreground")}>
+                                <Calendar className="w-3 h-3" />Next service: {formatDate(client.nextServiceDate)}
+                              </p>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="mt-4 flex items-center text-xs text-primary/60 group-hover:text-primary transition-colors font-medium">
-                        View profile <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button
+                              onClick={e => handleSyncClient(client.id, e)}
+                              disabled={syncingClientId === client.id}
+                              title={client.squareCustomerId ? "Re-sync to Square" : "Sync to Square Customer Directory"}
+                              className={cn(
+                                "p-2 rounded-lg transition-colors",
+                                client.squareCustomerId
+                                  ? "text-emerald-600 hover:bg-emerald-50"
+                                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                              )}
+                            >
+                              {syncingClientId === client.id
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <Upload className="w-4 h-4" />}
+                            </button>
+                            <button onClick={e => openEditClient(client, e)} className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" title="Edit client">
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); setDeleteClientTarget(client); }} className="p-2 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors" title="Delete client">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mb-3 flex items-center gap-2 flex-wrap">
+                          <BusinessLineBadge line={client.businessLine} />
+                          {client.squareCustomerId && (
+                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                              <Upload className="w-3 h-3" /> Square
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          {client.phone && <div className="flex items-center text-sm text-muted-foreground"><Phone className="w-4 h-4 mr-3 text-primary/60" />{client.phone}</div>}
+                          {client.email && <div className="flex items-center text-sm text-muted-foreground truncate"><Mail className="w-4 h-4 mr-3 text-primary/60 flex-shrink-0" /><span className="truncate">{client.email}</span></div>}
+                          {(client.address || client.city || client.state || client.zip) && (
+                            <div className="flex items-start text-sm text-muted-foreground">
+                              <MapPin className="w-4 h-4 mr-3 mt-0.5 text-primary/60 flex-shrink-0" />
+                              <span className="line-clamp-2">
+                                {client.address && <>{client.address}<br /></>}
+                                {[client.city, client.state, client.zip].filter(Boolean).join(", ")}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-4 flex items-center text-xs text-primary/60 group-hover:text-primary transition-colors font-medium">
+                          View profile <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 
