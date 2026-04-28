@@ -280,6 +280,7 @@ export default function RoutePlanner() {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [formLinkVal, setFormLinkVal] = useState<string>("");
   const [isSplitting, setIsSplitting] = useState(false);
+  const [blockSize, setBlockSize] = useState(9);
   const [editingBlockNum, setEditingBlockNum] = useState<number | null>(null);
   const [copiedBlock, setCopiedBlock] = useState<number | null>(null);
   const [blockLabelInput, setBlockLabelInput] = useState<string>("");
@@ -524,10 +525,10 @@ export default function RoutePlanner() {
     if (dayStops.length === 0) return;
     setIsSplitting(true);
     try {
-      await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize: 9 }) });
+      await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize }) });
       // Invalidate and wait for fresh data; useEffect will recompute drive times from fresh query data
       await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
-      toast({ title: `Split into blocks of 9` });
+      toast({ title: `Split into blocks of ${blockSize}` });
     } catch {
       toast({ title: "Failed to split blocks", variant: "destructive" });
     } finally {
@@ -757,15 +758,26 @@ export default function RoutePlanner() {
                 </button>
               )}
               {viewMode === "day" && dayStops.length > 0 && (
-                <button
-                  onClick={handleSplitBlocks}
-                  disabled={isSplitting || dayStops.length === 0}
-                  className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary transition-colors disabled:opacity-50"
-                  title="Split stops into blocks of 9"
-                >
-                  {isSplitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers className="w-3 h-3" />}
-                  Blocks
-                </button>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={blockSize}
+                    onChange={e => setBlockSize(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
+                    className="w-10 px-1 py-1.5 text-xs text-center border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary"
+                    title="Block size (stops per block)"
+                  />
+                  <button
+                    onClick={handleSplitBlocks}
+                    disabled={isSplitting || dayStops.length === 0}
+                    className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary transition-colors disabled:opacity-50"
+                    title={`Split stops into blocks of ${blockSize}`}
+                  >
+                    {isSplitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers className="w-3 h-3" />}
+                    Blocks
+                  </button>
+                </div>
               )}
               <button
                 onClick={handleOptimize}
