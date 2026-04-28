@@ -285,6 +285,7 @@ export default function RoutePlanner() {
   const [copiedBlock, setCopiedBlock] = useState<number | null>(null);
   const [blockLabelInput, setBlockLabelInput] = useState<string>("");
   const [blockDriveTimes, setBlockDriveTimes] = useState<Map<number, number | null>>(new Map());
+  const [blockDriveTimesLoading, setBlockDriveTimesLoading] = useState<Set<number>>(new Set());
   const [isSavingLabel, setIsSavingLabel] = useState<boolean>(false);
 
   const [form, setForm] = useState<EditFormState>({
@@ -512,10 +513,23 @@ export default function RoutePlanner() {
       if (!blockMap.has(stop.blockNumber)) blockMap.set(stop.blockNumber, []);
       blockMap.get(stop.blockNumber)!.push(stop);
     }
+    const blockNums = [...blockMap.keys()];
+    setBlockDriveTimesLoading(new Set(blockNums));
     const results = new Map<number, number | null>();
-    await Promise.all([...blockMap.entries()].map(async ([blockNum, blockStops]) => {
-      const route = await fetchOsrmRoute(blockStops);
-      results.set(blockNum, route?.durationSecs ?? null);
+    await Promise.all(blockNums.map(async (blockNum) => {
+      const blockStops = blockMap.get(blockNum)!;
+      try {
+        const route = await fetchOsrmRoute(blockStops);
+        results.set(blockNum, route?.durationSecs ?? null);
+      } catch {
+        results.set(blockNum, null);
+      } finally {
+        setBlockDriveTimesLoading(prev => {
+          const next = new Set(prev);
+          next.delete(blockNum);
+          return next;
+        });
+      }
     }));
     setBlockDriveTimes(results);
   }
@@ -1031,7 +1045,11 @@ export default function RoutePlanner() {
                             )}
                             <span className={cn("text-[10px] font-medium flex-shrink-0", color!.text)}>
                               {stopsInBlock.length} stop{stopsInBlock.length !== 1 ? "s" : ""} · ~{Math.round(totalMinutes / 60 * 10) / 10}h work
-                              {blockDriveTimes.get(blockNum) != null && ` · ~${Math.round(blockDriveTimes.get(blockNum)! / 60)} min drive`}
+                              {blockDriveTimesLoading.has(blockNum)
+                                ? " · …"
+                                : blockDriveTimes.get(blockNum) != null
+                                  ? ` · ~${Math.round(blockDriveTimes.get(blockNum)! / 60)} min drive`
+                                  : null}
                             </span>
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0 ml-2">
