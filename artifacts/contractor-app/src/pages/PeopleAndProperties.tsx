@@ -47,13 +47,18 @@ const BUSINESS_LINES: { value: BusinessLine; label: string; shortLabel: string; 
 ];
 
 function BusinessLineBadge({ line }: { line: string | null | undefined }) {
-  if (!line) return null;
   const def = BUSINESS_LINES.find(b => b.value === line);
-  if (!def) return null;
+  if (def) {
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${def.badge}`}>
+        {line === "asphalt" ? <HardHat className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+        {def.shortLabel}
+      </span>
+    );
+  }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${def.badge}`}>
-      {line === "asphalt" ? <HardHat className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-      {def.shortLabel}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-gray-100 text-gray-500 border-gray-200">
+      Untagged
     </span>
   );
 }
@@ -261,6 +266,7 @@ export default function PeopleAndProperties() {
     }, { replace: true });
   }
 
+  const [prospectSort, setProspectSort] = useState<"newest" | "az">("newest");
   const [clientDueFilter, setClientDueFilter] = useState(false);
   const [clientSort, setClientSort] = useState<"newest" | "az">("newest");
 
@@ -282,7 +288,7 @@ export default function PeopleAndProperties() {
   }
 
   const filteredProspects = useMemo(() => {
-    return prospects.filter(p => {
+    let list = prospects.filter(p => {
       if (activeLine && p.businessLine !== activeLine) return false;
       if (cityFilter && (p.city?.trim() ?? "").toLowerCase() !== cityFilter.toLowerCase()) return false;
       if (prospectStatusFilter === "follow_up_due" && !isFollowUpDue(p.followUpDate)) return false;
@@ -291,12 +297,15 @@ export default function PeopleAndProperties() {
       if (!matchesSearch([p.address, p.city, p.contactName, p.contactPhone].filter(Boolean).join(" "))) return false;
       return true;
     });
-  }, [prospects, activeLine, cityFilter, prospectStatusFilter, searchQuery]);
+    if (prospectSort === "az") list = [...list].sort((a, b) => a.address.localeCompare(b.address));
+    else list = [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return list;
+  }, [prospects, activeLine, cityFilter, prospectStatusFilter, searchQuery, prospectSort]);
 
   const filteredClients = useMemo(() => {
     let list = (clients ?? []).filter((c: Client) => {
-      if (activeLine && (c as any).businessLine !== activeLine) return false;
-      if (clientDueFilter && !isDueSoon((c as any).nextServiceDate)) return false;
+      if (activeLine && c.businessLine !== activeLine) return false;
+      if (clientDueFilter && !isDueSoon(c.nextServiceDate)) return false;
       if (!matchesSearch([c.name, c.address, c.city, c.phone, c.email].filter(Boolean).join(" "))) return false;
       return true;
     });
@@ -357,8 +366,9 @@ export default function PeopleAndProperties() {
       const client = await convertMutation.mutateAsync(p.id);
       toast({ title: `${client.name} added to Clients`, description: "Prospect converted successfully" });
       refetchProspects();
-    } catch (err: any) {
-      if (err?.message?.includes("409") || err?.status === 409) {
+    } catch (err: unknown) {
+      const e = err as { message?: string; status?: number } | null;
+      if (e?.message?.includes("409") || e?.status === 409) {
         toast({ title: "Already converted", description: "This prospect is already linked to a client" });
       } else {
         toast({ title: "Conversion failed", variant: "destructive" });
@@ -374,6 +384,7 @@ export default function PeopleAndProperties() {
   const [deleteProspectTarget, setDeleteProspectTarget] = useState<Prospect | null>(null);
   const [isDeletingProspect, setIsDeletingProspect] = useState(false);
   const [prospectForm, setProspectForm] = useState<ProspectForm>(EMPTY_PROSPECT_FORM);
+  const [prospectFormLineError, setProspectFormLineError] = useState(false);
 
   function openCreateProspect(prefillAddress = "") {
     setEditingProspect(null);
@@ -391,10 +402,16 @@ export default function PeopleAndProperties() {
     setProspectDialogOpen(false);
     setEditingProspect(null);
     setProspectForm(EMPTY_PROSPECT_FORM);
+    setProspectFormLineError(false);
   }
 
   async function handleProspectSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!prospectForm.businessLine) {
+      setProspectFormLineError(true);
+      return;
+    }
+    setProspectFormLineError(false);
     const payload = {
       address: prospectForm.address, city: prospectForm.city || null,
       state: prospectForm.state || null, zip: prospectForm.zip || null,
@@ -447,30 +464,45 @@ export default function PeopleAndProperties() {
 
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [clientPrefillName, setClientPrefillName] = useState("");
+  const [clientDialogKey, setClientDialogKey] = useState(0);
   const [deleteClientTarget, setDeleteClientTarget] = useState<Client | null>(null);
   const [isDeletingClient, setIsDeletingClient] = useState(false);
   const [clientFormLine, setClientFormLine] = useState<BusinessLine>("");
+  const [clientFormLineError, setClientFormLineError] = useState(false);
 
   function openCreateClient(prefillName = "") {
     setEditingClient(null);
+    setClientPrefillName(prefillName);
     setClientFormLine(activeLine);
+    setClientFormLineError(false);
+    setClientDialogKey(k => k + 1);
     setClientDialogOpen(true);
   }
 
   function openEditClient(c: Client, e?: React.MouseEvent) {
     e?.stopPropagation();
     setEditingClient(c);
-    setClientFormLine(((c as any).businessLine as BusinessLine) ?? "");
+    setClientPrefillName("");
+    setClientFormLine((c.businessLine as BusinessLine) ?? "");
+    setClientFormLineError(false);
+    setClientDialogKey(k => k + 1);
     setClientDialogOpen(true);
   }
 
   function closeClientDialog() {
     setClientDialogOpen(false);
     setEditingClient(null);
+    setClientPrefillName("");
+    setClientFormLineError(false);
   }
 
   async function handleClientSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!clientFormLine) {
+      setClientFormLineError(true);
+      return;
+    }
     const formData = new FormData(e.currentTarget);
     const payload = {
       name: formData.get("name") as string,
@@ -481,7 +513,7 @@ export default function PeopleAndProperties() {
       state: formData.get("state") as string || null,
       zip: formData.get("zip") as string || null,
       notes: formData.get("notes") as string || null,
-      businessLine: clientFormLine || null,
+      businessLine: clientFormLine,
     };
     try {
       if (editingClient) {
@@ -633,7 +665,7 @@ export default function PeopleAndProperties() {
 
           {/* Prospect filters */}
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card transition-colors ${cityFilter ? "border-primary" : "border-border"}`}>
                 <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                 <select
@@ -649,6 +681,10 @@ export default function PeopleAndProperties() {
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
+              </div>
+              <div className="flex items-center rounded-lg border border-border overflow-hidden text-xs font-medium ml-auto">
+                <button onClick={() => setProspectSort("newest")} className={`px-3 py-1.5 transition-colors ${prospectSort === "newest" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>Newest</button>
+                <button onClick={() => setProspectSort("az")} className={`px-3 py-1.5 transition-colors ${prospectSort === "az" ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-muted"}`}>A–Z</button>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -768,7 +804,7 @@ export default function PeopleAndProperties() {
                       )}
                       {(p.status === "won" || p.status === "serviced") && (
                         <div className="border-t border-border pt-2">
-                          {(p as any).clientId ? (
+                          {p.clientId ? (
                             <div className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border border-emerald-200 rounded text-xs font-medium text-emerald-700 bg-emerald-50 cursor-default select-none">
                               <UserCheck className="w-3 h-3" />Client Created
                             </div>
@@ -846,8 +882,7 @@ export default function PeopleAndProperties() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredClients.map(client => {
-                const c = client as any;
-                const dueSoon = isDueSoon(c.nextServiceDate);
+                const dueSoon = isDueSoon(client.nextServiceDate);
                 return (
                   <Card key={client.id} onClick={() => setProfileClientId(client.id)} className="border-border/50 shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden group cursor-pointer">
                     <div className={cn("h-2 transition-colors", dueSoon ? "bg-amber-400 group-hover:bg-amber-500" : "bg-primary/20 group-hover:bg-primary")} />
@@ -855,9 +890,9 @@ export default function PeopleAndProperties() {
                       <div className="flex items-start justify-between mb-3 gap-2">
                         <div className="flex-1 min-w-0">
                           <h3 className="text-xl font-bold font-display text-foreground truncate">{client.name}</h3>
-                          {c.nextServiceDate && (
+                          {client.nextServiceDate && (
                             <p className={cn("text-xs mt-0.5 flex items-center gap-1", dueSoon ? "text-amber-600 font-medium" : "text-muted-foreground")}>
-                              <Calendar className="w-3 h-3" />Next service: {formatDate(c.nextServiceDate)}
+                              <Calendar className="w-3 h-3" />Next service: {formatDate(client.nextServiceDate)}
                             </p>
                           )}
                         </div>
@@ -870,7 +905,7 @@ export default function PeopleAndProperties() {
                           </button>
                         </div>
                       </div>
-                      {c.businessLine && <div className="mb-3"><BusinessLineBadge line={c.businessLine} /></div>}
+                      <div className="mb-3"><BusinessLineBadge line={client.businessLine} /></div>
                       <div className="space-y-2">
                         {client.phone && <div className="flex items-center text-sm text-muted-foreground"><Phone className="w-4 h-4 mr-3 text-primary/60" />{client.phone}</div>}
                         {client.email && <div className="flex items-center text-sm text-muted-foreground truncate"><Mail className="w-4 h-4 mr-3 text-primary/60 flex-shrink-0" /><span className="truncate">{client.email}</span></div>}
@@ -930,13 +965,15 @@ export default function PeopleAndProperties() {
           </DialogHeader>
           <form onSubmit={handleProspectSubmit} className="space-y-4 mt-2">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Business Line</label>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Business Line <span className="text-red-500">*</span>
+              </label>
               <div className="flex gap-2">
                 {BUSINESS_LINES.map(bl => (
                   <button
                     key={bl.value}
                     type="button"
-                    onClick={() => setProspectForm(f => ({ ...f, businessLine: bl.value }))}
+                    onClick={() => { setProspectForm(f => ({ ...f, businessLine: bl.value })); setProspectFormLineError(false); }}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       prospectForm.businessLine === bl.value ? bl.color : "bg-card text-muted-foreground border-border hover:bg-muted"
                     }`}
@@ -946,6 +983,7 @@ export default function PeopleAndProperties() {
                   </button>
                 ))}
               </div>
+              {prospectFormLineError && <p className="text-xs text-red-500 mt-1">Please select a business line</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Street Address <span className="text-red-500">*</span></label>
@@ -1039,22 +1077,25 @@ export default function PeopleAndProperties() {
           <DialogHeader>
             <DialogTitle className="text-2xl font-display">{editingClient ? "Edit Client" : "Add Client"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleClientSubmit} className="space-y-4 mt-4">
+          <form key={clientDialogKey} onSubmit={handleClientSubmit} className="space-y-4 mt-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Business Line</label>
+              <label className="block text-sm font-medium mb-1">
+                Business Line <span className="text-red-500">*</span>
+              </label>
               <div className="flex gap-2">
                 {BUSINESS_LINES.map(bl => (
-                  <button key={bl.value} type="button" onClick={() => setClientFormLine(bl.value)}
+                  <button key={bl.value} type="button" onClick={() => { setClientFormLine(bl.value); setClientFormLineError(false); }}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${clientFormLine === bl.value ? bl.color : "bg-card text-muted-foreground border-border hover:bg-muted"}`}>
                     {bl.value === "asphalt" ? <HardHat className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
                     {bl.shortLabel}
                   </button>
                 ))}
               </div>
+              {clientFormLineError && <p className="text-xs text-red-500 mt-1">Please select a business line</p>}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Name / Company *</label>
-              <input name="name" required defaultValue={editingClient?.name || ""} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+              <input name="name" required defaultValue={editingClient?.name || clientPrefillName} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

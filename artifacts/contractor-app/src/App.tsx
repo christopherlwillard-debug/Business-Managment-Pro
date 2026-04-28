@@ -236,7 +236,7 @@ function AdminApp() {
             <TabRedirect tab="clients" />
           </Route>
           <Route path="/people">
-            <PeopleAndProperties />
+            <PermissionGuard section="clients"><PeopleAndProperties /></PermissionGuard>
           </Route>
           <Route path="/settings">
             <PermissionGuard ownerOnly><Settings /></PermissionGuard>

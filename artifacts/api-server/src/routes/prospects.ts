@@ -60,6 +60,7 @@ function format(p: ProspectWithEstimate) {
     followUpDate: p.followUpDate ?? null,
     source: p.source ?? "manual",
     businessLine: p.businessLine ?? null,
+    clientId: p.clientId ?? null,
     createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     updatedAt: p.updatedAt instanceof Date ? p.updatedAt.toISOString() : p.updatedAt,
   };

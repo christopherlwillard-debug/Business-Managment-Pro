@@ -956,6 +956,7 @@ export interface Prospect {
   followUpDate?: string | null;
   source?: string | null;
   businessLine?: string | null;
+  clientId?: number | null;
   createdAt: string;
   updatedAt: string;
 }
