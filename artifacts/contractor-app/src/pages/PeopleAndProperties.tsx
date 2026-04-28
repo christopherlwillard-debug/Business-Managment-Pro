@@ -272,7 +272,10 @@ export default function PeopleAndProperties() {
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncingClientId, setSyncingClientId] = useState<number | null>(null);
   const [clientViewMode, setClientViewMode] = useState<"list" | "card">(() => {
-    try { return (localStorage.getItem("buildpro_client_view") as "list" | "card") || "list"; } catch { return "list"; }
+    try {
+      const stored = localStorage.getItem("buildpro_client_view");
+      return stored === "list" || stored === "card" ? stored : "list";
+    } catch { return "list"; }
   });
 
   function toggleClientView(mode: "list" | "card") {
