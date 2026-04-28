@@ -85,38 +85,32 @@ async function handleSquarePayment(opts: {
 
     const clientId = client?.id ?? null;
 
-    const existing = await db
-      .select({ id: squarePaymentsTable.id })
-      .from(squarePaymentsTable)
-      .where(eq(squarePaymentsTable.squarePaymentId, squarePaymentId));
+    const amountDollars = (amountMoney / 100).toFixed(2);
+    const dateStr = paidAt.toISOString().split("T")[0];
 
-    if (existing.length > 0) {
+    const inserted = await db.insert(squarePaymentsTable).values({
+      squarePaymentId,
+      amountCents: amountMoney,
+      description: "Square Tap to Pay",
+      clientId,
+      clientName: client?.name ?? null,
+      paidAt,
+    }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
+
+    if (inserted.length === 0) {
       console.log(`Square Tap to Pay ${squarePaymentId} already recorded — skipping duplicate`);
       return;
     }
 
-    const amountDollars = (amountMoney / 100).toFixed(2);
-    const dateStr = paidAt.toISOString().split("T")[0];
-
-    await Promise.all([
-      db.insert(squarePaymentsTable).values({
-        squarePaymentId,
-        amountCents: amountMoney,
-        description: "Square Tap to Pay",
-        clientId,
-        clientName: client?.name ?? null,
-        paidAt,
-      }),
-      db.insert(otherIncomeTable).values({
-        amount: amountDollars,
-        date: dateStr,
-        description: "Square Tap to Pay",
-        source: "square_tap_to_pay",
-        paymentMethod: "card",
-        clientId,
-        businessLine: client?.businessLine ?? null,
-      }),
-    ]);
+    await db.insert(otherIncomeTable).values({
+      amount: amountDollars,
+      date: dateStr,
+      description: "Square Tap to Pay",
+      source: "square_tap_to_pay",
+      paymentMethod: "card",
+      clientId,
+      businessLine: client?.businessLine ?? null,
+    });
 
     console.log(
       `Tap to Pay ${squarePaymentId} recorded — $${amountDollars}` +

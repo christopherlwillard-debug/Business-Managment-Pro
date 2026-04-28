@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { clientsTable } from "@workspace/db/schema";
-import { eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getSquareClient } from "../lib/square";
 
 const router = Router();
@@ -68,7 +68,7 @@ router.post("/sync/:clientId", async (req: Request, res: Response) => {
 
 router.post("/sync-all", async (_req: Request, res: Response) => {
   try {
-    const clients = await db.select().from(clientsTable).where(isNull(clientsTable.squareCustomerId));
+    const clients = await db.select().from(clientsTable);
 
     const results: { clientId: number; squareCustomerId: string; ok: boolean; error?: string }[] = [];
 

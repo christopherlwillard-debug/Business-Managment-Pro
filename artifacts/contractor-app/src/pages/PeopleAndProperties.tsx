@@ -270,6 +270,7 @@ export default function PeopleAndProperties() {
   const [clientDueFilter, setClientDueFilter] = useState(false);
   const [clientSort, setClientSort] = useState<"newest" | "az">("newest");
   const [syncingAll, setSyncingAll] = useState(false);
+  const [syncingClientId, setSyncingClientId] = useState<number | null>(null);
 
   const uniqueCities = useMemo(() => {
     const seen = new Map<string, string>();
@@ -471,6 +472,29 @@ export default function PeopleAndProperties() {
   const [isDeletingClient, setIsDeletingClient] = useState(false);
   const [clientFormLine, setClientFormLine] = useState<BusinessLine>("");
   const [clientFormLineError, setClientFormLineError] = useState(false);
+
+  async function handleSyncClient(clientId: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setSyncingClientId(clientId);
+    try {
+      const res = await fetch(`${BASE}/api/square/customers/sync/${clientId}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let msg = "Failed to sync";
+        try { const b = await res.json(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+        toast({ title: msg, variant: "destructive" });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      toast({ title: "Client synced to Square" });
+    } catch {
+      toast({ title: "Network error syncing to Square", variant: "destructive" });
+    } finally {
+      setSyncingClientId(null);
+    }
+  }
 
   async function handleSyncAllToSquare() {
     setSyncingAll(true);
@@ -934,6 +958,21 @@ export default function PeopleAndProperties() {
                           )}
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
+                          <button
+                            onClick={e => handleSyncClient(client.id, e)}
+                            disabled={syncingClientId === client.id}
+                            title={client.squareCustomerId ? "Re-sync to Square" : "Sync to Square Customer Directory"}
+                            className={cn(
+                              "p-2 rounded-lg transition-colors",
+                              client.squareCustomerId
+                                ? "text-emerald-600 hover:bg-emerald-50"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            )}
+                          >
+                            {syncingClientId === client.id
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <Upload className="w-4 h-4" />}
+                          </button>
                           <button onClick={e => openEditClient(client, e)} className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" title="Edit client">
                             <Edit2 className="w-4 h-4" />
                           </button>
