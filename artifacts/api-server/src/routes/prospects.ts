@@ -874,6 +874,7 @@ router.post("/:id/convert-to-client", async (req, res) => {
         state: prospect.state ?? null,
         zip: prospect.zip ?? null,
         notes: prospect.notes ?? null,
+        businessLine: prospect.businessLine ?? null,
       })
       .returning();
 
