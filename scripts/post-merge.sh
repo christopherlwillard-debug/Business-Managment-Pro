@@ -443,3 +443,13 @@ pool.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS square_customer_id text
   .then(() => { console.log('clients.square_customer_id ensured'); pool.end(); })
   .catch(e => { console.error('square_customer_id migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #333: add block_number and crew_label columns to route_stops (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS block_number integer')
+  .then(() => pool.query('ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS crew_label text'))
+  .then(() => { console.log('route_stops.block_number and crew_label ensured'); pool.end(); })
+  .catch(e => { console.error('route_stops block columns migration error:', e.message); pool.end(); process.exit(1); });
+")

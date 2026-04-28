@@ -8,6 +8,7 @@ import {
   Clock, Calendar,
   Loader2, ChevronLeft, ChevronRight, Navigation,
   Edit2, X, Save, GripVertical, Users, Link as LinkIcon, RefreshCw,
+  Layers, Scissors, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -40,12 +41,40 @@ interface RouteStop {
   status: "prospect" | "scheduled" | "completed" | "skipped";
   estimatedDurationMinutes: number | null;
   sortOrder: number;
+  blockNumber: number | null;
+  crewLabel: string | null;
   clientId: number | null;
   prospectId: number | null;
   clientName: string | null;
   prospectContactName: string | null;
   prospectAddress: string | null;
   createdAt: string;
+}
+
+const BLOCK_COLORS = [
+  { bg: "bg-blue-600",    light: "bg-blue-50 border-blue-200",     text: "text-blue-800"   },
+  { bg: "bg-amber-600",   light: "bg-amber-50 border-amber-200",   text: "text-amber-800"  },
+  { bg: "bg-emerald-600", light: "bg-emerald-50 border-emerald-200", text: "text-emerald-800" },
+  { bg: "bg-purple-600",  light: "bg-purple-50 border-purple-200", text: "text-purple-800" },
+  { bg: "bg-rose-600",    light: "bg-rose-50 border-rose-200",     text: "text-rose-800"   },
+  { bg: "bg-teal-600",    light: "bg-teal-50 border-teal-200",     text: "text-teal-800"   },
+  { bg: "bg-orange-600",  light: "bg-orange-50 border-orange-200", text: "text-orange-800" },
+  { bg: "bg-indigo-600",  light: "bg-indigo-50 border-indigo-200", text: "text-indigo-800" },
+];
+
+function buildGoogleMapsUrl(stops: RouteStop[]): string {
+  const geo = stops.filter(s => s.lat && s.lng);
+  if (geo.length === 0) {
+    const addrs = stops.map(s => encodeURIComponent(s.address));
+    if (addrs.length === 1) return `https://www.google.com/maps/dir/?api=1&destination=${addrs[0]}`;
+    const dest = addrs[addrs.length - 1];
+    const wps = addrs.slice(0, -1).join("|");
+    return `https://www.google.com/maps/dir/?api=1&destination=${dest}&waypoints=${wps}`;
+  }
+  const dest = `${geo[geo.length - 1].lat},${geo[geo.length - 1].lng}`;
+  if (geo.length === 1) return `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+  const wps = geo.slice(0, -1).map(s => `${s.lat},${s.lng}`).join("|");
+  return `https://www.google.com/maps/dir/?api=1&destination=${dest}&waypoints=${wps}`;
 }
 
 interface ClientOption {
@@ -251,6 +280,9 @@ export default function RoutePlanner() {
   const [retryingGeocodeId, setRetryingGeocodeId] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [formLinkVal, setFormLinkVal] = useState<string>("");
+  const [isSplitting, setIsSplitting] = useState(false);
+  const [editingBlockNum, setEditingBlockNum] = useState<number | null>(null);
+  const [blockLabelInput, setBlockLabelInput] = useState<string>("");
 
   const [form, setForm] = useState<EditFormState>({
     title: "",
@@ -368,6 +400,20 @@ export default function RoutePlanner() {
     onError: () => toast({ title: "Failed to delete stop", variant: "destructive" }),
   });
 
+  const splitBlocks = useMutation({
+    mutationFn: (date: string) =>
+      apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date, blockSize: 9 }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/route-stops"] }),
+    onError: () => toast({ title: "Failed to split blocks", variant: "destructive" }),
+  });
+
+  const clearBlocks = useMutation({
+    mutationFn: (date: string) =>
+      apiFetch("/route-stops/clear-blocks", { method: "POST", body: JSON.stringify({ date }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/route-stops"] }),
+    onError: () => toast({ title: "Failed to clear blocks", variant: "destructive" }),
+  });
+
   const fixGeocoding = useMutation({
     mutationFn: () => apiFetch("/route-stops/fix-geocoding", { method: "POST" }) as Promise<{ total: number; fixed: number; failed: number }>,
     onSuccess: (data) => {
@@ -434,11 +480,60 @@ export default function RoutePlanner() {
     setIsOptimizing(false);
     await persistSortOrder(ordered);
 
+    // Auto-split into blocks after optimizing
+    try {
+      setIsSplitting(true);
+      await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize: 9 }) });
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+    } catch { /* non-fatal */ } finally {
+      setIsSplitting(false);
+    }
+
     const geoCount = ordered.filter(s => s.lat && s.lng).length;
     toast({
       title: `Route optimized — ${ordered.length} stops${route ? `, ~${Math.round(route.durationSecs / 60)} min drive` : ""}`,
       description: geoCount < ordered.length ? `${ordered.length - geoCount} stop(s) couldn't be geocoded` : undefined,
     });
+  }
+
+  async function handleSplitBlocks() {
+    if (dayStops.length === 0) return;
+    setIsSplitting(true);
+    try {
+      await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize: 9 }) });
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      toast({ title: `Split into blocks of 9` });
+    } catch {
+      toast({ title: "Failed to split blocks", variant: "destructive" });
+    } finally {
+      setIsSplitting(false);
+    }
+  }
+
+  async function handleClearBlocks() {
+    setIsSplitting(true);
+    try {
+      await apiFetch("/route-stops/clear-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr }) });
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+    } catch {
+      toast({ title: "Failed to clear blocks", variant: "destructive" });
+    } finally {
+      setIsSplitting(false);
+    }
+  }
+
+  async function saveBlockLabel(blockNumber: number, newLabel: string, stopsInBlock: RouteStop[]) {
+    setEditingBlockNum(null);
+    const label = newLabel.trim();
+    if (!label) return;
+    try {
+      await Promise.all(stopsInBlock.map(s =>
+        apiFetch(`/route-stops/${s.id}`, { method: "PUT", body: JSON.stringify({ crewLabel: label, blockNumber }) })
+      ));
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+    } catch {
+      toast({ title: "Failed to save block label", variant: "destructive" });
+    }
   }
 
   async function moveStop(idx: number, dir: -1 | 1) {
@@ -592,10 +687,32 @@ export default function RoutePlanner() {
                 {routeDuration != null && ` · ~${Math.round(routeDuration / 60)} min drive`}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5 flex-wrap justify-end">
               {optimizedOrder && (
                 <button onClick={() => { setOptimizedOrder(null); setRouteCoords(null); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                   Reset
+                </button>
+              )}
+              {viewMode === "day" && dayStops.some(s => s.blockNumber) && (
+                <button
+                  onClick={handleClearBlocks}
+                  disabled={isSplitting}
+                  className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive hover:border-destructive transition-colors disabled:opacity-50"
+                  title="Remove all block assignments for this day"
+                >
+                  {isSplitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scissors className="w-3 h-3" />}
+                  Clear
+                </button>
+              )}
+              {viewMode === "day" && dayStops.length > 0 && (
+                <button
+                  onClick={handleSplitBlocks}
+                  disabled={isSplitting || dayStops.length === 0}
+                  className="flex items-center gap-1 px-2.5 py-1.5 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:text-primary hover:border-primary transition-colors disabled:opacity-50"
+                  title="Split stops into blocks of 9"
+                >
+                  {isSplitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers className="w-3 h-3" />}
+                  Blocks
                 </button>
               )}
               <button
@@ -736,68 +853,196 @@ export default function RoutePlanner() {
               </p>
               <p className="text-xs text-muted-foreground/70">Click "Add Stop" to schedule a location</p>
             </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {displayStops.map((stop, idx) => (
-                <StopCard
-                  key={stop.id}
-                  stop={stop}
-                  idx={idx}
-                  total={displayStops.length}
-                  isEditing={editingId === stop.id}
-                  isDragOver={dragOverIdx === idx}
-                  editForm={editForm}
-                  onEdit={() => {
-                    setEditingId(stop.id);
-                    setEditForm({
-                      title: stop.title ?? "",
-                      address: stop.address,
-                      notes: stop.notes ?? "",
-                      scheduledDate: stop.scheduledDate ?? selectedDateStr,
-                      estimatedDurationMinutes: stop.estimatedDurationMinutes ?? 60,
-                      status: stop.status,
-                    });
-                  }}
-                  onCancelEdit={() => setEditingId(null)}
-                  onSaveEdit={async () => {
-                    setGeocoding(true);
-                    const coords = editForm.address !== stop.address
-                      ? await geocodeAddress(editForm.address ?? stop.address, BASE)
-                      : { lat: stop.lat, lng: stop.lng };
-                    setGeocoding(false);
-                    updateStop.mutate({ id: stop.id, data: { ...editForm, lat: coords?.lat ?? stop.lat, lng: coords?.lng ?? stop.lng } });
-                  }}
-                  onEditFormChange={patch => setEditForm(f => ({ ...f, ...patch }))}
-                  onStatusChange={status => updateStop.mutate({ id: stop.id, data: { status } })}
-                  onDelete={() => deleteStop.mutate(stop.id)}
-                  onMoveUp={() => moveStop(idx, -1)}
-                  onMoveDown={() => moveStop(idx, 1)}
-                  onDragStart={e => handleDragStart(e, idx)}
-                  onDragOver={e => handleDragOver(e, idx)}
-                  onDrop={e => handleDrop(e, idx)}
-                  onDragEnd={() => setDragOverIdx(null)}
-                  isSaving={updateStop.isPending}
-                  geocoding={geocoding}
-                  isOptimized={!!optimizedOrder}
-                  retryGeocoding={retryingGeocodeId === stop.id}
-                  onRetryGeocode={async () => {
-                    setRetryingGeocodeId(stop.id);
-                    const coords = await geocodeAddress(stop.address, BASE);
-                    setRetryingGeocodeId(null);
-                    if (coords) {
-                      const label = stop.title || stop.address;
-                      updateStop.mutate(
-                        { id: stop.id, data: { lat: coords.lat, lng: coords.lng } },
-                        { onSuccess: () => toast({ title: `Coordinates found — ${label} is now on the map` }) }
-                      );
-                    } else {
-                      toast({ title: "Geocoding failed", description: "Could not find coordinates for this address.", variant: "destructive" });
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          )}
+          ) : (() => {
+            const hasBlocks = viewMode === "day" && displayStops.some(s => s.blockNumber != null);
+            if (!hasBlocks) {
+              return (
+                <div className="divide-y divide-border">
+                  {displayStops.map((stop, idx) => (
+                    <StopCard
+                      key={stop.id}
+                      stop={stop}
+                      idx={idx}
+                      total={displayStops.length}
+                      isEditing={editingId === stop.id}
+                      isDragOver={dragOverIdx === idx}
+                      editForm={editForm}
+                      onEdit={() => {
+                        setEditingId(stop.id);
+                        setEditForm({ title: stop.title ?? "", address: stop.address, notes: stop.notes ?? "", scheduledDate: stop.scheduledDate ?? selectedDateStr, estimatedDurationMinutes: stop.estimatedDurationMinutes ?? 60, status: stop.status });
+                      }}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={async () => {
+                        setGeocoding(true);
+                        const coords = editForm.address !== stop.address ? await geocodeAddress(editForm.address ?? stop.address, BASE) : { lat: stop.lat, lng: stop.lng };
+                        setGeocoding(false);
+                        updateStop.mutate({ id: stop.id, data: { ...editForm, lat: coords?.lat ?? stop.lat, lng: coords?.lng ?? stop.lng } });
+                      }}
+                      onEditFormChange={patch => setEditForm(f => ({ ...f, ...patch }))}
+                      onStatusChange={status => updateStop.mutate({ id: stop.id, data: { status } })}
+                      onDelete={() => deleteStop.mutate(stop.id)}
+                      onMoveUp={() => moveStop(idx, -1)}
+                      onMoveDown={() => moveStop(idx, 1)}
+                      onDragStart={e => handleDragStart(e, idx)}
+                      onDragOver={e => handleDragOver(e, idx)}
+                      onDrop={e => handleDrop(e, idx)}
+                      onDragEnd={() => setDragOverIdx(null)}
+                      isSaving={updateStop.isPending}
+                      geocoding={geocoding}
+                      isOptimized={!!optimizedOrder}
+                      retryGeocoding={retryingGeocodeId === stop.id}
+                      onRetryGeocode={async () => {
+                        setRetryingGeocodeId(stop.id);
+                        const coords = await geocodeAddress(stop.address, BASE);
+                        setRetryingGeocodeId(null);
+                        if (coords) {
+                          updateStop.mutate({ id: stop.id, data: { lat: coords.lat, lng: coords.lng } }, { onSuccess: () => toast({ title: `Coordinates found — ${stop.title || stop.address} is now on the map` }) });
+                        } else {
+                          toast({ title: "Geocoding failed", description: "Could not find coordinates for this address.", variant: "destructive" });
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            }
+
+            // Group by blockNumber
+            const blockMap = new Map<number | null, RouteStop[]>();
+            for (const stop of displayStops) {
+              const key = stop.blockNumber ?? null;
+              if (!blockMap.has(key)) blockMap.set(key, []);
+              blockMap.get(key)!.push(stop);
+            }
+            const sortedBlockNums = [...blockMap.keys()].sort((a, b) => {
+              if (a === null) return 1;
+              if (b === null) return -1;
+              return a - b;
+            });
+
+            return (
+              <div>
+                {sortedBlockNums.map(blockNum => {
+                  const stopsInBlock = blockMap.get(blockNum)!;
+                  const label = stopsInBlock[0]?.crewLabel ?? (blockNum != null ? `Block ${blockNum}` : "Unblocked");
+                  const colorIdx = blockNum != null ? (blockNum - 1) % BLOCK_COLORS.length : -1;
+                  const color = colorIdx >= 0 ? BLOCK_COLORS[colorIdx] : null;
+                  const mapsUrl = buildGoogleMapsUrl(stopsInBlock);
+                  const isEditingLabel = editingBlockNum === blockNum;
+                  const totalMinutes = stopsInBlock.reduce((sum, s) => sum + (s.estimatedDurationMinutes ?? 60), 0);
+
+                  return (
+                    <div key={blockNum ?? "unblocked"} className="mb-1">
+                      {blockNum != null ? (
+                        <div className={cn("flex items-center justify-between px-3 py-2 border-b border-t", color!.light)}>
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <div className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", color!.bg)} />
+                            {isEditingLabel ? (
+                              <form
+                                onSubmit={e => { e.preventDefault(); saveBlockLabel(blockNum, blockLabelInput, stopsInBlock); }}
+                                className="flex items-center gap-1 flex-1"
+                              >
+                                <input
+                                  autoFocus
+                                  value={blockLabelInput}
+                                  onChange={e => setBlockLabelInput(e.target.value)}
+                                  className="flex-1 text-xs font-semibold px-1.5 py-0.5 rounded border border-border bg-background outline-none focus:ring-1 focus:ring-primary min-w-0"
+                                  onBlur={() => saveBlockLabel(blockNum, blockLabelInput, stopsInBlock)}
+                                  onKeyDown={e => e.key === "Escape" && setEditingBlockNum(null)}
+                                />
+                                <button type="submit" className="p-1 text-primary hover:text-primary/80">
+                                  <Save className="w-3 h-3" />
+                                </button>
+                              </form>
+                            ) : (
+                              <span className={cn("text-xs font-semibold truncate", color!.text)}>{label}</span>
+                            )}
+                            {!isEditingLabel && (
+                              <button
+                                onClick={() => { setEditingBlockNum(blockNum); setBlockLabelInput(label); }}
+                                className={cn("p-0.5 rounded hover:bg-white/50 flex-shrink-0 transition-colors", color!.text)}
+                                title="Edit block label"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                            <span className={cn("text-[10px] font-medium flex-shrink-0", color!.text)}>
+                              {stopsInBlock.length} stop{stopsInBlock.length !== 1 ? "s" : ""} · {Math.round(totalMinutes / 60 * 10) / 10}h
+                            </span>
+                          </div>
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn("flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-colors flex-shrink-0 ml-2 text-white", color!.bg, "hover:opacity-90")}
+                            title={`Open ${label} in Google Maps`}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Navigate
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="flex items-center px-3 py-1.5 bg-muted/30 border-b border-t border-border">
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Unblocked</span>
+                          <span className="text-[10px] text-muted-foreground ml-2">{stopsInBlock.length} stop{stopsInBlock.length !== 1 ? "s" : ""}</span>
+                        </div>
+                      )}
+                      <div className="divide-y divide-border">
+                        {stopsInBlock.map((stop) => {
+                          const idx = displayStops.indexOf(stop);
+                          return (
+                            <StopCard
+                              key={stop.id}
+                              stop={stop}
+                              idx={idx}
+                              total={displayStops.length}
+                              isEditing={editingId === stop.id}
+                              isDragOver={dragOverIdx === idx}
+                              editForm={editForm}
+                              onEdit={() => {
+                                setEditingId(stop.id);
+                                setEditForm({ title: stop.title ?? "", address: stop.address, notes: stop.notes ?? "", scheduledDate: stop.scheduledDate ?? selectedDateStr, estimatedDurationMinutes: stop.estimatedDurationMinutes ?? 60, status: stop.status });
+                              }}
+                              onCancelEdit={() => setEditingId(null)}
+                              onSaveEdit={async () => {
+                                setGeocoding(true);
+                                const coords = editForm.address !== stop.address ? await geocodeAddress(editForm.address ?? stop.address, BASE) : { lat: stop.lat, lng: stop.lng };
+                                setGeocoding(false);
+                                updateStop.mutate({ id: stop.id, data: { ...editForm, lat: coords?.lat ?? stop.lat, lng: coords?.lng ?? stop.lng } });
+                              }}
+                              onEditFormChange={patch => setEditForm(f => ({ ...f, ...patch }))}
+                              onStatusChange={status => updateStop.mutate({ id: stop.id, data: { status } })}
+                              onDelete={() => deleteStop.mutate(stop.id)}
+                              onMoveUp={() => moveStop(idx, -1)}
+                              onMoveDown={() => moveStop(idx, 1)}
+                              onDragStart={e => handleDragStart(e, idx)}
+                              onDragOver={e => handleDragOver(e, idx)}
+                              onDrop={e => handleDrop(e, idx)}
+                              onDragEnd={() => setDragOverIdx(null)}
+                              isSaving={updateStop.isPending}
+                              geocoding={geocoding}
+                              isOptimized={!!optimizedOrder}
+                              retryGeocoding={retryingGeocodeId === stop.id}
+                              onRetryGeocode={async () => {
+                                setRetryingGeocodeId(stop.id);
+                                const coords = await geocodeAddress(stop.address, BASE);
+                                setRetryingGeocodeId(null);
+                                if (coords) {
+                                  updateStop.mutate({ id: stop.id, data: { lat: coords.lat, lng: coords.lng } }, { onSuccess: () => toast({ title: `Coordinates found — ${stop.title || stop.address} is now on the map` }) });
+                                } else {
+                                  toast({ title: "Geocoding failed", description: "Could not find coordinates for this address.", variant: "destructive" });
+                                }
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
