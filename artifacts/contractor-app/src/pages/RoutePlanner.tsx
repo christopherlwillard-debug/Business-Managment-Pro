@@ -63,17 +63,16 @@ const BLOCK_COLORS = [
 ];
 
 function buildGoogleMapsUrl(stops: RouteStop[]): string {
-  const geo = stops.filter(s => s.lat && s.lng);
-  if (geo.length === 0) {
-    const addrs = stops.map(s => encodeURIComponent(s.address));
-    if (addrs.length === 1) return `https://www.google.com/maps/dir/?api=1&destination=${addrs[0]}`;
-    const dest = addrs[addrs.length - 1];
-    const wps = addrs.slice(0, -1).join("|");
-    return `https://www.google.com/maps/dir/?api=1&destination=${dest}&waypoints=${wps}`;
-  }
-  const dest = `${geo[geo.length - 1].lat},${geo[geo.length - 1].lng}`;
-  if (geo.length === 1) return `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
-  const wps = geo.slice(0, -1).map(s => `${s.lat},${s.lng}`).join("|");
+  if (stops.length === 0) return "https://www.google.com/maps";
+  // Per-stop: use lat,lng when both are non-null (including 0), else fall back to encoded address
+  const waypoints = stops.map(s =>
+    (s.lat != null && s.lng != null)
+      ? `${s.lat},${s.lng}`
+      : encodeURIComponent(s.address)
+  );
+  const dest = waypoints[waypoints.length - 1];
+  if (waypoints.length === 1) return `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+  const wps = waypoints.slice(0, -1).join("|");
   return `https://www.google.com/maps/dir/?api=1&destination=${dest}&waypoints=${wps}`;
 }
 
@@ -536,14 +535,33 @@ export default function RoutePlanner() {
     }
   }
 
+  async function applyBlockForPosition(stop: RouteStop, arr: RouteStop[], posIdx: number): Promise<RouteStop> {
+    const prev = arr[posIdx - 1];
+    const next = arr[posIdx + 1];
+    const newBlockNumber = prev?.blockNumber ?? next?.blockNumber ?? null;
+    const newCrewLabel = prev?.crewLabel ?? next?.crewLabel ?? null;
+    if (stop.blockNumber === newBlockNumber && stop.crewLabel === newCrewLabel) return stop;
+    try {
+      await apiFetch(`/route-stops/${stop.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ blockNumber: newBlockNumber, crewLabel: newCrewLabel }),
+      });
+    } catch { /* non-fatal */ }
+    return { ...stop, blockNumber: newBlockNumber, crewLabel: newCrewLabel };
+  }
+
   async function moveStop(idx: number, dir: -1 | 1) {
     const arr = [...(optimizedOrder ?? viewStops)];
     const newIdx = idx + dir;
     if (newIdx < 0 || newIdx >= arr.length) return;
     [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
-    setOptimizedOrder(arr);
+    // Update block assignment for the moved stop based on its new neighbors
+    const movedStop = await applyBlockForPosition(arr[newIdx], arr, newIdx);
+    arr[newIdx] = movedStop;
+    setOptimizedOrder([...arr]);
     setRouteCoords(null);
     await persistSortOrder(arr);
+    await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
   }
 
   function handleDragStart(e: React.DragEvent<HTMLDivElement>, idx: number) {
@@ -568,9 +586,13 @@ export default function RoutePlanner() {
     const arr = [...(optimizedOrder ?? viewStops)];
     const [removed] = arr.splice(dragIdx, 1);
     arr.splice(dropIdx, 0, removed);
-    setOptimizedOrder(arr);
+    // Update block assignment for the moved stop based on its new neighbors
+    const movedStop = await applyBlockForPosition(arr[dropIdx], arr, dropIdx);
+    arr[dropIdx] = movedStop;
+    setOptimizedOrder([...arr]);
     setRouteCoords(null);
     await persistSortOrder(arr);
+    await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
   }
 
   const monthStart = startOfMonth(calMonth);
@@ -967,7 +989,7 @@ export default function RoutePlanner() {
                               </button>
                             )}
                             <span className={cn("text-[10px] font-medium flex-shrink-0", color!.text)}>
-                              {stopsInBlock.length} stop{stopsInBlock.length !== 1 ? "s" : ""} · {Math.round(totalMinutes / 60 * 10) / 10}h
+                              {stopsInBlock.length} stop{stopsInBlock.length !== 1 ? "s" : ""} · ~{Math.round(totalMinutes / 60 * 10) / 10}h work
                             </span>
                           </div>
                           <a
