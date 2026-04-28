@@ -233,6 +233,15 @@ export default function PeopleAndProperties() {
   const deleteClient = useDeleteClient();
 
   const [convertingId, setConvertingId] = useState<number | null>(null);
+  const [openLineDropdown, setOpenLineDropdown] = useState<number | null>(null);
+  const [assigningLineId, setAssigningLineId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (openLineDropdown === null) return;
+    const close = () => setOpenLineDropdown(null);
+    document.addEventListener("click", close, { capture: true, once: true });
+    return () => document.removeEventListener("click", close, { capture: true });
+  }, [openLineDropdown]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const { data: routeStops = [] } = useQuery<RouteStop[]>({
@@ -607,6 +616,27 @@ export default function PeopleAndProperties() {
     } finally {
       setIsDeletingClient(false);
       setDeleteClientTarget(null);
+    }
+  }
+
+  async function handleQuickAssignLine(clientId: number, line: BusinessLine) {
+    setAssigningLineId(clientId);
+    setOpenLineDropdown(null);
+    try {
+      const res = await fetch(`${BASE}/api/clients/${clientId}/business-line`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ businessLine: line }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const bl = BUSINESS_LINES.find(b => b.value === line);
+      toast({ title: `Assigned to ${bl?.shortLabel ?? line}` });
+      refetchClients();
+    } catch {
+      toast({ title: "Couldn't assign business line", variant: "destructive" });
+    } finally {
+      setAssigningLineId(null);
     }
   }
 
@@ -999,9 +1029,38 @@ export default function PeopleAndProperties() {
                         {/* Name */}
                         <span className="font-medium text-sm text-foreground truncate min-w-0 flex-1">{client.name}</span>
 
-                        {/* Business line badge — hidden on small screens */}
-                        <div className="hidden sm:block flex-shrink-0">
-                          <BusinessLineBadge line={client.businessLine} />
+                        {/* Business line quick-assign — hidden on small screens */}
+                        <div className="hidden sm:block flex-shrink-0 relative">
+                          {assigningLineId === client.id ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-muted text-muted-foreground border-border">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={e => { e.stopPropagation(); setOpenLineDropdown(openLineDropdown === client.id ? null : client.id); }}
+                              title="Assign business line"
+                              className="group"
+                            >
+                              <BusinessLineBadge line={client.businessLine} />
+                            </button>
+                          )}
+                          {openLineDropdown === client.id && (
+                            <div className="absolute z-50 left-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden min-w-[130px]">
+                              {BUSINESS_LINES.map(bl => (
+                                <button
+                                  key={bl.value}
+                                  onClick={e => { e.stopPropagation(); handleQuickAssignLine(client.id, bl.value); }}
+                                  className={cn(
+                                    "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-muted transition-colors",
+                                    client.businessLine === bl.value && "bg-muted/60"
+                                  )}
+                                >
+                                  {bl.value === "asphalt" ? <HardHat className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+                                  {bl.shortLabel}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* Phone */}
@@ -1105,7 +1164,37 @@ export default function PeopleAndProperties() {
                           </div>
                         </div>
                         <div className="mb-3 flex items-center gap-2 flex-wrap">
-                          <BusinessLineBadge line={client.businessLine} />
+                          <div className="relative">
+                            {assigningLineId === client.id ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-muted text-muted-foreground border-border">
+                                <Loader2 className="w-3 h-3 animate-spin" />Assigning…
+                              </span>
+                            ) : (
+                              <button
+                                onClick={e => { e.stopPropagation(); setOpenLineDropdown(openLineDropdown === client.id ? null : client.id); }}
+                                title="Assign business line"
+                              >
+                                <BusinessLineBadge line={client.businessLine} />
+                              </button>
+                            )}
+                            {openLineDropdown === client.id && (
+                              <div className="absolute z-50 left-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden min-w-[140px]">
+                                {BUSINESS_LINES.map(bl => (
+                                  <button
+                                    key={bl.value}
+                                    onClick={e => { e.stopPropagation(); handleQuickAssignLine(client.id, bl.value); }}
+                                    className={cn(
+                                      "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-muted transition-colors",
+                                      client.businessLine === bl.value && "bg-muted/60"
+                                    )}
+                                  >
+                                    {bl.value === "asphalt" ? <HardHat className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+                                    {bl.shortLabel}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           {client.squareCustomerId && (
                             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                               <Upload className="w-3 h-3" /> Square

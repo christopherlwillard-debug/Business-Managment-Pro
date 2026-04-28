@@ -116,6 +116,29 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+const VALID_BUSINESS_LINES = ["asphalt", "contracting", null] as const;
+
+router.patch("/:id/business-line", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
+    const { businessLine } = req.body;
+    const normalized = businessLine === undefined ? null : businessLine;
+    if (!VALID_BUSINESS_LINES.includes(normalized)) {
+      return res.status(400).json({ error: "Invalid business line. Must be 'asphalt', 'contracting', or null." });
+    }
+    const [client] = await db.update(clientsTable)
+      .set({ businessLine: normalized })
+      .where(eq(clientsTable.id, id))
+      .returning();
+    if (!client) return res.status(404).json({ error: "Client not found" });
+    res.json(formatClient(client));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update business line" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
