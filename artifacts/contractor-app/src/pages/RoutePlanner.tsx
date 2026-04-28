@@ -8,7 +8,7 @@ import {
   Clock, Calendar,
   Loader2, ChevronLeft, ChevronRight, Navigation,
   Edit2, X, Save, GripVertical, Users, Link as LinkIcon, RefreshCw,
-  Layers, Scissors, ExternalLink,
+  Layers, Scissors, ExternalLink, Share2, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -281,6 +281,7 @@ export default function RoutePlanner() {
   const [formLinkVal, setFormLinkVal] = useState<string>("");
   const [isSplitting, setIsSplitting] = useState(false);
   const [editingBlockNum, setEditingBlockNum] = useState<number | null>(null);
+  const [copiedBlock, setCopiedBlock] = useState<number | null>(null);
   const [blockLabelInput, setBlockLabelInput] = useState<string>("");
   const [blockDriveTimes, setBlockDriveTimes] = useState<Map<number, number | null>>(new Map());
   const [isSavingLabel, setIsSavingLabel] = useState<boolean>(false);
@@ -1022,16 +1023,53 @@ export default function RoutePlanner() {
                               {blockDriveTimes.get(blockNum) != null && ` · ~${Math.round(blockDriveTimes.get(blockNum)! / 60)} min drive`}
                             </span>
                           </div>
-                          <a
-                            href={mapsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={cn("flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-colors flex-shrink-0 ml-2 text-white", color!.bg, "hover:opacity-90")}
-                            title={`Open ${label} in Google Maps`}
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Navigate {label}
-                          </a>
+                          <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                            <a
+                              href={mapsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn("flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-colors text-white", color!.bg, "hover:opacity-90")}
+                              title={`Open ${label} in Google Maps`}
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Navigate
+                            </a>
+                            <button
+                              onClick={async () => {
+                                const copyToClipboard = async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(mapsUrl);
+                                    setCopiedBlock(blockNum);
+                                    toast({ title: "Link copied!", description: `${label} route link copied to clipboard.` });
+                                    setTimeout(() => setCopiedBlock(null), 2000);
+                                  } catch {
+                                    toast({ title: "Could not copy", description: "Please copy the link manually.", variant: "destructive" });
+                                  }
+                                };
+                                if (navigator.share && navigator.canShare?.({ url: mapsUrl })) {
+                                  try {
+                                    await navigator.share({
+                                      title: `${label} route`,
+                                      text: `Here's the ${label} route for today:`,
+                                      url: mapsUrl,
+                                    });
+                                  } catch (err) {
+                                    // AbortError = user cancelled, do nothing; anything else, fall back to clipboard
+                                    if (err instanceof Error && err.name !== "AbortError") {
+                                      await copyToClipboard();
+                                    }
+                                  }
+                                } else {
+                                  await copyToClipboard();
+                                }
+                              }}
+                              className={cn("flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-colors text-white", color!.bg, "hover:opacity-90")}
+                              title={`Share ${label} route`}
+                            >
+                              {copiedBlock === blockNum ? <Check className="w-3 h-3" /> : <Share2 className="w-3 h-3" />}
+                              Share
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex items-center px-3 py-1.5 bg-muted/30 border-b border-t border-border">
