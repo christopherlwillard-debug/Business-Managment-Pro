@@ -283,6 +283,7 @@ export default function RoutePlanner() {
   const [editingBlockNum, setEditingBlockNum] = useState<number | null>(null);
   const [blockLabelInput, setBlockLabelInput] = useState<string>("");
   const [blockDriveTimes, setBlockDriveTimes] = useState<Map<number, number | null>>(new Map());
+  const [isSavingLabel, setIsSavingLabel] = useState<boolean>(false);
 
   const [form, setForm] = useState<EditFormState>({
     title: "",
@@ -411,20 +412,6 @@ export default function RoutePlanner() {
     onError: () => toast({ title: "Failed to delete stop", variant: "destructive" }),
   });
 
-  const splitBlocks = useMutation({
-    mutationFn: (date: string) =>
-      apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date, blockSize: 9 }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/route-stops"] }),
-    onError: () => toast({ title: "Failed to split blocks", variant: "destructive" }),
-  });
-
-  const clearBlocks = useMutation({
-    mutationFn: (date: string) =>
-      apiFetch("/route-stops/clear-blocks", { method: "POST", body: JSON.stringify({ date }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/route-stops"] }),
-    onError: () => toast({ title: "Failed to clear blocks", variant: "destructive" }),
-  });
-
   const fixGeocoding = useMutation({
     mutationFn: () => apiFetch("/route-stops/fix-geocoding", { method: "POST" }) as Promise<{ total: number; fixed: number; failed: number }>,
     onSuccess: (data) => {
@@ -537,10 +524,8 @@ export default function RoutePlanner() {
     setIsSplitting(true);
     try {
       await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize: 9 }) });
+      // Invalidate and wait for fresh data; useEffect will recompute drive times from fresh query data
       await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
-      // Compute drive times for newly created blocks
-      const refreshed = allStops.filter(s => s.scheduledDate === selectedDateStr);
-      await computeBlockDriveTimes(refreshed);
       toast({ title: `Split into blocks of 9` });
     } catch {
       toast({ title: "Failed to split blocks", variant: "destructive" });
@@ -562,9 +547,11 @@ export default function RoutePlanner() {
   }
 
   async function saveBlockLabel(blockNumber: number, newLabel: string, stopsInBlock: RouteStop[]) {
+    if (isSavingLabel) return;
     setEditingBlockNum(null);
     const label = newLabel.trim();
     if (!label) return;
+    setIsSavingLabel(true);
     try {
       await Promise.all(stopsInBlock.map(s =>
         apiFetch(`/route-stops/${s.id}`, { method: "PUT", body: JSON.stringify({ crewLabel: label, blockNumber }) })
@@ -572,6 +559,8 @@ export default function RoutePlanner() {
       await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
     } catch {
       toast({ title: "Failed to save block label", variant: "destructive" });
+    } finally {
+      setIsSavingLabel(false);
     }
   }
 
