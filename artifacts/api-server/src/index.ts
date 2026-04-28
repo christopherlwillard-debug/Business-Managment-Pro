@@ -40,9 +40,15 @@ async function ensureChrome(): Promise<void> {
   console.log("Chrome download complete.");
 }
 
-await ensureChrome();
+async function start() {
+  await ensureChrome();
+  app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+    startRecurringExpensesJob();
+  });
+}
 
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
-  startRecurringExpensesJob();
+start().catch((err) => {
+  console.error("Server startup failed:", err);
+  process.exit(1);
 });
