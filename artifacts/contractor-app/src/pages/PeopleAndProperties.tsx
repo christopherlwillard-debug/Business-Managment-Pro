@@ -209,6 +209,7 @@ export default function PeopleAndProperties() {
   const [searchQuery, setSearchQuery] = useState("");
 
   function setTab(tab: TabKey) {
+    clearSelection();
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
@@ -1493,8 +1494,8 @@ export default function PeopleAndProperties() {
       )}
 
       {/* ── Floating Bulk Action Bar ── */}
-      {selectedProspectIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100vw-2rem)] max-w-2xl">
+      {activeTab === "prospects" && selectedProspectIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100vw-2rem)] max-w-2xl animate-in slide-in-from-bottom-4 fade-in duration-200">
           <div className="bg-gray-900 text-white rounded-2xl shadow-2xl border border-white/10 overflow-visible">
             {/* Sub-action panels */}
             {bulkSubAction === "assignLine" && (
