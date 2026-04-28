@@ -32,3 +32,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
+PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"

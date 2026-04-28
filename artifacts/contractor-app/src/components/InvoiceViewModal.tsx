@@ -4,7 +4,7 @@ import { printInvoiceWindow, buildInvoiceHtml } from "@/lib/printInvoice";
 import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
 import {
   FileText, Trash2, X,
-  Building2, MapPin, Printer, Download, Mail, Phone,
+  Building2, MapPin, Printer, Mail, Phone,
   Paperclip, Send, Check, Eye,
 } from "lucide-react";
 import { Invoice, InvoiceLineItem, InvoiceAttachment, AppSettings } from "@workspace/api-client-react";
@@ -90,10 +90,6 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
 
   function buildPrintableSettings() {
     return { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyState, companyZip, logoSize, logoPosition: logoPos };
-  }
-
-  function handleDownloadPdf() {
-    handlePrint();
   }
 
   function handlePrint() {
@@ -321,12 +317,6 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
             <button onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors">
               <Printer className="w-3.5 h-3.5" /> Print
-            </button>
-            <button onClick={handleDownloadPdf}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
-              title="Download invoice as PDF">
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Download PDF</span>
             </button>
             {googleConfigured && (
               <button
