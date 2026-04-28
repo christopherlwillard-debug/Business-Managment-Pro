@@ -311,7 +311,11 @@ export default function PeopleAndProperties() {
 
   const filteredProspects = useMemo(() => {
     let list = prospects.filter(p => {
-      if (activeLine && p.businessLine !== activeLine) return false;
+      if (activeLine) {
+        if (p.businessLine !== activeLine) return false;
+      } else {
+        if (p.businessLine) return false;
+      }
       if (cityFilter && (p.city?.trim() ?? "").toLowerCase() !== cityFilter.toLowerCase()) return false;
       if (prospectStatusFilter === "follow_up_due" && !isFollowUpDue(p.followUpDate)) return false;
       if (prospectStatusFilter === "due_for_resealing" && !isDueForResealing(p)) return false;
@@ -682,7 +686,7 @@ export default function PeopleAndProperties() {
               : "bg-card text-muted-foreground border-border hover:bg-muted"
           }`}
         >
-          {activeTab === "clients" ? "Unassigned" : "All Lines"}
+          Unassigned
         </button>
         {BUSINESS_LINES.map(bl => (
           <button
