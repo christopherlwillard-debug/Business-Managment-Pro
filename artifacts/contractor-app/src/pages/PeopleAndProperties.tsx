@@ -309,7 +309,7 @@ export default function PeopleAndProperties() {
       if (!matchesSearch([c.name, c.address, c.city, c.phone, c.email].filter(Boolean).join(" "))) return false;
       return true;
     });
-    if (clientSort === "az") list = [...list].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+    if (clientSort === "az") list = [...list].sort((a, b) => (a.address ?? a.name ?? "").localeCompare(b.address ?? b.name ?? ""));
     else list = [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return list;
   }, [clients, activeLine, clientDueFilter, clientSort, searchQuery]);
@@ -464,16 +464,16 @@ export default function PeopleAndProperties() {
 
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [clientPrefillName, setClientPrefillName] = useState("");
+  const [clientPrefillAddress, setClientPrefillAddress] = useState("");
   const [clientDialogKey, setClientDialogKey] = useState(0);
   const [deleteClientTarget, setDeleteClientTarget] = useState<Client | null>(null);
   const [isDeletingClient, setIsDeletingClient] = useState(false);
   const [clientFormLine, setClientFormLine] = useState<BusinessLine>("");
   const [clientFormLineError, setClientFormLineError] = useState(false);
 
-  function openCreateClient(prefillName = "") {
+  function openCreateClient(prefillAddress = "") {
     setEditingClient(null);
-    setClientPrefillName(prefillName);
+    setClientPrefillAddress(prefillAddress);
     setClientFormLine(activeLine);
     setClientFormLineError(false);
     setClientDialogKey(k => k + 1);
@@ -483,7 +483,7 @@ export default function PeopleAndProperties() {
   function openEditClient(c: Client, e?: React.MouseEvent) {
     e?.stopPropagation();
     setEditingClient(c);
-    setClientPrefillName("");
+    setClientPrefillAddress("");
     setClientFormLine((c.businessLine as BusinessLine) ?? "");
     setClientFormLineError(false);
     setClientDialogKey(k => k + 1);
@@ -493,7 +493,7 @@ export default function PeopleAndProperties() {
   function closeClientDialog() {
     setClientDialogOpen(false);
     setEditingClient(null);
-    setClientPrefillName("");
+    setClientPrefillAddress("");
     setClientFormLineError(false);
   }
 
@@ -1095,7 +1095,7 @@ export default function PeopleAndProperties() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Name / Company *</label>
-              <input name="name" required defaultValue={editingClient?.name || clientPrefillName} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+              <input name="name" required defaultValue={editingClient?.name || ""} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1109,7 +1109,7 @@ export default function PeopleAndProperties() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Address</label>
-              <input name="address" defaultValue={editingClient?.address || ""} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 mb-3" placeholder="Street" />
+              <input name="address" defaultValue={editingClient?.address || clientPrefillAddress} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 mb-3" placeholder="Street" />
               <div className="grid grid-cols-5 gap-2">
                 <input name="city" defaultValue={editingClient?.city || ""} className="col-span-2 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="City" />
                 <input name="state" defaultValue={editingClient?.state || ""} maxLength={2} className="col-span-1 px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 uppercase" placeholder="ST" />
