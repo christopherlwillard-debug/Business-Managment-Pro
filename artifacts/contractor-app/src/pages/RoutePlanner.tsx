@@ -282,6 +282,7 @@ export default function RoutePlanner() {
   const [isSplitting, setIsSplitting] = useState(false);
   const [editingBlockNum, setEditingBlockNum] = useState<number | null>(null);
   const [blockLabelInput, setBlockLabelInput] = useState<string>("");
+  const [blockDriveTimes, setBlockDriveTimes] = useState<Map<number, number | null>>(new Map());
 
   const [form, setForm] = useState<EditFormState>({
     title: "",
@@ -358,6 +359,17 @@ export default function RoutePlanner() {
   const dayStops = allStops.filter(s => s.scheduledDate === selectedDateStr);
 
   const displayStops = optimizedOrder ?? viewStops;
+
+  // Compute per-block drive times whenever the day's blocked stops change
+  useEffect(() => {
+    const stopsWithBlocks = dayStops.filter(s => s.blockNumber != null);
+    if (stopsWithBlocks.length === 0) {
+      setBlockDriveTimes(new Map());
+      return;
+    }
+    computeBlockDriveTimes(dayStops);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayStops.map(s => `${s.id}:${s.blockNumber}`).join(",")]);
 
   const stopCounts: Record<string, number> = {};
   allStops.forEach(s => {
@@ -479,11 +491,21 @@ export default function RoutePlanner() {
     setIsOptimizing(false);
     await persistSortOrder(ordered);
 
-    // Auto-split into blocks after optimizing
+    // Auto-split into blocks after optimizing, then compute per-block drive times
     try {
       setIsSplitting(true);
       await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize: 9 }) });
       await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      // Compute drive times per block from the already-ordered result
+      const BLOCK_SIZE = 9;
+      const blockTimesMap = new Map<number, number | null>();
+      for (let i = 0; i < ordered.length; i += BLOCK_SIZE) {
+        const blockStops = ordered.slice(i, i + BLOCK_SIZE);
+        const blockNum = Math.floor(i / BLOCK_SIZE) + 1;
+        const blockRoute = await fetchOsrmRoute(blockStops);
+        blockTimesMap.set(blockNum, blockRoute?.durationSecs ?? null);
+      }
+      setBlockDriveTimes(blockTimesMap);
     } catch { /* non-fatal */ } finally {
       setIsSplitting(false);
     }
@@ -495,12 +517,30 @@ export default function RoutePlanner() {
     });
   }
 
+  async function computeBlockDriveTimes(stops: RouteStop[]) {
+    const blockMap = new Map<number, RouteStop[]>();
+    for (const stop of stops) {
+      if (stop.blockNumber == null) continue;
+      if (!blockMap.has(stop.blockNumber)) blockMap.set(stop.blockNumber, []);
+      blockMap.get(stop.blockNumber)!.push(stop);
+    }
+    const results = new Map<number, number | null>();
+    await Promise.all([...blockMap.entries()].map(async ([blockNum, blockStops]) => {
+      const route = await fetchOsrmRoute(blockStops);
+      results.set(blockNum, route?.durationSecs ?? null);
+    }));
+    setBlockDriveTimes(results);
+  }
+
   async function handleSplitBlocks() {
     if (dayStops.length === 0) return;
     setIsSplitting(true);
     try {
       await apiFetch("/route-stops/split-blocks", { method: "POST", body: JSON.stringify({ date: selectedDateStr, blockSize: 9 }) });
       await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      // Compute drive times for newly created blocks
+      const refreshed = allStops.filter(s => s.scheduledDate === selectedDateStr);
+      await computeBlockDriveTimes(refreshed);
       toast({ title: `Split into blocks of 9` });
     } catch {
       toast({ title: "Failed to split blocks", variant: "destructive" });
@@ -990,6 +1030,7 @@ export default function RoutePlanner() {
                             )}
                             <span className={cn("text-[10px] font-medium flex-shrink-0", color!.text)}>
                               {stopsInBlock.length} stop{stopsInBlock.length !== 1 ? "s" : ""} · ~{Math.round(totalMinutes / 60 * 10) / 10}h work
+                              {blockDriveTimes.get(blockNum) != null && ` · ~${Math.round(blockDriveTimes.get(blockNum)! / 60)} min drive`}
                             </span>
                           </div>
                           <a
@@ -1000,7 +1041,7 @@ export default function RoutePlanner() {
                             title={`Open ${label} in Google Maps`}
                           >
                             <ExternalLink className="w-3 h-3" />
-                            Navigate
+                            Navigate {label}
                           </a>
                         </div>
                       ) : (
