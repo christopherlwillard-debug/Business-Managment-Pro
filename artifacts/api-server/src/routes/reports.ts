@@ -716,8 +716,20 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const mileageRate = getIrsMileageRate(year);
 
     // ── Asset Depreciation for the Year ──────────────────────────────────────
+    // Helper: year in which an asset was disposed (sold or retired), or null if still active
+    const getDisposalYear = (a: typeof assets[number]): number | null => {
+      if ((a.status === "sold" || a.status === "retired") && a.saleDate) {
+        return parseInt(a.saleDate.slice(0, 4));
+      }
+      return null;
+    };
+
     const depreciationRows = assets
-      .filter(a => a.status !== "sold" || (a.saleDate && parseInt(a.saleDate.slice(0, 4)) > year))
+      .filter(a => {
+        const disposalYear = getDisposalYear(a);
+        // Exclude assets disposed of BEFORE the report year (no deduction for those years)
+        return disposalYear === null || disposalYear >= year;
+      })
       .map(a => {
         const annual = calcAnnualDepreciation(a, year);
         return {
@@ -739,17 +751,18 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
 
     const totalDepreciation = depreciationRows.reduce((s, r) => s + r.annualDeduction, 0);
 
-    // Total accumulated depreciation across all active assets (from purchase year through report year)
-    const totalAccumulatedDepreciation = assets
-      .filter(a => a.status === "active")
-      .reduce((sum, a) => {
-        const startYear = parseInt(a.purchaseDate.slice(0, 4));
-        let acc = 0;
-        for (let y2 = startYear; y2 <= year; y2++) {
-          acc += calcAnnualDepreciation(a, y2);
-        }
-        return sum + acc;
-      }, 0);
+    // Total accumulated depreciation across ALL assets (active + sold + retired),
+    // summed from purchase year through min(disposal year, report year)
+    const totalAccumulatedDepreciation = assets.reduce((sum, a) => {
+      const startYear = parseInt(a.purchaseDate.slice(0, 4));
+      const disposalYear = getDisposalYear(a);
+      const endYear = disposalYear !== null ? Math.min(disposalYear, year) : year;
+      let acc = 0;
+      for (let y2 = startYear; y2 <= endYear; y2++) {
+        acc += calcAnnualDepreciation(a, y2);
+      }
+      return sum + acc;
+    }, 0);
 
     // ── Disposed Assets ───────────────────────────────────────────────────────
     const disposedAssets = assets
