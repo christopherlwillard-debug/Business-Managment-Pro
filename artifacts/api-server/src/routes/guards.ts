@@ -48,6 +48,16 @@ export function wrapAsync(fn: (req: Request, res: Response, next: NextFunction) 
   return (req, res, next) => { fn(req, res, next).catch(next); };
 }
 
+export function ownerGuard(): RequestHandler {
+  return wrapAsync(async (req, res, next) => {
+    const userId = getRequestUserId(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const ownerId = await getOwnerId();
+    if (ownerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    next();
+  });
+}
+
 export function sectionGuard(section: SectionKey): RequestHandler {
   return wrapAsync(async (req, res, next) => {
     const userId = getRequestUserId(req);

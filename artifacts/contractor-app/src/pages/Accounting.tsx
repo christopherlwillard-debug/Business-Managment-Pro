@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -3746,7 +3746,7 @@ interface YearEndReport {
     totalPaid: number;
     balance: number;
   };
-  expensesBySchedC: { schedCLine: string; amount: number; count: number }[];
+  expensesBySchedC: { schedCLine: string; amount: number; count: number; items: { date: string; description: string; vendor: string | null; amount: number }[] }[];
   totalExpenses: number;
   invoices: { invoiceNumber: string | null; issueDate: string; clientName: string; total: number; city: string; state: string }[];
   otherIncome: { id: number; date: string; description: string; source: string | null; amount: number; paymentMethod: string | null }[];
@@ -3754,6 +3754,7 @@ interface YearEndReport {
   depreciation: {
     rows: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; depreciationMethod: string; usefulLifeYears: number; annualDeduction: number; section179Eligible: boolean }[];
     total: number;
+    totalAccumulated: number;
   };
   disposedAssets: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; saleDate: string | null; salePrice: number; bookValue: number; gainLoss: number; status: string }[];
   sub1099s: { id: number; name: string; ytdPayments: number; requires1099: boolean; w9OnFile: boolean; w9LegalName: string | null }[];
@@ -3799,12 +3800,17 @@ async function downloadYearEndZip(report: YearEndReport) {
     ["Net Profit", report.summary.netProfit.toFixed(2)],
   ], `${year} Profit & Loss Summary — ${report.companyName}`));
 
-  // 2. Expense Detail by Schedule C Category
-  zip.file(`${year}_Expenses_ScheduleC.csv`, buildCSVBlob([
-    ["Schedule C Line", "Amount", "# Transactions"],
-    ...report.expensesBySchedC.map(e => [e.schedCLine, e.amount.toFixed(2), String(e.count)]),
-    ["TOTAL", report.totalExpenses.toFixed(2), ""],
-  ], `${year} Expenses by Schedule C Category — ${report.companyName}`));
+  // 2. Expense Detail by Schedule C Category (with itemized transactions)
+  const expenseDetailRows: string[][] = [["Schedule C Line", "Date", "Description", "Vendor", "Amount"]];
+  for (const cat of report.expensesBySchedC) {
+    expenseDetailRows.push([cat.schedCLine, "", "", "", ""]);
+    for (const item of cat.items) {
+      expenseDetailRows.push(["", item.date, item.description, item.vendor ?? "", item.amount.toFixed(2)]);
+    }
+    expenseDetailRows.push(["  Category Total", "", "", "", cat.amount.toFixed(2)]);
+  }
+  expenseDetailRows.push(["TOTAL", "", "", "", report.totalExpenses.toFixed(2)]);
+  zip.file(`${year}_Expenses_ScheduleC.csv`, buildCSVBlob(expenseDetailRows, `${year} Expenses by Schedule C Category — ${report.companyName}`));
 
   // 3. Paid Invoices
   zip.file(`${year}_Paid_Invoices.csv`, buildCSVBlob([
@@ -3825,7 +3831,8 @@ async function downloadYearEndZip(report: YearEndReport) {
   zip.file(`${year}_Asset_Depreciation.csv`, buildCSVBlob([
     ["Asset", "Type", "Purchase Date", "Cost", "Method", "Life (yrs)", `${year} Deduction`],
     ...report.depreciation.rows.map(r => [r.name, r.assetType, r.purchaseDate, r.purchasePrice.toFixed(2), r.depreciationMethod, String(r.usefulLifeYears), r.annualDeduction.toFixed(2)]),
-    ["TOTAL", "", "", "", "", "", report.depreciation.total.toFixed(2)],
+    [`${report.year} TOTAL DEDUCTION`, "", "", "", "", "", report.depreciation.total.toFixed(2)],
+    ["TOTAL ACCUMULATED (all active assets)", "", "", "", "", "", report.depreciation.totalAccumulated.toFixed(2)],
   ], `${year} Asset Depreciation — ${report.companyName}`));
 
   // 6. Disposed Assets
@@ -3874,9 +3881,14 @@ function printYearEndReport(report: YearEndReport) {
   const row = (label: string, value: string, bold = false, indent = false) =>
     `<tr class="${bold ? "bold" : ""} ${indent ? "indent" : ""}"><td>${indent ? "&nbsp;&nbsp;&nbsp;" : ""}${label}</td><td class="num">${value}</td></tr>`;
 
-  const schedCRows = report.expensesBySchedC.map(e =>
-    row(e.schedCLine, fmt(e.amount), false, true)
-  ).join("");
+  const schedCRows = report.expensesBySchedC.map(e => {
+    const header = `<tr class="schedC-cat"><td colspan="2" style="font-weight:600;background:#f8fafc;padding:5px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569">${e.schedCLine}</td></tr>`;
+    const itemRows = e.items.map(item =>
+      `<tr><td style="padding-left:24px;color:#64748b">${item.date} &mdash; ${item.description}${item.vendor ? ` (${item.vendor})` : ""}</td><td class="num" style="color:#64748b">${fmt(item.amount)}</td></tr>`
+    ).join("");
+    const subtotal = `<tr><td style="padding-left:24px;font-weight:600;padding-bottom:6px">Category Total</td><td class="num" style="font-weight:600;padding-bottom:6px">${fmt(e.amount)}</td></tr>`;
+    return header + itemRows + subtotal;
+  }).join("");
 
   const deprRows = report.depreciation.rows.map(r =>
     `<tr><td>${r.name}</td><td>${r.assetType}</td><td>${r.purchaseDate}</td><td class="num">${fmt(r.purchasePrice)}</td><td>${r.depreciationMethod}</td><td class="num">${fmt(r.annualDeduction)}</td></tr>`
@@ -3948,9 +3960,9 @@ ${report.summary.totalDepreciation > 0 ? row("Asset Depreciation", fmt(-report.s
 </table>
 <div class="net-profit"><div class="label">${isLoss ? "Net Loss" : "Net Profit"}</div><div class="value">${fmt(Math.abs(report.summary.netProfit))}</div></div>
 
-<h2>Expenses by Schedule C Line</h2>
+<h2>Expense Detail by Schedule C Line</h2>
 <table>
-<tr><th>Schedule C Line</th><th class="num">Amount</th><th class="num"># Items</th></tr>
+<tr><th>Date / Description</th><th class="num">Amount</th></tr>
 ${schedCRows}
 ${row("Total Expenses", fmt(report.totalExpenses), true)}
 </table>
@@ -3960,7 +3972,8 @@ ${report.depreciation.rows.length > 0 ? `
 <table>
 <tr><th>Asset</th><th>Type</th><th>Purchase Date</th><th class="num">Cost</th><th>Method</th><th class="num">${report.year} Deduction</th></tr>
 ${deprRows}
-${row("Total Depreciation", fmt(report.depreciation.total), true)}
+${row(`${report.year} Total Deduction`, fmt(report.depreciation.total), true)}
+${row("Total Accumulated Depreciation (all active assets)", fmt(report.depreciation.totalAccumulated), true)}
 </table>` : ""}
 
 ${report.disposedAssets.length > 0 ? `
@@ -4132,11 +4145,11 @@ function YearEndReportTab({ year }: { year: number }) {
         </div>
       </div>
 
-      {/* Expenses by Schedule C */}
+      {/* Expense Detail by Schedule C */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
           <Receipt className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm text-foreground">Expenses by Schedule C Category</h3>
+          <h3 className="font-semibold text-sm text-foreground">Expense Detail by Schedule C Category</h3>
         </div>
         {report.expensesBySchedC.length === 0 ? (
           <p className="text-sm text-muted-foreground p-4">No expenses recorded for {year}.</p>
@@ -4145,23 +4158,35 @@ function YearEndReportTab({ year }: { year: number }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
-                  <th className="text-left px-4 py-2">Schedule C Line</th>
+                  <th className="text-left px-4 py-2">Date / Description</th>
                   <th className="text-right px-4 py-2">Amount</th>
-                  <th className="text-right px-4 py-2"># Items</th>
                 </tr>
               </thead>
               <tbody>
                 {report.expensesBySchedC.map((e, i) => (
-                  <tr key={i} className="border-t border-border/40 hover:bg-muted/20">
-                    <td className="px-4 py-2 text-muted-foreground">{e.schedCLine}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-medium">{fmtMoney(e.amount)}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{e.count}</td>
-                  </tr>
+                  <React.Fragment key={i}>
+                    <tr className="bg-muted/30 border-t-2 border-border">
+                      <td className="px-4 py-2 font-semibold text-xs uppercase tracking-wide text-muted-foreground" colSpan={2}>{e.schedCLine}</td>
+                    </tr>
+                    {e.items.map((item, j) => (
+                      <tr key={j} className="border-t border-border/30 hover:bg-muted/10">
+                        <td className="px-4 py-1.5 pl-8 text-muted-foreground">
+                          <span className="text-foreground/70 mr-2">{item.date}</span>
+                          {item.description}
+                          {item.vendor && <span className="text-muted-foreground/60 ml-1">({item.vendor})</span>}
+                        </td>
+                        <td className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">{fmtMoney(item.amount)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-border/60 bg-muted/5">
+                      <td className="px-4 py-1.5 pl-8 font-medium text-xs">Category Total ({e.count} item{e.count !== 1 ? "s" : ""})</td>
+                      <td className="px-4 py-1.5 text-right tabular-nums font-semibold">{fmtMoney(e.amount)}</td>
+                    </tr>
+                  </React.Fragment>
                 ))}
                 <tr className="border-t-2 border-border font-semibold bg-muted/20">
                   <td className="px-4 py-2">Total Expenses</td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(report.totalExpenses)}</td>
-                  <td />
                 </tr>
               </tbody>
             </table>
@@ -4200,8 +4225,12 @@ function YearEndReportTab({ year }: { year: number }) {
                   </tr>
                 ))}
                 <tr className="border-t-2 border-border font-semibold bg-muted/20">
-                  <td colSpan={5} className="px-4 py-2">Total Depreciation</td>
+                  <td colSpan={5} className="px-4 py-2">{year} Total Deduction</td>
                   <td className="px-4 py-2 text-right tabular-nums text-orange-600">{fmtMoney(report.depreciation.total)}</td>
+                </tr>
+                <tr className="font-semibold bg-orange-50 dark:bg-orange-950/20 border-t border-orange-200">
+                  <td colSpan={5} className="px-4 py-2 text-orange-700">Total Accumulated Depreciation (all active assets)</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-orange-700">{fmtMoney(report.depreciation.totalAccumulated)}</td>
                 </tr>
               </tbody>
             </table>
@@ -4512,7 +4541,7 @@ export default function Accounting() {
           { key: "profit-loss" as const, label: "Profit & Loss", icon: TrendingUp },
           { key: "schedule-c" as const, label: "Schedule C + Home Office", icon: FileText },
           { key: "tax-calendar" as const, label: "Tax Calendar & Compliance", icon: Calendar },
-          { key: "year-end" as const, label: "Year-End Report", icon: FileSpreadsheet },
+          ...(isOwner ? [{ key: "year-end" as const, label: "Year-End Report", icon: FileSpreadsheet }] : []),
           ...(isOwner ? [{ key: "reconcile" as const, label: "Reconcile", icon: FileCheck }] : []),
         ].map(({ key, label, icon: Icon }) => (
           <button
@@ -4545,7 +4574,7 @@ export default function Accounting() {
 
       {activeTab === "tax-calendar" && <TaxCalendarTab year={year} />}
 
-      {activeTab === "year-end" && <YearEndReportTab year={year} />}
+      {activeTab === "year-end" && isOwner && <YearEndReportTab year={year} />}
 
       {activeTab === "reconcile" && isOwner && <ReconcileTab />}
     </div>

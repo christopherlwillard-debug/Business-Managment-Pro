@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, sum, ne, inArray } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
-import { sectionGuard } from "./guards";
+import { sectionGuard, ownerGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
 
 const router = Router();
@@ -651,7 +651,7 @@ function calcAnnualDepreciation(asset: {
   return (cost - salvage) / life;
 }
 
-router.get("/year-end", sectionGuard("invoices"), async (req, res) => {
+router.get("/year-end", ownerGuard(), async (req, res) => {
   try {
     const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
     const startDate = `${year}-01-01`;
@@ -731,6 +731,18 @@ router.get("/year-end", sectionGuard("invoices"), async (req, res) => {
 
     const totalDepreciation = depreciationRows.reduce((s, r) => s + r.annualDeduction, 0);
 
+    // Total accumulated depreciation across all active assets (from purchase year through report year)
+    const totalAccumulatedDepreciation = assets
+      .filter(a => a.status === "active")
+      .reduce((sum, a) => {
+        const startYear = parseInt(a.purchaseDate.slice(0, 4));
+        let acc = 0;
+        for (let y2 = startYear; y2 <= year; y2++) {
+          acc += calcAnnualDepreciation(a, y2);
+        }
+        return sum + acc;
+      }, 0);
+
     // ── Disposed Assets ───────────────────────────────────────────────────────
     const disposedAssets = assets
       .filter(a => (a.status === "sold" || a.status === "retired") && a.saleDate && a.saleDate.startsWith(String(year)))
@@ -780,16 +792,33 @@ router.get("/year-end", sectionGuard("invoices"), async (req, res) => {
       other: "Line 27a – Other",
     };
 
-    const catMap = new Map<string, { schedCLine: string; amount: number; count: number }>();
+    const catMap = new Map<string, {
+      schedCLine: string;
+      amount: number;
+      count: number;
+      items: { date: string; description: string; vendor: string | null; amount: number }[];
+    }>();
     for (const e of nonMileageExpenses) {
       const cat = (e.category ?? "other").toLowerCase();
       const line = SCHED_C_MAP[cat] ?? "Line 27a – Other";
-      const existing = catMap.get(line) ?? { schedCLine: line, amount: 0, count: 0 };
-      existing.amount += parseFloat(e.amount ?? "0");
+      const existing = catMap.get(line) ?? { schedCLine: line, amount: 0, count: 0, items: [] };
+      const amt = parseFloat(e.amount ?? "0");
+      existing.amount += amt;
       existing.count++;
+      existing.items.push({
+        date: e.date,
+        description: e.description ?? "",
+        vendor: e.vendor ?? null,
+        amount: amt,
+      });
       catMap.set(line, existing);
     }
-    const expensesBySchedC = Array.from(catMap.values()).sort((a, b) => b.amount - a.amount);
+    const expensesBySchedC = Array.from(catMap.values())
+      .sort((a, b) => b.amount - a.amount)
+      .map(cat => ({
+        ...cat,
+        items: cat.items.sort((a, b) => a.date.localeCompare(b.date)),
+      }));
 
     // ── 1099 Subcontractor Payments ───────────────────────────────────────────
     const threshold = parseFloat(settings[0]?.thresholdAmount1099 ?? "600");
@@ -804,7 +833,7 @@ router.get("/year-end", sectionGuard("invoices"), async (req, res) => {
         w9LegalName: s.w9LegalName ?? null,
       };
     }));
-    const sub1099s = subPayments.filter(s => s.ytdPayments > 0);
+    const sub1099s = subPayments.filter(s => s.ytdPayments >= threshold);
 
     // ── Estimated Tax Payments ────────────────────────────────────────────────
     const estTaxRows = taxPayments.map(p => ({
@@ -879,6 +908,7 @@ router.get("/year-end", sectionGuard("invoices"), async (req, res) => {
       depreciation: {
         rows: depreciationRows,
         total: totalDepreciation,
+        totalAccumulated: totalAccumulatedDepreciation,
       },
       disposedAssets,
       sub1099s,
