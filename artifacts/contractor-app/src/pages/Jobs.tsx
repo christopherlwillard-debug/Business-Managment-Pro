@@ -1715,7 +1715,7 @@ export default function Jobs() {
   const jobMatchesPayout = (j: Job) => !needsPayoutFilter || (jobsWithSubExpenses.has(j.id) && !j.subPaid);
   const totalCompletedCount = jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesBL(j) && jobMatchesPayout(j)).length;
   const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j));
-  const completedJobs = completedExpanded
+  const completedJobs = (completedExpanded || needsPayoutFilter)
     ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j))
     : [];
 
