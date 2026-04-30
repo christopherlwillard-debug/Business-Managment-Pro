@@ -2054,7 +2054,9 @@ export default function Jobs() {
 
       {/* Asphalt sealing sq ft summary bar */}
       {!isLoading && jobBLFilter === "asphalt_sealing" && (() => {
-        const withSqFt = [...scheduledJobs, ...completedJobs].filter(j => j.sqFt != null && j.sqFt > 0);
+        const withSqFt = jobs.filter(j =>
+          j.businessLine === "asphalt_sealing" && jobMatchesSearch(j) && j.sqFt != null && j.sqFt > 0
+        );
         if (withSqFt.length === 0) return null;
         const totalSqFt = withSqFt.reduce((sum, j) => sum + (j.sqFt ?? 0), 0);
         return (
