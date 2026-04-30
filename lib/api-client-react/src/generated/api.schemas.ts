@@ -1059,6 +1059,8 @@ export const AssetType = {
   Equipment: "Equipment",
   Tool: "Tool",
   Trailer: "Trailer",
+  LandImprovement: "Land Improvement",
+  Building: "Building",
   Other: "Other",
 } as const;
 

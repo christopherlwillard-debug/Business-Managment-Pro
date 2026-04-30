@@ -6,13 +6,13 @@ import { type Asset, type AssetStatus, type AssetType } from "@workspace/api-cli
 import {
   Wrench, Plus, Pencil, Trash2, Upload, X, Check, ChevronDown, ChevronUp,
   Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2, TrendingDown,
-  Info,
+  Info, Building2, Shovel,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function api(path: string) { return `${BASE}${path}`; }
 
-const ASSET_TYPES: AssetType[] = ["Vehicle", "Equipment", "Tool", "Trailer", "Other"];
+const ASSET_TYPES: AssetType[] = ["Vehicle", "Equipment", "Tool", "Trailer", "Land Improvement", "Building", "Other"];
 const ASSET_STATUSES: AssetStatus[] = ["active", "sold", "retired"];
 
 const DEPRECIATION_METHODS = [
@@ -38,6 +38,8 @@ const TYPE_ICON: Record<AssetType, typeof Wrench> = {
   Trailer: Truck,
   Tool: Hammer,
   Equipment: Wrench,
+  "Land Improvement": Shovel,
+  Building: Building2,
   Other: Package2,
 };
 
@@ -46,6 +48,8 @@ const TYPE_USEFUL_LIFE: Record<AssetType, number> = {
   Trailer: 5,
   Equipment: 5,
   Tool: 7,
+  "Land Improvement": 15,
+  Building: 39,
   Other: 5,
 };
 
@@ -84,10 +88,10 @@ function calcDepreciationSchedule(asset: Asset): DepreciationRow[] {
   const rows: DepreciationRow[] = [];
 
   if (method === "section-179") {
-    const deduction = cost - salvage;
-    rows.push({ year: startYear, annualDeduction: deduction, accumulated: deduction, bookValue: salvage });
+    const deduction = cost;
+    rows.push({ year: startYear, annualDeduction: deduction, accumulated: deduction, bookValue: 0 });
     for (let i = 1; i < life; i++) {
-      rows.push({ year: startYear + i, annualDeduction: 0, accumulated: deduction, bookValue: salvage });
+      rows.push({ year: startYear + i, annualDeduction: 0, accumulated: deduction, bookValue: 0 });
     }
     return rows;
   }
