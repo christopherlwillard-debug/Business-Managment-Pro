@@ -1791,11 +1791,15 @@ export default function Jobs() {
   }
 
   async function handleToggleSubPaid(job: Job, paid: boolean) {
-    await fetch(`${BASE}/api/jobs/${job.id}`, {
+    const res = await fetch(`${BASE}/api/jobs/${job.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ subPaid: paid }),
     });
+    if (!res.ok) {
+      console.error("Failed to update sub paid status", await res.text());
+      return;
+    }
     queryClient.invalidateQueries();
   }
 

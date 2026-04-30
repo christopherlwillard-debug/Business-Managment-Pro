@@ -108,15 +108,16 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         .where(inArray(jobsTable.id, subJobIds));
       for (const j of subJobRows) subJobSubPaidMap.set(j.id, j.subPaid);
     }
-    // subContractorOwed = expenses tied to jobs where subPaid = false (or not linked to any job)
+    // subContractorOwed = TOTAL of all subcontractor expenses in the period (the full obligation)
     const subContractorOwed = subExpenses
-      .filter(e => !e.jobId || !subJobSubPaidMap.get(e.jobId))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // subContractorPaid = expenses tied to jobs where subPaid = true
+    // subContractorPaid = portion already settled (expenses tied to jobs where subPaid = true)
     const subContractorPaid = subExpenses
       .filter(e => e.jobId != null && subJobSubPaidMap.get(e.jobId) === true)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // subContractorRemaining = still outstanding = total - settled
     const subContractorRemaining = subContractorOwed - subContractorPaid;
+    // ownerProfit = what Willard actually takes home after unpaid sub obligations
     const ownerProfit = operationalNetProfit - subContractorRemaining;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data

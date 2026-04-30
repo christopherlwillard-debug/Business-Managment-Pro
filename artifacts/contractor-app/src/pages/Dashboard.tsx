@@ -488,7 +488,7 @@ export default function Dashboard() {
                 <p className="text-lg font-display font-bold text-amber-800">
                   {(stats.subContractorOwed ?? 0) > 0 ? formatCurrency(stats.subContractorOwed!) : "—"}
                 </p>
-                <p className="text-[10px] text-amber-600/70 mt-0.5">unpaid jobs</p>
+                <p className="text-[10px] text-amber-600/70 mt-0.5">total obligation</p>
               </CardContent>
             </Card>
             <Card className="shadow-sm border-emerald-200/60 bg-emerald-50/40">
