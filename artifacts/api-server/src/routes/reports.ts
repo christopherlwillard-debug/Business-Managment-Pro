@@ -677,10 +677,12 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         clientName: clientsTable.name,
         city: invoicesTable.city,
         state: invoicesTable.state,
+        stripePaidAt: invoicesTable.stripePaidAt,
+        squarePaidAt: invoicesTable.squarePaidAt,
       })
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
+        .where(eq(invoicesTable.status, "paid")),
       db.select().from(expensesTable)
         .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
       db.select().from(mileageLogsTable)
@@ -695,7 +697,13 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     ]);
 
     // ── P&L Summary ──────────────────────────────────────────────────────────
-    const paidInvoices = invoices.filter(i => i.status === "paid");
+    // Cash-basis: use electronic payment timestamps when available; fall back to issueDate for manual payments
+    const getEffectivePaymentYear = (inv: typeof invoices[number]): number => {
+      if (inv.stripePaidAt) return inv.stripePaidAt.getFullYear();
+      if (inv.squarePaidAt) return inv.squarePaidAt.getFullYear();
+      return parseInt(inv.issueDate.slice(0, 4));
+    };
+    const paidInvoices = invoices.filter(i => getEffectivePaymentYear(i) === year);
     const grossReceipts = paidInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeTotal = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = grossReceipts + otherIncomeTotal;
@@ -890,14 +898,22 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       },
       expensesBySchedC,
       totalExpenses,
-      invoices: paidInvoices.map(i => ({
-        invoiceNumber: i.invoiceNumber,
-        issueDate: i.issueDate,
-        clientName: i.clientName ?? "",
-        total: parseFloat(String(i.total ?? 0)),
-        city: i.city ?? "",
-        state: i.state ?? "",
-      })),
+      invoices: paidInvoices.map(i => {
+        const paymentDate = i.stripePaidAt
+          ? i.stripePaidAt.toISOString().slice(0, 10)
+          : i.squarePaidAt
+          ? i.squarePaidAt.toISOString().slice(0, 10)
+          : i.issueDate;
+        return {
+          invoiceNumber: i.invoiceNumber,
+          issueDate: i.issueDate,
+          paymentDate,
+          clientName: i.clientName ?? "",
+          total: parseFloat(String(i.total ?? 0)),
+          city: i.city ?? "",
+          state: i.state ?? "",
+        };
+      }),
       otherIncome: otherIncomeDetail,
       mileage: {
         totalMiles,

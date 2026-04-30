@@ -3748,7 +3748,7 @@ interface YearEndReport {
   };
   expensesBySchedC: { schedCLine: string; amount: number; count: number; items: { date: string; description: string; vendor: string | null; amount: number }[] }[];
   totalExpenses: number;
-  invoices: { invoiceNumber: string | null; issueDate: string; clientName: string; total: number; city: string; state: string }[];
+  invoices: { invoiceNumber: string | null; issueDate: string; paymentDate: string; clientName: string; total: number; city: string; state: string }[];
   otherIncome: { id: number; date: string; description: string; source: string | null; amount: number; paymentMethod: string | null }[];
   mileage: { totalMiles: number; mileageRate: number; deduction: number; trips: number };
   depreciation: {
@@ -3814,8 +3814,8 @@ async function downloadYearEndZip(report: YearEndReport) {
 
   // 3. Paid Invoices
   zip.file(`${year}_Paid_Invoices.csv`, buildCSVBlob([
-    ["Invoice #", "Date", "Client", "City", "State", "Total"],
-    ...report.invoices.map(i => [i.invoiceNumber ?? "", i.issueDate, i.clientName, i.city, i.state, i.total.toFixed(2)]),
+    ["Invoice #", "Issue Date", "Payment Date", "Client", "City", "State", "Total"],
+    ...report.invoices.map(i => [i.invoiceNumber ?? "", i.issueDate, i.paymentDate, i.clientName, i.city, i.state, i.total.toFixed(2)]),
   ], `${year} Paid Invoices — ${report.companyName}`));
 
   // 4. Mileage
