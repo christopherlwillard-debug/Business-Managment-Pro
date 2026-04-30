@@ -8,9 +8,15 @@ import { getIrsMileageRate } from "../lib/irs-rates.js";
 
 const router = Router();
 
+const KNOWN_BL = ["general_contracting", "asphalt_sealing"] as const;
+const BL_LABELS: Record<string, string> = {
+  general_contracting: "General Contracting",
+  asphalt_sealing: "Asphalt Sealing",
+};
+
 router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   try {
-    const { period = "month" } = req.query;
+    const { period = "month", businessLine: blFilter } = req.query as Record<string, string | undefined>;
 
     const now = new Date();
     let startDate: string;
@@ -33,13 +39,12 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const ytdStart = `${now.getFullYear()}-01-01`;
 
     // For the YTD ("year") period, query expenses across the full calendar year
-    // so the write-off totals match what the Expenses page shows (which groups by year,
-    // not capped at today).  For week/month/quarter, use the period end date as usual.
-    const expenseEndDate = period === "year"
-      ? `${now.getFullYear()}-12-31`
-      : endDate;
+    const expenseEndDate = period === "year" ? `${now.getFullYear()}-12-31` : endDate;
 
-    const [allInvoices, allExpenses, allMileage, allOtherIncome, activeJobsRows, recentJobsRows, recentInvoicesRows] = await Promise.all([
+    // Validate blFilter — only allow known values
+    const validBl = blFilter && (KNOWN_BL as readonly string[]).includes(blFilter) ? blFilter : null;
+
+    const [allInvoicesRaw, allExpensesRaw, allMileage, allOtherIncomeRaw, allActiveJobsRaw, recentJobsRows, recentInvoicesRows] = await Promise.all([
       db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate))),
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
@@ -49,22 +54,22 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
     ]);
 
+    // Apply business-line filter to the main metric datasets when requested
+    const allInvoices = validBl ? allInvoicesRaw.filter(i => i.businessLine === validBl) : allInvoicesRaw;
+    const allExpenses = validBl ? allExpensesRaw.filter(e => e.businessLine === validBl) : allExpensesRaw;
+    const allOtherIncome = validBl ? allOtherIncomeRaw.filter(o => o.businessLine === validBl) : allOtherIncomeRaw;
+    const activeJobsRows = validBl ? allActiveJobsRaw.filter(j => j.businessLine === validBl) : allActiveJobsRaw;
+
     const invoiceRevenue = allInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeTotal = allOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = allInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const overdueInvoices = allInvoices.filter(i => i.status === "overdue").length;
-    // Exclude auto-created mileage expense entries — mileage deduction is tracked
-    // separately via mileageLogsTable to avoid double-counting in net profit.
     const nonMileageExpenses = allExpenses.filter(e => e.category !== "mileage");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // Used in the net-profit formula — mileage-category expenses are already
-    // excluded from totalExpenses (tracked via mileageDeduction instead).
     const excludedFromProfitFormula = nonMileageExpenses
       .filter(e => e.excludeFromNetProfit)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // Display total — includes mileage-category expenses the user explicitly marked
-    // as excluded so the number matches what the Expenses page shows.
     const excludedFromProfit = allExpenses
       .filter(e => e.excludeFromNetProfit)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -73,6 +78,26 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageDeduction;
     const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
+
+    // Profit by business line breakdown (always computed from unfiltered data)
+    const byBusinessLine = KNOWN_BL.map(bl => {
+      const blInvoices = allInvoicesRaw.filter(i => i.businessLine === bl);
+      const blOther = allOtherIncomeRaw.filter(o => o.businessLine === bl);
+      const blExpenses = allExpensesRaw.filter(e => e.businessLine === bl && e.category !== "mileage");
+      const blActiveJobs = allActiveJobsRaw.filter(j => j.businessLine === bl);
+      const blRevenue = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
+        + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blExcluded = blExpenses.filter(e => e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      return {
+        businessLine: bl,
+        label: BL_LABELS[bl] ?? bl,
+        totalRevenue: blRevenue,
+        totalExpenses: blExpenseTotal,
+        operationalNetProfit: blRevenue - (blExpenseTotal - blExcluded),
+        activeJobs: blActiveJobs.length,
+      };
+    });
 
     // Monthly revenue for last 6 months
     const monthlyRevenue = [];
@@ -85,12 +110,15 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-31`))),
         db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-31`))),
       ]);
-      const invRevenue = monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-      const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const filteredInv = validBl ? monthlyInv.filter(i => i.businessLine === validBl) : monthlyInv;
+      const filteredExp = validBl ? monthlyExp.filter(e => e.businessLine === validBl) : monthlyExp;
+      const filteredOther = validBl ? monthlyOther.filter(o => o.businessLine === validBl) : monthlyOther;
+      const invRevenue = filteredInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const othRevenue = filteredOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       monthlyRevenue.push({
         month: monthStr,
         revenue: invRevenue + othRevenue,
-        expenses: monthlyExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+        expenses: filteredExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
       });
     }
 
@@ -107,6 +135,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       excludedFromProfit,
       formulaExcludedFromProfit: excludedFromProfitFormula,
       excludedExpenseCount,
+      byBusinessLine,
       recentJobs: recentJobsRows.map(j => ({ ...j, createdAt: j.createdAt.toISOString() })),
       recentInvoices: recentInvoicesRows.map(i => ({
         ...i,

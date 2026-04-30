@@ -1099,6 +1099,15 @@ function JobFormDialog({
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
 
+  const ASPHALT_JOB_TYPES = ["Sealcoating", "Crack Fill", "Patch Work", "Line Striping"];
+  const CONTRACTING_JOB_TYPES = ["Interior Finish", "Exterior Work", "Repairs", "New Construction"];
+
+  function getJobTypeOptions(bl: "" | "general_contracting" | "asphalt_sealing") {
+    if (bl === "asphalt_sealing") return ASPHALT_JOB_TYPES;
+    if (bl === "general_contracting") return CONTRACTING_JOB_TYPES;
+    return [...ASPHALT_JOB_TYPES, ...CONTRACTING_JOB_TYPES];
+  }
+
   function makeForm() {
     if (editJob) {
       return {
@@ -1113,6 +1122,7 @@ function JobFormDialog({
         endDate: editJob.endDate ?? "",
         notes: editJob.notes ?? "",
         businessLine: (editJob.businessLine as "" | "general_contracting" | "asphalt_sealing") ?? "",
+        jobType: editJob.jobType ?? "",
       };
     }
     return {
@@ -1120,6 +1130,7 @@ function JobFormDialog({
       locationName: "", city: "", state: "KY",
       estimatedAmount: "", startDate: "", endDate: "", notes: "",
       businessLine: "" as "" | "general_contracting" | "asphalt_sealing",
+      jobType: "",
     };
   }
 
@@ -1128,7 +1139,19 @@ function JobFormDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  function setField(k: string, v: string) { setFormState(f => ({ ...f, [k]: v })); }
+  function setField(k: string, v: string) {
+    setFormState(f => {
+      const next = { ...f, [k]: v };
+      // Reset jobType when business line changes if the current type isn't valid for new line
+      if (k === "businessLine") {
+        const options = getJobTypeOptions(v as "" | "general_contracting" | "asphalt_sealing");
+        if (f.jobType && !options.includes(f.jobType)) {
+          next.jobType = "";
+        }
+      }
+      return next;
+    });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1149,6 +1172,7 @@ function JobFormDialog({
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
         businessLine: form.businessLine || undefined,
+        jobType: form.jobType || undefined,
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });
@@ -1223,6 +1247,20 @@ function JobFormDialog({
                 </label>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Job Type</label>
+            <select
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={form.jobType}
+              onChange={e => setField("jobType", e.target.value)}
+            >
+              <option value="">— Select type —</option>
+              {getJobTypeOptions(form.businessLine).map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -1601,6 +1639,7 @@ export default function Jobs() {
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const [jobSearch, setJobSearch]       = useState("");
+  const [jobBLFilter, setJobBLFilter]   = useState<"" | "asphalt_sealing" | "general_contracting">("");
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
@@ -1627,10 +1666,11 @@ export default function Jobs() {
       j.state?.toLowerCase().includes(searchLower)
     );
   };
-  const totalCompletedCount = jobs.filter(j => displayStatus(j.status) === "completed").length;
-  const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j));
+  const jobMatchesBL = (j: Job) => !jobBLFilter || j.businessLine === jobBLFilter;
+  const totalCompletedCount = jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesBL(j)).length;
+  const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j));
   const completedJobs = completedExpanded
-    ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j))
+    ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j) && jobMatchesBL(j))
     : [];
 
   // Fetch invoice summaries for all visible jobs in a single batch request
@@ -1845,6 +1885,41 @@ export default function Jobs() {
             </button>
           )}
         </Card>
+      )}
+
+      {/* Business-line filter tabs */}
+      {!isLoading && jobs.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {([
+            { value: "", label: "All Jobs" },
+            { value: "asphalt_sealing", label: "Asphalt Sealing" },
+            { value: "general_contracting", label: "General Contracting" },
+          ] as const).map(opt => {
+            const count = opt.value === ""
+              ? jobs.length
+              : jobs.filter(j => j.businessLine === opt.value).length;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setJobBLFilter(opt.value)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${
+                  jobBLFilter === opt.value
+                    ? opt.value === "asphalt_sealing"
+                      ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                      : opt.value === "general_contracting"
+                        ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                        : "bg-foreground border-foreground text-background shadow-sm"
+                    : "bg-background border-border text-muted-foreground hover:border-primary/40"
+                }`}
+              >
+                {opt.label}
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                  jobBLFilter === opt.value ? "bg-white/20" : "bg-muted"
+                }`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {/* Jobs grid */}

@@ -687,6 +687,15 @@ export interface CreateRouteStopRequest {
   sortOrder?: number | null;
 }
 
+export type DashboardStatsByBusinessLineItem = {
+  businessLine: string;
+  label: string;
+  totalRevenue: number;
+  totalExpenses: number;
+  operationalNetProfit: number;
+  activeJobs: number;
+};
+
 export interface DashboardStats {
   totalRevenue: number;
   pendingInvoices: number;
@@ -703,6 +712,7 @@ export interface DashboardStats {
   excludedFromProfit?: number;
   formulaExcludedFromProfit?: number;
   excludedExpenseCount?: number;
+  byBusinessLine?: DashboardStatsByBusinessLineItem[];
 }
 
 export type ComplianceReportSubcontractor1099AlertsItem = {
@@ -890,6 +900,7 @@ export type ListDailyLogsParams = {
 
 export type GetDashboardStatsParams = {
   period?: GetDashboardStatsPeriod;
+  businessLine?: string;
 };
 
 export type GetDashboardStatsPeriod =

@@ -87,8 +87,9 @@ function useOverdueInvoicesList() {
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
+  const [businessLine, setBusinessLine] = useState<"" | "asphalt_sealing" | "general_contracting">("");
   const [, navigate] = useLocation();
-  const { data: stats, isLoading } = useGetDashboardStats({ period });
+  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: businessLine || undefined });
   const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
   const { data: allClients = [] } = useListClients();
   const { data: todayStops = [], isLoading: stopsLoading } = useTodayRouteStops();
@@ -400,20 +401,46 @@ export default function Dashboard() {
 
       {/* ── BUSINESS OVERVIEW ── */}
       <div>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <h2 className="text-lg font-display font-bold text-foreground">Business Overview</h2>
-          <div className="flex gap-2 bg-muted/40 rounded-lg p-1">
-            {(["week", "month", "quarter", "year"] as const).map(p => (
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <h2 className="text-lg font-display font-bold text-foreground">Business Overview</h2>
+            <div className="flex gap-2 bg-muted/40 rounded-lg p-1">
+              {(["week", "month", "quarter", "year"] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    period === p
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {periodLabels[p]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Business-line filter */}
+          <div className="flex gap-2">
+            {([
+              { value: "", label: "All" },
+              { value: "asphalt_sealing", label: "Asphalt" },
+              { value: "general_contracting", label: "Contracting" },
+            ] as const).map(opt => (
               <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  period === p
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                key={opt.value}
+                onClick={() => setBusinessLine(opt.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                  businessLine === opt.value
+                    ? opt.value === "asphalt_sealing"
+                      ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                      : opt.value === "general_contracting"
+                        ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                        : "bg-foreground border-foreground text-background shadow-sm"
+                    : "bg-background border-border text-muted-foreground hover:border-primary/40"
                 }`}
               >
-                {periodLabels[p]}
+                {opt.label}
               </button>
             ))}
           </div>
@@ -436,6 +463,54 @@ export default function Dashboard() {
           excludedCount={stats.excludedExpenseCount ?? 0}
           periodLabel={periodLabel}
         />
+      )}
+
+      {/* Profit by Business panel — only shown when viewing "All" */}
+      {!businessLine && stats.byBusinessLine && stats.byBusinessLine.length > 0 && (
+        <Card className="shadow-md border-border/50">
+          <CardHeader className="pb-3 pt-5 px-5">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-primary/10">
+                <TrendingUp className="w-4 h-4 text-primary" />
+              </div>
+              <CardTitle className="text-sm font-bold text-foreground">Profit by Business ({periodLabel})</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-5 space-y-3">
+            {stats.byBusinessLine.map(bl => {
+              const isAsphalt = bl.businessLine === "asphalt_sealing";
+              const profitPositive = bl.operationalNetProfit >= 0;
+              return (
+                <div key={bl.businessLine} className={`rounded-xl border p-4 ${isAsphalt ? "bg-amber-50/60 border-amber-200/70" : "bg-primary/5 border-primary/15"}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isAsphalt ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary"}`}>
+                      {bl.label}
+                    </span>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${bl.activeJobs > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
+                      {bl.activeJobs} active job{bl.activeJobs !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Revenue</p>
+                      <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency(bl.totalRevenue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
+                      <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency(bl.totalExpenses)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Net Profit</p>
+                      <p className={`text-sm font-bold mt-0.5 ${profitPositive ? "text-emerald-600" : "text-red-500"}`}>
+                        {formatCurrency(bl.operationalNetProfit)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       )}
 
       {/* Compliance Summary Widget */}
