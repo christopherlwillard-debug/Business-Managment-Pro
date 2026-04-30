@@ -269,7 +269,7 @@ router.put("/:id", async (req, res) => {
     if (actualAmount !== undefined) updates.actualAmount = actualAmount?.toString();
     if (notes !== undefined) updates.notes = notes;
     if ("businessLine" in req.body) updates.businessLine = businessLine || null;
-    if ("subPaid" in req.body) updates.subPaid = Boolean(subPaid);
+    if ("subPaid" in req.body) updates.subPaid = subPaid === true;
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });
