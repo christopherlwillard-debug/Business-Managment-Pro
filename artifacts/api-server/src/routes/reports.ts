@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, sum, ne } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sum, ne, inArray } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
@@ -98,6 +98,27 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
+    // Subcontractor pay metrics — expenses categorised as "Subcontractor", joined to jobs for subPaid status
+    const subExpenses = kpiExpenses.filter(e => e.category?.toLowerCase() === "subcontractor");
+    const subJobIds = [...new Set(subExpenses.map(e => e.jobId).filter((id): id is number => id != null))];
+    const subJobSubPaidMap = new Map<number, boolean>();
+    if (subJobIds.length > 0) {
+      const subJobRows = await db.select({ id: jobsTable.id, subPaid: jobsTable.subPaid })
+        .from(jobsTable)
+        .where(inArray(jobsTable.id, subJobIds));
+      for (const j of subJobRows) subJobSubPaidMap.set(j.id, j.subPaid);
+    }
+    // subContractorOwed = expenses tied to jobs where subPaid = false (or not linked to any job)
+    const subContractorOwed = subExpenses
+      .filter(e => !e.jobId || !subJobSubPaidMap.get(e.jobId))
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // subContractorPaid = expenses tied to jobs where subPaid = true
+    const subContractorPaid = subExpenses
+      .filter(e => e.jobId != null && subJobSubPaidMap.get(e.jobId) === true)
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const subContractorRemaining = subContractorOwed - subContractorPaid;
+    const ownerProfit = operationalNetProfit - subContractorRemaining;
+
     // Profit by business line breakdown — always computed from full (unfiltered) data
     const byBusinessLine = KNOWN_BL.map(bl => {
       const blInvoices = rawInvoices.filter(i => i.businessLine === bl);
@@ -151,6 +172,10 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       excludedFromProfit,
       formulaExcludedFromProfit: excludedFromProfitFormula,
       excludedExpenseCount,
+      subContractorOwed,
+      subContractorPaid,
+      subContractorRemaining,
+      ownerProfit,
       byBusinessLine,
       recentJobs: recentJobsRows.map(j => ({ ...j, createdAt: j.createdAt.toISOString() })),
       recentInvoices: recentInvoicesRows.map(i => ({

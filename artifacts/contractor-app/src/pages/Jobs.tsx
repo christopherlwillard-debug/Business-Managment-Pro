@@ -875,7 +875,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, onLoadEstimateIntoInvoice,
-  invoiceSummary, onCreateInvoice, onClientClick,
+  invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, onToggleSubPaid,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -889,6 +889,8 @@ function JobCard({
   invoiceSummary?: Invoice | null;
   onCreateInvoice?: () => void;
   onClientClick?: (clientId: number) => void;
+  hasSubExpenses?: boolean;
+  onToggleSubPaid?: (job: Job, paid: boolean) => void;
 }) {
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
@@ -924,6 +926,14 @@ function JobCard({
               {job.jobType && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground">
                   {job.jobType}
+                </span>
+              )}
+              {hasSubExpenses && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  job.subPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
+                }`}>
+                  <HardHat className="w-2.5 h-2.5" />
+                  {job.subPaid ? "Sub Paid" : "Sub Unpaid"}
                 </span>
               )}
             </div>
@@ -1068,6 +1078,19 @@ function JobCard({
               <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
             </button>
           )
+        )}
+        {/* Sub Paid toggle — only visible when job has sub expenses */}
+        {hasSubExpenses && onToggleSubPaid && canEdit("jobs") && (
+          <button
+            onClick={() => onToggleSubPaid(job, !job.subPaid)}
+            className={`mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors border ${
+              job.subPaid
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                : "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
+            }`}>
+            <HardHat className="w-3.5 h-3.5" />
+            {job.subPaid ? "Sub Paid ✓ — Undo" : "Mark Sub Paid"}
+          </button>
         )}
       </Card>
 
@@ -1627,6 +1650,22 @@ export default function Jobs() {
   const { data: allLogs = [] }            = useListDailyLogs();
   const { data: allMaterialLists = [] }   = useListMaterialLists();
 
+  // Fetch subcontractor-category expenses to know which jobs have sub expenses
+  const { data: subExpenseData = [] } = useQuery({
+    queryKey: ["expenses-subcontractor"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/expenses?category=Subcontractor`);
+      if (!res.ok) return [];
+      return res.json() as Promise<Array<{ id: number; jobId: number | null; amount: string }>>;
+    },
+    staleTime: 30 * 1000,
+  });
+  // Build a Set of jobIds that have subcontractor expenses
+  const jobsWithSubExpenses = useMemo(
+    () => new Set(subExpenseData.map(e => e.jobId).filter((id): id is number => id != null)),
+    [subExpenseData]
+  );
+
   // Compute per-job log indicators
   const logsByJob = allLogs.reduce<Record<number, DailyLog[]>>((acc, log) => {
     if (log.jobId == null) return acc;
@@ -1645,6 +1684,7 @@ export default function Jobs() {
 
   const [jobSearch, setJobSearch]       = useState("");
   const [jobBLFilter, setJobBLFilter]   = useState<"" | "asphalt_sealing" | "general_contracting">("");
+  const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
@@ -1672,10 +1712,11 @@ export default function Jobs() {
     );
   };
   const jobMatchesBL = (j: Job) => !jobBLFilter || j.businessLine === jobBLFilter;
-  const totalCompletedCount = jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesBL(j)).length;
-  const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j));
+  const jobMatchesPayout = (j: Job) => !needsPayoutFilter || (jobsWithSubExpenses.has(j.id) && !j.subPaid);
+  const totalCompletedCount = jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesBL(j) && jobMatchesPayout(j)).length;
+  const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j));
   const completedJobs = completedExpanded
-    ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j) && jobMatchesBL(j))
+    ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j))
     : [];
 
   // Fetch invoice summaries for all visible jobs in a single batch request
@@ -1746,6 +1787,15 @@ export default function Jobs() {
 
   async function handleMarkCompleted(job: Job) {
     await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
+    queryClient.invalidateQueries();
+  }
+
+  async function handleToggleSubPaid(job: Job, paid: boolean) {
+    await fetch(`${BASE}/api/jobs/${job.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subPaid: paid }),
+    });
     queryClient.invalidateQueries();
   }
 
@@ -1924,6 +1974,28 @@ export default function Jobs() {
               </button>
             );
           })}
+          {/* Needs Payout filter — only visible when there are jobs with sub expenses */}
+          {jobsWithSubExpenses.size > 0 && (() => {
+            const payoutCount = jobs.filter(j => jobsWithSubExpenses.has(j.id) && !j.subPaid).length;
+            return (
+              <button
+                onClick={() => setNeedsPayoutFilter(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${
+                  needsPayoutFilter
+                    ? "bg-orange-500 border-orange-500 text-white shadow-sm"
+                    : "bg-background border-border text-muted-foreground hover:border-orange-400/60"
+                }`}
+              >
+                <HardHat className="w-3.5 h-3.5" />
+                Needs Payout
+                {payoutCount > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${needsPayoutFilter ? "bg-white/20" : "bg-orange-100 text-orange-700"}`}>
+                    {payoutCount}
+                  </span>
+                )}
+              </button>
+            );
+          })()}
         </div>
       )}
 
@@ -1950,7 +2022,9 @@ export default function Jobs() {
                       onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                       invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                       onCreateInvoice={() => handleReviewInvoice(job)}
-                      onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
+                      onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
+                      hasSubExpenses={jobsWithSubExpenses.has(job.id)}
+                      onToggleSubPaid={handleToggleSubPaid} />
                   );
                 })}
               </div>
@@ -1985,7 +2059,9 @@ export default function Jobs() {
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         onCreateInvoice={() => handleReviewInvoice(job)}
-                        onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined} />
+                        onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
+                        hasSubExpenses={jobsWithSubExpenses.has(job.id)}
+                        onToggleSubPaid={handleToggleSubPaid} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">

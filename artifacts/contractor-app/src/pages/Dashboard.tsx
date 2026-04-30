@@ -7,7 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert,
   CheckCircle2, Clock, TrendingUp, TrendingDown, CalendarClock, MapPin,
-  Navigation, Phone, FileText, Sparkles,
+  Navigation, Phone, FileText, Sparkles, HardHat, Wallet,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
@@ -470,6 +470,84 @@ export default function Dashboard() {
           excludedCount={stats.excludedExpenseCount ?? 0}
           periodLabel={periodLabel}
         />
+      )}
+
+      {/* Subcontractor Pay section — only shown when there are sub expenses */}
+      {((stats.subContractorOwed ?? 0) > 0 || (stats.subContractorPaid ?? 0) > 0) && (
+        <div className="space-y-3">
+          {/* Three compact sub metric cards */}
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="shadow-sm border-amber-200/60 bg-amber-50/40">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
+                    <HardHat className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Sub Owed</p>
+                </div>
+                <p className="text-lg font-display font-bold text-amber-800">
+                  {(stats.subContractorOwed ?? 0) > 0 ? formatCurrency(stats.subContractorOwed!) : "—"}
+                </p>
+                <p className="text-[10px] text-amber-600/70 mt-0.5">unpaid jobs</p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm border-emerald-200/60 bg-emerald-50/40">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Sub Paid</p>
+                </div>
+                <p className="text-lg font-display font-bold text-emerald-800">
+                  {(stats.subContractorPaid ?? 0) > 0 ? formatCurrency(stats.subContractorPaid!) : "—"}
+                </p>
+                <p className="text-[10px] text-emerald-600/70 mt-0.5">settled jobs</p>
+              </CardContent>
+            </Card>
+            <Card className={`shadow-sm ${(stats.subContractorRemaining ?? 0) > 0 ? "border-orange-200/60 bg-orange-50/40" : "border-border/50"}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`p-1.5 rounded-lg ${(stats.subContractorRemaining ?? 0) > 0 ? "bg-orange-100 text-orange-700" : "bg-muted text-muted-foreground"}`}>
+                    <Receipt className="w-3.5 h-3.5" />
+                  </div>
+                  <p className={`text-[10px] font-semibold uppercase tracking-wide ${(stats.subContractorRemaining ?? 0) > 0 ? "text-orange-700" : "text-muted-foreground"}`}>Remaining</p>
+                </div>
+                <p className={`text-lg font-display font-bold ${(stats.subContractorRemaining ?? 0) > 0 ? "text-orange-800" : "text-foreground"}`}>
+                  {formatCurrency(stats.subContractorRemaining ?? 0)}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">still owed</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Your Actual Profit */}
+          {stats.ownerProfit !== undefined && (
+            <Card className={`shadow-md border-border/50 border-l-4 ${(stats.ownerProfit ?? 0) >= 0 ? "border-l-emerald-500" : "border-l-red-500"}`}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-muted-foreground">Your Actual Profit ({periodLabel})</p>
+                    <p className={cn("text-3xl font-display font-bold tracking-tight mt-1", (stats.ownerProfit ?? 0) >= 0 ? "text-emerald-600" : "text-red-600")}>
+                      {formatCurrency(stats.ownerProfit!)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Net Profit minus unpaid sub obligations
+                      {(stats.subContractorRemaining ?? 0) > 0 && (
+                        <span className="ml-1 text-amber-600 font-medium">
+                          · {formatCurrency(stats.subContractorRemaining!)} still owed to subs
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className={cn("p-3 rounded-xl flex-shrink-0", (stats.ownerProfit ?? 0) >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
+                    <Wallet className="w-5 h-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Profit by Business panel — only shown when viewing "All" */}

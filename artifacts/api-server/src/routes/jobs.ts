@@ -24,6 +24,7 @@ type JobRow = {
   actualAmount: string | null;
   notes: string | null;
   businessLine: string | null;
+  subPaid: boolean;
   createdAt: Date;
   subcontractorId?: number | null;
   subcontractorName?: string | null;
@@ -69,6 +70,7 @@ async function getJobWithSubs(jobId: number) {
       actualAmount: jobsTable.actualAmount,
       notes: jobsTable.notes,
       businessLine: jobsTable.businessLine,
+      subPaid: jobsTable.subPaid,
       createdAt: jobsTable.createdAt,
       subcontractorId: jobSubcontractorsTable.subcontractorId,
       subcontractorName: subcontractorsTable.name,
@@ -129,6 +131,7 @@ router.get("/", async (req, res) => {
         actualAmount: jobsTable.actualAmount,
         notes: jobsTable.notes,
         businessLine: jobsTable.businessLine,
+        subPaid: jobsTable.subPaid,
         createdAt: jobsTable.createdAt,
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subcontractorName: subcontractorsTable.name,
@@ -246,7 +249,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine, subPaid } = req.body;
 
     // Only include fields that were explicitly sent in the request body
     // to avoid wiping existing values (e.g. clientId when only status changes)
@@ -266,6 +269,7 @@ router.put("/:id", async (req, res) => {
     if (actualAmount !== undefined) updates.actualAmount = actualAmount?.toString();
     if (notes !== undefined) updates.notes = notes;
     if ("businessLine" in req.body) updates.businessLine = businessLine || null;
+    if ("subPaid" in req.body) updates.subPaid = Boolean(subPaid);
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });

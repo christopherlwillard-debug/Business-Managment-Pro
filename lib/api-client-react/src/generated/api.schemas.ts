@@ -111,6 +111,7 @@ export interface Job {
   actualAmount?: number | null;
   notes?: string | null;
   businessLine?: string | null;
+  subPaid?: boolean;
   createdAt: string;
 }
 
@@ -143,6 +144,7 @@ export interface CreateJobRequest {
   actualAmount?: number | null;
   notes?: string | null;
   businessLine?: string | null;
+  subPaid?: boolean;
 }
 
 export interface DraftLineItem {
@@ -712,6 +714,10 @@ export interface DashboardStats {
   excludedFromProfit?: number;
   formulaExcludedFromProfit?: number;
   excludedExpenseCount?: number;
+  subContractorOwed?: number;
+  subContractorPaid?: number;
+  subContractorRemaining?: number;
+  ownerProfit?: number;
   byBusinessLine?: DashboardStatsByBusinessLineItem[];
 }
 
