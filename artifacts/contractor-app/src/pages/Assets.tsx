@@ -97,8 +97,13 @@ function calcDepreciationSchedule(asset: Asset): DepreciationRow[] {
   }
 
   if (method === "bonus") {
-    const bonusDeduction = (cost - salvage) * bonusPct;
-    const remainder = cost - salvage - bonusDeduction;
+    const depreciableBasis = cost - salvage;
+    if (life <= 1) {
+      rows.push({ year: startYear, annualDeduction: depreciableBasis, accumulated: depreciableBasis, bookValue: salvage });
+      return rows;
+    }
+    const bonusDeduction = depreciableBasis * bonusPct;
+    const remainder = depreciableBasis - bonusDeduction;
     const remainingYears = life - 1;
     const annualOnRemainder = remainingYears > 0 ? remainder / remainingYears : 0;
     let accumulated = 0;

@@ -1096,7 +1096,7 @@ export interface Asset {
   salePrice?: number | null;
   usefulLifeYears?: number | null;
   salvageValue?: number | null;
-  depreciationMethod?: string | null;
+  depreciationMethod?: DepreciationMethod | null;
   bonusDepreciationPct?: number | null;
   createdAt: string;
 }
@@ -1116,7 +1116,7 @@ export interface CreateAssetRequest {
   salePrice?: number | null;
   usefulLifeYears?: number | null;
   salvageValue?: number | null;
-  depreciationMethod?: string | null;
+  depreciationMethod?: DepreciationMethod | null;
   bonusDepreciationPct?: number | null;
 }
 
