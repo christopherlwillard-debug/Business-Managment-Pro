@@ -483,12 +483,12 @@ export default function Dashboard() {
                   <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
                     <HardHat className="w-3.5 h-3.5" />
                   </div>
-                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Sub Total</p>
+                  <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Sub Owed</p>
                 </div>
                 <p className="text-lg font-display font-bold text-amber-800">
                   {(stats.subContractorOwed ?? 0) > 0 ? formatCurrency(stats.subContractorOwed!) : "—"}
                 </p>
-                <p className="text-[10px] text-amber-600/70 mt-0.5">period obligation</p>
+                <p className="text-[10px] text-amber-600/70 mt-0.5">unpaid jobs</p>
               </CardContent>
             </Card>
             <Card className="shadow-sm border-emerald-200/60 bg-emerald-50/40">
