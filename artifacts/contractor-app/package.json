@@ -78,7 +78,6 @@
   },
   "dependencies": {
     "@turf/turf": "^7.3.4",
-    "@types/jszip": "^3.4.1",
     "heic2any": "^0.0.4",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",

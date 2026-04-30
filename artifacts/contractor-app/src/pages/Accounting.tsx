@@ -4033,9 +4033,21 @@ ${otherIncomeRows}
   win.document.close();
 }
 
+const ALL_YEAR_END_SECTIONS = ["pl", "expenses", "depreciation", "disposed", "mileage", "1099s", "tax-payments", "tax-liability", "other-income"] as const;
+type YearEndSection = typeof ALL_YEAR_END_SECTIONS[number];
+
 function YearEndReportTab({ year }: { year: number }) {
   const { data: report, isLoading, error, refetch } = useYearEndReport(year);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<YearEndSection>>(new Set(ALL_YEAR_END_SECTIONS));
+
+  const toggleSection = (key: YearEndSection) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   async function handleDownload() {
     if (!report) return;
@@ -4102,11 +4114,12 @@ function YearEndReportTab({ year }: { year: number }) {
 
       {/* P&L Summary */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <button onClick={() => toggleSection("pl")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
           <TrendingUp className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm text-foreground">Profit &amp; Loss Summary</h3>
-        </div>
-        <div className="p-4 space-y-1">
+          <h3 className="font-semibold text-sm text-foreground flex-1">Profit &amp; Loss Summary</h3>
+          {expandedSections.has("pl") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+        {expandedSections.has("pl") && <div className="p-4 space-y-1">
           <div className="flex justify-between items-center py-1.5 border-b border-border/50">
             <span className="text-sm text-muted-foreground pl-4">Gross Receipts (Paid Invoices)</span>
             <span className="text-sm font-medium tabular-nums">{fmtMoney(report.summary.grossReceipts)}</span>
@@ -4145,16 +4158,17 @@ function YearEndReportTab({ year }: { year: number }) {
               {fmtMoney(Math.abs(report.summary.netProfit))}
             </span>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Expense Detail by Schedule C */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <button onClick={() => toggleSection("expenses")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
           <Receipt className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm text-foreground">Expense Detail by Schedule C Category</h3>
-        </div>
-        {report.expensesBySchedC.length === 0 ? (
+          <h3 className="font-semibold text-sm text-foreground flex-1">Expense Detail by Schedule C Category</h3>
+          {expandedSections.has("expenses") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+        {expandedSections.has("expenses") && (report.expensesBySchedC.length === 0 ? (
           <p className="text-sm text-muted-foreground p-4">No expenses recorded for {year}.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -4194,17 +4208,18 @@ function YearEndReportTab({ year }: { year: number }) {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
 
       {/* Asset Depreciation */}
       {report.depreciation.rows.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <button onClick={() => toggleSection("depreciation")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
             <TrendingDown className="w-4 h-4 text-orange-500" />
-            <h3 className="font-semibold text-sm text-foreground">Asset Depreciation — {year}</h3>
-          </div>
-          <div className="overflow-x-auto">
+            <h3 className="font-semibold text-sm text-foreground flex-1">Asset Depreciation — {year}</h3>
+            {expandedSections.has("depreciation") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+          {expandedSections.has("depreciation") && <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
@@ -4237,19 +4252,20 @@ function YearEndReportTab({ year }: { year: number }) {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       )}
 
       {/* Disposed Assets */}
       {report.disposedAssets.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <button onClick={() => toggleSection("disposed")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
             <DollarSign className="w-4 h-4 text-blue-500" />
-            <h3 className="font-semibold text-sm text-foreground">Disposed Assets — {year}</h3>
-            <span className="text-xs text-muted-foreground ml-auto">Gain/loss for CPA review</span>
-          </div>
-          <div className="overflow-x-auto">
+            <h3 className="font-semibold text-sm text-foreground flex-1">Disposed Assets — {year}</h3>
+            <span className="text-xs text-muted-foreground">Gain/loss for CPA review</span>
+            {expandedSections.has("disposed") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+          {expandedSections.has("disposed") && <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
@@ -4278,17 +4294,18 @@ function YearEndReportTab({ year }: { year: number }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       )}
 
       {/* Mileage */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <button onClick={() => toggleSection("mileage")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
           <Navigation className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm text-foreground">Mileage Deduction</h3>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-border">
+          <h3 className="font-semibold text-sm text-foreground flex-1">Mileage Deduction</h3>
+          {expandedSections.has("mileage") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+        {expandedSections.has("mileage") && <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-border">
           {[
             { label: "Business Miles", value: `${report.mileage.totalMiles.toFixed(1)} mi` },
             { label: "IRS Rate", value: `$${report.mileage.mileageRate.toFixed(3)}/mi` },
@@ -4300,17 +4317,18 @@ function YearEndReportTab({ year }: { year: number }) {
               <div className="text-base font-semibold tabular-nums">{value}</div>
             </div>
           ))}
-        </div>
+        </div>}
       </div>
 
       {/* 1099 Subcontractors */}
       {report.sub1099s.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <button onClick={() => toggleSection("1099s")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
             <HardHat className="w-4 h-4 text-orange-500" />
-            <h3 className="font-semibold text-sm text-foreground">1099 Subcontractor Payments</h3>
-          </div>
-          <div className="overflow-x-auto">
+            <h3 className="font-semibold text-sm text-foreground flex-1">1099 Subcontractor Payments</h3>
+            {expandedSections.has("1099s") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+          {expandedSections.has("1099s") && <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
@@ -4351,17 +4369,18 @@ function YearEndReportTab({ year }: { year: number }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       )}
 
       {/* Estimated Tax Payments */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <button onClick={() => toggleSection("tax-payments")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
           <CalendarClock className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm text-foreground">Estimated Tax Payments</h3>
-        </div>
-        {report.estimatedTaxPayments.length === 0 ? (
+          <h3 className="font-semibold text-sm text-foreground flex-1">Estimated Tax Payments</h3>
+          {expandedSections.has("tax-payments") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+        {expandedSections.has("tax-payments") && (report.estimatedTaxPayments.length === 0 ? (
           <p className="text-sm text-muted-foreground p-4">No estimated tax payments recorded for {year}.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -4393,17 +4412,18 @@ function YearEndReportTab({ year }: { year: number }) {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
 
       {/* Estimated Tax Liability */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <button onClick={() => toggleSection("tax-liability")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
           <Shield className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm text-foreground">Estimated Tax Liability</h3>
-          <span className="ml-auto text-xs text-muted-foreground">Reference only — consult your CPA</span>
-        </div>
-        <div className="p-4 space-y-1">
+          <h3 className="font-semibold text-sm text-foreground flex-1">Estimated Tax Liability</h3>
+          <span className="text-xs text-muted-foreground">Reference only — consult your CPA</span>
+          {expandedSections.has("tax-liability") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+        {expandedSections.has("tax-liability") && <div className="p-4 space-y-1">
           {[
             { label: "Self-Employment Tax (15.3% × 92.35%)", value: report.taxEstimates.selfEmploymentTax },
             { label: "Federal Income Tax (22% bracket est.)", value: report.taxEstimates.federalIncomeTax },
@@ -4426,17 +4446,18 @@ function YearEndReportTab({ year }: { year: number }) {
             <span>{report.taxEstimates.balance > 0 ? "Remaining Balance" : "Overpaid / Refund Est."}</span>
             <span className="tabular-nums">{fmtMoney(Math.abs(report.taxEstimates.balance))}</span>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Other Income */}
       {report.otherIncome.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <button onClick={() => toggleSection("other-income")} className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left">
             <PieChart className="w-4 h-4 text-primary" />
-            <h3 className="font-semibold text-sm text-foreground">Other Income</h3>
-          </div>
-          <div className="overflow-x-auto">
+            <h3 className="font-semibold text-sm text-foreground flex-1">Other Income</h3>
+            {expandedSections.has("other-income") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+          {expandedSections.has("other-income") && <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
@@ -4464,7 +4485,7 @@ function YearEndReportTab({ year }: { year: number }) {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       )}
 
