@@ -2052,6 +2052,20 @@ export default function Jobs() {
         </div>
       )}
 
+      {/* Asphalt sealing sq ft summary bar */}
+      {!isLoading && jobBLFilter === "asphalt_sealing" && (() => {
+        const withSqFt = [...scheduledJobs, ...completedJobs].filter(j => j.sqFt != null && j.sqFt > 0);
+        if (withSqFt.length === 0) return null;
+        const totalSqFt = withSqFt.reduce((sum, j) => sum + (j.sqFt ?? 0), 0);
+        return (
+          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+            <Layers className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="font-semibold text-amber-900">{totalSqFt.toLocaleString()} sq ft total</span>
+            <span className="text-amber-700 text-xs">across {withSqFt.length} job{withSqFt.length !== 1 ? "s" : ""} with sq ft set</span>
+          </div>
+        );
+      })()}
+
       {/* Jobs grid */}
       {!isLoading && jobs.length > 0 && (
         <>
