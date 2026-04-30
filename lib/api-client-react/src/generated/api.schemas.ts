@@ -900,7 +900,7 @@ export type ListDailyLogsParams = {
 
 export type GetDashboardStatsParams = {
   period?: GetDashboardStatsPeriod;
-  businessLine?: string;
+  businessLine?: GetDashboardStatsBusinessLine;
 };
 
 export type GetDashboardStatsPeriod =
@@ -911,6 +911,14 @@ export const GetDashboardStatsPeriod = {
   month: "month",
   quarter: "quarter",
   year: "year",
+} as const;
+
+export type GetDashboardStatsBusinessLine =
+  (typeof GetDashboardStatsBusinessLine)[keyof typeof GetDashboardStatsBusinessLine];
+
+export const GetDashboardStatsBusinessLine = {
+  asphalt_sealing: "asphalt_sealing",
+  general_contracting: "general_contracting",
 } as const;
 
 export type UploadFileBody = {

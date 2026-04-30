@@ -421,28 +421,35 @@ export default function Dashboard() {
             </div>
           </div>
           {/* Business-line filter */}
-          <div className="flex gap-2">
-            {([
-              { value: "", label: "All" },
-              { value: "asphalt_sealing", label: "Asphalt" },
-              { value: "general_contracting", label: "Contracting" },
-            ] as const).map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setBusinessLine(opt.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                  businessLine === opt.value
-                    ? opt.value === "asphalt_sealing"
-                      ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                      : opt.value === "general_contracting"
-                        ? "bg-primary border-primary text-primary-foreground shadow-sm"
-                        : "bg-foreground border-foreground text-background shadow-sm"
-                    : "bg-background border-border text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            <div className="flex gap-2">
+              {([
+                { value: "", label: "All Businesses" },
+                { value: "asphalt_sealing", label: "Asphalt" },
+                { value: "general_contracting", label: "Contracting" },
+              ] as const).map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setBusinessLine(opt.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                    businessLine === opt.value
+                      ? opt.value === "asphalt_sealing"
+                        ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                        : opt.value === "general_contracting"
+                          ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                          : "bg-foreground border-foreground text-background shadow-sm"
+                      : "bg-background border-border text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {businessLine === "asphalt_sealing" ? "Asphalt Sealing" : businessLine === "general_contracting" ? "General Contracting" : "All Businesses"}
+              {" \u2014 "}
+              {period === "week" ? "This Week" : period === "month" ? "This Month" : period === "quarter" ? "This Quarter" : "This Year"}
+            </span>
           </div>
         </div>
 
