@@ -27,7 +27,7 @@ import {
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
-  Calculator, DollarSign, Receipt,
+  Calculator, DollarSign, Receipt, Layers,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -990,6 +990,18 @@ function JobCard({
             </div>
           )}
 
+          {job.businessLine === "asphalt_sealing" && (job.sqFt != null || job.coats != null) && (
+            <div className="flex items-center gap-1.5 text-amber-600">
+              <Layers className="w-3 h-3 flex-shrink-0" />
+              <span className="font-medium">
+                {[
+                  job.sqFt != null ? `${job.sqFt.toLocaleString()} sq ft` : null,
+                  job.coats != null ? `${job.coats}×` : null,
+                ].filter(Boolean).join(" · ")}
+              </span>
+            </div>
+          )}
+
           {/* Invoice status indicator */}
           <div className="flex items-center gap-1.5 pt-0.5">
             <Receipt className="w-3 h-3 flex-shrink-0" />
@@ -1225,9 +1237,9 @@ function JobFormDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
-      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="relative w-full sm:max-w-lg bg-card border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90dvh] sm:max-h-[90vh]">
         <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0 rounded-t-2xl" />
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between px-6 pt-5 pb-4 flex-shrink-0">
