@@ -108,17 +108,19 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         .where(inArray(jobsTable.id, subJobIds));
       for (const j of subJobRows) subJobSubPaidMap.set(j.id, j.subPaid);
     }
-    // subContractorOwed = TOTAL of all subcontractor expenses in the period (the full obligation)
+    // subContractorOwed = outstanding sub obligation: expenses where job is not yet marked subPaid (or no linked job)
     const subContractorOwed = subExpenses
+      .filter(e => !e.jobId || !subJobSubPaidMap.get(e.jobId))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // subContractorPaid = portion already settled (expenses tied to jobs where subPaid = true)
+    // subContractorPaid = settled: expenses tied to jobs where subPaid=true
     const subContractorPaid = subExpenses
       .filter(e => e.jobId != null && subJobSubPaidMap.get(e.jobId) === true)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // subContractorRemaining = still outstanding = total - settled
-    const subContractorRemaining = subContractorOwed - subContractorPaid;
-    // ownerProfit = what Willard actually takes home after unpaid sub obligations
-    const ownerProfit = operationalNetProfit - subContractorRemaining;
+    // subContractorRemaining = outstanding amount still owed to subs (same as subContractorOwed by definition,
+    // since owed=unpaid and paid are mutually exclusive; exposed separately for API clarity)
+    const subContractorRemaining = subContractorOwed;
+    // ownerProfit = net profit after accounting for unpaid sub obligations
+    const ownerProfit = operationalNetProfit - subContractorOwed;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
     const byBusinessLine = KNOWN_BL.map(bl => {
