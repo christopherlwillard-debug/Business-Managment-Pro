@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, numeric, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, numeric, boolean, integer } from "drizzle-orm/pg-core";
 
 export const assetsTable = pgTable("assets", {
   id: serial("id").primaryKey(),
@@ -14,6 +14,10 @@ export const assetsTable = pgTable("assets", {
   status: text("status").notNull().default("active"),
   saleDate: text("sale_date"),
   salePrice: numeric("sale_price", { precision: 12, scale: 2 }),
+  usefulLifeYears: integer("useful_life_years"),
+  salvageValue: numeric("salvage_value", { precision: 12, scale: 2 }).default("0"),
+  depreciationMethod: text("depreciation_method").default("straight-line"),
+  bonusDepreciationPct: integer("bonus_depreciation_pct").default(60),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -16,6 +16,14 @@ export const AssetStatus = {
   retired: "retired",
 } as const;
 
+export type DepreciationMethod = (typeof DepreciationMethod)[keyof typeof DepreciationMethod];
+
+export const DepreciationMethod = {
+  "straight-line": "straight-line",
+  "section-179": "section-179",
+  "bonus": "bonus",
+} as const;
+
 export interface Asset {
   id: number;
   name: string;
@@ -30,6 +38,10 @@ export interface Asset {
   status: AssetStatus;
   saleDate?: string | null;
   salePrice?: number | null;
+  usefulLifeYears?: number | null;
+  salvageValue?: number | null;
+  depreciationMethod?: string | null;
+  bonusDepreciationPct?: number | null;
   createdAt: string;
 }
 
@@ -46,6 +58,10 @@ export interface CreateAssetRequest {
   status?: AssetStatus;
   saleDate?: string | null;
   salePrice?: number | null;
+  usefulLifeYears?: number | null;
+  salvageValue?: number | null;
+  depreciationMethod?: string | null;
+  bonusDepreciationPct?: number | null;
 }
 
 export type UpdateAssetRequest = Partial<CreateAssetRequest>;

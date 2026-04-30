@@ -144,6 +144,30 @@ Drizzle ORM schema + PostgreSQL connection.
 OpenAPI spec in `openapi.yaml`. Codegen produces React Query hooks + Zod schemas.
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate after spec changes
 
+## Assets Page — Depreciation Schedules
+
+Route: `/assets` (owner-only). Sidebar: Business Tools group.
+
+**DB columns added (migration 0017_asset_depreciation.sql):**
+- `useful_life_years` (integer, nullable) — auto-preset from asset type (Vehicle/Trailer/Equipment→5yr, Tool→7yr, Other→5yr)
+- `salvage_value` (numeric, default 0) — estimated residual value at end of life
+- `depreciation_method` (text, default 'straight-line') — one of: `straight-line`, `section-179`, `bonus`
+- `bonus_depreciation_pct` (integer, default 60) — year-1 bonus % (IRS current rate for bonus method)
+
+**Depreciation math (`calcDepreciationSchedule` in Assets.tsx):**
+- **Straight-line**: annual = (cost − salvage) / life; equal deduction each year
+- **Section 179**: full deduction year 1 (cost − salvage); zero in subsequent years
+- **Bonus**: year-1 = (cost − salvage) × bonus_pct; remaining spread evenly over years 2–N
+
+**UI features:**
+- Four summary cards: Total Cost Basis, Accumulated Depreciation (active assets thru current year), Book Value, Section 179 panel (with year selector)
+- Depreciation method picker (3-button toggle) in add/edit form
+- Useful life auto-fills from asset type on selection
+- Bonus % field only visible when `bonus` method selected
+- Expanded card view: year-by-year depreciation schedule table (columns: Year, Annual Deduction, Accumulated, Book Value); current year highlighted
+- Gain/Loss on disposal banner: `salePrice − bookValue at year of saleDate`
+- Section 179 summary panel (amber) appears when eligible assets exist for selected year
+
 ## Aerial Quote Tool (Asphalt Sealing)
 
 Route: `/aerial-quote` (owner-only). Sidebar: Business Tools group.

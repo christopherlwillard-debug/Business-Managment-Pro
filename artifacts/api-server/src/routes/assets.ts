@@ -26,6 +26,7 @@ function formatAsset(a: typeof assetsTable.$inferSelect) {
     ...a,
     purchasePrice: parseFloat(a.purchasePrice ?? "0"),
     salePrice: a.salePrice != null ? parseFloat(a.salePrice) : null,
+    salvageValue: a.salvageValue != null ? parseFloat(a.salvageValue) : 0,
     createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
     receiptUrl: toServingUrl(a.receiptUrl),
   };
@@ -56,6 +57,7 @@ router.post("/", async (req, res) => {
     const {
       name, assetType, purchaseDate, purchasePrice, vendor, serialNumber,
       notes, receiptUrl, section179Eligible, status, saleDate, salePrice,
+      usefulLifeYears, salvageValue, depreciationMethod, bonusDepreciationPct,
     } = req.body;
 
     if (!name || !purchaseDate || purchasePrice == null) {
@@ -75,6 +77,10 @@ router.post("/", async (req, res) => {
       status: status ?? "active",
       saleDate: saleDate ?? null,
       salePrice: salePrice != null ? salePrice.toString() : null,
+      usefulLifeYears: usefulLifeYears != null ? parseInt(usefulLifeYears) : null,
+      salvageValue: salvageValue != null ? salvageValue.toString() : "0",
+      depreciationMethod: depreciationMethod ?? "straight-line",
+      bonusDepreciationPct: bonusDepreciationPct != null ? parseInt(bonusDepreciationPct) : 60,
     }).returning();
 
     res.status(201).json(formatAsset(asset));
@@ -102,6 +108,7 @@ router.put("/:id", async (req, res) => {
     const {
       name, assetType, purchaseDate, purchasePrice, vendor, serialNumber,
       notes, receiptUrl, section179Eligible, status, saleDate, salePrice,
+      usefulLifeYears, salvageValue, depreciationMethod, bonusDepreciationPct,
     } = req.body;
 
     const [updated] = await db.update(assetsTable).set({
@@ -117,6 +124,10 @@ router.put("/:id", async (req, res) => {
       ...(status !== undefined && { status }),
       ...(saleDate !== undefined && { saleDate }),
       ...(salePrice !== undefined && { salePrice: salePrice != null ? salePrice.toString() : null }),
+      ...(usefulLifeYears !== undefined && { usefulLifeYears: usefulLifeYears != null ? parseInt(usefulLifeYears) : null }),
+      ...(salvageValue !== undefined && { salvageValue: salvageValue != null ? salvageValue.toString() : "0" }),
+      ...(depreciationMethod !== undefined && { depreciationMethod }),
+      ...(bonusDepreciationPct !== undefined && { bonusDepreciationPct: bonusDepreciationPct != null ? parseInt(bonusDepreciationPct) : 60 }),
     }).where(eq(assetsTable.id, id)).returning();
 
     if (!updated) return res.status(404).json({ error: "Asset not found" });

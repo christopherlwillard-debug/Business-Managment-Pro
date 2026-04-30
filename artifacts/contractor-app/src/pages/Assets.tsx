@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 import { type Asset, type AssetStatus, type AssetType } from "@workspace/api-client-react";
 import {
   Wrench, Plus, Pencil, Trash2, Upload, X, Check, ChevronDown, ChevronUp,
-  Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2,
+  Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2, TrendingDown,
+  Info,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -13,6 +14,12 @@ function api(path: string) { return `${BASE}${path}`; }
 
 const ASSET_TYPES: AssetType[] = ["Vehicle", "Equipment", "Tool", "Trailer", "Other"];
 const ASSET_STATUSES: AssetStatus[] = ["active", "sold", "retired"];
+
+const DEPRECIATION_METHODS = [
+  { value: "straight-line", label: "Straight-Line", description: "Equal deduction each year over useful life" },
+  { value: "section-179", label: "Section 179 (Full Year 1)", description: "Deduct full cost in year of purchase" },
+  { value: "bonus", label: "Bonus Depreciation", description: "Large % year 1, straight-line on remainder" },
+] as const;
 
 const STATUS_LABELS: Record<AssetStatus, string> = {
   active: "Active",
@@ -34,6 +41,14 @@ const TYPE_ICON: Record<AssetType, typeof Wrench> = {
   Other: Package2,
 };
 
+const TYPE_USEFUL_LIFE: Record<AssetType, number> = {
+  Vehicle: 5,
+  Trailer: 5,
+  Equipment: 5,
+  Tool: 7,
+  Other: 5,
+};
+
 const CURRENT_YEAR = new Date().getFullYear();
 
 function fmt(n: number) {
@@ -43,6 +58,83 @@ function fmt(n: number) {
 function parseDate(d?: string | null) {
   if (!d) return "";
   return d.slice(0, 10);
+}
+
+function getPurchaseYear(purchaseDate: string): number {
+  return parseInt(purchaseDate.slice(0, 4));
+}
+
+interface DepreciationRow {
+  year: number;
+  annualDeduction: number;
+  accumulated: number;
+  bookValue: number;
+}
+
+function calcDepreciationSchedule(asset: Asset): DepreciationRow[] {
+  const cost = asset.purchasePrice;
+  const salvage = asset.salvageValue ?? 0;
+  const life = asset.usefulLifeYears;
+  const method = asset.depreciationMethod ?? "straight-line";
+  const bonusPct = (asset.bonusDepreciationPct ?? 60) / 100;
+  const startYear = getPurchaseYear(asset.purchaseDate);
+
+  if (!life || life <= 0 || cost <= 0) return [];
+
+  const rows: DepreciationRow[] = [];
+
+  if (method === "section-179") {
+    const deduction = cost - salvage;
+    rows.push({ year: startYear, annualDeduction: deduction, accumulated: deduction, bookValue: salvage });
+    for (let i = 1; i < life; i++) {
+      rows.push({ year: startYear + i, annualDeduction: 0, accumulated: deduction, bookValue: salvage });
+    }
+    return rows;
+  }
+
+  if (method === "bonus") {
+    const bonusDeduction = (cost - salvage) * bonusPct;
+    const remainder = cost - salvage - bonusDeduction;
+    const remainingYears = life - 1;
+    const annualOnRemainder = remainingYears > 0 ? remainder / remainingYears : 0;
+    let accumulated = 0;
+    for (let i = 0; i < life; i++) {
+      const annual = i === 0 ? bonusDeduction : annualOnRemainder;
+      accumulated += annual;
+      rows.push({
+        year: startYear + i,
+        annualDeduction: annual,
+        accumulated,
+        bookValue: Math.max(salvage, cost - accumulated),
+      });
+    }
+    return rows;
+  }
+
+  const annual = (cost - salvage) / life;
+  let accumulated = 0;
+  for (let i = 0; i < life; i++) {
+    accumulated += annual;
+    rows.push({
+      year: startYear + i,
+      annualDeduction: annual,
+      accumulated,
+      bookValue: Math.max(salvage, cost - accumulated),
+    });
+  }
+  return rows;
+}
+
+function getAccumulatedDepreciation(asset: Asset, asOfYear: number): number {
+  const schedule = calcDepreciationSchedule(asset);
+  return schedule.filter(r => r.year <= asOfYear).reduce((s, r) => s + r.annualDeduction, 0);
+}
+
+function getBookValue(asset: Asset, asOfYear: number): number {
+  const schedule = calcDepreciationSchedule(asset);
+  const row = [...schedule].reverse().find(r => r.year <= asOfYear);
+  if (!row) return asset.purchasePrice;
+  return row.bookValue;
 }
 
 interface FormState {
@@ -57,6 +149,10 @@ interface FormState {
   status: AssetStatus;
   saleDate: string;
   salePrice: string;
+  usefulLifeYears: string;
+  salvageValue: string;
+  depreciationMethod: string;
+  bonusDepreciationPct: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -71,6 +167,10 @@ const emptyForm = (): FormState => ({
   status: "active",
   saleDate: "",
   salePrice: "",
+  usefulLifeYears: "5",
+  salvageValue: "0",
+  depreciationMethod: "straight-line",
+  bonusDepreciationPct: "60",
 });
 
 function assetToForm(a: Asset): FormState {
@@ -86,6 +186,10 @@ function assetToForm(a: Asset): FormState {
     status: a.status,
     saleDate: parseDate(a.saleDate),
     salePrice: a.salePrice != null ? a.salePrice.toString() : "",
+    usefulLifeYears: a.usefulLifeYears != null ? String(a.usefulLifeYears) : "5",
+    salvageValue: a.salvageValue != null ? String(a.salvageValue) : "0",
+    depreciationMethod: a.depreciationMethod ?? "straight-line",
+    bonusDepreciationPct: a.bonusDepreciationPct != null ? String(a.bonusDepreciationPct) : "60",
   };
 }
 
@@ -106,6 +210,7 @@ export default function Assets() {
   const [uploadingId, setUploadingId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [formFile, setFormFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formFileInputRef = useRef<HTMLInputElement>(null);
   const uploadAssetRef = useRef<number | null>(null);
@@ -173,6 +278,10 @@ export default function Assets() {
       status: form.status,
       saleDate: form.saleDate || null,
       salePrice: form.salePrice ? parseFloat(form.salePrice) : null,
+      usefulLifeYears: form.usefulLifeYears ? parseInt(form.usefulLifeYears) : null,
+      salvageValue: form.salvageValue !== "" ? parseFloat(form.salvageValue) : 0,
+      depreciationMethod: form.depreciationMethod || "straight-line",
+      bonusDepreciationPct: form.bonusDepreciationPct ? parseInt(form.bonusDepreciationPct) : 60,
     };
     if (!payload.name || !payload.purchaseDate || isNaN(payload.purchasePrice)) {
       toast({ title: "Name, purchase date, and purchase price are required", variant: "destructive" });
@@ -226,7 +335,6 @@ export default function Assets() {
     const file = e.target.files?.[0];
     const assetId = uploadAssetRef.current;
     if (!file || !assetId) return;
-
     setUploadingId(assetId);
     const fd = new FormData();
     fd.append("receipt", file);
@@ -249,20 +357,24 @@ export default function Assets() {
   }
 
   const filtered = assets.filter(a => filterStatus === "all" || a.status === filterStatus);
-  const totalValue = assets.reduce((s, a) => s + a.purchasePrice, 0);
-  const activeCount = assets.filter(a => a.status === "active").length;
+  const activeAssets = assets.filter(a => a.status === "active");
   const soldCount = assets.filter(a => a.status === "sold").length;
   const retiredCount = assets.filter(a => a.status === "retired").length;
 
+  const totalCostBasis = assets.reduce((s, a) => s + a.purchasePrice, 0);
+  const currentYearNum = CURRENT_YEAR;
+  const totalAccumulated = activeAssets.reduce((s, a) => s + getAccumulatedDepreciation(a, currentYearNum), 0);
+  const totalBookValue = activeAssets.reduce((s, a) => {
+    const bv = getBookValue(a, currentYearNum);
+    return s + bv;
+  }, 0);
+
   const s179Assets = assets.filter(a =>
-    a.section179Eligible &&
-    a.purchaseDate?.startsWith(selectedYear)
+    a.section179Eligible && a.purchaseDate?.startsWith(selectedYear)
   );
   const s179Total = s179Assets.reduce((s, a) => s + a.purchasePrice, 0);
 
-  const [isSaving, setIsSaving] = useState(false);
-
-  const yearOptions = Array.from({ length: 5 }, (_, i) => (CURRENT_YEAR - i).toString());
+  const yearOptions = Array.from({ length: 6 }, (_, i) => (CURRENT_YEAR - i).toString());
 
   return (
     <div className="space-y-6">
@@ -280,7 +392,7 @@ export default function Assets() {
             <Wrench className="w-6 h-6 text-primary" />
             Equipment & Assets
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Track business equipment, vehicles, and tools for Section 179 deductions</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Track equipment, vehicles, and tools — with depreciation schedules for tax planning</p>
         </div>
         <button
           onClick={openAdd}
@@ -291,29 +403,37 @@ export default function Assets() {
         </button>
       </div>
 
+      {/* Summary bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card border border-border rounded-xl p-4 space-y-1">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide">
-            <DollarSign className="w-3.5 h-3.5" /> Total Asset Value
+            <DollarSign className="w-3.5 h-3.5" /> Cost Basis
           </div>
-          <div className="text-2xl font-bold text-foreground">{fmt(totalValue)}</div>
+          <div className="text-2xl font-bold text-foreground">{fmt(totalCostBasis)}</div>
+          <div className="text-xs text-muted-foreground">{assets.length} total asset{assets.length !== 1 ? "s" : ""}</div>
         </div>
         <div className="bg-card border border-border rounded-xl p-4 space-y-1">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide">
-            <BarChart2 className="w-3.5 h-3.5" /> Active / Sold / Retired
+            <TrendingDown className="w-3.5 h-3.5 text-orange-500" /> Accumulated Depr.
           </div>
-          <div className="text-2xl font-bold text-foreground">
-            <span className="text-green-700">{activeCount}</span>
-            <span className="text-muted-foreground text-lg"> / </span>
-            <span className="text-blue-700">{soldCount}</span>
-            <span className="text-muted-foreground text-lg"> / </span>
-            <span className="text-gray-500">{retiredCount}</span>
+          <div className="text-2xl font-bold text-orange-600">{fmt(totalAccumulated)}</div>
+          <div className="text-xs text-muted-foreground">active assets thru {currentYearNum}</div>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-1">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            <BarChart2 className="w-3.5 h-3.5 text-blue-500" /> Book Value
+          </div>
+          <div className="text-2xl font-bold text-blue-700">{fmt(totalBookValue)}</div>
+          <div className="text-xs text-muted-foreground">
+            <span className="text-green-600 font-medium">{activeAssets.length}</span> active ·{" "}
+            <span className="text-blue-600">{soldCount}</span> sold ·{" "}
+            <span className="text-gray-500">{retiredCount}</span> retired
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl p-4 space-y-1 col-span-2">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide">
-              <BadgeCheck className="w-3.5 h-3.5 text-amber-600" /> Sec. 179 Eligible
+              <BadgeCheck className="w-3.5 h-3.5 text-amber-600" /> Sec. 179
             </div>
             <select
               value={selectedYear}
@@ -324,10 +444,11 @@ export default function Assets() {
             </select>
           </div>
           <div className="text-2xl font-bold text-amber-700">{fmt(s179Total)}</div>
-          <div className="text-xs text-muted-foreground">{s179Assets.length} eligible purchase{s179Assets.length !== 1 ? "s" : ""} in {selectedYear}</div>
+          <div className="text-xs text-muted-foreground">{s179Assets.length} eligible in {selectedYear}</div>
         </div>
       </div>
 
+      {/* Status filter */}
       <div className="flex gap-2 flex-wrap">
         {(["all", ...ASSET_STATUSES] as const).map(s => (
           <button
@@ -360,6 +481,15 @@ export default function Assets() {
           {filtered.map(asset => {
             const Icon = TYPE_ICON[asset.assetType] ?? Wrench;
             const isExpanded = expandedId === asset.id;
+            const schedule = calcDepreciationSchedule(asset);
+            const hasSchedule = schedule.length > 0;
+            const accumThisYear = getAccumulatedDepreciation(asset, currentYearNum);
+            const bookValueNow = getBookValue(asset, currentYearNum);
+
+            const saleGainLoss = (asset.status === "sold" || asset.status === "retired") && asset.saleDate && asset.salePrice != null
+              ? asset.salePrice - getBookValue(asset, getPurchaseYear(asset.saleDate))
+              : null;
+
             return (
               <div key={asset.id} className="bg-card border border-border rounded-xl overflow-hidden">
                 <div
@@ -385,6 +515,12 @@ export default function Assets() {
                       <span>{asset.assetType}</span>
                       <span>·</span>
                       <span>{fmt(asset.purchasePrice)}</span>
+                      {hasSchedule && asset.status === "active" && (
+                        <>
+                          <span>·</span>
+                          <span className="text-blue-600 font-medium">Book: {fmt(bookValueNow)}</span>
+                        </>
+                      )}
                       <span>·</span>
                       <span>{parseDate(asset.purchaseDate)}</span>
                       {asset.vendor && <><span>·</span><span>{asset.vendor}</span></>}
@@ -422,12 +558,33 @@ export default function Assets() {
                 </div>
 
                 {isExpanded && (
-                  <div className="px-4 pb-4 pt-0 border-t border-border space-y-3">
+                  <div className="px-4 pb-4 pt-0 border-t border-border space-y-4">
+                    {/* Basic details */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
                       {asset.serialNumber && (
                         <div>
                           <div className="text-xs text-muted-foreground">Serial #</div>
                           <div className="text-sm font-medium">{asset.serialNumber}</div>
+                        </div>
+                      )}
+                      {asset.usefulLifeYears && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">Useful Life</div>
+                          <div className="text-sm font-medium">{asset.usefulLifeYears} years</div>
+                        </div>
+                      )}
+                      {asset.depreciationMethod && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">Method</div>
+                          <div className="text-sm font-medium">
+                            {DEPRECIATION_METHODS.find(m => m.value === asset.depreciationMethod)?.label ?? asset.depreciationMethod}
+                          </div>
+                        </div>
+                      )}
+                      {(asset.salvageValue ?? 0) > 0 && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">Salvage Value</div>
+                          <div className="text-sm font-medium">{fmt(asset.salvageValue ?? 0)}</div>
                         </div>
                       )}
                       {asset.status === "sold" && asset.saleDate && (
@@ -444,10 +601,84 @@ export default function Assets() {
                       )}
                     </div>
 
+                    {/* Disposal gain/loss */}
+                    {saleGainLoss !== null && (
+                      <div className={cn(
+                        "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold",
+                        saleGainLoss >= 0
+                          ? "bg-green-50 border-green-200 text-green-800"
+                          : "bg-red-50 border-red-200 text-red-800"
+                      )}>
+                        <TrendingDown className="w-4 h-4 flex-shrink-0" />
+                        <span>
+                          {saleGainLoss >= 0 ? "Gain on disposal:" : "Loss on disposal:"}
+                          {" "}
+                          <span className="font-bold">{fmt(Math.abs(saleGainLoss))}</span>
+                          <span className="text-xs font-normal ml-1">(sale price − book value at disposal)</span>
+                        </span>
+                      </div>
+                    )}
+
                     {asset.notes && (
                       <div>
                         <div className="text-xs text-muted-foreground mb-0.5">Notes</div>
                         <div className="text-sm text-foreground">{asset.notes}</div>
+                      </div>
+                    )}
+
+                    {/* Depreciation schedule */}
+                    {hasSchedule && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <TrendingDown className="w-3.5 h-3.5 text-orange-500" />
+                          <span className="text-xs font-semibold text-foreground uppercase tracking-wide">Depreciation Schedule</span>
+                          {asset.status === "active" && (
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              Accumulated thru {currentYearNum}: <span className="font-semibold text-orange-600">{fmt(accumThisYear)}</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="overflow-x-auto rounded-xl border border-border">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-muted/50 border-b border-border">
+                                <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Year</th>
+                                <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Annual Deduction</th>
+                                <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Accumulated</th>
+                                <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Book Value</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {schedule.map((row, i) => {
+                                const isCurrent = row.year === currentYearNum;
+                                const isPast = row.year < currentYearNum;
+                                return (
+                                  <tr
+                                    key={i}
+                                    className={cn(
+                                      isCurrent ? "bg-primary/5 font-semibold" : isPast ? "opacity-60" : ""
+                                    )}
+                                  >
+                                    <td className="px-3 py-2 text-left">
+                                      {row.year}
+                                      {isCurrent && <span className="ml-1 text-[10px] text-primary font-bold">← now</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-orange-600">{row.annualDeduction > 0 ? fmt(row.annualDeduction) : "—"}</td>
+                                    <td className="px-3 py-2 text-right text-muted-foreground">{fmt(row.accumulated)}</td>
+                                    <td className="px-3 py-2 text-right text-blue-700">{fmt(row.bookValue)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {!hasSchedule && (
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-muted/30 border border-border text-xs text-muted-foreground">
+                        <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                        Edit this asset and add a useful life to see the depreciation schedule.
                       </div>
                     )}
 
@@ -479,6 +710,7 @@ export default function Assets() {
         </div>
       )}
 
+      {/* Section 179 summary panel */}
       {s179Assets.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-3">
           <h3 className="font-semibold text-amber-900 flex items-center gap-2">
@@ -501,6 +733,7 @@ export default function Assets() {
         </div>
       )}
 
+      {/* Add/Edit form modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={closeForm} />
@@ -514,6 +747,7 @@ export default function Assets() {
 
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Name */}
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-foreground mb-1">Asset Name <span className="text-destructive">*</span></label>
                   <input
@@ -526,17 +760,26 @@ export default function Assets() {
                   />
                 </div>
 
+                {/* Type */}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Type</label>
                   <select
                     value={form.assetType}
-                    onChange={e => setForm(f => ({ ...f, assetType: e.target.value as AssetType }))}
+                    onChange={e => {
+                      const t = e.target.value as AssetType;
+                      setForm(f => ({
+                        ...f,
+                        assetType: t,
+                        usefulLifeYears: TYPE_USEFUL_LIFE[t] != null ? String(TYPE_USEFUL_LIFE[t]) : f.usefulLifeYears,
+                      }));
+                    }}
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
                     {ASSET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
 
+                {/* Status */}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Status</label>
                   <select
@@ -548,6 +791,7 @@ export default function Assets() {
                   </select>
                 </div>
 
+                {/* Purchase date */}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Purchase Date <span className="text-destructive">*</span></label>
                   <input
@@ -559,6 +803,7 @@ export default function Assets() {
                   />
                 </div>
 
+                {/* Purchase price */}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">Purchase Price <span className="text-destructive">*</span></label>
                   <div className="relative">
@@ -576,30 +821,100 @@ export default function Assets() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Vendor / Dealer</label>
-                  <input
-                    type="text"
-                    value={form.vendor}
-                    onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))}
-                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    placeholder="Optional"
-                  />
+                {/* Depreciation section heading */}
+                <div className="sm:col-span-2 pt-1">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide pb-1 border-b border-border">
+                    <TrendingDown className="w-3.5 h-3.5 text-orange-500" />
+                    Depreciation Settings
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Serial Number</label>
-                  <input
-                    type="text"
-                    value={form.serialNumber}
-                    onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))}
-                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    placeholder="Optional"
-                  />
+                {/* Depreciation method */}
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">Depreciation Method</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {DEPRECIATION_METHODS.map(m => (
+                      <button
+                        key={m.value}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, depreciationMethod: m.value }))}
+                        className={cn(
+                          "text-left px-3 py-2.5 rounded-xl border transition-all",
+                          form.depreciationMethod === m.value
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border bg-background hover:border-primary/40"
+                        )}
+                      >
+                        <div className="text-sm font-semibold text-foreground">{m.label}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{m.description}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {(form.status === "sold") && (
+                {/* Useful life */}
+                {form.depreciationMethod !== "section-179" && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Useful Life (years)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={form.usefulLifeYears}
+                      onChange={e => setForm(f => ({ ...f, usefulLifeYears: e.target.value }))}
+                      className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="e.g. 5"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Preset by type — edit if needed</p>
+                  </div>
+                )}
+
+                {/* Salvage value */}
+                {form.depreciationMethod !== "section-179" && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Salvage Value</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.salvageValue}
+                        onChange={e => setForm(f => ({ ...f, salvageValue: e.target.value }))}
+                        className="w-full border border-border rounded-lg pl-6 pr-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Estimated value at end of useful life</p>
+                  </div>
+                )}
+
+                {/* Bonus % */}
+                {form.depreciationMethod === "bonus" && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Bonus % (Year 1)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={form.bonusDepreciationPct}
+                        onChange={e => setForm(f => ({ ...f, bonusDepreciationPct: e.target.value }))}
+                        className="w-full border border-border rounded-lg px-3 pr-8 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        placeholder="60"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Default 60% for 2024; check IRS for current year rate</p>
+                  </div>
+                )}
+
+                {/* Sale fields */}
+                {form.status === "sold" && (
                   <>
+                    <div className="sm:col-span-2 pt-1">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pb-1 border-b border-border">Disposal Details</div>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-1">Sale Date</label>
                       <input
@@ -627,6 +942,29 @@ export default function Assets() {
                   </>
                 )}
 
+                {/* Vendor / Serial */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Vendor / Dealer</label>
+                  <input
+                    type="text"
+                    value={form.vendor}
+                    onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Serial Number</label>
+                  <input
+                    type="text"
+                    value={form.serialNumber}
+                    onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Optional"
+                  />
+                </div>
+
+                {/* Notes */}
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-foreground mb-1">Notes</label>
                   <textarea
@@ -638,6 +976,7 @@ export default function Assets() {
                   />
                 </div>
 
+                {/* Receipt */}
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-foreground mb-1">Receipt / Photo</label>
                   <input
@@ -647,14 +986,13 @@ export default function Assets() {
                     onChange={e => setFormFile(e.target.files?.[0] ?? null)}
                     className="w-full text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
                   />
-                  {formFile && (
-                    <p className="text-xs text-muted-foreground mt-1">Selected: {formFile.name}</p>
-                  )}
+                  {formFile && <p className="text-xs text-muted-foreground mt-1">Selected: {formFile.name}</p>}
                   {editAsset?.receiptUrl && !formFile && (
                     <p className="text-xs text-muted-foreground mt-1">Current receipt on file — select a file to replace it</p>
                   )}
                 </div>
 
+                {/* Section 179 toggle */}
                 <div className="sm:col-span-2">
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div
@@ -673,7 +1011,7 @@ export default function Assets() {
                       <div className="text-sm font-medium text-foreground flex items-center gap-1">
                         <BadgeCheck className="w-4 h-4 text-amber-600" /> Section 179 Eligible
                       </div>
-                      <div className="text-xs text-muted-foreground">Include full purchase price in the current-year deduction total</div>
+                      <div className="text-xs text-muted-foreground">Include full purchase price in the Section 179 deduction total</div>
                     </div>
                   </label>
                 </div>
