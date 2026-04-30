@@ -322,6 +322,33 @@ export default function RoutePlanner() {
       (j.status === "scheduled" || j.status === "in_progress")
     ), [allJobs]);
 
+  const asphaltJobsByClientId = useMemo(() => {
+    const map = new Map<number, typeof asphaltJobs>();
+    for (const j of asphaltJobs) {
+      if (j.clientId != null) {
+        if (!map.has(j.clientId)) map.set(j.clientId, []);
+        map.get(j.clientId)!.push(j);
+      }
+    }
+    return map;
+  }, [asphaltJobs]);
+
+  function pickJobForStop(stop: RouteStop) {
+    if (stop.clientId == null) return undefined;
+    const jobs = asphaltJobsByClientId.get(stop.clientId);
+    if (!jobs || jobs.length === 0) return undefined;
+    if (jobs.length === 1) return jobs[0];
+    // Prefer a job whose date range overlaps the stop's scheduled date
+    if (stop.scheduledDate) {
+      const dateMatch = jobs.find(j =>
+        (!j.startDate || j.startDate <= stop.scheduledDate!) &&
+        (!j.endDate || j.endDate >= stop.scheduledDate!)
+      );
+      if (dateMatch) return dateMatch;
+    }
+    return jobs[0];
+  }
+
   const jobsWithSqFt = useMemo(() => asphaltJobs.filter(j => j.sqFt != null && j.sqFt > 0), [asphaltJobs]);
   const jobsWithoutSqFt = useMemo(() => asphaltJobs.filter(j => j.sqFt == null || j.sqFt === 0), [asphaltJobs]);
 
@@ -1190,7 +1217,9 @@ export default function RoutePlanner() {
             if (!hasBlocks) {
               return (
                 <div className="divide-y divide-border">
-                  {displayStops.map((stop, idx) => (
+                  {displayStops.map((stop, idx) => {
+                    const linkedJob = pickJobForStop(stop);
+                    return (
                     <StopCard
                       key={stop.id}
                       stop={stop}
@@ -1223,6 +1252,8 @@ export default function RoutePlanner() {
                       geocoding={geocoding}
                       isOptimized={!!optimizedOrder}
                       retryGeocoding={retryingGeocodeId === stop.id}
+                      jobSqFt={linkedJob?.sqFt ?? null}
+                      jobCoats={linkedJob?.coats ?? null}
                       onRetryGeocode={async () => {
                         setRetryingGeocodeId(stop.id);
                         const coords = await geocodeAddress(stop.address, BASE);
@@ -1234,7 +1265,8 @@ export default function RoutePlanner() {
                         }
                       }}
                     />
-                  ))}
+                    );
+                  })}
                 </div>
               );
             }
@@ -1364,6 +1396,7 @@ export default function RoutePlanner() {
                       <div className="divide-y divide-border">
                         {stopsInBlock.map((stop) => {
                           const idx = displayStops.indexOf(stop);
+                          const linkedJob = pickJobForStop(stop);
                           return (
                             <StopCard
                               key={stop.id}
@@ -1397,6 +1430,8 @@ export default function RoutePlanner() {
                               geocoding={geocoding}
                               isOptimized={!!optimizedOrder}
                               retryGeocoding={retryingGeocodeId === stop.id}
+                              jobSqFt={linkedJob?.sqFt ?? null}
+                              jobCoats={linkedJob?.coats ?? null}
                               onRetryGeocode={async () => {
                                 setRetryingGeocodeId(stop.id);
                                 const coords = await geocodeAddress(stop.address, BASE);
@@ -1528,6 +1563,8 @@ interface StopCardProps {
   isOptimized: boolean;
   onRetryGeocode: () => void;
   retryGeocoding: boolean;
+  jobSqFt?: number | null;
+  jobCoats?: number | null;
 }
 
 function StopCard({
@@ -1536,6 +1573,7 @@ function StopCard({
   onDelete, onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
   isSaving, geocoding, isOptimized, onRetryGeocode, retryGeocoding,
+  jobSqFt, jobCoats,
 }: StopCardProps) {
   const cfg = STATUS_CONFIG[stop.status];
 
@@ -1668,6 +1706,14 @@ function StopCard({
             {stop.estimatedDurationMinutes && (
               <span className="flex items-center gap-0.5">
                 <Clock className="w-3 h-3" />{stop.estimatedDurationMinutes} min
+              </span>
+            )}
+            {jobSqFt != null && jobSqFt > 0 && (
+              <span className="flex items-center gap-0.5 text-primary/80 font-medium">
+                <SquareStack className="w-3 h-3" />{jobSqFt.toLocaleString()} sq ft
+                {jobCoats != null && jobCoats > 1 && (
+                  <span className="ml-0.5 text-muted-foreground font-normal">× {jobCoats}</span>
+                )}
               </span>
             )}
           </div>
