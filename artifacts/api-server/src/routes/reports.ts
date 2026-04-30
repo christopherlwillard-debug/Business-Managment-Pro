@@ -44,47 +44,66 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Validate blFilter — only allow known values
     const validBl = blFilter && (KNOWN_BL as readonly string[]).includes(blFilter) ? blFilter : null;
 
-    const [allInvoicesRaw, allExpensesRaw, allMileage, allOtherIncomeRaw, allActiveJobsRaw, recentJobsRows, recentInvoicesRows] = await Promise.all([
-      db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate))),
+    // Build optional DB-level business-line WHERE condition (returns undefined when no filter = AND ignores it)
+    const blWhere = (col: Parameters<typeof eq>[0]) =>
+      validBl ? eq(col, validBl) : undefined;
+
+    // Fetch KPI data with DB-level business-line WHERE when validBl is set,
+    // plus full (unfiltered) data in parallel for the byBusinessLine breakdown.
+    const [
+      kpiInvoices, kpiExpenses, allMileage, kpiOtherIncome, kpiActiveJobs,
+      recentJobsRows, recentInvoicesRows,
+    ] = await Promise.all([
+      // KPI queries — DB-level filter applied when validBl is set
+      db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine))),
+      // Mileage has no businessLine column — always fetch full YTD
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
-      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
-      db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
+      db.select().from(jobsTable).where(and(eq(jobsTable.status, "in_progress"), blWhere(jobsTable.businessLine))),
+      // Recent rows — always unfiltered
       db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, estimatedAmount: jobsTable.estimatedAmount, actualAmount: jobsTable.actualAmount, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
       db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
     ]);
 
-    // Apply business-line filter to the main metric datasets when requested
-    const allInvoices = validBl ? allInvoicesRaw.filter(i => i.businessLine === validBl) : allInvoicesRaw;
-    const allExpenses = validBl ? allExpensesRaw.filter(e => e.businessLine === validBl) : allExpensesRaw;
-    const allOtherIncome = validBl ? allOtherIncomeRaw.filter(o => o.businessLine === validBl) : allOtherIncomeRaw;
-    const activeJobsRows = validBl ? allActiveJobsRaw.filter(j => j.businessLine === validBl) : allActiveJobsRaw;
+    // Fetch full (unfiltered) data for byBusinessLine breakdown.
+    // When no filter is active, KPI data == full data — reuse it to avoid extra queries.
+    const [rawInvoices, rawExpenses, rawOtherIncome, rawActiveJobs] = validBl
+      ? await Promise.all([
+          db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
+          db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate))),
+          db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
+          db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
+        ])
+      : [kpiInvoices, kpiExpenses, kpiOtherIncome, kpiActiveJobs];
 
-    const invoiceRevenue = allInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-    const otherIncomeTotal = allOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+    const invoiceRevenue = kpiInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const otherIncomeTotal = kpiOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
-    const pendingInvoices = allInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-    const overdueInvoices = allInvoices.filter(i => i.status === "overdue").length;
-    const nonMileageExpenses = allExpenses.filter(e => e.category !== "mileage");
+    const pendingInvoices = kpiInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const overdueInvoices = kpiInvoices.filter(i => i.status === "overdue").length;
+    const nonMileageExpenses = kpiExpenses.filter(e => e.category !== "mileage");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const excludedFromProfitFormula = nonMileageExpenses
       .filter(e => e.excludeFromNetProfit)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    const excludedFromProfit = allExpenses
+    const excludedFromProfit = kpiExpenses
       .filter(e => e.excludeFromNetProfit)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    const excludedExpenseCount = allExpenses.filter(e => e.excludeFromNetProfit).length;
+    const excludedExpenseCount = kpiExpenses.filter(e => e.excludeFromNetProfit).length;
     const mileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
-    const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageDeduction;
+    // Mileage cannot be attributed to a single business line — exclude from filtered net profit
+    const mileageForNetProfit = validBl ? 0 : mileageDeduction;
+    const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;
     const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
-    // Profit by business line breakdown (always computed from unfiltered data)
+    // Profit by business line breakdown — always computed from full (unfiltered) data
     const byBusinessLine = KNOWN_BL.map(bl => {
-      const blInvoices = allInvoicesRaw.filter(i => i.businessLine === bl);
-      const blOther = allOtherIncomeRaw.filter(o => o.businessLine === bl);
-      const blExpenses = allExpensesRaw.filter(e => e.businessLine === bl && e.category !== "mileage");
-      const blActiveJobs = allActiveJobsRaw.filter(j => j.businessLine === bl);
+      const blInvoices = rawInvoices.filter(i => i.businessLine === bl);
+      const blOther = rawOtherIncome.filter(o => o.businessLine === bl);
+      const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage");
+      const blActiveJobs = rawActiveJobs.filter(j => j.businessLine === bl);
       const blRevenue = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -99,33 +118,30 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
-    // Monthly revenue for last 6 months
+    // Monthly revenue for last 6 months — DB-level filter applied for chart data
     const monthlyRevenue = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now);
       d.setMonth(d.getMonth() - i);
       const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const [monthlyInv, monthlyExp, monthlyOther] = await Promise.all([
-        db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-31`))),
-        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-31`))),
-        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-31`))),
+        db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-31`), blWhere(invoicesTable.businessLine))),
+        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-31`), blWhere(expensesTable.businessLine))),
+        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-31`), blWhere(otherIncomeTable.businessLine))),
       ]);
-      const filteredInv = validBl ? monthlyInv.filter(i => i.businessLine === validBl) : monthlyInv;
-      const filteredExp = validBl ? monthlyExp.filter(e => e.businessLine === validBl) : monthlyExp;
-      const filteredOther = validBl ? monthlyOther.filter(o => o.businessLine === validBl) : monthlyOther;
-      const invRevenue = filteredInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-      const othRevenue = filteredOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const invRevenue = monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       monthlyRevenue.push({
         month: monthStr,
         revenue: invRevenue + othRevenue,
-        expenses: filteredExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+        expenses: monthlyExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
       });
     }
 
     res.json({
       totalRevenue,
       pendingInvoices,
-      activeJobs: activeJobsRows.length,
+      activeJobs: kpiActiveJobs.length,
       totalExpenses,
       mileageDeduction,
       ytdMiles,

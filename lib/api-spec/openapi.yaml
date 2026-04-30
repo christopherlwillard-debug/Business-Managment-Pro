@@ -1333,6 +1333,12 @@ paths:
           schema:
             type: string
             enum: [week, month, quarter, year]
+        - name: businessLine
+          in: query
+          schema:
+            type: string
+            enum: [asphalt_sealing, general_contracting]
+          description: Filter all KPI metrics to a single business line
       responses:
         "200":
           description: Dashboard stats
@@ -2574,6 +2580,32 @@ components:
               expenses:
                 type: number
             required: [month, revenue, expenses]
+        operationalNetProfit:
+          type: number
+        excludedFromProfit:
+          type: number
+        formulaExcludedFromProfit:
+          type: number
+        excludedExpenseCount:
+          type: integer
+        byBusinessLine:
+          type: array
+          items:
+            type: object
+            properties:
+              businessLine:
+                type: string
+              label:
+                type: string
+              totalRevenue:
+                type: number
+              totalExpenses:
+                type: number
+              operationalNetProfit:
+                type: number
+              activeJobs:
+                type: integer
+            required: [businessLine, label, totalRevenue, totalExpenses, operationalNetProfit, activeJobs]
       required: [totalRevenue, pendingInvoices, activeJobs, totalExpenses, mileageDeduction, overdueInvoices, recentJobs, recentInvoices, monthlyRevenue]
 
     ComplianceReport:

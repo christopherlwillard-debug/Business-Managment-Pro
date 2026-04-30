@@ -921,6 +921,11 @@ function JobCard({
                   GC
                 </span>
               )}
+              {job.jobType && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground">
+                  {job.jobType}
+                </span>
+              )}
             </div>
             {job.estimatedAmount && (
               <p className="text-amber-600 font-bold text-sm">{formatCurrency(job.estimatedAmount)}</p>
