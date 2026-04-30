@@ -1151,8 +1151,8 @@ function JobFormDialog({
         notes: editJob.notes ?? "",
         businessLine: (editJob.businessLine as "" | "general_contracting" | "asphalt_sealing") ?? "",
         jobType: editJob.jobType ?? "",
-        sqFt: editJob.sqFt ? String(editJob.sqFt) : "",
-        coats: editJob.coats ? String(editJob.coats) : "1",
+        sqFt: editJob.sqFt != null ? String(editJob.sqFt) : "",
+        coats: editJob.coats != null ? String(editJob.coats) : "1",
       };
     }
     return {
@@ -1205,8 +1205,8 @@ function JobFormDialog({
         notes: form.notes || undefined,
         businessLine: form.businessLine || undefined,
         jobType: form.jobType || undefined,
-        sqFt: form.businessLine === "asphalt_sealing" && form.sqFt ? parseInt(form.sqFt) : undefined,
-        coats: form.businessLine === "asphalt_sealing" && form.coats ? parseInt(form.coats) : undefined,
+        sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
+        coats: form.businessLine === "asphalt_sealing" && form.coats !== "" ? parseInt(form.coats) : undefined,
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });

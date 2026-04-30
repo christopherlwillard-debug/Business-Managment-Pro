@@ -323,7 +323,7 @@ export default function RoutePlanner() {
     ), [allJobs]);
 
   const jobsWithSqFt = useMemo(() => asphaltJobs.filter(j => j.sqFt != null && j.sqFt > 0), [asphaltJobs]);
-  const jobsWithoutSqFt = useMemo(() => asphaltJobs.filter(j => !j.sqFt), [asphaltJobs]);
+  const jobsWithoutSqFt = useMemo(() => asphaltJobs.filter(j => j.sqFt == null || j.sqFt === 0), [asphaltJobs]);
 
   const jobsWithSqFtKey = jobsWithSqFt.map(j => j.id).sort((a, b) => a - b).join(",");
   useEffect(() => {
