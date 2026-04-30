@@ -3721,14 +3721,741 @@ function ReconcileTab() {
   );
 }
 
+// ─── Year-End Accountant Report ──────────────────────────────────────────────
+
+interface YearEndReport {
+  year: number;
+  generatedAt: string;
+  companyName: string;
+  summary: {
+    grossReceipts: number;
+    otherIncomeTotal: number;
+    totalRevenue: number;
+    totalExpenses: number;
+    mileageDeduction: number;
+    mileageRate: number;
+    totalMiles: number;
+    totalDepreciation: number;
+    netProfit: number;
+  };
+  taxEstimates: {
+    selfEmploymentTax: number;
+    federalIncomeTax: number;
+    kyStateTax: number;
+    totalLiability: number;
+    totalPaid: number;
+    balance: number;
+  };
+  expensesBySchedC: { schedCLine: string; amount: number; count: number }[];
+  totalExpenses: number;
+  invoices: { invoiceNumber: string | null; issueDate: string; clientName: string; total: number; city: string; state: string }[];
+  otherIncome: { id: number; date: string; description: string; source: string | null; amount: number; paymentMethod: string | null }[];
+  mileage: { totalMiles: number; mileageRate: number; deduction: number; trips: number };
+  depreciation: {
+    rows: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; depreciationMethod: string; usefulLifeYears: number; annualDeduction: number; section179Eligible: boolean }[];
+    total: number;
+  };
+  disposedAssets: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; saleDate: string | null; salePrice: number; bookValue: number; gainLoss: number; status: string }[];
+  sub1099s: { id: number; name: string; ytdPayments: number; requires1099: boolean; w9OnFile: boolean; w9LegalName: string | null }[];
+  estimatedTaxPayments: { id: number; quarter: number; level: string; amountPaid: number; paidDate: string | null; paymentMethod: string | null; notes: string | null }[];
+}
+
+function useYearEndReport(year: number) {
+  return useQuery<YearEndReport>({
+    queryKey: ["year-end-report", year],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/reports/year-end?year=${year}`);
+      if (!res.ok) throw new Error("Failed to load year-end report");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+function fmtMoney(n: number) {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function buildCSVBlob(rows: string[][], title: string): string {
+  const header = title + "\n";
+  const body = rows.map(r => r.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  return header + body;
+}
+
+async function downloadYearEndZip(report: YearEndReport) {
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+  const year = report.year;
+
+  // 1. P&L Summary CSV
+  zip.file(`${year}_PL_Summary.csv`, buildCSVBlob([
+    ["Category", "Amount"],
+    ["Gross Receipts (Paid Invoices)", report.summary.grossReceipts.toFixed(2)],
+    ["Other Income", report.summary.otherIncomeTotal.toFixed(2)],
+    ["Total Revenue", report.summary.totalRevenue.toFixed(2)],
+    ["Total Expenses", (-report.summary.totalExpenses).toFixed(2)],
+    ["Mileage Deduction", (-report.summary.mileageDeduction).toFixed(2)],
+    ["Depreciation Deduction", (-report.summary.totalDepreciation).toFixed(2)],
+    ["Net Profit", report.summary.netProfit.toFixed(2)],
+  ], `${year} Profit & Loss Summary — ${report.companyName}`));
+
+  // 2. Expense Detail by Schedule C Category
+  zip.file(`${year}_Expenses_ScheduleC.csv`, buildCSVBlob([
+    ["Schedule C Line", "Amount", "# Transactions"],
+    ...report.expensesBySchedC.map(e => [e.schedCLine, e.amount.toFixed(2), String(e.count)]),
+    ["TOTAL", report.totalExpenses.toFixed(2), ""],
+  ], `${year} Expenses by Schedule C Category — ${report.companyName}`));
+
+  // 3. Paid Invoices
+  zip.file(`${year}_Paid_Invoices.csv`, buildCSVBlob([
+    ["Invoice #", "Date", "Client", "City", "State", "Total"],
+    ...report.invoices.map(i => [i.invoiceNumber ?? "", i.issueDate, i.clientName, i.city, i.state, i.total.toFixed(2)]),
+  ], `${year} Paid Invoices — ${report.companyName}`));
+
+  // 4. Mileage
+  zip.file(`${year}_Mileage.csv`, buildCSVBlob([
+    ["Field", "Value"],
+    ["Total Business Miles", report.mileage.totalMiles.toFixed(1)],
+    ["IRS Rate ($/mile)", report.mileage.mileageRate.toFixed(3)],
+    ["Total Deduction", report.mileage.deduction.toFixed(2)],
+    ["# Trips Logged", String(report.mileage.trips)],
+  ], `${year} Mileage Deduction — ${report.companyName}`));
+
+  // 5. Asset Depreciation
+  zip.file(`${year}_Asset_Depreciation.csv`, buildCSVBlob([
+    ["Asset", "Type", "Purchase Date", "Cost", "Method", "Life (yrs)", `${year} Deduction`],
+    ...report.depreciation.rows.map(r => [r.name, r.assetType, r.purchaseDate, r.purchasePrice.toFixed(2), r.depreciationMethod, String(r.usefulLifeYears), r.annualDeduction.toFixed(2)]),
+    ["TOTAL", "", "", "", "", "", report.depreciation.total.toFixed(2)],
+  ], `${year} Asset Depreciation — ${report.companyName}`));
+
+  // 6. Disposed Assets
+  if (report.disposedAssets.length > 0) {
+    zip.file(`${year}_Disposed_Assets.csv`, buildCSVBlob([
+      ["Asset", "Type", "Purchase Date", "Cost", "Sale Date", "Sale Price", "Book Value", "Gain / Loss"],
+      ...report.disposedAssets.map(a => [a.name, a.assetType, a.purchaseDate, a.purchasePrice.toFixed(2), a.saleDate ?? "", a.salePrice.toFixed(2), a.bookValue.toFixed(2), a.gainLoss.toFixed(2)]),
+    ], `${year} Disposed Assets — ${report.companyName}`));
+  }
+
+  // 7. 1099 Subcontractors
+  zip.file(`${year}_1099_Subcontractors.csv`, buildCSVBlob([
+    ["Name", "Total Paid", "Requires 1099", "W-9 on File", "Legal Name"],
+    ...report.sub1099s.map(s => [s.name, s.ytdPayments.toFixed(2), s.requires1099 ? "YES" : "NO", s.w9OnFile ? "Yes" : "No", s.w9LegalName ?? ""]),
+  ], `${year} 1099 Subcontractor Payments — ${report.companyName}`));
+
+  // 8. Estimated Tax Payments
+  zip.file(`${year}_Estimated_Tax_Payments.csv`, buildCSVBlob([
+    ["Quarter", "Level", "Amount Paid", "Date Paid", "Method", "Notes"],
+    ...report.estimatedTaxPayments.map(p => [`Q${p.quarter}`, p.level, p.amountPaid.toFixed(2), p.paidDate ?? "", p.paymentMethod ?? "", p.notes ?? ""]),
+    ["TOTAL", "", report.taxEstimates.totalPaid.toFixed(2), "", "", ""],
+  ], `${year} Estimated Tax Payments — ${report.companyName}`));
+
+  // 9. Other Income
+  if (report.otherIncome.length > 0) {
+    zip.file(`${year}_Other_Income.csv`, buildCSVBlob([
+      ["Date", "Description", "Source", "Amount", "Payment Method"],
+      ...report.otherIncome.map(o => [o.date, o.description, o.source ?? "", o.amount.toFixed(2), o.paymentMethod ?? ""]),
+    ], `${year} Other Income — ${report.companyName}`));
+  }
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${year}_Year_End_Report_${report.companyName.replace(/[^a-z0-9]/gi, "_")}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function printYearEndReport(report: YearEndReport) {
+  const win = window.open("", "_blank", "width=900,height=700");
+  if (!win) return;
+  const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const fmtN = (n: number) => n.toLocaleString("en-US");
+  const row = (label: string, value: string, bold = false, indent = false) =>
+    `<tr class="${bold ? "bold" : ""} ${indent ? "indent" : ""}"><td>${indent ? "&nbsp;&nbsp;&nbsp;" : ""}${label}</td><td class="num">${value}</td></tr>`;
+
+  const schedCRows = report.expensesBySchedC.map(e =>
+    row(e.schedCLine, fmt(e.amount), false, true)
+  ).join("");
+
+  const deprRows = report.depreciation.rows.map(r =>
+    `<tr><td>${r.name}</td><td>${r.assetType}</td><td>${r.purchaseDate}</td><td class="num">${fmt(r.purchasePrice)}</td><td>${r.depreciationMethod}</td><td class="num">${fmt(r.annualDeduction)}</td></tr>`
+  ).join("");
+
+  const disposedRows = report.disposedAssets.map(a =>
+    `<tr><td>${a.name}</td><td>${a.purchaseDate}</td><td>${a.saleDate ?? ""}</td><td class="num">${fmt(a.purchasePrice)}</td><td class="num">${fmt(a.salePrice)}</td><td class="num">${fmt(a.bookValue)}</td><td class="num ${a.gainLoss >= 0 ? "pos" : "neg"}">${fmt(a.gainLoss)}</td></tr>`
+  ).join("");
+
+  const sub1099Rows = report.sub1099s.map(s =>
+    `<tr><td>${s.name}</td><td>${s.w9LegalName ?? "—"}</td><td class="num">${fmt(s.ytdPayments)}</td><td>${s.requires1099 ? '<span class="badge-red">1099 Required</span>' : "Below threshold"}</td><td>${s.w9OnFile ? '<span class="badge-green">Yes</span>' : '<span class="badge-red">No</span>'}</td></tr>`
+  ).join("");
+
+  const taxPayRows = report.estimatedTaxPayments.map(p =>
+    `<tr><td>Q${p.quarter}</td><td>${p.level}</td><td class="num">${fmt(p.amountPaid)}</td><td>${p.paidDate ?? "—"}</td><td>${p.paymentMethod ?? ""}</td></tr>`
+  ).join("");
+
+  const otherIncomeRows = report.otherIncome.map(o =>
+    `<tr><td>${o.date}</td><td>${o.description}</td><td>${o.source ?? ""}</td><td class="num">${fmt(o.amount)}</td><td>${o.paymentMethod ?? ""}</td></tr>`
+  ).join("");
+
+  const isLoss = report.summary.netProfit < 0;
+  const netColor = isLoss ? "#dc2626" : "#16a34a";
+
+  win.document.write(`<!DOCTYPE html><html><head><title>${report.companyName} — ${report.year} Year-End Report</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;padding:40px;max-width:820px;margin:0 auto;line-height:1.5}
+h1{font-size:18px;margin:0 0 2px}
+.subtitle{color:#64748b;font-size:11px;margin-bottom:24px}
+h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#475569;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin:24px 0 8px}
+table{width:100%;border-collapse:collapse;margin-bottom:4px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;padding:4px 8px;border-bottom:2px solid #e2e8f0}
+td{padding:4px 8px;border-bottom:1px solid #f1f5f9}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.bold td{font-weight:700;background:#f8fafc}
+tr.indent td:first-child{padding-left:20px;color:#475569}
+.pos{color:#16a34a}
+.neg{color:#dc2626}
+.net-profit{text-align:center;margin:16px 0;padding:16px;border-radius:8px;background:${isLoss ? "#fef2f2" : "#f0fdf4"};border:2px solid ${isLoss ? "#fca5a5" : "#86efac"}}
+.net-profit .label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:${isLoss ? "#991b1b" : "#166534"}}
+.net-profit .value{font-size:26px;font-weight:800;color:${netColor}}
+.badge-red{background:#fee2e2;color:#dc2626;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600}
+.badge-green{background:#dcfce7;color:#16a34a;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600}
+.top-bar{position:fixed;top:12px;right:16px;display:flex;gap:8px;z-index:9999}
+.top-bar button{background:rgba(0,0,0,.78);color:#fff;border:none;padding:6px 14px;border-radius:16px;font-size:12px;font-weight:600;cursor:pointer}
+.footer{margin-top:32px;padding-top:8px;border-top:1px solid #e5e7eb;text-align:center;color:#94a3b8;font-size:10px}
+.page-break{page-break-before:always}
+@media print{.top-bar{display:none}}
+</style></head>
+<body>
+<div class="top-bar">
+  <button onclick="window.close()">&#8592; Close</button>
+  <button onclick="window.print()">&#128438; Print / PDF</button>
+</div>
+
+<h1>${report.companyName}</h1>
+<div class="subtitle">Year-End Accountant Report &bull; Tax Year ${report.year} &bull; Cash Basis &bull; Generated ${new Date(report.generatedAt).toLocaleDateString("en-US")}</div>
+
+<h2>Profit &amp; Loss Summary</h2>
+<table>
+<tr><th>Category</th><th class="num">Amount</th></tr>
+${row("Gross Receipts (Paid Invoices)", fmt(report.summary.grossReceipts), false, true)}
+${report.summary.otherIncomeTotal > 0 ? row("Other Income", fmt(report.summary.otherIncomeTotal), false, true) : ""}
+${row("Total Revenue", fmt(report.summary.totalRevenue), true)}
+${row("Total Expenses", fmt(-report.summary.totalExpenses), false, true)}
+${row(`Mileage Deduction (${report.summary.totalMiles.toFixed(0)} mi @ $${report.summary.mileageRate}/mi)`, fmt(-report.summary.mileageDeduction), false, true)}
+${report.summary.totalDepreciation > 0 ? row("Asset Depreciation", fmt(-report.summary.totalDepreciation), false, true) : ""}
+</table>
+<div class="net-profit"><div class="label">${isLoss ? "Net Loss" : "Net Profit"}</div><div class="value">${fmt(Math.abs(report.summary.netProfit))}</div></div>
+
+<h2>Expenses by Schedule C Line</h2>
+<table>
+<tr><th>Schedule C Line</th><th class="num">Amount</th><th class="num"># Items</th></tr>
+${schedCRows}
+${row("Total Expenses", fmt(report.totalExpenses), true)}
+</table>
+
+${report.depreciation.rows.length > 0 ? `
+<h2 class="page-break">Asset Depreciation — ${report.year}</h2>
+<table>
+<tr><th>Asset</th><th>Type</th><th>Purchase Date</th><th class="num">Cost</th><th>Method</th><th class="num">${report.year} Deduction</th></tr>
+${deprRows}
+${row("Total Depreciation", fmt(report.depreciation.total), true)}
+</table>` : ""}
+
+${report.disposedAssets.length > 0 ? `
+<h2>Disposed Assets — ${report.year}</h2>
+<table>
+<tr><th>Asset</th><th>Purchased</th><th>Sold/Retired</th><th class="num">Cost</th><th class="num">Sale Price</th><th class="num">Book Value</th><th class="num">Gain / Loss</th></tr>
+${disposedRows}
+</table>` : ""}
+
+<h2>Mileage Deduction</h2>
+<table>
+<tr><th>Field</th><th class="num">Value</th></tr>
+${row("Business Miles Logged", `${fmtN(Math.round(report.mileage.totalMiles))} miles`)}
+${row(`IRS Rate (${report.year})`, `$${report.mileage.mileageRate.toFixed(3)}/mile`)}
+${row("Total Mileage Deduction", fmt(report.mileage.deduction), true)}
+${row("# Trips Recorded", fmtN(report.mileage.trips))}
+</table>
+
+${report.sub1099s.length > 0 ? `
+<h2>1099 Subcontractor Payments</h2>
+<table>
+<tr><th>Name</th><th>Legal Name (W-9)</th><th class="num">Total Paid</th><th>1099 Status</th><th>W-9 on File</th></tr>
+${sub1099Rows}
+</table>` : ""}
+
+${report.estimatedTaxPayments.length > 0 ? `
+<h2>Estimated Tax Payments Made</h2>
+<table>
+<tr><th>Quarter</th><th>Level</th><th class="num">Amount Paid</th><th>Date</th><th>Method</th></tr>
+${taxPayRows}
+${row("Total Paid", fmt(report.taxEstimates.totalPaid), true)}
+</table>` : ""}
+
+<h2>Estimated Tax Liability (CPA Reference)</h2>
+<table>
+<tr><th>Component</th><th class="num">Amount</th></tr>
+${row("Self-Employment Tax (15.3% × 92.35% of net profit)", fmt(report.taxEstimates.selfEmploymentTax), false, true)}
+${row("Federal Income Tax (22% bracket est.)", fmt(report.taxEstimates.federalIncomeTax), false, true)}
+${row("Kentucky State Income Tax (4%)", fmt(report.taxEstimates.kyStateTax), false, true)}
+${row("Total Estimated Tax Liability", fmt(report.taxEstimates.totalLiability), true)}
+${row("Estimated Tax Already Paid", fmt(-report.taxEstimates.totalPaid), false, true)}
+${row("Remaining Balance", fmt(report.taxEstimates.balance), true)}
+</table>
+
+${report.otherIncome.length > 0 ? `
+<h2>Other Income</h2>
+<table>
+<tr><th>Date</th><th>Description</th><th>Source</th><th class="num">Amount</th><th>Method</th></tr>
+${otherIncomeRows}
+</table>` : ""}
+
+<div class="footer">${report.companyName} &bull; Tax Year ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro &bull; For CPA Use</div>
+</body></html>`);
+  win.document.close();
+}
+
+function YearEndReportTab({ year }: { year: number }) {
+  const { data: report, isLoading, error, refetch } = useYearEndReport(year);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  async function handleDownload() {
+    if (!report) return;
+    setIsDownloading(true);
+    try {
+      await downloadYearEndZip(report);
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+        <RefreshCw className="w-8 h-8 animate-spin opacity-40" />
+        <p className="text-sm">Compiling {year} year-end report…</p>
+      </div>
+    );
+  }
+
+  if (error || !report) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3">
+        <AlertCircle className="w-8 h-8 text-destructive opacity-60" />
+        <p className="text-sm text-destructive">Failed to load year-end report.</p>
+        <button onClick={() => refetch()} className="text-xs text-primary hover:underline">Retry</button>
+      </div>
+    );
+  }
+
+  const isLoss = report.summary.netProfit < 0;
+
+  return (
+    <div className="space-y-6 pb-12">
+      {/* Header + Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-muted/40 rounded-xl border border-border">
+        <div>
+          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5 text-primary" />
+            {year} Year-End Accountant Report
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Complete financial summary for your CPA — cash basis, tax year {year}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => printYearEndReport(report)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-background text-sm font-medium hover:bg-muted/60 transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+            Print / PDF
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {isDownloading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {isDownloading ? "Preparing…" : "Download CSV Package"}
+          </button>
+        </div>
+      </div>
+
+      {/* P&L Summary */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-sm text-foreground">Profit &amp; Loss Summary</h3>
+        </div>
+        <div className="p-4 space-y-1">
+          <div className="flex justify-between items-center py-1.5 border-b border-border/50">
+            <span className="text-sm text-muted-foreground pl-4">Gross Receipts (Paid Invoices)</span>
+            <span className="text-sm font-medium tabular-nums">{fmtMoney(report.summary.grossReceipts)}</span>
+          </div>
+          {report.summary.otherIncomeTotal > 0 && (
+            <div className="flex justify-between items-center py-1.5 border-b border-border/50">
+              <span className="text-sm text-muted-foreground pl-4">Other Income</span>
+              <span className="text-sm font-medium tabular-nums">{fmtMoney(report.summary.otherIncomeTotal)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center py-1.5 border-b border-border font-semibold">
+            <span className="text-sm">Total Revenue</span>
+            <span className="text-sm tabular-nums">{fmtMoney(report.summary.totalRevenue)}</span>
+          </div>
+          <div className="flex justify-between items-center py-1.5 border-b border-border/50">
+            <span className="text-sm text-muted-foreground pl-4">Total Expenses</span>
+            <span className="text-sm font-medium tabular-nums text-red-600">({fmtMoney(report.summary.totalExpenses)})</span>
+          </div>
+          <div className="flex justify-between items-center py-1.5 border-b border-border/50">
+            <span className="text-sm text-muted-foreground pl-4">
+              Mileage Deduction ({report.summary.totalMiles.toFixed(0)} mi @ ${report.summary.mileageRate}/mi)
+            </span>
+            <span className="text-sm font-medium tabular-nums text-red-600">({fmtMoney(report.summary.mileageDeduction)})</span>
+          </div>
+          {report.summary.totalDepreciation > 0 && (
+            <div className="flex justify-between items-center py-1.5 border-b border-border/50">
+              <span className="text-sm text-muted-foreground pl-4">Asset Depreciation</span>
+              <span className="text-sm font-medium tabular-nums text-red-600">({fmtMoney(report.summary.totalDepreciation)})</span>
+            </div>
+          )}
+          <div className={`flex justify-between items-center py-3 px-4 mt-2 rounded-lg ${isLoss ? "bg-red-50 border border-red-200" : "bg-emerald-50 border border-emerald-200"}`}>
+            <span className={`font-bold text-sm ${isLoss ? "text-red-700" : "text-emerald-700"}`}>
+              {isLoss ? "Net Loss" : "Net Profit"}
+            </span>
+            <span className={`text-xl font-bold tabular-nums ${isLoss ? "text-red-600" : "text-emerald-600"}`}>
+              {fmtMoney(Math.abs(report.summary.netProfit))}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Expenses by Schedule C */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <Receipt className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-sm text-foreground">Expenses by Schedule C Category</h3>
+        </div>
+        {report.expensesBySchedC.length === 0 ? (
+          <p className="text-sm text-muted-foreground p-4">No expenses recorded for {year}.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Schedule C Line</th>
+                  <th className="text-right px-4 py-2">Amount</th>
+                  <th className="text-right px-4 py-2"># Items</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.expensesBySchedC.map((e, i) => (
+                  <tr key={i} className="border-t border-border/40 hover:bg-muted/20">
+                    <td className="px-4 py-2 text-muted-foreground">{e.schedCLine}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-medium">{fmtMoney(e.amount)}</td>
+                    <td className="px-4 py-2 text-right text-muted-foreground">{e.count}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-border font-semibold bg-muted/20">
+                  <td className="px-4 py-2">Total Expenses</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(report.totalExpenses)}</td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Asset Depreciation */}
+      {report.depreciation.rows.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+            <TrendingDown className="w-4 h-4 text-orange-500" />
+            <h3 className="font-semibold text-sm text-foreground">Asset Depreciation — {year}</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Asset</th>
+                  <th className="text-left px-4 py-2">Type</th>
+                  <th className="text-left px-4 py-2">Purchase Date</th>
+                  <th className="text-right px-4 py-2">Cost</th>
+                  <th className="text-left px-4 py-2">Method</th>
+                  <th className="text-right px-4 py-2">{year} Deduction</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.depreciation.rows.map(r => (
+                  <tr key={r.id} className="border-t border-border/40 hover:bg-muted/20">
+                    <td className="px-4 py-2 font-medium">{r.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{r.assetType}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{r.purchaseDate}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(r.purchasePrice)}</td>
+                    <td className="px-4 py-2 text-muted-foreground capitalize">{r.depreciationMethod}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-medium text-orange-600">{fmtMoney(r.annualDeduction)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-border font-semibold bg-muted/20">
+                  <td colSpan={5} className="px-4 py-2">Total Depreciation</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-orange-600">{fmtMoney(report.depreciation.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Disposed Assets */}
+      {report.disposedAssets.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-blue-500" />
+            <h3 className="font-semibold text-sm text-foreground">Disposed Assets — {year}</h3>
+            <span className="text-xs text-muted-foreground ml-auto">Gain/loss for CPA review</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Asset</th>
+                  <th className="text-left px-4 py-2">Purchased</th>
+                  <th className="text-left px-4 py-2">Sold / Retired</th>
+                  <th className="text-right px-4 py-2">Cost</th>
+                  <th className="text-right px-4 py-2">Sale Price</th>
+                  <th className="text-right px-4 py-2">Book Value</th>
+                  <th className="text-right px-4 py-2">Gain / Loss</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.disposedAssets.map(a => (
+                  <tr key={a.id} className="border-t border-border/40 hover:bg-muted/20">
+                    <td className="px-4 py-2 font-medium">{a.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{a.purchaseDate}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{a.saleDate ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(a.purchasePrice)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(a.salePrice)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(a.bookValue)}</td>
+                    <td className={`px-4 py-2 text-right tabular-nums font-semibold ${a.gainLoss >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                      {a.gainLoss >= 0 ? "+" : ""}{fmtMoney(a.gainLoss)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Mileage */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <Navigation className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-sm text-foreground">Mileage Deduction</h3>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-border">
+          {[
+            { label: "Business Miles", value: `${report.mileage.totalMiles.toFixed(1)} mi` },
+            { label: "IRS Rate", value: `$${report.mileage.mileageRate.toFixed(3)}/mi` },
+            { label: "Total Deduction", value: fmtMoney(report.mileage.deduction) },
+            { label: "Trips Logged", value: report.mileage.trips.toLocaleString() },
+          ].map(({ label, value }) => (
+            <div key={label} className="px-4 py-3 space-y-0.5">
+              <div className="text-xs text-muted-foreground">{label}</div>
+              <div className="text-base font-semibold tabular-nums">{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 1099 Subcontractors */}
+      {report.sub1099s.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+            <HardHat className="w-4 h-4 text-orange-500" />
+            <h3 className="font-semibold text-sm text-foreground">1099 Subcontractor Payments</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Name</th>
+                  <th className="text-left px-4 py-2">Legal Name (W-9)</th>
+                  <th className="text-right px-4 py-2">Total Paid</th>
+                  <th className="text-left px-4 py-2">1099 Status</th>
+                  <th className="text-left px-4 py-2">W-9 on File</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.sub1099s.map(s => (
+                  <tr key={s.id} className="border-t border-border/40 hover:bg-muted/20">
+                    <td className="px-4 py-2 font-medium">{s.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{s.w9LegalName ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-medium">{fmtMoney(s.ytdPayments)}</td>
+                    <td className="px-4 py-2">
+                      {s.requires1099 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold">
+                          <AlertTriangle className="w-3 h-3" /> 1099 Required
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Below threshold</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      {s.w9OnFile ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium">
+                          <CheckCircle2 className="w-3 h-3" /> On File
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-red-600 text-xs font-medium">
+                          <AlertCircle className="w-3 h-3" /> Missing
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Estimated Tax Payments */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-sm text-foreground">Estimated Tax Payments</h3>
+        </div>
+        {report.estimatedTaxPayments.length === 0 ? (
+          <p className="text-sm text-muted-foreground p-4">No estimated tax payments recorded for {year}.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Quarter</th>
+                  <th className="text-left px-4 py-2">Level</th>
+                  <th className="text-right px-4 py-2">Amount Paid</th>
+                  <th className="text-left px-4 py-2">Date Paid</th>
+                  <th className="text-left px-4 py-2">Method</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.estimatedTaxPayments.map(p => (
+                  <tr key={p.id} className="border-t border-border/40 hover:bg-muted/20">
+                    <td className="px-4 py-2 font-medium">Q{p.quarter}</td>
+                    <td className="px-4 py-2 capitalize text-muted-foreground">{p.level}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-medium">{fmtMoney(p.amountPaid)}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{p.paidDate ?? "—"}</td>
+                    <td className="px-4 py-2 text-muted-foreground capitalize">{p.paymentMethod ?? "—"}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-border font-semibold bg-muted/20">
+                  <td colSpan={2} className="px-4 py-2">Total Paid</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(report.taxEstimates.totalPaid)}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Estimated Tax Liability */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+          <Shield className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-sm text-foreground">Estimated Tax Liability</h3>
+          <span className="ml-auto text-xs text-muted-foreground">Reference only — consult your CPA</span>
+        </div>
+        <div className="p-4 space-y-1">
+          {[
+            { label: "Self-Employment Tax (15.3% × 92.35%)", value: report.taxEstimates.selfEmploymentTax },
+            { label: "Federal Income Tax (22% bracket est.)", value: report.taxEstimates.federalIncomeTax },
+            { label: "Kentucky State Income Tax (4%)", value: report.taxEstimates.kyStateTax },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex justify-between py-1.5 border-b border-border/50">
+              <span className="text-sm text-muted-foreground pl-4">{label}</span>
+              <span className="text-sm tabular-nums font-medium">{fmtMoney(value)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between py-1.5 border-b border-border font-semibold">
+            <span className="text-sm">Total Estimated Liability</span>
+            <span className="text-sm tabular-nums">{fmtMoney(report.taxEstimates.totalLiability)}</span>
+          </div>
+          <div className="flex justify-between py-1.5 border-b border-border/50">
+            <span className="text-sm text-muted-foreground pl-4">Already Paid</span>
+            <span className="text-sm tabular-nums text-emerald-600 font-medium">({fmtMoney(report.taxEstimates.totalPaid)})</span>
+          </div>
+          <div className={`flex justify-between py-3 px-4 mt-2 rounded-lg font-bold text-sm ${report.taxEstimates.balance > 0 ? "bg-amber-50 border border-amber-200 text-amber-700" : "bg-emerald-50 border border-emerald-200 text-emerald-700"}`}>
+            <span>{report.taxEstimates.balance > 0 ? "Remaining Balance" : "Overpaid / Refund Est."}</span>
+            <span className="tabular-nums">{fmtMoney(Math.abs(report.taxEstimates.balance))}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Other Income */}
+      {report.otherIncome.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+            <PieChart className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold text-sm text-foreground">Other Income</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Date</th>
+                  <th className="text-left px-4 py-2">Description</th>
+                  <th className="text-left px-4 py-2">Source</th>
+                  <th className="text-right px-4 py-2">Amount</th>
+                  <th className="text-left px-4 py-2">Method</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.otherIncome.map(o => (
+                  <tr key={o.id} className="border-t border-border/40 hover:bg-muted/20">
+                    <td className="px-4 py-2 text-muted-foreground">{o.date}</td>
+                    <td className="px-4 py-2">{o.description}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{o.source ?? "—"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-medium">{fmtMoney(o.amount)}</td>
+                    <td className="px-4 py-2 text-muted-foreground capitalize">{o.paymentMethod ?? "—"}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-border font-semibold bg-muted/20">
+                  <td colSpan={3} className="px-4 py-2">Total Other Income</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(report.summary.otherIncomeTotal)}</td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Disclaimer */}
+      <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
+        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+        <p>
+          This report is prepared from your BuildPro records on a cash basis.
+          Tax bracket estimates are illustrative only. Your CPA should verify all figures, apply applicable deductions, and file your returns.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile";
+type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile" | "year-end";
 
 function getInitialTab(): AccountingTab {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "reconcile") return tab;
+  if (tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "reconcile" || tab === "year-end") return tab;
   return "overview";
 }
 
@@ -3785,6 +4512,7 @@ export default function Accounting() {
           { key: "profit-loss" as const, label: "Profit & Loss", icon: TrendingUp },
           { key: "schedule-c" as const, label: "Schedule C + Home Office", icon: FileText },
           { key: "tax-calendar" as const, label: "Tax Calendar & Compliance", icon: Calendar },
+          { key: "year-end" as const, label: "Year-End Report", icon: FileSpreadsheet },
           ...(isOwner ? [{ key: "reconcile" as const, label: "Reconcile", icon: FileCheck }] : []),
         ].map(({ key, label, icon: Icon }) => (
           <button
@@ -3816,6 +4544,8 @@ export default function Accounting() {
       {activeTab === "schedule-c" && <ScheduleCTab year={year} />}
 
       {activeTab === "tax-calendar" && <TaxCalendarTab year={year} />}
+
+      {activeTab === "year-end" && <YearEndReportTab year={year} />}
 
       {activeTab === "reconcile" && isOwner && <ReconcileTab />}
     </div>

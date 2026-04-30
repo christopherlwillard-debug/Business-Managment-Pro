@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, sum, ne, inArray } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard } from "./guards";
@@ -608,6 +608,285 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to generate profit & loss report" });
+  }
+});
+
+// ─── Year-End Accountant Report ──────────────────────────────────────────────
+
+function calcAnnualDepreciation(asset: {
+  purchasePrice: string | number;
+  purchaseDate: string;
+  salvageValue?: string | number | null;
+  usefulLifeYears?: number | null;
+  depreciationMethod?: string | null;
+  bonusDepreciationPct?: number | null;
+}, forYear: number): number {
+  const cost = parseFloat(String(asset.purchasePrice));
+  const salvage = parseFloat(String(asset.salvageValue ?? 0));
+  const life = asset.usefulLifeYears ?? 5;
+  const method = asset.depreciationMethod ?? "straight-line";
+  const bonusPct = (asset.bonusDepreciationPct ?? 60) / 100;
+  const startYear = parseInt(asset.purchaseDate.slice(0, 4));
+
+  if (!life || life <= 0 || cost <= 0) return 0;
+  if (forYear < startYear || forYear >= startYear + life) return 0;
+
+  const yearIndex = forYear - startYear;
+
+  if (method === "section-179") {
+    return yearIndex === 0 ? cost : 0;
+  }
+
+  if (method === "bonus") {
+    const depreciableBasis = cost - salvage;
+    if (life <= 1) return yearIndex === 0 ? depreciableBasis : 0;
+    const bonusDeduction = depreciableBasis * bonusPct;
+    const remainder = depreciableBasis - bonusDeduction;
+    const remainingYears = life - 1;
+    const annualOnRemainder = remainingYears > 0 ? remainder / remainingYears : 0;
+    return yearIndex === 0 ? bonusDeduction : annualOnRemainder;
+  }
+
+  // straight-line
+  return (cost - salvage) / life;
+}
+
+router.get("/year-end", sectionGuard("invoices"), async (req, res) => {
+  try {
+    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const [
+      invoices,
+      expenses,
+      mileageLogs,
+      otherIncomeRows,
+      assets,
+      taxPayments,
+      subs,
+      settings,
+    ] = await Promise.all([
+      db.select({
+        id: invoicesTable.id,
+        invoiceNumber: invoicesTable.invoiceNumber,
+        status: invoicesTable.status,
+        issueDate: invoicesTable.issueDate,
+        total: invoicesTable.total,
+        subtotal: invoicesTable.subtotal,
+        clientName: clientsTable.name,
+        city: invoicesTable.city,
+        state: invoicesTable.state,
+      })
+        .from(invoicesTable)
+        .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
+      db.select().from(expensesTable)
+        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+      db.select().from(mileageLogsTable)
+        .where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
+      db.select().from(otherIncomeTable)
+        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
+      db.select().from(assetsTable),
+      db.select().from(estimatedTaxPaymentsTable)
+        .where(eq(estimatedTaxPaymentsTable.year, year)),
+      db.select().from(subcontractorsTable),
+      db.select().from(settingsTable).limit(1),
+    ]);
+
+    // ── P&L Summary ──────────────────────────────────────────────────────────
+    const paidInvoices = invoices.filter(i => i.status === "paid");
+    const grossReceipts = paidInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const otherIncomeTotal = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+    const totalRevenue = grossReceipts + otherIncomeTotal;
+
+    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
+    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+
+    const totalMiles = mileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
+    const mileageDeduction = mileageLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const mileageRate = getIrsMileageRate(year);
+
+    // ── Asset Depreciation for the Year ──────────────────────────────────────
+    const depreciationRows = assets
+      .filter(a => a.status !== "sold" || (a.saleDate && parseInt(a.saleDate.slice(0, 4)) > year))
+      .map(a => {
+        const annual = calcAnnualDepreciation(a, year);
+        return {
+          id: a.id,
+          name: a.name,
+          assetType: a.assetType,
+          purchaseDate: a.purchaseDate,
+          purchasePrice: parseFloat(String(a.purchasePrice)),
+          depreciationMethod: a.depreciationMethod ?? "straight-line",
+          usefulLifeYears: a.usefulLifeYears ?? 5,
+          salvageValue: parseFloat(String(a.salvageValue ?? 0)),
+          bonusDepreciationPct: a.bonusDepreciationPct ?? 60,
+          section179Eligible: a.section179Eligible,
+          annualDeduction: annual,
+          status: a.status,
+        };
+      })
+      .filter(r => r.annualDeduction > 0);
+
+    const totalDepreciation = depreciationRows.reduce((s, r) => s + r.annualDeduction, 0);
+
+    // ── Disposed Assets ───────────────────────────────────────────────────────
+    const disposedAssets = assets
+      .filter(a => (a.status === "sold" || a.status === "retired") && a.saleDate && a.saleDate.startsWith(String(year)))
+      .map(a => {
+        const cost = parseFloat(String(a.purchasePrice));
+        const salvage = parseFloat(String(a.salvageValue ?? 0));
+        const life = a.usefulLifeYears ?? 5;
+        const startYear = parseInt(a.purchaseDate.slice(0, 4));
+        const saleYear = parseInt((a.saleDate ?? "").slice(0, 4));
+        let accumulated = 0;
+        for (let y2 = startYear; y2 < saleYear; y2++) {
+          accumulated += calcAnnualDepreciation(a, y2);
+        }
+        const bookValue = Math.max(salvage, cost - accumulated);
+        const salePrice = a.salePrice != null ? parseFloat(String(a.salePrice)) : 0;
+        return {
+          id: a.id,
+          name: a.name,
+          assetType: a.assetType,
+          purchaseDate: a.purchaseDate,
+          purchasePrice: cost,
+          saleDate: a.saleDate,
+          salePrice,
+          bookValue,
+          gainLoss: salePrice - bookValue,
+          status: a.status,
+        };
+      });
+
+    // ── Expenses by Schedule C Category ──────────────────────────────────────
+    const SCHED_C_MAP: Record<string, string> = {
+      materials: "Line 36 – Materials/Supplies",
+      fuel: "Line 9 – Car & Truck Expenses",
+      equipment: "Line 13 – Depreciation / Sec. 179",
+      tools: "Line 22 – Supplies",
+      subcontractor: "Line 11 – Contract Labor",
+      insurance: "Line 15 – Insurance",
+      office: "Line 18 – Office",
+      phone: "Line 25 – Utilities (Phone)",
+      advertising: "Line 8 – Advertising",
+      repairs: "Line 21 – Repairs",
+      travel: "Line 24a – Travel",
+      meals: "Line 24b – Meals (50%)",
+      professional_fees: "Line 17 – Legal/Professional",
+      utilities: "Line 25 – Utilities",
+      rent: "Line 20a – Rent/Lease (Equipment)",
+      other: "Line 27a – Other",
+    };
+
+    const catMap = new Map<string, { schedCLine: string; amount: number; count: number }>();
+    for (const e of nonMileageExpenses) {
+      const cat = (e.category ?? "other").toLowerCase();
+      const line = SCHED_C_MAP[cat] ?? "Line 27a – Other";
+      const existing = catMap.get(line) ?? { schedCLine: line, amount: 0, count: 0 };
+      existing.amount += parseFloat(e.amount ?? "0");
+      existing.count++;
+      catMap.set(line, existing);
+    }
+    const expensesBySchedC = Array.from(catMap.values()).sort((a, b) => b.amount - a.amount);
+
+    // ── 1099 Subcontractor Payments ───────────────────────────────────────────
+    const threshold = parseFloat(settings[0]?.thresholdAmount1099 ?? "600");
+    const subPayments = await Promise.all(subs.map(async s => {
+      const ytd = await computeYtd(s.id, year);
+      return {
+        id: s.id,
+        name: s.name,
+        ytdPayments: ytd,
+        requires1099: ytd >= threshold,
+        w9OnFile: s.w9OnFile ?? false,
+        w9LegalName: s.w9LegalName ?? null,
+      };
+    }));
+    const sub1099s = subPayments.filter(s => s.ytdPayments > 0);
+
+    // ── Estimated Tax Payments ────────────────────────────────────────────────
+    const estTaxRows = taxPayments.map(p => ({
+      id: p.id,
+      quarter: p.quarter,
+      level: p.level,
+      amountPaid: parseFloat(String(p.amountPaid ?? 0)),
+      paidDate: p.paidDate,
+      paymentMethod: p.paymentMethod,
+      notes: p.notes,
+    }));
+    const totalEstimatedTaxPaid = estTaxRows.reduce((s, p) => s + p.amountPaid, 0);
+
+    // ── Other Income ──────────────────────────────────────────────────────────
+    const otherIncomeDetail = otherIncomeRows.map(o => ({
+      id: o.id,
+      date: o.date,
+      description: o.description,
+      source: o.source,
+      amount: parseFloat(String(o.amount ?? 0)),
+      paymentMethod: o.paymentMethod,
+    }));
+
+    // ── Net Profit & Tax Estimates ────────────────────────────────────────────
+    const netProfit = totalRevenue - totalExpenses - mileageDeduction - totalDepreciation;
+    const selfEmploymentTax = Math.max(0, netProfit * 0.9235 * 0.153);
+    const seDeduction = selfEmploymentTax * 0.5;
+    const federalIncomeTax = Math.max(0, (netProfit - seDeduction) * 0.22);
+    const kyStateTax = Math.max(0, netProfit * 0.04);
+    const totalEstimatedTaxLiability = selfEmploymentTax + federalIncomeTax + kyStateTax;
+
+    res.json({
+      year,
+      generatedAt: new Date().toISOString(),
+      companyName: settings[0]?.companyName ?? "Willard's General Contracting LLC",
+      summary: {
+        grossReceipts,
+        otherIncomeTotal,
+        totalRevenue,
+        totalExpenses,
+        mileageDeduction,
+        mileageRate,
+        totalMiles,
+        totalDepreciation,
+        netProfit,
+      },
+      taxEstimates: {
+        selfEmploymentTax,
+        federalIncomeTax,
+        kyStateTax,
+        totalLiability: totalEstimatedTaxLiability,
+        totalPaid: totalEstimatedTaxPaid,
+        balance: totalEstimatedTaxLiability - totalEstimatedTaxPaid,
+      },
+      expensesBySchedC,
+      totalExpenses,
+      invoices: paidInvoices.map(i => ({
+        invoiceNumber: i.invoiceNumber,
+        issueDate: i.issueDate,
+        clientName: i.clientName ?? "",
+        total: parseFloat(String(i.total ?? 0)),
+        city: i.city ?? "",
+        state: i.state ?? "",
+      })),
+      otherIncome: otherIncomeDetail,
+      mileage: {
+        totalMiles,
+        mileageRate,
+        deduction: mileageDeduction,
+        trips: mileageLogs.length,
+      },
+      depreciation: {
+        rows: depreciationRows,
+        total: totalDepreciation,
+      },
+      disposedAssets,
+      sub1099s,
+      estimatedTaxPayments: estTaxRows,
+    });
+  } catch (err) {
+    console.error("Year-end report error:", err);
+    res.status(500).json({ error: "Failed to generate year-end report" });
   }
 });
 

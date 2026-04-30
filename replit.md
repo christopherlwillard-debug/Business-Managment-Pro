@@ -168,6 +168,33 @@ Route: `/assets` (owner-only). Sidebar: Business Tools group.
 - Gain/Loss on disposal banner: `salePrice − bookValue at year of saleDate`
 - Section 179 summary panel (amber) appears when eligible assets exist for selected year
 
+## Accounting — Year-End Accountant Report Tab
+
+New tab "Year-End Report" (`year-end`) on the Accounting page. Designed as a one-click CPA handoff report.
+
+**Backend:** `GET /api/reports/year-end?year=YYYY` (in `artifacts/api-server/src/routes/reports.ts`)
+
+Aggregates all data for the year and returns a comprehensive JSON payload with sections:
+- `summary` — P&L summary (gross receipts, other income, total revenue, expenses, mileage deduction, depreciation, net profit)
+- `taxEstimates` — Estimated SE tax, federal income tax, KY state tax, total liability vs total paid
+- `expensesBySchedC` — Expenses bucketed by Schedule C line (e.g., "Line 11 – Contract Labor", "Line 13 – Depreciation")
+- `depreciation.rows` — Per-asset annual deduction for the year using same math as Assets.tsx (straight-line/section-179/bonus)
+- `disposedAssets` — Assets sold/retired in the year with gain/loss calculation (salePrice − bookValue at year of saleDate)
+- `mileage` — totalMiles, IRS rate, deduction amount, trip count
+- `sub1099s` — All subcontractors with YTD payments (0-threshold), requires1099 flag, W-9 status
+- `estimatedTaxPayments` — Quarterly tax payments made (all levels: federal, state, combined)
+- `otherIncome` — Line-by-line other income entries
+
+**Frontend:** `YearEndReportTab` component in `artifacts/contractor-app/src/pages/Accounting.tsx`
+
+Features:
+- Print / PDF: opens formatted full-page print view in new window (`@media print` hides nav bar)
+- Download CSV Package: builds a JSZip bundle with 7–9 CSV files (P&L Summary, Expenses by Schedule C, Paid Invoices, Mileage, Asset Depreciation, Disposed Assets, 1099s, Est. Tax Payments, Other Income) — downloaded as a single `.zip` file
+- All sections only rendered when data exists (conditional rendering for disposed assets, other income, etc.)
+- CPA disclaimer banner at bottom
+
+**Package added:** `jszip` (in `artifacts/contractor-app`)
+
 ## Aerial Quote Tool (Asphalt Sealing)
 
 Route: `/aerial-quote` (owner-only). Sidebar: Business Tools group.
