@@ -3878,42 +3878,45 @@ function printYearEndReport(report: YearEndReport) {
   if (!win) return;
   const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
   const fmtN = (n: number) => n.toLocaleString("en-US");
+  // Escape all HTML special characters to prevent XSS in the print window
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const row = (label: string, value: string, bold = false, indent = false) =>
-    `<tr class="${bold ? "bold" : ""} ${indent ? "indent" : ""}"><td>${indent ? "&nbsp;&nbsp;&nbsp;" : ""}${label}</td><td class="num">${value}</td></tr>`;
+    `<tr class="${bold ? "bold" : ""} ${indent ? "indent" : ""}"><td>${indent ? "&nbsp;&nbsp;&nbsp;" : ""}${esc(label)}</td><td class="num">${value}</td></tr>`;
 
   const schedCRows = report.expensesBySchedC.map(e => {
-    const header = `<tr class="schedC-cat"><td colspan="2" style="font-weight:600;background:#f8fafc;padding:5px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569">${e.schedCLine}</td></tr>`;
+    const header = `<tr class="schedC-cat"><td colspan="2" style="font-weight:600;background:#f8fafc;padding:5px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569">${esc(e.schedCLine)}</td></tr>`;
     const itemRows = e.items.map(item =>
-      `<tr><td style="padding-left:24px;color:#64748b">${item.date} &mdash; ${item.description}${item.vendor ? ` (${item.vendor})` : ""}</td><td class="num" style="color:#64748b">${fmt(item.amount)}</td></tr>`
+      `<tr><td style="padding-left:24px;color:#64748b">${esc(item.date)} &mdash; ${esc(item.description)}${item.vendor ? ` (${esc(item.vendor)})` : ""}</td><td class="num" style="color:#64748b">${fmt(item.amount)}</td></tr>`
     ).join("");
     const subtotal = `<tr><td style="padding-left:24px;font-weight:600;padding-bottom:6px">Category Total</td><td class="num" style="font-weight:600;padding-bottom:6px">${fmt(e.amount)}</td></tr>`;
     return header + itemRows + subtotal;
   }).join("");
 
   const deprRows = report.depreciation.rows.map(r =>
-    `<tr><td>${r.name}</td><td>${r.assetType}</td><td>${r.purchaseDate}</td><td class="num">${fmt(r.purchasePrice)}</td><td>${r.depreciationMethod}</td><td class="num">${fmt(r.annualDeduction)}</td></tr>`
+    `<tr><td>${esc(r.name)}</td><td>${esc(r.assetType)}</td><td>${esc(r.purchaseDate)}</td><td class="num">${fmt(r.purchasePrice)}</td><td>${esc(r.depreciationMethod)}</td><td class="num">${fmt(r.annualDeduction)}</td></tr>`
   ).join("");
 
   const disposedRows = report.disposedAssets.map(a =>
-    `<tr><td>${a.name}</td><td>${a.purchaseDate}</td><td>${a.saleDate ?? ""}</td><td class="num">${fmt(a.purchasePrice)}</td><td class="num">${fmt(a.salePrice)}</td><td class="num">${fmt(a.bookValue)}</td><td class="num ${a.gainLoss >= 0 ? "pos" : "neg"}">${fmt(a.gainLoss)}</td></tr>`
+    `<tr><td>${esc(a.name)}</td><td>${esc(a.purchaseDate)}</td><td>${esc(a.saleDate ?? "")}</td><td class="num">${fmt(a.purchasePrice)}</td><td class="num">${fmt(a.salePrice)}</td><td class="num">${fmt(a.bookValue)}</td><td class="num ${a.gainLoss >= 0 ? "pos" : "neg"}">${fmt(a.gainLoss)}</td></tr>`
   ).join("");
 
   const sub1099Rows = report.sub1099s.map(s =>
-    `<tr><td>${s.name}</td><td>${s.w9LegalName ?? "—"}</td><td class="num">${fmt(s.ytdPayments)}</td><td>${s.requires1099 ? '<span class="badge-red">1099 Required</span>' : "Below threshold"}</td><td>${s.w9OnFile ? '<span class="badge-green">Yes</span>' : '<span class="badge-red">No</span>'}</td></tr>`
+    `<tr><td>${esc(s.name)}</td><td>${esc(s.w9LegalName ?? "—")}</td><td class="num">${fmt(s.ytdPayments)}</td><td>${s.requires1099 ? '<span class="badge-red">1099 Required</span>' : "Below threshold"}</td><td>${s.w9OnFile ? '<span class="badge-green">Yes</span>' : '<span class="badge-red">No</span>'}</td></tr>`
   ).join("");
 
   const taxPayRows = report.estimatedTaxPayments.map(p =>
-    `<tr><td>Q${p.quarter}</td><td>${p.level}</td><td class="num">${fmt(p.amountPaid)}</td><td>${p.paidDate ?? "—"}</td><td>${p.paymentMethod ?? ""}</td></tr>`
+    `<tr><td>Q${p.quarter}</td><td>${esc(p.level)}</td><td class="num">${fmt(p.amountPaid)}</td><td>${esc(p.paidDate ?? "—")}</td><td>${esc(p.paymentMethod ?? "")}</td></tr>`
   ).join("");
 
   const otherIncomeRows = report.otherIncome.map(o =>
-    `<tr><td>${o.date}</td><td>${o.description}</td><td>${o.source ?? ""}</td><td class="num">${fmt(o.amount)}</td><td>${o.paymentMethod ?? ""}</td></tr>`
+    `<tr><td>${esc(o.date)}</td><td>${esc(o.description)}</td><td>${esc(o.source ?? "")}</td><td class="num">${fmt(o.amount)}</td><td>${esc(o.paymentMethod ?? "")}</td></tr>`
   ).join("");
 
   const isLoss = report.summary.netProfit < 0;
   const netColor = isLoss ? "#dc2626" : "#16a34a";
 
-  win.document.write(`<!DOCTYPE html><html><head><title>${report.companyName} — ${report.year} Year-End Report</title>
+  win.document.write(`<!DOCTYPE html><html><head><title>${esc(report.companyName)} — ${report.year} Year-End Report</title>
 <style>
 *{box-sizing:border-box}
 body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;padding:40px;max-width:820px;margin:0 auto;line-height:1.5}
@@ -3945,7 +3948,7 @@ tr.indent td:first-child{padding-left:20px;color:#475569}
   <button onclick="window.print()">&#128438; Print / PDF</button>
 </div>
 
-<h1>${report.companyName}</h1>
+<h1>${esc(report.companyName)}</h1>
 <div class="subtitle">Year-End Accountant Report &bull; Tax Year ${report.year} &bull; Cash Basis &bull; Generated ${new Date(report.generatedAt).toLocaleDateString("en-US")}</div>
 
 <h2>Profit &amp; Loss Summary</h2>
@@ -4025,7 +4028,7 @@ ${report.otherIncome.length > 0 ? `
 ${otherIncomeRows}
 </table>` : ""}
 
-<div class="footer">${report.companyName} &bull; Tax Year ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro &bull; For CPA Use</div>
+<div class="footer">${esc(report.companyName)} &bull; Tax Year ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro &bull; For CPA Use</div>
 </body></html>`);
   win.document.close();
 }
