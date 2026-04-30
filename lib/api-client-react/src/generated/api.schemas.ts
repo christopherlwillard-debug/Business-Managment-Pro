@@ -112,6 +112,8 @@ export interface Job {
   notes?: string | null;
   businessLine?: string | null;
   subPaid?: boolean;
+  sqFt?: number | null;
+  coats?: number | null;
   createdAt: string;
 }
 
@@ -145,6 +147,8 @@ export interface CreateJobRequest {
   notes?: string | null;
   businessLine?: string | null;
   subPaid?: boolean;
+  sqFt?: number | null;
+  coats?: number | null;
 }
 
 export interface DraftLineItem {

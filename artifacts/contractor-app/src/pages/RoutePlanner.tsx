@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -9,7 +9,9 @@ import {
   Loader2, ChevronLeft, ChevronRight, Navigation,
   Edit2, X, Save, GripVertical, Users, Link as LinkIcon, RefreshCw,
   Layers, Scissors, ExternalLink, Share2, Check,
+  Droplets, AlertTriangle, Info, Settings2, CheckCircle2, SquareStack,
 } from "lucide-react";
+import { useListJobs } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -263,6 +265,13 @@ function CalDay({ date, count, selected, onClick }: { date: Date; count: number;
   );
 }
 
+const TANK_LS_KEY = "routePlanner_tankCapacity";
+const TANK_DEFAULT = 24000;
+const TANK_MIN = 20000;
+const TANK_MAX = 27000;
+
+function fmtSqFt(n: number) { return n.toLocaleString() + " sq ft"; }
+
 export default function RoutePlanner() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -287,6 +296,44 @@ export default function RoutePlanner() {
   const [blockDriveTimes, setBlockDriveTimes] = useState<Map<number, number | null>>(new Map());
   const [blockDriveTimesLoading, setBlockDriveTimesLoading] = useState<Set<number>>(new Set());
   const [isSavingLabel, setIsSavingLabel] = useState<boolean>(false);
+
+  // Tank capacity tab state
+  const [activeTab, setActiveTab] = useState<"route" | "tank">("route");
+  const [tankCapacity, setTankCapacityRaw] = useState<number>(() => {
+    const saved = localStorage.getItem(TANK_LS_KEY);
+    const parsed = saved ? parseInt(saved) : NaN;
+    return !isNaN(parsed) && parsed >= TANK_MIN && parsed <= TANK_MAX ? parsed : TANK_DEFAULT;
+  });
+  const [showTankEditor, setShowTankEditor] = useState(false);
+  const [tankDraft, setTankDraft] = useState(String(TANK_DEFAULT));
+  const [tankCheckedIds, setTankCheckedIds] = useState<Set<number>>(new Set());
+  const [showMissingJobs, setShowMissingJobs] = useState(false);
+
+  function saveTankCapacity(val: number) {
+    setTankCapacityRaw(val);
+    localStorage.setItem(TANK_LS_KEY, String(val));
+  }
+
+  const { data: allJobs = [] } = useListJobs();
+
+  const asphaltJobs = useMemo(() =>
+    allJobs.filter(j =>
+      j.businessLine === "asphalt_sealing" &&
+      (j.status === "scheduled" || j.status === "in_progress")
+    ), [allJobs]);
+
+  const jobsWithSqFt = useMemo(() => asphaltJobs.filter(j => j.sqFt != null && j.sqFt > 0), [asphaltJobs]);
+  const jobsWithoutSqFt = useMemo(() => asphaltJobs.filter(j => !j.sqFt), [asphaltJobs]);
+
+  useEffect(() => {
+    setTankCheckedIds(new Set(jobsWithSqFt.map(j => j.id)));
+  }, [jobsWithSqFt.length]);
+
+  const checkedJobsForTank = jobsWithSqFt.filter(j => tankCheckedIds.has(j.id));
+  const totalAdjustedSqFt = checkedJobsForTank.reduce((sum, j) => sum + (j.sqFt ?? 0) * (j.coats ?? 1), 0);
+  const tankFillPct = Math.min((totalAdjustedSqFt / tankCapacity) * 100, 100);
+  const tankIsWarning = tankFillPct >= 80 && totalAdjustedSqFt < tankCapacity;
+  const tankIsFull = totalAdjustedSqFt >= tankCapacity;
 
   const [form, setForm] = useState<EditFormState>({
     title: "",
@@ -660,14 +707,220 @@ export default function RoutePlanner() {
   return (
     <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-130px)] gap-0 -m-4 sm:-m-6 lg:-m-8 lg:overflow-hidden">
       <div className="w-full lg:w-[360px] lg:flex-shrink-0 flex flex-col bg-card border-b lg:border-b-0 lg:border-r border-border lg:overflow-y-auto">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-primary text-primary-foreground">
-          <div className="flex items-center gap-2">
-            <Route className="w-5 h-5" />
-            <h1 className="text-base font-display font-bold">Route Planner</h1>
+        <div className="flex flex-col border-b border-border bg-primary text-primary-foreground">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Route className="w-5 h-5" />
+              <h1 className="text-base font-display font-bold">Route Planner</h1>
+            </div>
+            <span className="text-xs text-primary-foreground/70">Asphalt Sealing</span>
           </div>
-          <span className="text-xs text-primary-foreground/70">Asphalt Sealing</span>
+          <div className="flex border-t border-primary-foreground/20">
+            <button
+              onClick={() => setActiveTab("route")}
+              className={cn(
+                "flex-1 py-2 text-xs font-semibold transition-colors",
+                activeTab === "route"
+                  ? "bg-primary-foreground/15 text-white"
+                  : "text-primary-foreground/60 hover:text-primary-foreground/90"
+              )}
+            >
+              Route Stops
+            </button>
+            <button
+              onClick={() => setActiveTab("tank")}
+              className={cn(
+                "flex-1 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1",
+                activeTab === "tank"
+                  ? "bg-primary-foreground/15 text-white"
+                  : "text-primary-foreground/60 hover:text-primary-foreground/90"
+              )}
+            >
+              <Droplets className="w-3.5 h-3.5" />
+              Tank Capacity
+            </button>
+          </div>
         </div>
 
+        {activeTab === "tank" && (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Tank capacity header */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Droplets className="w-4 h-4 text-amber-500" />
+                Tank Capacity
+              </p>
+              <button
+                onClick={() => { setShowTankEditor(o => !o); setTankDraft(String(tankCapacity)); }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+              >
+                <Settings2 className="w-3 h-3" />
+                {fmtSqFt(tankCapacity)}
+              </button>
+            </div>
+
+            {/* Tank capacity editor */}
+            {showTankEditor && (
+              <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 space-y-2.5">
+                <p className="text-xs font-semibold text-amber-900">Adjust tank capacity</p>
+                <p className="text-[11px] text-amber-700">Range: {fmtSqFt(TANK_MIN)} – {fmtSqFt(TANK_MAX)}</p>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="number" min={TANK_MIN} max={TANK_MAX} step={500}
+                    value={tankDraft}
+                    onChange={e => setTankDraft(e.target.value)}
+                    className="w-32 px-2.5 py-1.5 rounded-xl border border-amber-300 bg-white text-sm text-foreground focus:outline-none"
+                  />
+                  <span className="text-xs text-amber-700">sq ft</span>
+                  <button
+                    onClick={() => {
+                      const v = parseInt(tankDraft);
+                      if (!isNaN(v) && v >= TANK_MIN && v <= TANK_MAX) { saveTankCapacity(v); setShowTankEditor(false); }
+                    }}
+                    className="ml-auto px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors"
+                  >Save</button>
+                </div>
+                <input type="range" min={TANK_MIN} max={TANK_MAX} step={500}
+                  value={tankDraft} onChange={e => setTankDraft(e.target.value)}
+                  className="w-full accent-amber-500" />
+                <div className="flex justify-between text-[10px] text-amber-600">
+                  <span>{fmtSqFt(TANK_MIN)}</span>
+                  <span>Default: {fmtSqFt(TANK_DEFAULT)}</span>
+                  <span>{fmtSqFt(TANK_MAX)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Capacity bar */}
+            <div className={cn("rounded-xl border p-3.5 space-y-2.5", tankIsFull ? "border-red-300 bg-red-50" : tankIsWarning ? "border-amber-300 bg-amber-50" : "border-border bg-card")}>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-foreground">Tank Usage</span>
+                <span className={cn("font-bold text-xs", tankIsFull ? "text-red-600" : tankIsWarning ? "text-amber-600" : "text-emerald-600")}>
+                  {fmtSqFt(totalAdjustedSqFt)} / {fmtSqFt(tankCapacity)}
+                </span>
+              </div>
+              <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-300", tankIsFull ? "bg-red-500" : tankIsWarning ? "bg-amber-500" : "bg-emerald-500")}
+                  style={{ width: `${tankFillPct}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{checkedJobsForTank.length} job{checkedJobsForTank.length !== 1 ? "s" : ""} selected</span>
+                <span className={cn("font-semibold", tankIsFull ? "text-red-600" : tankIsWarning ? "text-amber-600" : "text-emerald-600")}>
+                  {tankIsFull ? "⚠ Route Full" : `${fmtSqFt(tankCapacity - totalAdjustedSqFt)} remaining`}
+                </span>
+              </div>
+              {tankIsFull && (
+                <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-red-100 border border-red-200">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-700 font-medium">Route is at or over capacity. Remove jobs or plan a refill.</p>
+                </div>
+              )}
+              {tankIsWarning && (
+                <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-amber-100 border border-amber-200">
+                  <Info className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 font-medium">Over 80% capacity — monitor the last jobs on the route.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Job list */}
+            {asphaltJobs.length === 0 ? (
+              <div className="py-10 text-center space-y-1.5">
+                <SquareStack className="w-8 h-8 text-muted-foreground/30 mx-auto" />
+                <p className="text-sm font-medium text-muted-foreground">No scheduled asphalt jobs</p>
+                <p className="text-xs text-muted-foreground">Add sealcoating jobs in the Jobs page first.</p>
+              </div>
+            ) : (
+              <>
+                {jobsWithSqFt.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                        Jobs ({jobsWithSqFt.length})
+                      </p>
+                      <div className="flex gap-2 text-xs">
+                        <button onClick={() => setTankCheckedIds(new Set(jobsWithSqFt.map(j => j.id)))} className="text-primary hover:underline">All</button>
+                        <span className="text-muted-foreground">·</span>
+                        <button onClick={() => setTankCheckedIds(new Set())} className="text-muted-foreground hover:underline">None</button>
+                      </div>
+                    </div>
+                    {jobsWithSqFt.map(job => {
+                      const sf = job.sqFt ?? 0;
+                      const c = job.coats ?? 1;
+                      const adj = sf * c;
+                      const checked = tankCheckedIds.has(job.id);
+                      const addr = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+                      return (
+                        <div key={job.id} onClick={() => setTankCheckedIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(job.id)) next.delete(job.id); else next.add(job.id);
+                          return next;
+                        })}
+                          className={cn("rounded-xl border cursor-pointer transition-all select-none", checked ? "border-amber-300 bg-amber-50" : "border-border bg-card opacity-60")}
+                        >
+                          <div className="flex items-start gap-2.5 p-3">
+                            <div className={cn("mt-0.5 w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors", checked ? "bg-amber-500 border-amber-500" : "border-gray-300 bg-white")}>
+                              {checked && <CheckCircle2 className="w-3 h-3 text-white" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-xs text-foreground truncate">{job.title}</p>
+                              {addr && (
+                                <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
+                                  <span className="truncate">{addr}</span>
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-[10px] text-muted-foreground">{sf.toLocaleString()} × {c}x</p>
+                              <p className={cn("text-xs font-bold", checked ? "text-amber-600" : "text-muted-foreground")}>{adj.toLocaleString()} sq ft</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {jobsWithoutSqFt.length > 0 && (
+                  <div className="space-y-1.5">
+                    <button
+                      onClick={() => setShowMissingJobs(o => !o)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/20 hover:bg-muted/40 transition-colors"
+                    >
+                      <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                        <AlertTriangle className="w-3 h-3 text-amber-500" />
+                        Missing sq ft ({jobsWithoutSqFt.length})
+                      </span>
+                      {showMissingJobs ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                    </button>
+                    {showMissingJobs && jobsWithoutSqFt.map(job => {
+                      const addr = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+                      return (
+                        <div key={job.id} className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-border bg-card opacity-60">
+                          <div className="w-4 h-4 rounded border border-gray-200 bg-muted flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-xs text-foreground truncate">{job.title}</p>
+                            {addr && (
+                              <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-2.5 h-2.5 flex-shrink-0" /><span className="truncate">{addr}</span>
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground italic flex-shrink-0">No sq ft</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === "route" && (<>
         {hasMissingPins && (
           <div className="flex items-center justify-between px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800">
             <div className="flex items-center gap-1.5 text-xs">
@@ -1163,9 +1416,10 @@ export default function RoutePlanner() {
             );
           })()}
         </div>
+      </>)}
       </div>
 
-      <div className="relative h-[320px] lg:flex-1 lg:h-auto">
+      {activeTab === "route" && <div className="relative h-[320px] lg:flex-1 lg:h-auto">
         <MapContainer
           center={mapCenter}
           zoom={12}
@@ -1243,7 +1497,7 @@ export default function RoutePlanner() {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

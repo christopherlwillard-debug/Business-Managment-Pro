@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, smallint, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
@@ -23,6 +23,8 @@ export const jobsTable = pgTable("jobs", {
   notes: text("notes"),
   businessLine: text("business_line"),
   subPaid: boolean("sub_paid").notNull().default(false),
+  sqFt: integer("sq_ft"),
+  coats: smallint("coats").default(1),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
