@@ -325,9 +325,11 @@ export default function RoutePlanner() {
   const jobsWithSqFt = useMemo(() => asphaltJobs.filter(j => j.sqFt != null && j.sqFt > 0), [asphaltJobs]);
   const jobsWithoutSqFt = useMemo(() => asphaltJobs.filter(j => !j.sqFt), [asphaltJobs]);
 
+  const jobsWithSqFtKey = jobsWithSqFt.map(j => j.id).sort((a, b) => a - b).join(",");
   useEffect(() => {
     setTankCheckedIds(new Set(jobsWithSqFt.map(j => j.id)));
-  }, [jobsWithSqFt.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobsWithSqFtKey]);
 
   const checkedJobsForTank = jobsWithSqFt.filter(j => tankCheckedIds.has(j.id));
   const totalAdjustedSqFt = checkedJobsForTank.reduce((sum, j) => sum + (j.sqFt ?? 0) * (j.coats ?? 1), 0);

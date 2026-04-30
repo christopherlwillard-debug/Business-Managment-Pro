@@ -172,6 +172,8 @@ router.post("/", async (req, res) => {
   try {
     const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine, sqFt, coats } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
+    if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
+    if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
     const [job] = await db.insert(jobsTable).values({
       title, description,
@@ -258,6 +260,8 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine, subPaid, sqFt, coats } = req.body;
+    if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
+    if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
     // Only include fields that were explicitly sent in the request body
     // to avoid wiping existing values (e.g. clientId when only status changes)
