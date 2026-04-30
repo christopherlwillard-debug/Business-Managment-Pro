@@ -1,0 +1,195 @@
+The Big Upgrade: Multi-Business Structure
+
+Instead of everything mixed together, every job should belong to:
+
+👉 A Business Profile
+
+* Asphalt
+* Contracting
+* (future: anything else you add)
+
+⸻
+
+🖥️ Your Dashboard (Now Done Right)
+
+🔁 First: Add a Business Filter
+
+At the top:
+
+* All Businesses
+* Asphalt
+* Contracting
+
+This lets you:
+
+* View combined totals
+* Or isolate each business
+
+⸻
+
+🔝 Core Numbers (Same Logic, Works for Both)
+
+These stay the same no matter the business:
+
+💵 Revenue
+
+All money collected
+
+🧾 Expenses
+
+Only true costs (materials, fuel, etc.)
+
+📈 Net Profit
+
+Business performance
+
+🤝 Subcontractor Owed
+
+Unpaid amounts across jobs
+
+💰 Your Actual Profit
+
+What you actually keep
+
+⸻
+
+🧠 Why This Works
+
+Now you can answer:
+
+* “How is asphalt doing vs contracting?”
+* “Which one is more profitable?”
+* “Where am I actually making money?”
+
+⸻
+
+📊 Add This (Game-Changer for 2 Businesses)
+
+👉 “Profit by Business” Section
+
+Show something like:
+
+* Asphalt
+    * Revenue
+    * Profit
+    * Sub owed
+* Contracting
+    * Revenue
+    * Profit
+    * Sub owed
+
+Now you instantly see which side is stronger.
+
+⸻
+
+📋 Job Structure (Universal for BOTH)
+
+Every job—no matter the business—should follow the same layout:
+
+🧾 Job Info
+
+* Business type (asphalt or contracting)
+* Customer
+* Total revenue
+
+⸻
+
+💸 Expenses
+
+* Materials
+* Labor supplies
+* Fuel
+    (whatever applies to that job type)
+
+⸻
+
+📈 Profit
+
+* Revenue minus expenses
+
+⸻
+
+🤝 Split
+
+* Subcontractor % or custom amount
+
+⸻
+
+💰 Payout Tracking
+
+* How much they’re owed
+* How much is paid
+* What’s left
+
+⸻
+
+🔒 Status
+
+* Open
+* Needs payout
+* Settled
+
+⸻
+
+🔴 Add This Filter (You’ll Use It Daily)
+
+“Jobs Needing Payout”
+
+Across BOTH businesses:
+
+* Shows anything unpaid
+
+This becomes your:
+
+“Who do I owe money to right now?” screen
+
+⸻
+
+🧠 One Important Design Rule
+
+Do NOT build:
+
+* Separate systems for asphalt and contracting
+
+Instead:
+
+Build ONE system that adapts per job
+
+⸻
+
+🔥 Optional (But Really Powerful)
+
+Add “Job Type” Inside Each Business
+
+For example:
+
+Asphalt
+
+* Sealcoating
+* Crack fill
+
+Contracting
+
+* Interior finish
+* Exterior work
+* Repairs
+
+Now later you can see:
+
+* Which services make the most money
+
+⸻
+
+⚖️ Reality Check (This is why you’re thinking ahead right)
+
+As you grow:
+
+* Multiple jobs
+* Multiple subs
+* Two businesses
+
+Without this structure:
+👉 Everything blends together and gets confusing fast
+
+With this:
+👉 You’re basically building your own contractor CRM + profit system
