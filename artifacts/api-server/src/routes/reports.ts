@@ -108,19 +108,15 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         .where(inArray(jobsTable.id, subJobIds));
       for (const j of subJobRows) subJobSubPaidMap.set(j.id, j.subPaid);
     }
-    // subContractorOwed = currently unpaid sub obligation (subPaid=false or no linked job)
-    // Decreases when jobs are marked paid. Paid expenses are already excluded from this sum.
+    // subContractorOwed: unpaid sub expenses (subPaid=false or unlinked); decreases as jobs are paid
     const subContractorOwed = subExpenses
       .filter(e => !e.jobId || !subJobSubPaidMap.get(e.jobId))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // subContractorPaid = settled sub expenses (jobs where subPaid=true)
+    // subContractorPaid: settled sub expenses (jobs where subPaid=true)
     const subContractorPaid = subExpenses
       .filter(e => e.jobId != null && subJobSubPaidMap.get(e.jobId) === true)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // subContractorRemaining = the outstanding unpaid sub obligation
-    // Since owed already excludes paid expenses, remaining equals owed (no double-subtraction).
     const subContractorRemaining = subContractorOwed;
-    // ownerProfit = net profit after accounting for the unpaid sub obligation
     const ownerProfit = operationalNetProfit - subContractorRemaining;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
