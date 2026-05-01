@@ -786,6 +786,12 @@ export default function Assets() {
                             </span>
                           )}
                         </div>
+                        {isMixedUse && currentYearBusUse && (
+                          <div className="flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-700">
+                            <Percent className="w-3 h-3 flex-shrink-0" />
+                            <span>Business use: <span className="font-semibold">{currentYearBusUse.businessUsePct}%</span> ({currentYearNum}) — deductions are scaled accordingly</span>
+                          </div>
+                        )}
                         <div className="overflow-x-auto rounded-xl border border-border">
                           <table className="w-full text-xs">
                             <thead>
