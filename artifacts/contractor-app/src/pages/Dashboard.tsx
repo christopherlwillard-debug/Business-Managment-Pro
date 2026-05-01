@@ -903,14 +903,16 @@ function DistributionsCard({ operationalNetProfit, ownerDrawTotal, undrawnBalanc
   periodLabel: string;
   onRecordDraw: () => void;
 }) {
-  const drawRatio = operationalNetProfit > 0 ? ownerDrawTotal / operationalNetProfit : 0;
+  // Color is based on absolute proximity of the undrawn balance to zero.
+  // Negative → overdrawn (red). Within $500 of zero → well distributed (green).
+  // Above $500 remaining → balance building up (amber).
   const balanceColor =
     undrawnBalance < 0 ? "text-red-600" :
-    drawRatio >= 0.7 ? "text-emerald-600" :
+    undrawnBalance <= 500 ? "text-emerald-600" :
     "text-amber-600";
   const balanceLabel =
     undrawnBalance < 0 ? "overdrawn" :
-    drawRatio >= 0.7 ? "nearly distributed" :
+    undrawnBalance <= 500 ? "well distributed" :
     "building up";
 
   return (
