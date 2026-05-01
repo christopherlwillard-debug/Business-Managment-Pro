@@ -218,7 +218,6 @@ export const ListJobsResponseItem = zod.object({
   locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
-  actualAmount: zod.number().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -249,7 +248,6 @@ export const CreateJobBody = zod.object({
   locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
-  actualAmount: zod.number().nullish(),
   notes: zod.string().nullish(),
 });
 
@@ -313,7 +311,6 @@ export const GetJobResponse = zod.object({
   locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
-  actualAmount: zod.number().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -347,7 +344,6 @@ export const UpdateJobBody = zod.object({
   locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
-  actualAmount: zod.number().nullish(),
   notes: zod.string().nullish(),
 });
 
@@ -374,7 +370,6 @@ export const UpdateJobResponse = zod.object({
   locationName: zod.string().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
-  actualAmount: zod.number().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -1621,7 +1616,6 @@ export const GetDashboardStatsResponse = zod.object({
       locationName: zod.string().nullish(),
       startDate: zod.string().nullish(),
       endDate: zod.string().nullish(),
-      actualAmount: zod.number().nullish(),
       notes: zod.string().nullish(),
       createdAt: zod.string(),
     }),

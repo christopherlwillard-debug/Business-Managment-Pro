@@ -17,7 +17,6 @@ export const jobsTable = pgTable("jobs", {
   state: text("state"),
   startDate: text("start_date"),
   endDate: text("end_date"),
-  actualAmount: numeric("actual_amount", { precision: 12, scale: 2 }),
   locationName: text("location_name"),
   notes: text("notes"),
   businessLine: text("business_line"),

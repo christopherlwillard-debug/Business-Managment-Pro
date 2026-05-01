@@ -480,3 +480,12 @@ pool.query('ALTER TABLE jobs DROP COLUMN IF EXISTS estimated_amount')
   .then(() => { console.log('jobs.estimated_amount dropped'); pool.end(); })
   .catch(e => { console.error('drop estimated_amount error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #391: drop actual_amount column from jobs (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE jobs DROP COLUMN IF EXISTS actual_amount')
+  .then(() => { console.log('jobs.actual_amount dropped'); pool.end(); })
+  .catch(e => { console.error('drop actual_amount error:', e.message); pool.end(); process.exit(1); });
+")

@@ -23,7 +23,6 @@ export interface Job {
   locationName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
-  actualAmount?: number | null;
   notes?: string | null;
   businessLine?: string | null;
   sqFt?: number | null;
