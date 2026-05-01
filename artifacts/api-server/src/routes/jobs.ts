@@ -216,18 +216,30 @@ router.get("/:id/invoice-draft", async (req, res) => {
     const estimates = await db.select().from(estimatesTable).where(eq(estimatesTable.jobId, id));
 
     type InvoiceLine = { description: string; quantity: number; unitPrice: number };
+    // Shape of each line item stored in the estimates.line_items jsonb column
+    type EstimateLineItem = {
+      description?: string;
+      quantity?: string | number;
+      unitCost?: string | number;
+      unitPrice?: string | number;
+    };
+    function isEstimateLineItem(v: unknown): v is EstimateLineItem {
+      return typeof v === "object" && v !== null;
+    }
     let lineItems: InvoiceLine[] = [];
 
     for (const est of estimates) {
-      const estLines = Array.isArray(est.lineItems) ? est.lineItems as any[] : [];
+      const rawLines = Array.isArray(est.lineItems) ? est.lineItems : [];
+      const estLines: EstimateLineItem[] = rawLines.filter(isEstimateLineItem);
       if (estLines.length > 0) {
-        // Compute the combined scale factor (markup × contingency) so line item prices sum to estimate total
+        // Scale each unit cost by markup × contingency so the expanded line items
+        // sum to the same total as the estimate.
         const markup = parseFloat(est.markupPercent ?? "0");
         const contingency = parseFloat(est.contingencyPercent ?? "0");
         const scaleFactor = (1 + markup / 100) * (1 + contingency / 100);
         for (const li of estLines) {
-          const rawUnit = parseFloat(li.unitCost ?? li.unitPrice ?? "0");
-          const qty = parseFloat(li.quantity ?? "1");
+          const rawUnit = parseFloat(String(li.unitCost ?? li.unitPrice ?? "0"));
+          const qty = parseFloat(String(li.quantity ?? "1"));
           lineItems.push({
             description: li.description ?? est.title,
             quantity: qty,
