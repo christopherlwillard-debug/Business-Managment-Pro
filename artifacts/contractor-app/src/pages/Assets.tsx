@@ -97,6 +97,9 @@ function calcDepreciationSchedule(
     return match !== undefined ? match.businessUsePct : 100;
   };
 
+  const hasOverride = (year: number): boolean =>
+    busUseRows !== undefined && busUseRows.some(r => r.year === year);
+
   const rows: DepreciationRow[] = [];
 
   if (method === "section-179") {
@@ -113,7 +116,7 @@ function calcDepreciationSchedule(
         annualDeduction: adjustedAnnual,
         accumulated,
         bookValue: Math.max(0, cost - accumulated),
-        businessUsePct: pct < 100 ? pct : undefined,
+        businessUsePct: (hasOverride(year) || pct < 100) ? pct : undefined,
       });
     }
     return rows;
@@ -129,7 +132,7 @@ function calcDepreciationSchedule(
         annualDeduction: adjusted,
         accumulated: adjusted,
         bookValue: Math.max(salvage, cost - adjusted),
-        businessUsePct: pct < 100 ? pct : undefined,
+        businessUsePct: (hasOverride(startYear) || pct < 100) ? pct : undefined,
       });
       return rows;
     }
@@ -149,7 +152,7 @@ function calcDepreciationSchedule(
         annualDeduction: adjustedAnnual,
         accumulated,
         bookValue: Math.max(salvage, cost - accumulated),
-        businessUsePct: pct < 100 ? pct : undefined,
+        businessUsePct: (hasOverride(year) || pct < 100) ? pct : undefined,
       });
     }
     return rows;
@@ -167,7 +170,7 @@ function calcDepreciationSchedule(
       annualDeduction: adjustedAnnual,
       accumulated,
       bookValue: Math.max(salvage, cost - accumulated),
-      businessUsePct: pct < 100 ? pct : undefined,
+      businessUsePct: (hasOverride(year) || pct < 100) ? pct : undefined,
     });
   }
   return rows;
