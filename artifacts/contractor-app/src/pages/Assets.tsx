@@ -6,8 +6,10 @@ import { type Asset, type AssetStatus, type AssetType } from "@workspace/api-cli
 import {
   Wrench, Plus, Pencil, Trash2, Upload, X, Check, ChevronDown, ChevronUp,
   Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2, TrendingDown,
-  Info, Building2, Shovel,
+  Info, Building2, Shovel, Percent,
 } from "lucide-react";
+
+interface BusUseRow { id: number; assetId: number; year: number; businessUsePct: number; }
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function api(path: string) { return `${BASE}${path}`; }
@@ -220,6 +222,9 @@ export default function Assets() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [formFile, setFormFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [busUseYear, setBusUseYear] = useState<string>("");
+  const [busUsePct, setBusUsePct] = useState<string>("100");
+  const [busUseAdding, setBusUseAdding] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formFileInputRef = useRef<HTMLInputElement>(null);
   const uploadAssetRef = useRef<number | null>(null);
@@ -227,6 +232,45 @@ export default function Assets() {
   const { data: assets = [], isLoading } = useQuery<Asset[]>({
     queryKey: ["assets"],
     queryFn: fetchAssets,
+  });
+
+  const { data: busUseRows = [] } = useQuery<BusUseRow[]>({
+    queryKey: ["asset-business-use", expandedId],
+    queryFn: () => expandedId
+      ? fetch(api(`/api/assets/${expandedId}/business-use`), { credentials: "include" }).then(r => r.json())
+      : Promise.resolve([]),
+    enabled: expandedId !== null,
+  });
+
+  const busUseUpsertMutation = useMutation({
+    mutationFn: ({ assetId, year, pct }: { assetId: number; year: number; pct: number }) =>
+      fetch(api(`/api/assets/${assetId}/business-use`), {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year, businessUsePct: pct }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["asset-business-use", expandedId] });
+      setBusUseAdding(false);
+      setBusUseYear("");
+      setBusUsePct("100");
+      toast({ title: "Business use % saved" });
+    },
+    onError: () => toast({ title: "Failed to save business use %", variant: "destructive" }),
+  });
+
+  const busUseDeleteMutation = useMutation({
+    mutationFn: ({ assetId, year }: { assetId: number; year: number }) =>
+      fetch(api(`/api/assets/${assetId}/business-use/${year}`), {
+        method: "DELETE",
+        credentials: "include",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["asset-business-use", expandedId] });
+      toast({ title: "Business use % removed" });
+    },
+    onError: () => toast({ title: "Failed to remove business use %", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -688,6 +732,110 @@ export default function Assets() {
                       <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-muted/30 border border-border text-xs text-muted-foreground">
                         <Info className="w-3.5 h-3.5 flex-shrink-0" />
                         Edit this asset and add a useful life to see the depreciation schedule.
+                      </div>
+                    )}
+
+                    {/* Business Use by Year */}
+                    {isExpanded && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Percent className="w-3.5 h-3.5 text-blue-500" />
+                          <span className="text-xs font-semibold text-foreground uppercase tracking-wide">Business Use % by Year</span>
+                          <span className="ml-1 text-xs text-muted-foreground">(for mixed-use assets like a personal/business vehicle)</span>
+                          {!busUseAdding && (
+                            <button
+                              onClick={() => { setBusUseAdding(true); setBusUseYear(CURRENT_YEAR.toString()); setBusUsePct("100"); }}
+                              className="ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <Plus className="w-3 h-3" /> Add Year
+                            </button>
+                          )}
+                        </div>
+                        {busUseRows.length === 0 && !busUseAdding && (
+                          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-muted/30 border border-border text-xs text-muted-foreground">
+                            <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                            No overrides — depreciation uses 100% business use for all years. Add a year entry if this asset is used partly for personal use.
+                          </div>
+                        )}
+                        {busUseRows.length > 0 && (
+                          <div className="overflow-x-auto rounded-xl border border-border mb-2">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-muted/50 border-b border-border">
+                                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Year</th>
+                                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Business Use %</th>
+                                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Personal Use %</th>
+                                  <th className="px-3 py-2"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border">
+                                {busUseRows.map(row => (
+                                  <tr key={row.year}>
+                                    <td className="px-3 py-2">{row.year}</td>
+                                    <td className="px-3 py-2 text-right font-semibold text-blue-700">{row.businessUsePct}%</td>
+                                    <td className="px-3 py-2 text-right text-muted-foreground">{100 - row.businessUsePct}%</td>
+                                    <td className="px-3 py-2 text-right">
+                                      <button
+                                        onClick={() => busUseDeleteMutation.mutate({ assetId: asset.id, year: row.year })}
+                                        className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                        title="Remove override"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                        {busUseAdding && (
+                          <div className="flex items-center gap-2 p-3 rounded-xl border border-primary/30 bg-primary/5">
+                            <div className="flex flex-col gap-0.5">
+                              <label className="text-xs text-muted-foreground">Year</label>
+                              <input
+                                type="number"
+                                min="2000"
+                                max="2099"
+                                value={busUseYear}
+                                onChange={e => setBusUseYear(e.target.value)}
+                                className="w-20 border border-border rounded-lg px-2 py-1.5 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <label className="text-xs text-muted-foreground">Business Use %</label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="100"
+                                  value={busUsePct}
+                                  onChange={e => setBusUsePct(e.target.value)}
+                                  className="w-20 border border-border rounded-lg px-2 pr-6 py-1.5 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const yr = parseInt(busUseYear);
+                                const pct = Math.max(1, Math.min(100, parseInt(busUsePct)));
+                                if (!yr || isNaN(pct)) return;
+                                busUseUpsertMutation.mutate({ assetId: asset.id, year: yr, pct });
+                              }}
+                              disabled={busUseUpsertMutation.isPending}
+                              className="mt-4 flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                            >
+                              <Check className="w-3 h-3" /> Save
+                            </button>
+                            <button
+                              onClick={() => setBusUseAdding(false)}
+                              className="mt-4 flex items-center gap-1 px-3 py-1.5 border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted transition-colors"
+                            >
+                              <X className="w-3 h-3" /> Cancel
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 

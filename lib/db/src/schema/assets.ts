@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, numeric, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, numeric, boolean, integer, unique } from "drizzle-orm/pg-core";
 
 export const assetsTable = pgTable("assets", {
   id: serial("id").primaryKey(),
@@ -23,3 +23,14 @@ export const assetsTable = pgTable("assets", {
 
 export type Asset = typeof assetsTable.$inferSelect;
 export type InsertAsset = typeof assetsTable.$inferInsert;
+
+export const assetBusinessUseTable = pgTable("asset_business_use", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull().references(() => assetsTable.id, { onDelete: "cascade" }),
+  year: integer("year").notNull(),
+  businessUsePct: integer("business_use_pct").notNull().default(100),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => [unique("asset_business_use_asset_year_unique").on(t.assetId, t.year)]);
+
+export type AssetBusinessUse = typeof assetBusinessUseTable.$inferSelect;
+export type InsertAssetBusinessUse = typeof assetBusinessUseTable.$inferInsert;

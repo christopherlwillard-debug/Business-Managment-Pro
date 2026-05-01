@@ -453,3 +453,21 @@ pool.query('ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS block_number intege
   .then(() => { console.log('route_stops.block_number and crew_label ensured'); pool.end(); })
   .catch(e => { console.error('route_stops block columns migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #367: create asset_business_use table (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS asset_business_use (
+    id serial PRIMARY KEY NOT NULL,
+    asset_id integer NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    year integer NOT NULL,
+    business_use_pct integer NOT NULL DEFAULT 100,
+    created_at timestamp DEFAULT now() NOT NULL,
+    CONSTRAINT asset_business_use_asset_year_unique UNIQUE (asset_id, year)
+  )
+\`)
+  .then(() => { console.log('asset_business_use table ensured'); pool.end(); })
+  .catch(e => { console.error('asset_business_use migration error:', e.message); pool.end(); process.exit(1); });
+")

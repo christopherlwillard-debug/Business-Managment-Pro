@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, sum, ne, inArray } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
@@ -666,6 +666,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       taxPayments,
       subs,
       settings,
+      busUseRows,
     ] = await Promise.all([
       db.select({
         id: invoicesTable.id,
@@ -694,7 +695,18 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         .where(eq(estimatedTaxPaymentsTable.year, year)),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
+      db.select().from(assetBusinessUseTable),
     ]);
+
+    // Build lookup: assetId → year → businessUsePct
+    const busUseMap = new Map<number, Map<number, number>>();
+    for (const row of busUseRows) {
+      if (!busUseMap.has(row.assetId)) busUseMap.set(row.assetId, new Map());
+      busUseMap.get(row.assetId)!.set(row.year, row.businessUsePct);
+    }
+    const getBusUsePct = (assetId: number, forYear: number): number => {
+      return busUseMap.get(assetId)?.get(forYear) ?? 100;
+    };
 
     // ── P&L Summary ──────────────────────────────────────────────────────────
     // Cash-basis: use electronic payment timestamps when available; fall back to issueDate for manual payments
@@ -731,7 +743,8 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         return disposalYear === null || disposalYear >= year;
       })
       .map(a => {
-        const annual = calcAnnualDepreciation(a, year);
+        const busUsePct = getBusUsePct(a.id, year);
+        const annual = calcAnnualDepreciation(a, year) * (busUsePct / 100);
         return {
           id: a.id,
           name: a.name,
@@ -744,6 +757,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
           bonusDepreciationPct: a.bonusDepreciationPct ?? 60,
           section179Eligible: a.section179Eligible,
           annualDeduction: annual,
+          businessUsePct: busUsePct,
           status: a.status,
         };
       })
@@ -759,7 +773,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       const endYear = disposalYear !== null ? Math.min(disposalYear, year) : year;
       let acc = 0;
       for (let y2 = startYear; y2 <= endYear; y2++) {
-        acc += calcAnnualDepreciation(a, y2);
+        acc += calcAnnualDepreciation(a, y2) * (getBusUsePct(a.id, y2) / 100);
       }
       return sum + acc;
     }, 0);
@@ -775,7 +789,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         const saleYear = parseInt((a.saleDate ?? "").slice(0, 4));
         let accumulated = 0;
         for (let y2 = startYear; y2 < saleYear; y2++) {
-          accumulated += calcAnnualDepreciation(a, y2);
+          accumulated += calcAnnualDepreciation(a, y2) * (getBusUsePct(a.id, y2) / 100);
         }
         const bookValue = Math.max(salvage, cost - accumulated);
         const salePrice = a.salePrice != null ? parseFloat(String(a.salePrice)) : 0;

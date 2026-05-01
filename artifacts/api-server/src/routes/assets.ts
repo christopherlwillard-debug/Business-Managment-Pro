@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { assetsTable } from "@workspace/db/schema";
+import { assetsTable, assetBusinessUseTable } from "@workspace/db/schema";
 import { eq, and, like } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
@@ -145,6 +145,54 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete asset" });
+  }
+});
+
+router.get("/:id/business-use", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db.select().from(assetBusinessUseTable)
+      .where(eq(assetBusinessUseTable.assetId, id))
+      .orderBy(assetBusinessUseTable.year);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch business-use rows" });
+  }
+});
+
+router.put("/:id/business-use", async (req, res) => {
+  try {
+    const assetId = parseInt(req.params.id);
+    const { year, businessUsePct } = req.body;
+    if (!year || businessUsePct == null) {
+      return res.status(400).json({ error: "year and businessUsePct are required" });
+    }
+    const pct = Math.max(1, Math.min(100, parseInt(businessUsePct)));
+    const [row] = await db.insert(assetBusinessUseTable)
+      .values({ assetId, year: parseInt(year), businessUsePct: pct })
+      .onConflictDoUpdate({
+        target: [assetBusinessUseTable.assetId, assetBusinessUseTable.year],
+        set: { businessUsePct: pct },
+      })
+      .returning();
+    res.json(row);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to upsert business-use row" });
+  }
+});
+
+router.delete("/:id/business-use/:year", async (req, res) => {
+  try {
+    const assetId = parseInt(req.params.id);
+    const year = parseInt(req.params.year);
+    await db.delete(assetBusinessUseTable)
+      .where(and(eq(assetBusinessUseTable.assetId, assetId), eq(assetBusinessUseTable.year, year)));
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete business-use row" });
   }
 });
 

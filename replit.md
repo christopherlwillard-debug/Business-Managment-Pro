@@ -154,6 +154,13 @@ Route: `/assets` (owner-only). Sidebar: Business Tools group.
 - `depreciation_method` (text, default 'straight-line') — one of: `straight-line`, `section-179`, `bonus`
 - `bonus_depreciation_pct` (integer, default 60) — year-1 bonus % (IRS current rate for bonus method)
 
+**Business Use % by Year (`asset_business_use` table, Task #367):**
+- Separate table `asset_business_use` (columns: id, asset_id FK→assets CASCADE, year, business_use_pct DEFAULT 100, UNIQUE(asset_id, year))
+- API endpoints: `GET /api/assets/:id/business-use`, `PUT /api/assets/:id/business-use` (upsert by year), `DELETE /api/assets/:id/business-use/:year`
+- Expanded asset card in Assets.tsx shows "Business Use % by Year" section with add/delete inline form
+- Year-end report in reports.ts fetches all business-use rows in one query, builds a lookup map, and multiplies each year's depreciation by the pct (used in annual deduction, accumulated total, and disposed-asset book value)
+- Accounting.tsx year-end depreciation table shows "Bus. Use %" column (amber badge when <100%); CSV and HTML exports include the column too
+
 **Depreciation math (`calcDepreciationSchedule` in Assets.tsx):**
 - **Straight-line**: annual = (cost − salvage) / life; equal deduction each year
 - **Section 179**: full deduction year 1 (cost − salvage); zero in subsequent years

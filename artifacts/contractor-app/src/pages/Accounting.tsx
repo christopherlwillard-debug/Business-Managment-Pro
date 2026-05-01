@@ -3752,7 +3752,7 @@ interface YearEndReport {
   otherIncome: { id: number; date: string; description: string; source: string | null; amount: number; paymentMethod: string | null }[];
   mileage: { totalMiles: number; mileageRate: number; deduction: number; trips: number };
   depreciation: {
-    rows: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; depreciationMethod: string; usefulLifeYears: number; annualDeduction: number; section179Eligible: boolean }[];
+    rows: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; depreciationMethod: string; usefulLifeYears: number; annualDeduction: number; section179Eligible: boolean; businessUsePct: number }[];
     total: number;
     totalAccumulated: number;
   };
@@ -3829,10 +3829,10 @@ async function downloadYearEndZip(report: YearEndReport) {
 
   // 5. Asset Depreciation
   zip.file(`${year}_Asset_Depreciation.csv`, buildCSVBlob([
-    ["Asset", "Type", "Purchase Date", "Cost", "Method", "Life (yrs)", `${year} Deduction`],
-    ...report.depreciation.rows.map(r => [r.name, r.assetType, r.purchaseDate, r.purchasePrice.toFixed(2), r.depreciationMethod, String(r.usefulLifeYears), r.annualDeduction.toFixed(2)]),
-    [`${report.year} TOTAL DEDUCTION`, "", "", "", "", "", report.depreciation.total.toFixed(2)],
-    ["TOTAL ACCUMULATED (all active assets)", "", "", "", "", "", report.depreciation.totalAccumulated.toFixed(2)],
+    ["Asset", "Type", "Purchase Date", "Cost", "Method", "Life (yrs)", "Bus. Use %", `${year} Deduction`],
+    ...report.depreciation.rows.map(r => [r.name, r.assetType, r.purchaseDate, r.purchasePrice.toFixed(2), r.depreciationMethod, String(r.usefulLifeYears), `${r.businessUsePct}%`, r.annualDeduction.toFixed(2)]),
+    [`${report.year} TOTAL DEDUCTION`, "", "", "", "", "", "", report.depreciation.total.toFixed(2)],
+    ["TOTAL ACCUMULATED (all active assets)", "", "", "", "", "", "", report.depreciation.totalAccumulated.toFixed(2)],
   ], `${year} Asset Depreciation — ${report.companyName}`));
 
   // 6. Disposed Assets
@@ -3894,7 +3894,7 @@ function printYearEndReport(report: YearEndReport) {
   }).join("");
 
   const deprRows = report.depreciation.rows.map(r =>
-    `<tr><td>${esc(r.name)}</td><td>${esc(r.assetType)}</td><td>${esc(r.purchaseDate)}</td><td class="num">${fmt(r.purchasePrice)}</td><td>${esc(r.depreciationMethod)}</td><td class="num">${fmt(r.annualDeduction)}</td></tr>`
+    `<tr><td>${esc(r.name)}</td><td>${esc(r.assetType)}</td><td>${esc(r.purchaseDate)}</td><td class="num">${fmt(r.purchasePrice)}</td><td>${esc(r.depreciationMethod)}</td><td class="num">${r.businessUsePct}%</td><td class="num">${fmt(r.annualDeduction)}</td></tr>`
   ).join("");
 
   const disposedRows = report.disposedAssets.map(a =>
@@ -3973,7 +3973,7 @@ ${row("Total Expenses", fmt(report.totalExpenses), true)}
 ${report.depreciation.rows.length > 0 ? `
 <h2 class="page-break">Asset Depreciation — ${report.year}</h2>
 <table>
-<tr><th>Asset</th><th>Type</th><th>Purchase Date</th><th class="num">Cost</th><th>Method</th><th class="num">${report.year} Deduction</th></tr>
+<tr><th>Asset</th><th>Type</th><th>Purchase Date</th><th class="num">Cost</th><th>Method</th><th class="num">Bus. Use %</th><th class="num">${report.year} Deduction</th></tr>
 ${deprRows}
 ${row(`${report.year} Total Deduction`, fmt(report.depreciation.total), true)}
 ${row("Total Accumulated Depreciation (all active assets)", fmt(report.depreciation.totalAccumulated), true)}
@@ -4228,6 +4228,7 @@ function YearEndReportTab({ year }: { year: number }) {
                   <th className="text-left px-4 py-2">Purchase Date</th>
                   <th className="text-right px-4 py-2">Cost</th>
                   <th className="text-left px-4 py-2">Method</th>
+                  <th className="text-right px-4 py-2">Bus. Use %</th>
                   <th className="text-right px-4 py-2">{year} Deduction</th>
                 </tr>
               </thead>
@@ -4239,15 +4240,20 @@ function YearEndReportTab({ year }: { year: number }) {
                     <td className="px-4 py-2 text-muted-foreground">{r.purchaseDate}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(r.purchasePrice)}</td>
                     <td className="px-4 py-2 text-muted-foreground capitalize">{r.depreciationMethod}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {r.businessUsePct < 100
+                        ? <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">{r.businessUsePct}%</span>
+                        : <span className="text-muted-foreground text-xs">100%</span>}
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums font-medium text-orange-600">{fmtMoney(r.annualDeduction)}</td>
                   </tr>
                 ))}
                 <tr className="border-t-2 border-border font-semibold bg-muted/20">
-                  <td colSpan={5} className="px-4 py-2">{year} Total Deduction</td>
+                  <td colSpan={6} className="px-4 py-2">{year} Total Deduction</td>
                   <td className="px-4 py-2 text-right tabular-nums text-orange-600">{fmtMoney(report.depreciation.total)}</td>
                 </tr>
                 <tr className="font-semibold bg-orange-50 dark:bg-orange-950/20 border-t border-orange-200">
-                  <td colSpan={5} className="px-4 py-2 text-orange-700">Total Accumulated Depreciation (all active assets)</td>
+                  <td colSpan={6} className="px-4 py-2 text-orange-700">Total Accumulated Depreciation (all active assets)</td>
                   <td className="px-4 py-2 text-right tabular-nums text-orange-700">{fmtMoney(report.depreciation.totalAccumulated)}</td>
                 </tr>
               </tbody>
