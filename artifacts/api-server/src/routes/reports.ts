@@ -95,6 +95,11 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Mileage cannot be attributed to a single business line — exclude from filtered net profit
     const mileageForNetProfit = validBl ? 0 : mileageDeduction;
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;
+    // Owner draws — tracked separately, never reduce taxable profit
+    const ownerDrawTotal = nonMileageExpenses
+      .filter(e => e.category === "Owner Draw")
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const undrawnBalance = operationalNetProfit - ownerDrawTotal;
     const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
@@ -172,6 +177,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       excludedFromProfit,
       formulaExcludedFromProfit: excludedFromProfitFormula,
       excludedExpenseCount,
+      ownerDrawTotal,
+      undrawnBalance,
       subContractorOwed,
       subContractorPaid,
       subContractorRemaining,
@@ -859,6 +866,8 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       items: { date: string; description: string; vendor: string | null; amount: number }[];
     }>();
     for (const e of nonMileageExpenses) {
+      // Owner Draw is a personal distribution — never a Schedule C deduction.
+      if (e.category === "Owner Draw") continue;
       const cat = (e.category ?? "other").toLowerCase();
       const line = SCHED_C_MAP[cat] ?? "Line 27a – Other";
       const existing = catMap.get(line) ?? { schedCLine: line, amount: 0, count: 0, items: [] };

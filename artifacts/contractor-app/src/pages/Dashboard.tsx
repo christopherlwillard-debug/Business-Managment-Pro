@@ -1,6 +1,6 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useGetDashboardStats, useListClients } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -88,7 +88,9 @@ function useOverdueInvoicesList() {
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
   const [businessLine, setBusinessLine] = useState<"" | "asphalt_sealing" | "general_contracting">("");
+  const [drawDialogOpen, setDrawDialogOpen] = useState(false);
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
   const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: businessLine || undefined });
   const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
   const { data: allClients = [] } = useListClients();
@@ -472,6 +474,24 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Owner Distributions card */}
+      {stats.operationalNetProfit !== undefined && (
+        <DistributionsCard
+          operationalNetProfit={stats.operationalNetProfit}
+          ownerDrawTotal={stats.ownerDrawTotal ?? 0}
+          undrawnBalance={stats.undrawnBalance ?? stats.operationalNetProfit}
+          periodLabel={periodLabel}
+          onRecordDraw={() => setDrawDialogOpen(true)}
+        />
+      )}
+
+      {/* Record Draw inline dialog */}
+      <RecordDrawDialog
+        open={drawDialogOpen}
+        onClose={() => setDrawDialogOpen(false)}
+        onSaved={() => queryClient.invalidateQueries()}
+      />
+
       {/* Subcontractor Pay section — only shown when there are sub expenses */}
       {((stats.subContractorOwed ?? 0) > 0 || (stats.subContractorPaid ?? 0) > 0) && (
         <div className="space-y-3">
@@ -775,6 +795,166 @@ export default function Dashboard() {
   );
 }
 
+function RecordDrawDialog({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(getTodayStr());
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function resetForm() { setAmount(""); setDate(getTodayStr()); setDescription(""); setError(""); }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!amount || parseFloat(amount) <= 0) { setError("Enter a valid amount."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`${BASE}/api/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: description.trim() || "Owner Draw",
+          amount: parseFloat(amount),
+          category: "Owner Draw",
+          date,
+          excludeFromNetProfit: true,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      resetForm();
+      onSaved();
+      onClose();
+    } catch {
+      setError("Failed to save draw. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40" onClick={() => { resetForm(); onClose(); }}>
+      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-border" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-5">
+          <div className="p-2 rounded-xl bg-violet-100 text-violet-700">
+            <Wallet className="w-4 h-4" />
+          </div>
+          <h2 className="text-base font-bold text-foreground">Record Owner Draw</h2>
+          <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => { resetForm(); onClose(); }}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Amount *</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
+              <input
+                type="number" step="0.01" min="0.01" required
+                value={amount} onChange={e => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-violet-300 outline-none text-sm"
+                autoFocus
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Date *</label>
+            <input
+              type="date" required
+              value={date} onChange={e => setDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-violet-300 outline-none text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Notes <span className="text-muted-foreground font-normal">(optional)</span></label>
+            <input
+              type="text"
+              value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="e.g. Weekly draw, transfer"
+              className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-violet-300 outline-none text-sm"
+            />
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => { resetForm(); onClose(); }}
+              className="flex-1 px-4 py-2 rounded-xl font-medium text-sm text-muted-foreground hover:bg-muted transition-colors border border-border"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit" disabled={saving}
+              className="flex-1 px-4 py-2 rounded-xl font-semibold text-sm bg-violet-600 text-white hover:bg-violet-700 transition-colors disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Record Draw"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DistributionsCard({ operationalNetProfit, ownerDrawTotal, undrawnBalance, periodLabel, onRecordDraw }: {
+  operationalNetProfit: number;
+  ownerDrawTotal: number;
+  undrawnBalance: number;
+  periodLabel: string;
+  onRecordDraw: () => void;
+}) {
+  const drawRatio = operationalNetProfit > 0 ? ownerDrawTotal / operationalNetProfit : 0;
+  const balanceColor =
+    undrawnBalance < 0 ? "text-red-600" :
+    drawRatio >= 0.7 ? "text-emerald-600" :
+    "text-amber-600";
+  const balanceLabel =
+    undrawnBalance < 0 ? "overdrawn" :
+    drawRatio >= 0.7 ? "nearly distributed" :
+    "building up";
+
+  return (
+    <Card className="shadow-md border-border/50 border-l-4 border-l-violet-400">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-violet-100 text-violet-700">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-foreground">Owner Distributions ({periodLabel})</p>
+              <p className="text-[10px] text-muted-foreground">Profit earned vs. personal draws taken</p>
+            </div>
+          </div>
+          <button
+            onClick={onRecordDraw}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Record Draw
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 text-center">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Operating Profit</p>
+            <p className="text-lg font-display font-bold text-emerald-600">{formatCurrency(operationalNetProfit)}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Revenue − expenses</p>
+          </div>
+          <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-3 text-center">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Draws Taken</p>
+            <p className="text-lg font-display font-bold text-amber-600">{formatCurrency(ownerDrawTotal)}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Personal distributions</p>
+          </div>
+          <div className="bg-muted/30 border border-border/50 rounded-xl p-3 text-center">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Undrawn Balance</p>
+            <p className={cn("text-lg font-display font-bold", balanceColor)}>{formatCurrency(undrawnBalance)}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{balanceLabel}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function NetProfitCard({ operationalNetProfit, excludedFromProfit, formulaExcludedFromProfit, excludedCount, periodLabel }: {
   operationalNetProfit: number;
   excludedFromProfit: number;
@@ -807,21 +987,11 @@ function NetProfitCard({ operationalNetProfit, excludedFromProfit, formulaExclud
             {isPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
           </div>
         </div>
-        <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between gap-3 flex-wrap">
-          {formulaExcludedFromProfit > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Total expenses including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - formulaExcludedFromProfit)}</span> net profit
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">All expenses counted in profit</p>
-          )}
-          <Link
-            href={`${BASE}/expenses?prefill_category=Owner+Draw`}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors flex-shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5" /> Record Draw
-          </Link>
-        </div>
+        {formulaExcludedFromProfit > 0 && (
+          <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/50">
+            Total expenses including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - formulaExcludedFromProfit)}</span> net profit
+          </p>
+        )}
       </CardContent>
     </Card>
   );
