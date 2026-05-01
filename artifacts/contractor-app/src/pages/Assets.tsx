@@ -8,7 +8,7 @@ import {
   Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2, TrendingDown,
   Info, Building2, Shovel, Percent, Download, FileText, Mail,
 } from "lucide-react";
-import { generateAssetDepreciationPdf } from "@/lib/generateAssetDepreciationPdf";
+import { generateAssetDepreciationPdf, type PdfFilter } from "@/lib/generateAssetDepreciationPdf";
 
 interface BusUseRow { id: number; assetId: number; year: number; businessUsePct: number; }
 type AssetWithBusUse = Asset & { businessUseRows: { year: number; businessUsePct: number }[] };
@@ -264,6 +264,9 @@ export default function Assets() {
   const [formFile, setFormFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [showPdfFilterDialog, setShowPdfFilterDialog] = useState(false);
+  const [pdfFilterType, setPdfFilterType] = useState<"all" | "active-only" | "year">("all");
+  const [pdfFilterYear, setPdfFilterYear] = useState<string>(CURRENT_YEAR.toString());
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -527,7 +530,7 @@ export default function Assets() {
     URL.revokeObjectURL(url);
   }
 
-  async function handleExportPdf() {
+  async function handleExportPdf(filter: PdfFilter = { type: "all" }) {
     setIsExportingPdf(true);
     try {
       const pdfAssets = assets.map(asset => ({
@@ -544,11 +547,14 @@ export default function Assets() {
         section179Eligible: asset.section179Eligible,
         schedule: calcDepreciationSchedule(asset, asset.businessUseRows),
       }));
-      const blob = await generateAssetDepreciationPdf(pdfAssets);
+      const blob = await generateAssetDepreciationPdf(pdfAssets, filter);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `asset-depreciation-schedule-${new Date().toISOString().slice(0, 10)}.pdf`;
+      const filterSuffix =
+        filter.type === "active-only" ? "-active" :
+        filter.type === "year" ? `-${filter.year}` : "";
+      a.download = `asset-depreciation-schedule${filterSuffix}-${new Date().toISOString().slice(0, 10)}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -556,6 +562,21 @@ export default function Assets() {
     } finally {
       setIsExportingPdf(false);
     }
+  }
+
+  function openPdfFilterDialog() {
+    setPdfFilterType("all");
+    setPdfFilterYear(CURRENT_YEAR.toString());
+    setShowPdfFilterDialog(true);
+  }
+
+  function handlePdfFilterExport() {
+    setShowPdfFilterDialog(false);
+    const filter: PdfFilter =
+      pdfFilterType === "active-only" ? { type: "active-only" } :
+      pdfFilterType === "year" ? { type: "year", year: parseInt(pdfFilterYear) } :
+      { type: "all" };
+    handleExportPdf(filter);
   }
 
   async function handleSendEmail(e: React.FormEvent) {
@@ -639,6 +660,14 @@ export default function Assets() {
 
   const filtered = assets.filter(a => filterStatus === "all" || a.status === filterStatus);
   const activeAssets = assets.filter(a => a.status === "active");
+
+  const allScheduleYears = Array.from(new Set(
+    assets.flatMap(a => calcDepreciationSchedule(a, a.businessUseRows).map(r => r.year))
+  )).sort((a, b) => b - a);
+
+  const pdfYearOptions = allScheduleYears.length > 0
+    ? allScheduleYears
+    : Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i);
   const soldCount = assets.filter(a => a.status === "sold").length;
   const retiredCount = assets.filter(a => a.status === "retired").length;
 
@@ -687,10 +716,10 @@ export default function Assets() {
                 Email to Accountant
               </button>
               <button
-                onClick={handleExportPdf}
+                onClick={openPdfFilterDialog}
                 disabled={isExportingPdf}
                 className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Export full depreciation schedule as PDF"
+                title="Export depreciation schedule as PDF"
               >
                 <FileText className="w-4 h-4" />
                 {isExportingPdf ? "Generating…" : "Export PDF"}
@@ -1568,6 +1597,88 @@ export default function Assets() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Export Filter dialog */}
+      {showPdfFilterDialog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                <h2 className="text-base font-semibold">Export PDF</h2>
+              </div>
+              <button
+                onClick={() => setShowPdfFilterDialog(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-muted-foreground">Choose which assets to include in the exported PDF report.</p>
+              <div className="space-y-2">
+                {(["all", "active-only", "year"] as const).map(opt => (
+                  <label
+                    key={opt}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors",
+                      pdfFilterType === opt
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/40 hover:bg-muted/40"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="pdfFilter"
+                      value={opt}
+                      checked={pdfFilterType === opt}
+                      onChange={() => setPdfFilterType(opt)}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm font-medium">
+                      {opt === "all" && "All Assets"}
+                      {opt === "active-only" && "Active Assets Only"}
+                      {opt === "year" && "Specific Tax Year"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {pdfFilterType === "year" && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Tax Year</label>
+                  <select
+                    value={pdfFilterYear}
+                    onChange={e => setPdfFilterYear(e.target.value)}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {pdfYearOptions.map(y => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">Only depreciation rows for {pdfFilterYear} will be shown per asset.</p>
+                </div>
+              )}
+              <div className="flex gap-2 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowPdfFilterDialog(false)}
+                  className="px-4 py-2 text-sm border border-border rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePdfFilterExport}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                >
+                  <FileText className="w-4 h-4" />
+                  Export PDF
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -23,6 +23,11 @@ export interface AssetPdfRow {
   schedule: DepreciationRow[];
 }
 
+export type PdfFilter =
+  | { type: "all" }
+  | { type: "active-only" }
+  | { type: "year"; year: number };
+
 function esc(s: string | null | undefined): string {
   return (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -62,11 +67,33 @@ function statusBg(s: string): string {
   return "#f9fafb";
 }
 
-export async function generateAssetDepreciationPdf(assets: AssetPdfRow[]): Promise<Blob> {
+function filterLabel(filter: PdfFilter): string {
+  if (filter.type === "active-only") return "Active Assets Only";
+  if (filter.type === "year") return `Tax Year ${filter.year}`;
+  return "All Assets";
+}
+
+export async function generateAssetDepreciationPdf(
+  assets: AssetPdfRow[],
+  filter: PdfFilter = { type: "all" },
+): Promise<Blob> {
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const year = new Date().getFullYear();
 
-  const assetSections = assets.map((asset) => {
+  let filteredAssets = assets;
+  if (filter.type === "active-only") {
+    filteredAssets = assets.filter(a => a.status === "active");
+  } else if (filter.type === "year") {
+    filteredAssets = assets
+      .filter(a => a.schedule.some(r => r.year === filter.year))
+      .map(a => ({ ...a, schedule: a.schedule.filter(r => r.year === filter.year) }));
+  }
+
+  const filterBadge = filter.type !== "all"
+    ? `<span style="display:inline-block;background:#dbeafe;color:#1e40af;font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;border:1px solid #bfdbfe;">${esc(filterLabel(filter))}</span>`
+    : "";
+
+  const assetSections = filteredAssets.map((asset) => {
     const scheduleRows = asset.schedule.length > 0
       ? asset.schedule.map((row) => {
           const busUsePct = row.businessUsePct !== undefined ? row.businessUsePct : 100;
@@ -162,12 +189,13 @@ export async function generateAssetDepreciationPdf(assets: AssetPdfRow[]): Promi
     <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:18px 24px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;">
       <div>
         <div style="font-size:22px;font-weight:900;color:#1e3a8a;letter-spacing:0.02em;">Asset Depreciation Schedule</div>
-        <div style="font-size:12px;color:#3b82f6;margin-top:4px;">Equipment &amp; Assets &mdash; Full Depreciation Report</div>
-        <div style="font-size:11px;color:#6b7280;margin-top:4px;">Generated ${esc(today)}</div>
+        <div style="font-size:12px;color:#3b82f6;margin-top:4px;">Equipment &amp; Assets &mdash; ${esc(filterLabel(filter))} Report</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px;">Generated ${esc(today)}${filterBadge ? ` &nbsp;` : ""}</div>
+        ${filterBadge ? `<div style="margin-top:6px;">${filterBadge}</div>` : ""}
       </div>
       <div style="text-align:right;">
-        <div style="font-size:11px;color:#6b7280;">Total Assets</div>
-        <div style="font-size:32px;font-weight:900;color:#bfdbfe;line-height:1;">${assets.length}</div>
+        <div style="font-size:11px;color:#6b7280;">Assets Shown</div>
+        <div style="font-size:32px;font-weight:900;color:#bfdbfe;line-height:1;">${filteredAssets.length}</div>
       </div>
     </div>
 
@@ -176,12 +204,14 @@ export async function generateAssetDepreciationPdf(assets: AssetPdfRow[]): Promi
       <strong>For tax preparation use only.</strong> This report reflects depreciation calculations based on the method, useful life, and business-use percentages entered in the system. Verify all amounts with your tax preparer before filing.
     </div>
 
-    <!-- Assets -->
-    ${assetSections}
+    ${filteredAssets.length === 0
+      ? `<div style="text-align:center;padding:48px 0;color:#9ca3af;font-size:14px;">No assets match the selected filter.</div>`
+      : `<!-- Assets -->${assetSections}`
+    }
 
     <!-- Footer -->
     <div style="border-top:1px solid #e5e7eb;padding-top:12px;font-size:9px;color:#9ca3af;margin-top:8px;">
-      Asset Depreciation Schedule &middot; Generated ${esc(today)} &middot; For informational purposes only. Consult a qualified tax professional.
+      Asset Depreciation Schedule &middot; ${esc(filterLabel(filter))} &middot; Generated ${esc(today)} &middot; For informational purposes only. Consult a qualified tax professional.
     </div>
   </div>
   <div style="height:4px;background:linear-gradient(to right,#3b82f6,#1d4ed8);margin-top:32px;"></div>
