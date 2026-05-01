@@ -410,9 +410,11 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }));
     const allRecords = [...invoiceRecords, ...otherIncomeRecords].sort((a, b) => a.issueDate.localeCompare(b.issueDate));
 
-    // Expenses by category (mileage excluded — shown separately as mileageDeduction)
+    // Expenses by category (mileage and Owner Draw excluded — mileage shown separately,
+    // Owner Draw is a personal distribution not a business cost)
     const catMap = new Map<string, { category: string; amount: number; count: number }>();
     for (const e of nonMileageExpenses) {
+      if (e.category === "Owner Draw") continue;
       const cat = e.category || "Uncategorized";
       const existing = catMap.get(cat) ?? { category: cat, amount: 0, count: 0 };
       existing.amount += parseFloat(e.amount ?? "0");
@@ -420,6 +422,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       catMap.set(cat, existing);
     }
     const expensesByCategory = Array.from(catMap.values()).sort((a, b) => b.amount - a.amount);
+    // Business expenses = total non-mileage expenses minus owner draws
+    const businessExpenses = totalExpenses - ownerDrawTotal;
 
     // Monthly income trend
     const monthlyIncome = [];
@@ -486,7 +490,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       year,
-      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance },
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance },
       incomeByCity,
       estimatedTaxes,
       expensesByCategory,

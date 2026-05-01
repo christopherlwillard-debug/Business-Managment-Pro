@@ -838,7 +838,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   const statTiles = [
     { label: "Collected", value: formatCurrency(s.paidRevenue), sub: otherIncomeTotal > 0 ? "Paid invoices + other income" : "Paid invoices only", icon: DollarSign, color: "bg-emerald-100 text-emerald-700", border: "border-l-emerald-500" },
     { label: "Total Invoiced", value: formatCurrency(s.grossRevenue), sub: pendingAmt > 0 ? `${formatCurrency(pendingAmt)} still outstanding` : otherIncomeTotal > 0 ? `Incl. ${formatCurrency(otherIncomeTotal)} other income` : "Incl. unpaid invoices", icon: TrendingUp, color: "bg-blue-100 text-blue-700", border: "border-l-blue-500" },
-    { label: "Business Expenses (excl. mileage)", value: formatCurrency(s.totalExpenses), sub: `+${formatCurrency(s.mileageDeduction ?? 0)} mileage`, icon: TrendingDown, color: "bg-red-100 text-red-700", border: "border-l-red-500" },
+    { label: "Business Expenses (excl. mileage)", value: formatCurrency(s.businessExpenses ?? s.totalExpenses), sub: `+${formatCurrency(s.mileageDeduction ?? 0)} mileage`, icon: TrendingDown, color: "bg-red-100 text-red-700", border: "border-l-red-500" },
     { label: "Est. Net Profit", value: formatCurrency(netProfit), sub: "Collected − Expenses − Mileage", icon: netProfit >= 0 ? TrendingUp : TrendingDown, color: netProfit >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700", border: netProfit >= 0 ? "border-l-emerald-500" : "border-l-red-500" },
   ];
 
@@ -857,7 +857,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     },
     {
       key: "expenses", label: "Expense Breakdown", icon: Receipt,
-      stat: s.totalExpenses > 0 ? formatCurrency(s.totalExpenses) : "$0",
+      stat: (s.businessExpenses ?? s.totalExpenses) > 0 ? formatCurrency(s.businessExpenses ?? s.totalExpenses) : "$0",
       statLabel: "Total categorized", color: "text-orange-600",
     },
     {
@@ -1110,7 +1110,8 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                           </thead>
                           <tbody className="divide-y divide-border/50">
                             {data.expensesByCategory.map((cat: any) => {
-                              const pct = s.totalExpenses > 0 ? (cat.amount / s.totalExpenses * 100).toFixed(1) : "0";
+                              const businessExp = s.businessExpenses ?? s.totalExpenses;
+                              const pct = businessExp > 0 ? (cat.amount / businessExp * 100).toFixed(1) : "0";
                               const colorClass = CATEGORY_COLORS[cat.category] ?? "bg-gray-100 text-gray-600";
                               return (
                                 <tr key={cat.category} className="hover:bg-muted/20 transition-colors">
@@ -1135,7 +1136,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                             <tr>
                               <td className="px-5 py-3 text-foreground">Total</td>
                               <td className="px-5 py-3 text-right text-muted-foreground">{data.expensesByCategory.reduce((s: number, c: any) => s + c.count, 0)}</td>
-                              <td className="px-5 py-3 text-right">{formatCurrency(s.totalExpenses)}</td>
+                              <td className="px-5 py-3 text-right">{formatCurrency(s.businessExpenses ?? s.totalExpenses)}</td>
                               <td className="px-5 py-3" />
                             </tr>
                           </tfoot>
