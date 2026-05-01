@@ -76,9 +76,13 @@ interface DepreciationRow {
   annualDeduction: number;
   accumulated: number;
   bookValue: number;
+  businessUsePct?: number;
 }
 
-function calcDepreciationSchedule(asset: Asset): DepreciationRow[] {
+function calcDepreciationSchedule(
+  asset: Asset,
+  busUseRows?: { year: number; businessUsePct: number }[],
+): DepreciationRow[] {
   const cost = asset.purchasePrice;
   const salvage = asset.salvageValue ?? 0;
   const life = asset.usefulLifeYears;
@@ -88,13 +92,29 @@ function calcDepreciationSchedule(asset: Asset): DepreciationRow[] {
 
   if (!life || life <= 0 || cost <= 0) return [];
 
+  const getBusUsePct = (year: number): number => {
+    const match = busUseRows?.find(r => r.year === year);
+    return match !== undefined ? match.businessUsePct : 100;
+  };
+
   const rows: DepreciationRow[] = [];
 
   if (method === "section-179") {
     const deduction = cost;
-    rows.push({ year: startYear, annualDeduction: deduction, accumulated: deduction, bookValue: 0 });
-    for (let i = 1; i < life; i++) {
-      rows.push({ year: startYear + i, annualDeduction: 0, accumulated: deduction, bookValue: 0 });
+    let accumulated = 0;
+    for (let i = 0; i < life; i++) {
+      const year = startYear + i;
+      const pct = getBusUsePct(year);
+      const fullAnnual = i === 0 ? deduction : 0;
+      const adjustedAnnual = fullAnnual * (pct / 100);
+      accumulated += adjustedAnnual;
+      rows.push({
+        year,
+        annualDeduction: adjustedAnnual,
+        accumulated,
+        bookValue: Math.max(0, cost - accumulated),
+        businessUsePct: pct < 100 ? pct : undefined,
+      });
     }
     return rows;
   }
@@ -102,7 +122,15 @@ function calcDepreciationSchedule(asset: Asset): DepreciationRow[] {
   if (method === "bonus") {
     const depreciableBasis = cost - salvage;
     if (life <= 1) {
-      rows.push({ year: startYear, annualDeduction: depreciableBasis, accumulated: depreciableBasis, bookValue: salvage });
+      const pct = getBusUsePct(startYear);
+      const adjusted = depreciableBasis * (pct / 100);
+      rows.push({
+        year: startYear,
+        annualDeduction: adjusted,
+        accumulated: adjusted,
+        bookValue: Math.max(salvage, cost - adjusted),
+        businessUsePct: pct < 100 ? pct : undefined,
+      });
       return rows;
     }
     const bonusDeduction = depreciableBasis * bonusPct;
@@ -111,39 +139,47 @@ function calcDepreciationSchedule(asset: Asset): DepreciationRow[] {
     const annualOnRemainder = remainingYears > 0 ? remainder / remainingYears : 0;
     let accumulated = 0;
     for (let i = 0; i < life; i++) {
-      const annual = i === 0 ? bonusDeduction : annualOnRemainder;
-      accumulated += annual;
+      const year = startYear + i;
+      const pct = getBusUsePct(year);
+      const fullAnnual = i === 0 ? bonusDeduction : annualOnRemainder;
+      const adjustedAnnual = fullAnnual * (pct / 100);
+      accumulated += adjustedAnnual;
       rows.push({
-        year: startYear + i,
-        annualDeduction: annual,
+        year,
+        annualDeduction: adjustedAnnual,
         accumulated,
         bookValue: Math.max(salvage, cost - accumulated),
+        businessUsePct: pct < 100 ? pct : undefined,
       });
     }
     return rows;
   }
 
-  const annual = (cost - salvage) / life;
+  const fullAnnual = (cost - salvage) / life;
   let accumulated = 0;
   for (let i = 0; i < life; i++) {
-    accumulated += annual;
+    const year = startYear + i;
+    const pct = getBusUsePct(year);
+    const adjustedAnnual = fullAnnual * (pct / 100);
+    accumulated += adjustedAnnual;
     rows.push({
-      year: startYear + i,
-      annualDeduction: annual,
+      year,
+      annualDeduction: adjustedAnnual,
       accumulated,
       bookValue: Math.max(salvage, cost - accumulated),
+      businessUsePct: pct < 100 ? pct : undefined,
     });
   }
   return rows;
 }
 
-function getAccumulatedDepreciation(asset: Asset, asOfYear: number): number {
-  const schedule = calcDepreciationSchedule(asset);
+function getAccumulatedDepreciation(asset: Asset, asOfYear: number, busUseRows?: { year: number; businessUsePct: number }[]): number {
+  const schedule = calcDepreciationSchedule(asset, busUseRows);
   return schedule.filter(r => r.year <= asOfYear).reduce((s, r) => s + r.annualDeduction, 0);
 }
 
-function getBookValue(asset: Asset, asOfYear: number): number {
-  const schedule = calcDepreciationSchedule(asset);
+function getBookValue(asset: Asset, asOfYear: number, busUseRows?: { year: number; businessUsePct: number }[]): number {
+  const schedule = calcDepreciationSchedule(asset, busUseRows);
   const row = [...schedule].reverse().find(r => r.year <= asOfYear);
   if (!row) return asset.purchasePrice;
   return row.bookValue;
@@ -586,15 +622,15 @@ export default function Assets() {
           {filtered.map(asset => {
             const Icon = TYPE_ICON[asset.assetType] ?? Wrench;
             const isExpanded = expandedId === asset.id;
-            const schedule = calcDepreciationSchedule(asset);
+            const schedule = calcDepreciationSchedule(asset, asset.businessUseRows);
             const hasSchedule = schedule.length > 0;
-            const accumThisYear = getAccumulatedDepreciation(asset, currentYearNum);
-            const bookValueNow = getBookValue(asset, currentYearNum);
+            const accumThisYear = getAccumulatedDepreciation(asset, currentYearNum, asset.businessUseRows);
+            const bookValueNow = getBookValue(asset, currentYearNum, asset.businessUseRows);
             const currentYearBusUse = asset.businessUseRows?.find(r => r.year === currentYearNum);
             const isMixedUse = currentYearBusUse !== undefined && currentYearBusUse.businessUsePct < 100;
 
             const saleGainLoss = (asset.status === "sold" || asset.status === "retired") && asset.saleDate && asset.salePrice != null
-              ? asset.salePrice - getBookValue(asset, getPurchaseYear(asset.saleDate))
+              ? asset.salePrice - getBookValue(asset, getPurchaseYear(asset.saleDate), asset.businessUseRows)
               : null;
 
             return (
@@ -775,7 +811,12 @@ export default function Assets() {
                                       {row.year}
                                       {isCurrent && <span className="ml-1 text-[10px] text-primary font-bold">← now</span>}
                                     </td>
-                                    <td className="px-3 py-2 text-right text-orange-600">{row.annualDeduction > 0 ? fmt(row.annualDeduction) : "—"}</td>
+                                    <td className="px-3 py-2 text-right text-orange-600">
+                                      {row.annualDeduction > 0 ? fmt(row.annualDeduction) : "—"}
+                                      {row.businessUsePct !== undefined && (
+                                        <span className="ml-1 text-[10px] text-blue-600 font-normal whitespace-nowrap">({row.businessUsePct}% business use)</span>
+                                      )}
+                                    </td>
                                     <td className="px-3 py-2 text-right text-muted-foreground">{fmt(row.accumulated)}</td>
                                     <td className="px-3 py-2 text-right text-blue-700">{fmt(row.bookValue)}</td>
                                   </tr>
