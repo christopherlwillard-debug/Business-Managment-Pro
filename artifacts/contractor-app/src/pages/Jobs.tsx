@@ -9,7 +9,7 @@ import {
   useGetSettings,
   useListMaterials, useListMaterialLists, useCreateMaterialList,
   useDeleteMaterialList,
-  useCreateEstimate, useUpdateEstimate,
+  useListEstimates, useCreateEstimate, useUpdateEstimate,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
@@ -874,7 +874,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, onLoadEstimateIntoInvoice,
+  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, onToggleSubPaid,
 }: {
   job: Job;
@@ -885,6 +885,7 @@ function JobCard({
   logCount: number;
   lastLogDate?: string;
   materialListCount: number;
+  estimateTotal?: number;
   onLoadEstimateIntoInvoice?: (job: Job, estimates: Estimate[]) => void;
   invoiceSummary?: Invoice | null;
   onCreateInvoice?: () => void;
@@ -937,8 +938,8 @@ function JobCard({
                 </span>
               )}
             </div>
-            {job.estimatedAmount && (
-              <p className="text-amber-600 font-bold text-sm">{formatCurrency(job.estimatedAmount)}</p>
+            {estimateTotal != null && (
+              <p className="text-amber-600 font-bold text-sm">{formatCurrency(estimateTotal)}</p>
             )}
           </div>
           {canEdit("jobs") && (
@@ -1720,6 +1721,13 @@ export default function Jobs() {
     return acc;
   }, {});
 
+  const { data: allEstimates = [] } = useListEstimates();
+  const estimateTotalByJob = allEstimates.reduce<Record<number, number>>((acc, est) => {
+    if (est.jobId == null) return acc;
+    acc[est.jobId] = (acc[est.jobId] ?? 0) + est.total;
+    return acc;
+  }, {});
+
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const [jobSearch, setJobSearch]       = useState("");
@@ -2075,6 +2083,7 @@ export default function Jobs() {
                       onMarkCompleted={handleMarkCompleted}
                       logCount={jobLogs.length} lastLogDate={lastLog?.date}
                       materialListCount={materialListCountByJob[job.id] ?? 0}
+                      estimateTotal={estimateTotalByJob[job.id]}
                       onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                       invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                       onCreateInvoice={() => handleReviewInvoice(job)}
@@ -2112,6 +2121,7 @@ export default function Jobs() {
                         onMarkCompleted={handleMarkCompleted}
                         logCount={jobLogs.length} lastLogDate={lastLog?.date}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
+                        estimateTotal={estimateTotalByJob[job.id]}
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         onCreateInvoice={() => handleReviewInvoice(job)}
