@@ -732,6 +732,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
   const [showModal, setShowModal] = useState(false);
   const [editEst, setEditEst] = useState<Estimate | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["job-estimates", job.id] });
@@ -739,9 +740,14 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
   }
 
   async function handleDelete(id: number) {
-    await deleteMut.mutateAsync({ id });
-    setConfirmDeleteId(null);
-    invalidate();
+    setDeleteError(null);
+    try {
+      await deleteMut.mutateAsync({ id });
+      setConfirmDeleteId(null);
+      invalidate();
+    } catch {
+      setDeleteError("Could not delete estimate. Please try again.");
+    }
   }
 
   async function handleCreate(req: CreateEstimateRequest) {
@@ -853,8 +859,11 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
                           <Edit2 className="w-3 h-3" /> Edit
                         </button>
                         <button
-                          onClick={() => setConfirmDeleteId(est.id)}
-                          className="text-xs text-muted-foreground hover:text-red-600 flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-red-50 hover:border-red-200"
+                          onClick={() => { setDeleteError(null); setConfirmDeleteId(est.id); }}
+                          disabled={deleteMut.isPending}
+                          aria-label="Delete estimate"
+                          title="Delete estimate"
+                          className="text-xs text-muted-foreground hover:text-red-600 flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-red-50 hover:border-red-200 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -862,6 +871,9 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
                     ) : null}
                   </div>
                 </div>
+                {deleteError && confirmDeleteId === est.id && (
+                  <p className="text-xs text-red-600">{deleteError}</p>
+                )}
                 <p className="font-semibold text-sm text-foreground">{est.title}</p>
                 {est.lineItems && est.lineItems.length > 0 && (
                   <div className="space-y-0.5">
