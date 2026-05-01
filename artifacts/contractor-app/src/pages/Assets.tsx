@@ -6,8 +6,9 @@ import { type Asset, type AssetStatus, type AssetType } from "@workspace/api-cli
 import {
   Wrench, Plus, Pencil, Trash2, Upload, X, Check, ChevronDown, ChevronUp,
   Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2, TrendingDown,
-  Info, Building2, Shovel, Percent, Download,
+  Info, Building2, Shovel, Percent, Download, FileText,
 } from "lucide-react";
+import { generateAssetDepreciationPdf } from "@/lib/generateAssetDepreciationPdf";
 
 interface BusUseRow { id: number; assetId: number; year: number; businessUsePct: number; }
 type AssetWithBusUse = Asset & { businessUseRows: { year: number; businessUsePct: number }[] };
@@ -262,6 +263,7 @@ export default function Assets() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [formFile, setFormFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [busUseYear, setBusUseYear] = useState<string>("");
   const [busUsePct, setBusUsePct] = useState<string>("100");
   const [busUseAdding, setBusUseAdding] = useState(false);
@@ -522,6 +524,37 @@ export default function Assets() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleExportPdf() {
+    setIsExportingPdf(true);
+    try {
+      const pdfAssets = assets.map(asset => ({
+        name: asset.name,
+        assetType: asset.assetType,
+        status: asset.status,
+        purchaseDate: asset.purchaseDate,
+        purchasePrice: asset.purchasePrice,
+        vendor: asset.vendor,
+        serialNumber: asset.serialNumber,
+        depreciationMethod: asset.depreciationMethod ?? "straight-line",
+        usefulLifeYears: asset.usefulLifeYears,
+        salvageValue: asset.salvageValue,
+        section179Eligible: asset.section179Eligible,
+        schedule: calcDepreciationSchedule(asset, asset.businessUseRows),
+      }));
+      const blob = await generateAssetDepreciationPdf(pdfAssets);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `asset-depreciation-schedule-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Failed to generate PDF", variant: "destructive" });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   function handleUploadReceipt(assetId: number) {
     uploadAssetRef.current = assetId;
     fileInputRef.current?.click();
@@ -592,14 +625,25 @@ export default function Assets() {
         </div>
         <div className="flex items-center gap-2">
           {assets.length > 0 && (
-            <button
-              onClick={handleExportCsv}
-              className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
-              title="Export full depreciation schedule as CSV"
-            >
-              <Download className="w-4 h-4" />
-              Export CSV
-            </button>
+            <>
+              <button
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Export full depreciation schedule as PDF"
+              >
+                <FileText className="w-4 h-4" />
+                {isExportingPdf ? "Generating…" : "Export PDF"}
+              </button>
+              <button
+                onClick={handleExportCsv}
+                className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+                title="Export full depreciation schedule as CSV"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </button>
+            </>
           )}
           <button
             onClick={openAdd}
