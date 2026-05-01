@@ -388,7 +388,7 @@ export function EstimateModal({
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                placeholder="e.g. Johnson Kitchen Remodel"
+                placeholder={prelinkedJobId ? "e.g. Siding, Trim Work, Drywall Finishing…" : "e.g. Johnson Kitchen Remodel"}
               />
             </div>
             {prelinkedClientId && !initial ? (

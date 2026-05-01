@@ -796,6 +796,9 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
             >
               <Plus className="w-4 h-4" /> Build Estimate for this Job
             </button>
+            <p className="text-center text-[11px] text-muted-foreground mt-1.5">
+              Add one estimate per trade or scope — siding, trim, drywall, etc.
+            </p>
           </div>
         )}
 
@@ -807,7 +810,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
             <div className="flex flex-col items-center justify-center h-40 text-center">
               <Calculator className="w-10 h-10 text-muted-foreground/30 mb-3" />
               <p className="text-sm font-medium text-muted-foreground">No estimates linked yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Click "Build Estimate" to add one</p>
+              <p className="text-xs text-muted-foreground mt-1">You can add as many as you need — one per trade or scope</p>
             </div>
           ) : (
             estimates.map(est => (
