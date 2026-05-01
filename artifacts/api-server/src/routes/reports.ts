@@ -301,6 +301,10 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // mileage_logs to prevent double-counting in the net profit calculation.
     const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Owner Draws are personal distributions — not tax-deductible. Exclude from net profit.
+    const ownerDrawTotal = nonMileageExpenses
+      .filter(e => e.category === "Owner Draw")
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
     const businessMiles = mileageLogs.filter(m => m.classification === "business");
     const totalMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
@@ -311,7 +315,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       _ytd: await computeYtd(s.id, year),
     })));
     const totalSubPayments = subsWithYtdAcc.reduce((acc, s) => acc + s._ytd, 0);
-    const netProfit = paidRevenue - totalExpenses - mileageDeduction;
+    // Net profit excludes owner draws (not a business expense for tax purposes)
+    const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - mileageDeduction;
+    const undrawnBalance = netProfit - ownerDrawTotal;
 
     // Income by city — estOccTax replaces taxCollected (Willard never charges sales tax)
     // Owensboro occupational tax rate: 1.39%
@@ -473,7 +479,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       year,
-      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum },
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance },
       incomeByCity,
       estimatedTaxes,
       expensesByCategory,

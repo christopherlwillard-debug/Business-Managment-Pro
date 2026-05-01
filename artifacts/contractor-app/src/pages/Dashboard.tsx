@@ -7,7 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert,
   CheckCircle2, Clock, TrendingUp, TrendingDown, CalendarClock, MapPin,
-  Navigation, Phone, FileText, Sparkles, HardHat, Wallet,
+  Navigation, Phone, FileText, Sparkles, HardHat, Wallet, Plus,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
@@ -807,11 +807,21 @@ function NetProfitCard({ operationalNetProfit, excludedFromProfit, formulaExclud
             {isPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
           </div>
         </div>
-        {formulaExcludedFromProfit > 0 && (
-          <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/50">
-            Total expenses including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - formulaExcludedFromProfit)}</span> net profit
-          </p>
-        )}
+        <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between gap-3 flex-wrap">
+          {formulaExcludedFromProfit > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Total expenses including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - formulaExcludedFromProfit)}</span> net profit
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">All expenses counted in profit</p>
+          )}
+          <Link
+            href={`${BASE}/expenses?prefill_category=Owner+Draw`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors flex-shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" /> Record Draw
+          </Link>
+        </div>
       </CardContent>
     </Card>
   );

@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
   Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell,
   FileCheck, X, Home, PieChart,
-  Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive,
+  Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive, Wallet,
 } from "lucide-react";
 import { useScheduleCReport } from "@workspace/api-client-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -913,6 +913,46 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
           </div>
         ))}
       </div>
+
+      {/* Owner Distributions card — only shown when draws or profit exist */}
+      {((s.ownerDrawTotal ?? 0) > 0 || netProfit > 0) && (
+        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60 bg-muted/20">
+            <div className="p-2 rounded-xl bg-violet-100 text-violet-700">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-foreground">Owner Distributions ({year})</p>
+              <p className="text-[11px] text-muted-foreground">Profit earned vs. draws taken vs. balance remaining in the business</p>
+            </div>
+            <a
+              href={`${BASE}/expenses?prefill_category=Owner+Draw`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Record Draw
+            </a>
+          </div>
+          <div className="grid grid-cols-3 divide-x divide-border/60">
+            <div className="px-5 py-4 text-center">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Operating Profit</p>
+              <p className="text-xl font-display font-bold text-emerald-600">{formatCurrency(netProfit)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Revenue − expenses − mileage</p>
+            </div>
+            <div className="px-5 py-4 text-center">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Draws Taken</p>
+              <p className="text-xl font-display font-bold text-amber-600">{formatCurrency(s.ownerDrawTotal ?? 0)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Personal distributions YTD</p>
+            </div>
+            <div className="px-5 py-4 text-center">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Undrawn Balance</p>
+              <p className={`text-xl font-display font-bold ${(s.undrawnBalance ?? 0) >= 0 ? "text-foreground" : "text-red-600"}`}>
+                {formatCurrency(s.undrawnBalance ?? 0)}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Still in the business</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tax Spend Planner */}
       {data.estimatedTaxes && (

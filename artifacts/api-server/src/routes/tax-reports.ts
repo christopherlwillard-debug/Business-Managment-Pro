@@ -164,6 +164,9 @@ router.get("/schedule-c", async (req, res) => {
         count: (expensesByCategory[category]?.count || 0) + 1,
       };
 
+      // Owner Draw is a personal distribution — never a Schedule C deduction. Skip it.
+      if (category === "Owner Draw") continue;
+
       const scheduleCategory = SCHEDULE_C_CATEGORY_MAP[category] || "other";
       expenses[scheduleCategory] = (expenses[scheduleCategory] || 0) + amount;
 

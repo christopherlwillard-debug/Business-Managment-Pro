@@ -29,6 +29,7 @@ const CATEGORIES = [
   "Tools/Equipment",       // Sch C Line 22
   "Utilities",             // Sch C Line 25
   "Other",                 // Sch C Line 27
+  "Owner Draw",            // Non-deductible — personal distribution
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -44,6 +45,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   "Tools/Equipment":       "Tools/Equipment — Line 22 (Supplies)",
   "Utilities":             "Utilities — Line 25 (Utilities)",
   "Other":                 "Other — Line 27 (Other Expenses)",
+  "Owner Draw":            "Owner Draw — Personal distribution (not tax-deductible)",
 };
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const API = `${BASE}/api`;
@@ -1177,7 +1179,12 @@ export default function Expenses() {
     const pa = params.get("prefill_amount");
     const pd = params.get("prefill_date");
     const pDesc = params.get("prefill_desc");
-    if (pa || pd || pDesc) {
+    const pCat = params.get("prefill_category");
+    if (pa || pd || pDesc || pCat) {
+      if (pCat && CATEGORIES.includes(pCat)) {
+        setCategory(pCat);
+        if (pCat === "Owner Draw") setExcludeFromNetProfit(true);
+      }
       setPrefillAmount(pa ?? "");
       setPrefillDate(pd ?? "");
       setPrefillDesc(pDesc ?? "");
@@ -1187,6 +1194,7 @@ export default function Expenses() {
       clean.searchParams.delete("prefill_amount");
       clean.searchParams.delete("prefill_date");
       clean.searchParams.delete("prefill_desc");
+      clean.searchParams.delete("prefill_category");
       window.history.replaceState({}, "", clean.toString());
     }
   }, []);
@@ -1788,7 +1796,11 @@ export default function Expenses() {
                 <label className="block text-sm font-medium mb-1">Category *</label>
                 <select
                   name="category" required value={category}
-                  onChange={e => setCategory(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setCategory(val);
+                    if (val === "Owner Draw") setExcludeFromNetProfit(true);
+                  }}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none"
                 >
                   {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
@@ -1873,22 +1885,36 @@ export default function Expenses() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-border bg-muted/30">
-              <button
-                type="button"
-                onClick={() => setExcludeFromNetProfit(v => !v)}
-                className={`mt-0.5 flex-shrink-0 w-10 h-6 rounded-full transition-colors relative ${excludeFromNetProfit ? "bg-amber-500" : "bg-muted-foreground/30"}`}
-                aria-pressed={excludeFromNetProfit}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${excludeFromNetProfit ? "translate-x-4" : "translate-x-0"}`} />
-              </button>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                  <EyeOff className="w-3.5 h-3.5 text-amber-500" /> Exclude from net profit view
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">Still counts for taxes — only hidden from the dashboard profit card</p>
+            {category === "Owner Draw" ? (
+              <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50/60">
+                <div className="mt-0.5 flex-shrink-0 w-10 h-6 rounded-full relative bg-amber-500 opacity-70 cursor-not-allowed">
+                  <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow translate-x-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-amber-600" /> Always excluded from net profit
+                  </p>
+                  <p className="text-xs text-amber-700/70 mt-0.5">Owner draws are personal distributions — not a deductible business expense</p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-border bg-muted/30">
+                <button
+                  type="button"
+                  onClick={() => setExcludeFromNetProfit(v => !v)}
+                  className={`mt-0.5 flex-shrink-0 w-10 h-6 rounded-full transition-colors relative ${excludeFromNetProfit ? "bg-amber-500" : "bg-muted-foreground/30"}`}
+                  aria-pressed={excludeFromNetProfit}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${excludeFromNetProfit ? "translate-x-4" : "translate-x-0"}`} />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-amber-500" /> Exclude from net profit view
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Still counts for taxes — only hidden from the dashboard profit card</p>
+                </div>
+              </div>
+            )}
 
             <div className="pt-2 border-t border-dashed border-border">
               <label className="block text-sm font-medium mb-2 flex items-center gap-2 text-primary">
