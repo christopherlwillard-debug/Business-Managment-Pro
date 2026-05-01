@@ -6,7 +6,7 @@ import { type Asset, type AssetStatus, type AssetType } from "@workspace/api-cli
 import {
   Wrench, Plus, Pencil, Trash2, Upload, X, Check, ChevronDown, ChevronUp,
   Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2, TrendingDown,
-  Info, Building2, Shovel, Percent, Download, FileText,
+  Info, Building2, Shovel, Percent, Download, FileText, Mail,
 } from "lucide-react";
 import { generateAssetDepreciationPdf } from "@/lib/generateAssetDepreciationPdf";
 
@@ -264,6 +264,9 @@ export default function Assets() {
   const [formFile, setFormFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [busUseYear, setBusUseYear] = useState<string>("");
   const [busUsePct, setBusUsePct] = useState<string>("100");
   const [busUseAdding, setBusUseAdding] = useState(false);
@@ -555,6 +558,55 @@ export default function Assets() {
     }
   }
 
+  async function handleSendEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (!emailTo.trim()) return;
+    setIsSendingEmail(true);
+    try {
+      const pdfAssets = assets.map(asset => ({
+        name: asset.name,
+        assetType: asset.assetType,
+        status: asset.status,
+        purchaseDate: asset.purchaseDate,
+        purchasePrice: asset.purchasePrice,
+        vendor: asset.vendor,
+        serialNumber: asset.serialNumber,
+        depreciationMethod: asset.depreciationMethod ?? "straight-line",
+        usefulLifeYears: asset.usefulLifeYears,
+        salvageValue: asset.salvageValue,
+        section179Eligible: asset.section179Eligible,
+        schedule: calcDepreciationSchedule(asset, asset.businessUseRows),
+      }));
+      const blob = await generateAssetDepreciationPdf(pdfAssets);
+      const arrayBuffer = await blob.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      let binary = "";
+      const CHUNK = 8192;
+      for (let i = 0; i < uint8.length; i += CHUNK) {
+        binary += String.fromCharCode(...uint8.subarray(i, i + CHUNK));
+      }
+      const base64 = btoa(binary);
+      const filename = `asset-depreciation-schedule-${new Date().toISOString().slice(0, 10)}.pdf`;
+      const r = await fetch(api("/api/assets/email-pdf"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: emailTo.trim(), pdfBase64: base64, filename }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error ?? "Failed to send email");
+      }
+      setShowEmailDialog(false);
+      setEmailTo("");
+      toast({ title: "Email sent", description: `Depreciation report sent to ${emailTo.trim()}` });
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Failed to send email", variant: "destructive" });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  }
+
   function handleUploadReceipt(assetId: number) {
     uploadAssetRef.current = assetId;
     fileInputRef.current?.click();
@@ -626,6 +678,14 @@ export default function Assets() {
         <div className="flex items-center gap-2">
           {assets.length > 0 && (
             <>
+              <button
+                onClick={() => setShowEmailDialog(true)}
+                className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+                title="Email depreciation report to accountant"
+              >
+                <Mail className="w-4 h-4" />
+                Email to Accountant
+              </button>
               <button
                 onClick={handleExportPdf}
                 disabled={isExportingPdf}
@@ -1505,6 +1565,61 @@ export default function Assets() {
                   className="px-4 py-2.5 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
                 >
                   Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Email to Accountant dialog */}
+      {showEmailDialog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Mail className="w-5 h-5 text-primary" />
+                <h2 className="text-base font-semibold">Email to Accountant</h2>
+              </div>
+              <button
+                onClick={() => { setShowEmailDialog(false); setEmailTo(""); }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSendEmail} className="p-5 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                The full asset depreciation schedule PDF will be generated and sent as an email attachment.
+              </p>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Accountant's Email Address</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="accountant@example.com"
+                  value={emailTo}
+                  onChange={e => setEmailTo(e.target.value)}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-2 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setShowEmailDialog(false); setEmailTo(""); }}
+                  className="px-4 py-2 text-sm border border-border rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+                  disabled={isSendingEmail}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingEmail || !emailTo.trim()}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Mail className="w-4 h-4" />
+                  {isSendingEmail ? "Sending…" : "Send Email"}
                 </button>
               </div>
             </form>

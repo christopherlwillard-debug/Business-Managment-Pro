@@ -5,6 +5,7 @@ import { eq, and, like, inArray } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { sendEmail } from "../lib/sendEmail";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -255,6 +256,57 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to upload receipt" });
+  }
+});
+
+router.post("/email-pdf", async (req, res) => {
+  try {
+    const { to, pdfBase64, filename } = req.body as {
+      to?: string;
+      pdfBase64?: string;
+      filename?: string;
+    };
+
+    if (!to || typeof to !== "string" || !to.trim()) {
+      return res.status(400).json({ error: "Recipient email address is required" });
+    }
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(to.trim())) {
+      return res.status(400).json({ error: "Invalid recipient email address" });
+    }
+    if (!pdfBase64 || typeof pdfBase64 !== "string") {
+      return res.status(400).json({ error: "PDF data is required" });
+    }
+    const maxBase64Mb = 20;
+    if (pdfBase64.length > maxBase64Mb * 1024 * 1024 * (4 / 3)) {
+      return res.status(400).json({ error: "PDF exceeds maximum allowed size" });
+    }
+
+    const safeFilename = (filename ?? "asset-depreciation-schedule.pdf").replace(/[^a-zA-Z0-9._\- ]/g, "_");
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+    const htmlBody = `
+<p>Hello,</p>
+<p>Please find attached the <strong>Asset Depreciation Schedule</strong> generated on ${today}.</p>
+<p>This report contains depreciation schedules for all tracked equipment and assets. Please review with your tax professional before filing.</p>
+<p>This email was sent automatically from your Contractor Management App.</p>
+`;
+
+    await sendEmail({
+      to: to.trim(),
+      subject: `Asset Depreciation Schedule — ${today}`,
+      html: htmlBody,
+      attachment: {
+        filename: safeFilename,
+        mimeType: "application/pdf",
+        base64Data: pdfBase64,
+      },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Failed to email asset PDF:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to send email" });
   }
 });
 
