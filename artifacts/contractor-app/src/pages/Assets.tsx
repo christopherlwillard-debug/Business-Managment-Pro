@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 interface BusUseRow { id: number; assetId: number; year: number; businessUsePct: number; }
+type AssetWithBusUse = Asset & { businessUseRows: { year: number; businessUsePct: number }[] };
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function api(path: string) { return `${BASE}${path}`; }
@@ -204,7 +205,7 @@ function assetToForm(a: Asset): FormState {
   };
 }
 
-function fetchAssets(): Promise<Asset[]> {
+function fetchAssets(): Promise<AssetWithBusUse[]> {
   return fetch(api("/api/assets"), { credentials: "include" })
     .then(r => r.json());
 }
@@ -229,7 +230,7 @@ export default function Assets() {
   const formFileInputRef = useRef<HTMLInputElement>(null);
   const uploadAssetRef = useRef<number | null>(null);
 
-  const { data: assets = [], isLoading } = useQuery<Asset[]>({
+  const { data: assets = [], isLoading } = useQuery<AssetWithBusUse[]>({
     queryKey: ["assets"],
     queryFn: fetchAssets,
   });
@@ -538,6 +539,8 @@ export default function Assets() {
             const hasSchedule = schedule.length > 0;
             const accumThisYear = getAccumulatedDepreciation(asset, currentYearNum);
             const bookValueNow = getBookValue(asset, currentYearNum);
+            const currentYearBusUse = asset.businessUseRows?.find(r => r.year === currentYearNum);
+            const isMixedUse = currentYearBusUse !== undefined && currentYearBusUse.businessUsePct < 100;
 
             const saleGainLoss = (asset.status === "sold" || asset.status === "retired") && asset.saleDate && asset.salePrice != null
               ? asset.salePrice - getBookValue(asset, getPurchaseYear(asset.saleDate))
@@ -561,6 +564,11 @@ export default function Assets() {
                       {asset.section179Eligible && (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 flex items-center gap-1">
                           <BadgeCheck className="w-3 h-3" /> §179
+                        </span>
+                      )}
+                      {isMixedUse && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-800 flex items-center gap-1" title={`${currentYearBusUse?.businessUsePct}% business use in ${currentYearNum}`}>
+                          <Percent className="w-3 h-3" /> {currentYearBusUse?.businessUsePct}% bus.
                         </span>
                       )}
                     </div>

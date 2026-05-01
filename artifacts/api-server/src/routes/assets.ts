@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { assetsTable, assetBusinessUseTable } from "@workspace/db/schema";
-import { eq, and, like } from "drizzle-orm";
+import { eq, and, like, inArray } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -45,7 +45,18 @@ router.get("/", async (req, res) => {
       : query
     ).orderBy(assetsTable.purchaseDate);
 
-    res.json(rows.map(formatAsset));
+    const busUseRows = rows.length > 0
+      ? await db.select().from(assetBusinessUseTable)
+          .where(inArray(assetBusinessUseTable.assetId, rows.map(r => r.id)))
+          .orderBy(assetBusinessUseTable.year)
+      : [];
+    const busUseMap = new Map<number, { year: number; businessUsePct: number }[]>();
+    for (const r of busUseRows) {
+      if (!busUseMap.has(r.assetId)) busUseMap.set(r.assetId, []);
+      busUseMap.get(r.assetId)!.push({ year: r.year, businessUsePct: r.businessUsePct });
+    }
+
+    res.json(rows.map(a => ({ ...formatAsset(a), businessUseRows: busUseMap.get(a.id) ?? [] })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch assets" });
@@ -95,7 +106,13 @@ router.get("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const [asset] = await db.select().from(assetsTable).where(eq(assetsTable.id, id));
     if (!asset) return res.status(404).json({ error: "Asset not found" });
-    res.json(formatAsset(asset));
+    const busUseRows = await db.select().from(assetBusinessUseTable)
+      .where(eq(assetBusinessUseTable.assetId, id))
+      .orderBy(assetBusinessUseTable.year);
+    res.json({
+      ...formatAsset(asset),
+      businessUseRows: busUseRows.map(r => ({ year: r.year, businessUsePct: r.businessUsePct })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch asset" });
@@ -164,16 +181,24 @@ router.get("/:id/business-use", async (req, res) => {
 router.put("/:id/business-use", async (req, res) => {
   try {
     const assetId = parseInt(req.params.id);
+    if (isNaN(assetId)) return res.status(400).json({ error: "Invalid asset id" });
     const { year, businessUsePct } = req.body;
-    if (!year || businessUsePct == null) {
-      return res.status(400).json({ error: "year and businessUsePct are required" });
+    const yearInt = parseInt(year);
+    const pctInt = parseInt(businessUsePct);
+    if (!year || businessUsePct == null || isNaN(yearInt) || isNaN(pctInt)) {
+      return res.status(400).json({ error: "year and businessUsePct are required and must be numbers" });
     }
-    const pct = Math.max(1, Math.min(100, parseInt(businessUsePct)));
+    if (pctInt < 1 || pctInt > 100) {
+      return res.status(400).json({ error: "businessUsePct must be between 1 and 100" });
+    }
+    if (yearInt < 1900 || yearInt > 2100) {
+      return res.status(400).json({ error: "year must be a valid calendar year" });
+    }
     const [row] = await db.insert(assetBusinessUseTable)
-      .values({ assetId, year: parseInt(year), businessUsePct: pct })
+      .values({ assetId, year: yearInt, businessUsePct: pctInt })
       .onConflictDoUpdate({
         target: [assetBusinessUseTable.assetId, assetBusinessUseTable.year],
-        set: { businessUsePct: pct },
+        set: { businessUsePct: pctInt },
       })
       .returning();
     res.json(row);
