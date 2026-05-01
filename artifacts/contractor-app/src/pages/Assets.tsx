@@ -226,6 +226,10 @@ export default function Assets() {
   const [busUseYear, setBusUseYear] = useState<string>("");
   const [busUsePct, setBusUsePct] = useState<string>("100");
   const [busUseAdding, setBusUseAdding] = useState(false);
+  const [formBusUseRows, setFormBusUseRows] = useState<{year: string; pct: string}[]>([]);
+  const [formBusUseAddYear, setFormBusUseAddYear] = useState<string>("");
+  const [formBusUseAddPct, setFormBusUseAddPct] = useState<string>("100");
+  const [formBusUseShowing, setFormBusUseShowing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formFileInputRef = useRef<HTMLInputElement>(null);
   const uploadAssetRef = useRef<number | null>(null);
@@ -253,6 +257,7 @@ export default function Assets() {
       }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-business-use", expandedId] });
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
       setBusUseAdding(false);
       setBusUseYear("");
       setBusUsePct("100");
@@ -269,6 +274,7 @@ export default function Assets() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-business-use", expandedId] });
+      queryClient.invalidateQueries({ queryKey: ["assets"] });
       toast({ title: "Business use % removed" });
     },
     onError: () => toast({ title: "Failed to remove business use %", variant: "destructive" }),
@@ -288,13 +294,21 @@ export default function Assets() {
     setEditAsset(null);
     setForm(emptyForm());
     setFormFile(null);
+    setFormBusUseRows([]);
+    setFormBusUseShowing(false);
+    setFormBusUseAddYear(CURRENT_YEAR.toString());
+    setFormBusUseAddPct("100");
     setShowForm(true);
   }
 
-  function openEdit(a: Asset) {
+  function openEdit(a: AssetWithBusUse) {
     setEditAsset(a);
     setForm(assetToForm(a));
     setFormFile(null);
+    setFormBusUseRows((a.businessUseRows ?? []).map(r => ({ year: String(r.year), pct: String(r.businessUsePct) })));
+    setFormBusUseShowing((a.businessUseRows ?? []).length > 0);
+    setFormBusUseAddYear(CURRENT_YEAR.toString());
+    setFormBusUseAddPct("100");
     setShowForm(true);
   }
 
@@ -303,6 +317,8 @@ export default function Assets() {
     setEditAsset(null);
     setForm(emptyForm());
     setFormFile(null);
+    setFormBusUseRows([]);
+    setFormBusUseShowing(false);
     if (formFileInputRef.current) formFileInputRef.current.value = "";
   }
 
@@ -343,6 +359,8 @@ export default function Assets() {
       return;
     }
     const fileToUpload = formFile;
+    const origYears = new Set((editAsset as AssetWithBusUse | null)?.businessUseRows?.map(r => r.year) ?? []);
+    const newYears = new Set(formBusUseRows.map(r => parseInt(r.year)).filter(y => !isNaN(y)));
     try {
       if (editAsset) {
         const r = await fetch(api(`/api/assets/${editAsset.id}`), {
@@ -356,7 +374,20 @@ export default function Assets() {
         if (fileToUpload) {
           try { await uploadReceiptFile(updated.id, fileToUpload); } catch { toast({ title: "Asset saved but receipt upload failed", variant: "destructive" }); }
         }
+        // Sync bus-use rows
+        for (const row of formBusUseRows) {
+          const yr = parseInt(row.year); const pct = parseInt(row.pct);
+          if (!isNaN(yr) && !isNaN(pct)) {
+            await fetch(api(`/api/assets/${updated.id}/business-use`), { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: yr, businessUsePct: pct }) });
+          }
+        }
+        for (const yr of origYears) {
+          if (!newYears.has(yr)) {
+            await fetch(api(`/api/assets/${updated.id}/business-use/${yr}`), { method: "DELETE", credentials: "include" });
+          }
+        }
         queryClient.invalidateQueries({ queryKey: ["assets"] });
+        queryClient.invalidateQueries({ queryKey: ["asset-business-use", editAsset.id] });
         closeForm();
         toast({ title: "Asset updated" });
       } else {
@@ -370,6 +401,13 @@ export default function Assets() {
         const created = await r.json();
         if (fileToUpload) {
           try { await uploadReceiptFile(created.id, fileToUpload); } catch { toast({ title: "Asset saved but receipt upload failed", variant: "destructive" }); }
+        }
+        // Save bus-use rows for new asset
+        for (const row of formBusUseRows) {
+          const yr = parseInt(row.year); const pct = parseInt(row.pct);
+          if (!isNaN(yr) && !isNaN(pct)) {
+            await fetch(api(`/api/assets/${created.id}/business-use`), { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: yr, businessUsePct: pct }) });
+          }
         }
         queryClient.invalidateQueries({ queryKey: ["assets"] });
         closeForm();
@@ -1179,6 +1217,101 @@ export default function Assets() {
                       <div className="text-xs text-muted-foreground">Include full purchase price in the Section 179 deduction total</div>
                     </div>
                   </label>
+                </div>
+
+                {/* Business Use by Year — in-form editor */}
+                <div className="sm:col-span-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormBusUseShowing(v => !v)}
+                    className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide pb-1 border-b border-border w-full text-left hover:text-foreground transition-colors"
+                  >
+                    <Percent className="w-3.5 h-3.5 text-blue-500" />
+                    Business Use % by Year
+                    {formBusUseRows.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold normal-case">{formBusUseRows.length} override{formBusUseRows.length !== 1 ? "s" : ""}</span>}
+                    {formBusUseShowing ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
+                  </button>
+                  {formBusUseShowing && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-xs text-muted-foreground">For mixed-use assets (e.g. camper, personal vehicle) — sets the business-use percentage that applies when calculating depreciation deductions for each year.</p>
+                      {formBusUseRows.length > 0 && (
+                        <div className="overflow-x-auto rounded-xl border border-border">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-muted/50 border-b border-border">
+                                <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Year</th>
+                                <th className="px-3 py-2 text-right font-semibold text-muted-foreground">Business Use %</th>
+                                <th className="px-3 py-2"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {formBusUseRows.map((row, idx) => (
+                                <tr key={idx}>
+                                  <td className="px-3 py-2">{row.year}</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-blue-700">{row.pct}%</td>
+                                  <td className="px-3 py-2 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => setFormBusUseRows(rows => rows.filter((_, i) => i !== idx))}
+                                      className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <div className="flex items-end gap-2">
+                        <div className="flex flex-col gap-0.5">
+                          <label className="text-xs text-muted-foreground">Year</label>
+                          <input
+                            type="number"
+                            min="2000"
+                            max="2099"
+                            value={formBusUseAddYear}
+                            onChange={e => setFormBusUseAddYear(e.target.value)}
+                            className="w-20 border border-border rounded-lg px-2 py-1.5 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <label className="text-xs text-muted-foreground">Business Use %</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={formBusUseAddPct}
+                              onChange={e => setFormBusUseAddPct(e.target.value)}
+                              className="w-20 border border-border rounded-lg px-2 pr-6 py-1.5 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const yr = parseInt(formBusUseAddYear);
+                            const pct = parseInt(formBusUseAddPct);
+                            if (isNaN(yr) || isNaN(pct) || pct < 1 || pct > 100) return;
+                            setFormBusUseRows(rows => {
+                              const existing = rows.findIndex(r => parseInt(r.year) === yr);
+                              if (existing >= 0) {
+                                return rows.map((r, i) => i === existing ? { year: String(yr), pct: String(pct) } : r);
+                              }
+                              return [...rows, { year: String(yr), pct: String(pct) }].sort((a, b) => parseInt(a.year) - parseInt(b.year));
+                            });
+                            setFormBusUseAddYear(String(yr + 1));
+                          }}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors"
+                        >
+                          <Plus className="w-3 h-3" /> Add
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
