@@ -1859,33 +1859,41 @@ export default function Jobs() {
       }
 
       if (existingDraft) {
-        // Ensure the job's labor/service line item is present on the existing draft.
-        // Auto-sync only manages the "Materials" line; the labor line must also be there.
+        // Merge estimate lines from the job draft into the existing draft invoice.
+        // "Materials" is already managed by auto-sync; we handle all other lines here.
         const currentLineItems: Array<{ id: number; description: string; quantity: number; unitPrice: number; total: number }> =
           Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems : [];
 
-        const laborDesc = jobDraft?.lineItems?.[0]?.description;
-        const laborPrice = jobDraft?.lineItems?.[0]?.unitPrice ?? 0;
-        const hasLaborLine = laborDesc
-          ? currentLineItems.some(li => li.description === laborDesc)
-          : false;
+        // All lines from the job draft except "Materials" are estimate-sourced
+        const estimateLines = (jobDraft?.lineItems ?? []).filter(li => li.description !== "Materials");
 
-        if (!hasLaborLine && laborDesc) {
-          // Add the labor/service line item to the existing draft
-          const nextId = currentLineItems.length > 0
-            ? Math.max(...currentLineItems.map((li: { id: number }) => li.id)) + 1
+        // Which estimate lines are not yet represented in the existing invoice?
+        const missingLines = estimateLines.filter(
+          li => !currentLineItems.some(cur => cur.description === li.description)
+        );
+
+        if (missingLines.length > 0) {
+          // Remove $0 placeholder lines (inserted by auto-sync before estimates were linked)
+          // but keep anything manually edited (non-zero price) and the Materials line.
+          const keepLines = currentLineItems.filter(
+            li => li.description === "Materials" || li.unitPrice !== 0
+          );
+          let nextId = keepLines.length > 0
+            ? Math.max(...keepLines.map(li => li.id)) + 1
             : 1;
-          const updatedLineItems = [
-            { id: nextId, description: laborDesc, quantity: 1, unitPrice: laborPrice, total: laborPrice },
-            ...currentLineItems,
-          ];
+          const insertLines = missingLines.map(li => ({
+            id: nextId++,
+            description: li.description,
+            quantity: li.quantity,
+            unitPrice: li.unitPrice,
+            total: parseFloat((li.quantity * li.unitPrice).toFixed(2)),
+          }));
+          // Estimate lines first, then any kept manual/materials lines
+          const updatedLineItems = [...insertLines, ...keepLines];
           const putRes = await fetch(`${BASE}/api/invoices/${existingDraft.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...existingDraft,
-              lineItems: updatedLineItems,
-            }),
+            body: JSON.stringify({ ...existingDraft, lineItems: updatedLineItems }),
           });
           if (putRes.ok) {
             existingDraft = await putRes.json();
