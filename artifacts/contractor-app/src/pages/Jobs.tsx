@@ -9,7 +9,7 @@ import {
   useGetSettings,
   useListMaterials, useListMaterialLists, useCreateMaterialList,
   useDeleteMaterialList,
-  useListEstimates, useCreateEstimate, useUpdateEstimate,
+  useListEstimates, useCreateEstimate, useUpdateEstimate, useDeleteEstimate,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
@@ -718,6 +718,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
   const { canEdit } = useUserPermissions();
   const createMut = useCreateEstimate();
   const updateMut = useUpdateEstimate();
+  const deleteMut = useDeleteEstimate();
 
   const { data: estimates = [], isLoading } = useQuery<(Estimate & { jobTitle?: string })[]>({
     queryKey: ["job-estimates", job.id],
@@ -730,10 +731,17 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 
   const [showModal, setShowModal] = useState(false);
   const [editEst, setEditEst] = useState<Estimate | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["job-estimates", job.id] });
     qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+  }
+
+  async function handleDelete(id: number) {
+    await deleteMut.mutateAsync({ id });
+    setConfirmDeleteId(null);
+    invalidate();
   }
 
   async function handleCreate(req: CreateEstimateRequest) {
@@ -820,14 +828,38 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
                     {est.status}
                   </span>
                   <div className="flex items-center gap-1">
-                    {canEdit("estimates") && (
-                      <button
-                        onClick={() => setEditEst(est)}
-                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-muted/50"
-                      >
-                        <Edit2 className="w-3 h-3" /> Edit
-                      </button>
-                    )}
+                    {canEdit("estimates") && confirmDeleteId === est.id ? (
+                      <>
+                        <button
+                          onClick={() => handleDelete(est.id)}
+                          disabled={deleteMut.isPending}
+                          className="text-xs text-white bg-red-500 hover:bg-red-600 flex items-center gap-1 px-2 py-0.5 rounded-lg font-semibold disabled:opacity-50"
+                        >
+                          {deleteMut.isPending ? "Deleting…" : "Delete"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-muted/50"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : canEdit("estimates") ? (
+                      <>
+                        <button
+                          onClick={() => setEditEst(est)}
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-muted/50"
+                        >
+                          <Edit2 className="w-3 h-3" /> Edit
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(est.id)}
+                          className="text-xs text-muted-foreground hover:text-red-600 flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border hover:bg-red-50 hover:border-red-200"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
                 <p className="font-semibold text-sm text-foreground">{est.title}</p>
