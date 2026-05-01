@@ -3752,7 +3752,7 @@ interface YearEndReport {
   otherIncome: { id: number; date: string; description: string; source: string | null; amount: number; paymentMethod: string | null }[];
   mileage: { totalMiles: number; mileageRate: number; deduction: number; trips: number };
   depreciation: {
-    rows: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; depreciationMethod: string; usefulLifeYears: number; annualDeduction: number; section179Eligible: boolean; businessUsePct: number }[];
+    rows: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; depreciationMethod: string; usefulLifeYears: number; annualDeduction: number; section179Eligible: boolean; businessUsePct: number; schedule: { year: number; businessUsePct: number; annualDeduction: number; accumulated: number; bookValue: number }[] }[];
     total: number;
     totalAccumulated: number;
   };
@@ -3827,13 +3827,31 @@ async function downloadYearEndZip(report: YearEndReport) {
     ["# Trips Logged", String(report.mileage.trips)],
   ], `${year} Mileage Deduction — ${report.companyName}`));
 
-  // 5. Asset Depreciation
-  zip.file(`${year}_Asset_Depreciation.csv`, buildCSVBlob([
-    ["Asset", "Type", "Purchase Date", "Cost", "Method", "Life (yrs)", "Bus. Use %", `${year} Deduction`],
-    ...report.depreciation.rows.map(r => [r.name, r.assetType, r.purchaseDate, r.purchasePrice.toFixed(2), r.depreciationMethod, String(r.usefulLifeYears), `${r.businessUsePct}%`, r.annualDeduction.toFixed(2)]),
-    [`${report.year} TOTAL DEDUCTION`, "", "", "", "", "", "", report.depreciation.total.toFixed(2)],
-    ["TOTAL ACCUMULATED (all active assets)", "", "", "", "", "", "", report.depreciation.totalAccumulated.toFixed(2)],
-  ], `${year} Asset Depreciation — ${report.companyName}`));
+  // 5. Asset Depreciation — includes full multi-year schedule per asset
+  const deprRows: string[][] = [
+    ["Asset", "Type", "Purchase Date", "Cost", "Method", "Life (yrs)", "Year", "Bus. Use %", "Annual Deduction", "Accum. Depreciation", "Book Value"],
+  ];
+  for (const r of report.depreciation.rows) {
+    for (const s of r.schedule) {
+      deprRows.push([
+        r.name,
+        r.assetType,
+        r.purchaseDate,
+        r.purchasePrice.toFixed(2),
+        r.depreciationMethod,
+        String(r.usefulLifeYears),
+        String(s.year),
+        `${s.businessUsePct}%`,
+        s.annualDeduction.toFixed(2),
+        s.accumulated.toFixed(2),
+        s.bookValue.toFixed(2),
+      ]);
+    }
+    deprRows.push([r.name + " — subtotal", "", "", "", "", "", String(year), `${r.businessUsePct}%`, r.annualDeduction.toFixed(2), "", ""]);
+  }
+  deprRows.push([`${report.year} TOTAL DEDUCTION`, "", "", "", "", "", "", "", report.depreciation.total.toFixed(2), "", ""]);
+  deprRows.push(["TOTAL ACCUMULATED (all active assets)", "", "", "", "", "", "", "", "", report.depreciation.totalAccumulated.toFixed(2), ""]);
+  zip.file(`${year}_Asset_Depreciation.csv`, buildCSVBlob(deprRows, `${year} Asset Depreciation — ${report.companyName}`));
 
   // 6. Disposed Assets
   if (report.disposedAssets.length > 0) {
@@ -3893,9 +3911,19 @@ function printYearEndReport(report: YearEndReport) {
     return header + itemRows + subtotal;
   }).join("");
 
-  const deprRows = report.depreciation.rows.map(r =>
-    `<tr><td>${esc(r.name)}</td><td>${esc(r.assetType)}</td><td>${esc(r.purchaseDate)}</td><td class="num">${fmt(r.purchasePrice)}</td><td>${esc(r.depreciationMethod)}</td><td class="num">${r.businessUsePct}%</td><td class="num">${fmt(r.annualDeduction)}</td></tr>`
-  ).join("");
+  const deprRows = report.depreciation.rows.map(r => {
+    const scheduleRows = r.schedule.map((s, si) =>
+      `<tr style="${s.year === report.year ? "background:#fff7ed" : ""}">
+        ${si === 0 ? `<td rowspan="${r.schedule.length}" style="vertical-align:top;font-weight:600">${esc(r.name)}</td><td rowspan="${r.schedule.length}" style="vertical-align:top;color:#64748b">${esc(r.assetType)}</td><td rowspan="${r.schedule.length}" style="vertical-align:top;color:#64748b">${esc(r.purchaseDate)}</td><td rowspan="${r.schedule.length}" class="num" style="vertical-align:top">${fmt(r.purchasePrice)}</td><td rowspan="${r.schedule.length}" style="vertical-align:top;color:#64748b">${esc(r.depreciationMethod)}</td>` : ""}
+        <td class="num" style="${s.year === report.year ? "font-weight:700;color:#ea580c" : "color:#64748b"}">${s.year}</td>
+        <td class="num" style="color:#64748b">${s.businessUsePct}%</td>
+        <td class="num" style="${s.year === report.year ? "font-weight:700;color:#ea580c" : "color:#64748b"}">${fmt(s.annualDeduction)}</td>
+        <td class="num" style="color:#64748b">${fmt(s.accumulated)}</td>
+        <td class="num" style="color:#64748b">${fmt(s.bookValue)}</td>
+      </tr>`
+    ).join("");
+    return scheduleRows;
+  }).join("");
 
   const disposedRows = report.disposedAssets.map(a =>
     `<tr><td>${esc(a.name)}</td><td>${esc(a.purchaseDate)}</td><td>${esc(a.saleDate ?? "")}</td><td class="num">${fmt(a.purchasePrice)}</td><td class="num">${fmt(a.salePrice)}</td><td class="num">${fmt(a.bookValue)}</td><td class="num ${a.gainLoss >= 0 ? "pos" : "neg"}">${fmt(a.gainLoss)}</td></tr>`
@@ -3971,12 +3999,13 @@ ${row("Total Expenses", fmt(report.totalExpenses), true)}
 </table>
 
 ${report.depreciation.rows.length > 0 ? `
-<h2 class="page-break">Asset Depreciation — ${report.year}</h2>
+<h2 class="page-break">Asset Depreciation — ${report.year} (Full Life-to-Date Schedule)</h2>
+<p style="font-size:10px;color:#64748b;margin:-4px 0 8px">All years from purchase through end of useful life. Row highlighted in orange = ${report.year} (selected tax year).</p>
 <table>
-<tr><th>Asset</th><th>Type</th><th>Purchase Date</th><th class="num">Cost</th><th>Method</th><th class="num">Bus. Use %</th><th class="num">${report.year} Deduction</th></tr>
+<tr><th>Asset</th><th>Type</th><th>Purchase Date</th><th class="num">Cost</th><th>Method</th><th class="num">Year</th><th class="num">Bus. Use %</th><th class="num">Annual Deduction</th><th class="num">Accum. Depr.</th><th class="num">Book Value</th></tr>
 ${deprRows}
-${row(`${report.year} Total Deduction`, fmt(report.depreciation.total), true)}
-${row("Total Accumulated Depreciation (all active assets)", fmt(report.depreciation.totalAccumulated), true)}
+<tr class="bold"><td colspan="7">${report.year} Total Deduction</td><td class="num">${fmt(report.depreciation.total)}</td><td></td><td></td></tr>
+<tr class="bold"><td colspan="8">Total Accumulated Depreciation (all active assets)</td><td class="num">${fmt(report.depreciation.totalAccumulated)}</td><td></td></tr>
 </table>` : ""}
 
 ${report.disposedAssets.length > 0 ? `
@@ -4040,6 +4069,7 @@ function YearEndReportTab({ year }: { year: number }) {
   const { data: report, isLoading, error, refetch } = useYearEndReport(year);
   const [isDownloading, setIsDownloading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<YearEndSection>>(new Set(ALL_YEAR_END_SECTIONS));
+  const [showFullDeprecSchedule, setShowFullDeprecSchedule] = useState(false);
 
   const toggleSection = (key: YearEndSection) => {
     setExpandedSections(prev => {
@@ -4219,46 +4249,120 @@ function YearEndReportTab({ year }: { year: number }) {
             <h3 className="font-semibold text-sm text-foreground flex-1">Asset Depreciation — {year}</h3>
             {expandedSections.has("depreciation") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
           </button>
-          {expandedSections.has("depreciation") && <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
-                  <th className="text-left px-4 py-2">Asset</th>
-                  <th className="text-left px-4 py-2">Type</th>
-                  <th className="text-left px-4 py-2">Purchase Date</th>
-                  <th className="text-right px-4 py-2">Cost</th>
-                  <th className="text-left px-4 py-2">Method</th>
-                  <th className="text-right px-4 py-2">Bus. Use %</th>
-                  <th className="text-right px-4 py-2">{year} Deduction</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.depreciation.rows.map(r => (
-                  <tr key={r.id} className="border-t border-border/40 hover:bg-muted/20">
-                    <td className="px-4 py-2 font-medium">{r.name}</td>
-                    <td className="px-4 py-2 text-muted-foreground">{r.assetType}</td>
-                    <td className="px-4 py-2 text-muted-foreground">{r.purchaseDate}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(r.purchasePrice)}</td>
-                    <td className="px-4 py-2 text-muted-foreground capitalize">{r.depreciationMethod}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {r.businessUsePct < 100
-                        ? <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">{r.businessUsePct}%</span>
-                        : <span className="text-muted-foreground text-xs">100%</span>}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums font-medium text-orange-600">{fmtMoney(r.annualDeduction)}</td>
-                  </tr>
-                ))}
-                <tr className="border-t-2 border-border font-semibold bg-muted/20">
-                  <td colSpan={6} className="px-4 py-2">{year} Total Deduction</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-orange-600">{fmtMoney(report.depreciation.total)}</td>
-                </tr>
-                <tr className="font-semibold bg-orange-50 dark:bg-orange-950/20 border-t border-orange-200">
-                  <td colSpan={6} className="px-4 py-2 text-orange-700">Total Accumulated Depreciation (all active assets)</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-orange-700">{fmtMoney(report.depreciation.totalAccumulated)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>}
+          {expandedSections.has("depreciation") && (
+            <>
+              <div className="px-4 py-2 border-b border-border/40 bg-muted/10 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Showing {showFullDeprecSchedule ? "full life-to-date schedule" : `${year} deductions only`}</span>
+                <button
+                  onClick={() => setShowFullDeprecSchedule(v => !v)}
+                  className="text-xs px-3 py-1 rounded-md border border-border bg-background hover:bg-muted/60 font-medium transition-colors"
+                >
+                  {showFullDeprecSchedule ? "Show selected year only" : "Show full schedule (all years)"}
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
+                      <th className="text-left px-4 py-2">Asset</th>
+                      <th className="text-left px-4 py-2">Type</th>
+                      <th className="text-left px-4 py-2">Purchase Date</th>
+                      <th className="text-right px-4 py-2">Cost</th>
+                      <th className="text-left px-4 py-2">Method</th>
+                      {showFullDeprecSchedule ? (
+                        <>
+                          <th className="text-right px-4 py-2">Year</th>
+                          <th className="text-right px-4 py-2">Bus. Use %</th>
+                          <th className="text-right px-4 py-2">Annual Deduction</th>
+                          <th className="text-right px-4 py-2">Accum. Depr.</th>
+                          <th className="text-right px-4 py-2">Book Value</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="text-right px-4 py-2">Bus. Use %</th>
+                          <th className="text-right px-4 py-2">{year} Deduction</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {showFullDeprecSchedule ? (
+                      report.depreciation.rows.map(r => (
+                        <React.Fragment key={r.id}>
+                          {r.schedule.map((s, si) => (
+                            <tr key={s.year} className={`border-t ${si === 0 ? "border-border/60 bg-muted/10" : "border-border/20"} hover:bg-muted/20 ${s.year === year ? "bg-orange-50/60 dark:bg-orange-950/10" : ""}`}>
+                              {si === 0 && (
+                                <>
+                                  <td className="px-4 py-2 font-medium" rowSpan={r.schedule.length}>{r.name}</td>
+                                  <td className="px-4 py-2 text-muted-foreground" rowSpan={r.schedule.length}>{r.assetType}</td>
+                                  <td className="px-4 py-2 text-muted-foreground" rowSpan={r.schedule.length}>{r.purchaseDate}</td>
+                                  <td className="px-4 py-2 text-right tabular-nums" rowSpan={r.schedule.length}>{fmtMoney(r.purchasePrice)}</td>
+                                  <td className="px-4 py-2 text-muted-foreground capitalize" rowSpan={r.schedule.length}>{r.depreciationMethod}</td>
+                                </>
+                              )}
+                              <td className={`px-4 py-1.5 text-right tabular-nums font-medium ${s.year === year ? "text-orange-600" : "text-foreground"}`}>{s.year}</td>
+                              <td className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">
+                                {s.businessUsePct < 100
+                                  ? <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">{s.businessUsePct}%</span>
+                                  : <span className="text-xs">100%</span>}
+                              </td>
+                              <td className={`px-4 py-1.5 text-right tabular-nums ${s.year === year ? "font-semibold text-orange-600" : "text-muted-foreground"}`}>{fmtMoney(s.annualDeduction)}</td>
+                              <td className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">{fmtMoney(s.accumulated)}</td>
+                              <td className="px-4 py-1.5 text-right tabular-nums text-muted-foreground">{fmtMoney(s.bookValue)}</td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      report.depreciation.rows.map(r => (
+                        <tr key={r.id} className="border-t border-border/40 hover:bg-muted/20">
+                          <td className="px-4 py-2 font-medium">{r.name}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{r.assetType}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{r.purchaseDate}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(r.purchasePrice)}</td>
+                          <td className="px-4 py-2 text-muted-foreground capitalize">{r.depreciationMethod}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">
+                            {r.businessUsePct < 100
+                              ? <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">{r.businessUsePct}%</span>
+                              : <span className="text-muted-foreground text-xs">100%</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums font-medium text-orange-600">{fmtMoney(r.annualDeduction)}</td>
+                        </tr>
+                      ))
+                    )}
+                    <tr className="border-t-2 border-border font-semibold bg-muted/20">
+                      {showFullDeprecSchedule ? (
+                        <>
+                          <td colSpan={7} className="px-4 py-2">{year} Total Deduction</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-orange-600">{fmtMoney(report.depreciation.total)}</td>
+                          <td /><td />
+                        </>
+                      ) : (
+                        <>
+                          <td colSpan={6} className="px-4 py-2">{year} Total Deduction</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-orange-600">{fmtMoney(report.depreciation.total)}</td>
+                        </>
+                      )}
+                    </tr>
+                    <tr className="font-semibold bg-orange-50 dark:bg-orange-950/20 border-t border-orange-200">
+                      {showFullDeprecSchedule ? (
+                        <>
+                          <td colSpan={8} className="px-4 py-2 text-orange-700">Total Accumulated Depreciation (all active assets)</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-orange-700">{fmtMoney(report.depreciation.totalAccumulated)}</td>
+                          <td />
+                        </>
+                      ) : (
+                        <>
+                          <td colSpan={6} className="px-4 py-2 text-orange-700">Total Accumulated Depreciation (all active assets)</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-orange-700">{fmtMoney(report.depreciation.totalAccumulated)}</td>
+                        </>
+                      )}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -745,20 +745,39 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       .map(a => {
         const busUsePct = getBusUsePct(a.id, year);
         const annual = calcAnnualDepreciation(a, year) * (busUsePct / 100);
+        const cost = parseFloat(String(a.purchasePrice));
+        const salvage = parseFloat(String(a.salvageValue ?? 0));
+        const life = a.usefulLifeYears ?? 5;
+        const startYear = parseInt(a.purchaseDate.slice(0, 4));
+        const disposalYear = getDisposalYear(a);
+        // Build full multi-year schedule for this asset
+        const scheduleEndYear = disposalYear !== null
+          ? Math.min(disposalYear, startYear + life - 1)
+          : startYear + life - 1;
+        let accumulated = 0;
+        const schedule: { year: number; businessUsePct: number; annualDeduction: number; accumulated: number; bookValue: number }[] = [];
+        for (let y2 = startYear; y2 <= scheduleEndYear; y2++) {
+          const busUse2 = getBusUsePct(a.id, y2);
+          const deduction = calcAnnualDepreciation(a, y2) * (busUse2 / 100);
+          accumulated += deduction;
+          const bookValue = Math.max(salvage, cost - accumulated);
+          schedule.push({ year: y2, businessUsePct: busUse2, annualDeduction: deduction, accumulated, bookValue });
+        }
         return {
           id: a.id,
           name: a.name,
           assetType: a.assetType,
           purchaseDate: a.purchaseDate,
-          purchasePrice: parseFloat(String(a.purchasePrice)),
+          purchasePrice: cost,
           depreciationMethod: a.depreciationMethod ?? "straight-line",
-          usefulLifeYears: a.usefulLifeYears ?? 5,
-          salvageValue: parseFloat(String(a.salvageValue ?? 0)),
+          usefulLifeYears: life,
+          salvageValue: salvage,
           bonusDepreciationPct: a.bonusDepreciationPct ?? 60,
           section179Eligible: a.section179Eligible,
           annualDeduction: annual,
           businessUsePct: busUsePct,
           status: a.status,
+          schedule,
         };
       })
       .filter(r => r.annualDeduction > 0);
