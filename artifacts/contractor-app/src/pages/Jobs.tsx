@@ -1157,7 +1157,6 @@ function JobFormDialog({
         locationName: editJob.locationName ?? "",
         city: editJob.city ?? "",
         state: editJob.state ?? "KY",
-        estimatedAmount: editJob.estimatedAmount ? String(editJob.estimatedAmount) : "",
         startDate: editJob.startDate ?? "",
         endDate: editJob.endDate ?? "",
         notes: editJob.notes ?? "",
@@ -1170,7 +1169,7 @@ function JobFormDialog({
     return {
       title: "", clientId: "", status: "scheduled",
       locationName: "", city: "", state: "KY",
-      estimatedAmount: "", startDate: "", endDate: "", notes: "",
+      startDate: "", endDate: "", notes: "",
       businessLine: "" as "" | "general_contracting" | "asphalt_sealing",
       jobType: "",
       sqFt: "",
@@ -1211,7 +1210,6 @@ function JobFormDialog({
         locationName: form.locationName || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
-        estimatedAmount: form.estimatedAmount ? parseFloat(form.estimatedAmount) : undefined,
         startDate: form.startDate || undefined,
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
@@ -1401,13 +1399,6 @@ function JobFormDialog({
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
             </label>
             <SubcontractorPicker subcontractors={subcontractors} selected={subIds} onChange={setSubIds} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Est. Amount</label>
-            <input type="number" min="0" step="0.01"
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-              value={form.estimatedAmount} onChange={e => setField("estimatedAmount", e.target.value)} />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -1918,31 +1909,19 @@ export default function Jobs() {
     } finally { setInvoiceFetching(false); }
   }
 
-  function handleLoadAllEstimatesIntoInvoice(job: Job, estimates: Estimate[]) {
-    const lineItems = estimates.map((estimate) => ({
-      description: estimate.title,
-      quantity: 1,
-      unitPrice: estimate.total,
-    }));
-    const draft: InvoiceDraft = {
-      clientId: job.clientId ?? null,
-      clientName: job.clientName ?? null,
-      clientEmail: null,
-      clientAddress: null,
-      clientPhone: null,
-      clientCity: null,
-      clientState: null,
-      clientZip: null,
-      jobId: job.id,
-      jobTitle: job.title,
-      locationName: job.locationName ?? null,
-      city: job.city ?? null,
-      state: job.state ?? null,
-      lineItems,
-    };
-    setInvoiceDraftData(draft);
-    setSelectedExistingInvoice(null);
-    setInvoiceEditorOpen(true);
+  async function handleLoadAllEstimatesIntoInvoice(job: Job, _estimates: Estimate[]) {
+    // Use the invoice-draft endpoint so estimate line items + materials are included
+    try {
+      const res = await fetch(`${BASE}/api/jobs/${job.id}/invoice-draft`);
+      if (res.ok) {
+        const draft: InvoiceDraft = await res.json();
+        setInvoiceDraftData(draft);
+        setSelectedExistingInvoice(null);
+        setInvoiceEditorOpen(true);
+      }
+    } catch {
+      // ignore fetch errors — dialog won't open
+    }
   }
 
   return (

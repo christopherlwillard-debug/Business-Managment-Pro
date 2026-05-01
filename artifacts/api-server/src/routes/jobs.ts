@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable } from "@workspace/db/schema";
-import { eq, and, count } from "drizzle-orm";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable } from "@workspace/db/schema";
+import { eq, and, count, inArray } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 
 const router = Router();
@@ -212,12 +212,62 @@ router.get("/:id/invoice-draft", async (req, res) => {
       ? (await db.select().from(clientsTable).where(eq(clientsTable.id, job.clientId)))[0] ?? null
       : null;
 
-    const locationParts = [job.locationName, job.address, job.city, job.state].filter(Boolean);
-    const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
-    const lineItemDesc = `${job.title}${locationSuffix}`;
-    const lineItems = job.estimatedAmount
-      ? [{ description: lineItemDesc, quantity: 1, unitPrice: job.estimatedAmount }]
-      : [{ description: lineItemDesc, quantity: 1, unitPrice: 0 }];
+    // Fetch estimates linked to this job and expand their line items
+    const estimates = await db.select().from(estimatesTable).where(eq(estimatesTable.jobId, id));
+
+    type InvoiceLine = { description: string; quantity: number; unitPrice: number };
+    let lineItems: InvoiceLine[] = [];
+
+    for (const est of estimates) {
+      const estLines = Array.isArray(est.lineItems) ? est.lineItems as any[] : [];
+      if (estLines.length > 0) {
+        // Compute the combined scale factor (markup × contingency) so line item prices sum to estimate total
+        const markup = parseFloat(est.markupPercent ?? "0");
+        const contingency = parseFloat(est.contingencyPercent ?? "0");
+        const scaleFactor = (1 + markup / 100) * (1 + contingency / 100);
+        for (const li of estLines) {
+          const rawUnit = parseFloat(li.unitCost ?? li.unitPrice ?? "0");
+          const qty = parseFloat(li.quantity ?? "1");
+          lineItems.push({
+            description: li.description ?? est.title,
+            quantity: qty,
+            unitPrice: parseFloat((rawUnit * scaleFactor).toFixed(2)),
+          });
+        }
+      } else {
+        // Estimate has no line items — use a single summary line at the estimate total
+        lineItems.push({ description: est.title, quantity: 1, unitPrice: parseFloat(est.total ?? "0") });
+      }
+    }
+
+    // Fall back to a blank line item when no estimates exist
+    if (lineItems.length === 0) {
+      const locationParts = [job.locationName, job.address, job.city, job.state].filter(Boolean);
+      const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
+      lineItems.push({ description: `${job.title}${locationSuffix}`, quantity: 1, unitPrice: 0 });
+    }
+
+    // Fetch material lists for this job and compute total with per-list markup
+    const lists = await db.select().from(materialListsTable).where(eq(materialListsTable.jobId, id));
+    if (lists.length > 0) {
+      const listIds = lists.map(l => l.id);
+      const allItems = await db.select().from(materialListItemsTable).where(inArray(materialListItemsTable.listId, listIds));
+      const itemsByList: Record<number, typeof allItems> = {};
+      for (const item of allItems) {
+        if (!itemsByList[item.listId]) itemsByList[item.listId] = [];
+        itemsByList[item.listId].push(item);
+      }
+      let materialsTotal = 0;
+      for (const list of lists) {
+        const markupMult = parseFloat(list.markup ?? "40") / 100 + 1;
+        for (const item of itemsByList[list.id] ?? []) {
+          materialsTotal += parseFloat(item.unitCostSnapshot ?? "0") * parseFloat(item.qty ?? "1") * markupMult;
+        }
+      }
+      if (materialsTotal > 0) {
+        lineItems.push({ description: "Materials", quantity: 1, unitPrice: parseFloat(materialsTotal.toFixed(2)) });
+      }
+    }
 
     const draft = {
       clientId: job.clientId ?? null,

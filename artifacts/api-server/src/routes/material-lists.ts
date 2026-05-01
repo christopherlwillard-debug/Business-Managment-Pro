@@ -171,18 +171,18 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     // Get full job info to build the labor/service line alongside materials
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
 
-    // Build the labor/service description the same way jobs.ts /invoice-draft does
+    // Build a placeholder labor/service line — price is $0 since the estimate
+    // tool handles pricing; user can adjust in the invoice editor.
     const locationParts = [job?.locationName, job?.address, job?.city, job?.state].filter(Boolean);
     const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
     const laborDesc = job ? `${job.title}${locationSuffix}` : "Labor / Services";
-    const laborPrice = job?.estimatedAmount ? parseFloat(job.estimatedAmount) : 0;
 
     const laborLineItem: LineItem = {
       id: 1,
       description: laborDesc,
       quantity: 1,
-      unitPrice: laborPrice,
-      total: laborPrice,
+      unitPrice: 0,
+      total: 0,
     };
     const materialsLineItem: LineItem = {
       id: 2,
