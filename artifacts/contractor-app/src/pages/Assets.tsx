@@ -375,21 +375,28 @@ export default function Assets() {
           try { await uploadReceiptFile(updated.id, fileToUpload); } catch { toast({ title: "Asset saved but receipt upload failed", variant: "destructive" }); }
         }
         // Sync bus-use rows
+        let busUseFailed = false;
         for (const row of formBusUseRows) {
           const yr = parseInt(row.year); const pct = parseInt(row.pct);
           if (!isNaN(yr) && !isNaN(pct)) {
-            await fetch(api(`/api/assets/${updated.id}/business-use`), { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: yr, businessUsePct: pct }) });
+            const r2 = await fetch(api(`/api/assets/${updated.id}/business-use`), { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: yr, businessUsePct: pct }) });
+            if (!r2.ok) busUseFailed = true;
           }
         }
         for (const yr of origYears) {
           if (!newYears.has(yr)) {
-            await fetch(api(`/api/assets/${updated.id}/business-use/${yr}`), { method: "DELETE", credentials: "include" });
+            const r2 = await fetch(api(`/api/assets/${updated.id}/business-use/${yr}`), { method: "DELETE", credentials: "include" });
+            if (!r2.ok) busUseFailed = true;
           }
         }
         queryClient.invalidateQueries({ queryKey: ["assets"] });
         queryClient.invalidateQueries({ queryKey: ["asset-business-use", editAsset.id] });
         closeForm();
-        toast({ title: "Asset updated" });
+        if (busUseFailed) {
+          toast({ title: "Asset updated, but some business-use % rows failed to save", variant: "destructive" });
+        } else {
+          toast({ title: "Asset updated" });
+        }
       } else {
         const r = await fetch(api("/api/assets"), {
           method: "POST",
@@ -403,15 +410,21 @@ export default function Assets() {
           try { await uploadReceiptFile(created.id, fileToUpload); } catch { toast({ title: "Asset saved but receipt upload failed", variant: "destructive" }); }
         }
         // Save bus-use rows for new asset
+        let busUseFailed = false;
         for (const row of formBusUseRows) {
           const yr = parseInt(row.year); const pct = parseInt(row.pct);
           if (!isNaN(yr) && !isNaN(pct)) {
-            await fetch(api(`/api/assets/${created.id}/business-use`), { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: yr, businessUsePct: pct }) });
+            const r2 = await fetch(api(`/api/assets/${created.id}/business-use`), { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ year: yr, businessUsePct: pct }) });
+            if (!r2.ok) busUseFailed = true;
           }
         }
         queryClient.invalidateQueries({ queryKey: ["assets"] });
         closeForm();
-        toast({ title: "Asset added" });
+        if (busUseFailed) {
+          toast({ title: "Asset added, but some business-use % rows failed to save", variant: "destructive" });
+        } else {
+          toast({ title: "Asset added" });
+        }
       }
     } finally {
       setIsSaving(false);
