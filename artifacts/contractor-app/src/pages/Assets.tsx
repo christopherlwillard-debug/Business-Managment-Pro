@@ -6,7 +6,7 @@ import { type Asset, type AssetStatus, type AssetType } from "@workspace/api-cli
 import {
   Wrench, Plus, Pencil, Trash2, Upload, X, Check, ChevronDown, ChevronUp,
   Car, Truck, Hammer, Package2, BadgeCheck, DollarSign, BarChart2, TrendingDown,
-  Info, Building2, Shovel, Percent,
+  Info, Building2, Shovel, Percent, Download,
 } from "lucide-react";
 
 interface BusUseRow { id: number; assetId: number; year: number; businessUsePct: number; }
@@ -470,6 +470,58 @@ export default function Assets() {
     }
   }
 
+  function handleExportCsv() {
+    const headers = [
+      "Asset Name", "Type", "Status", "Purchase Date", "Purchase Price",
+      "Depreciation Method", "Useful Life (yrs)", "Salvage Value",
+      "Year", "Business Use %", "Annual Deduction", "Accumulated Depreciation", "Book Value",
+    ];
+    const rows: string[][] = [];
+    for (const asset of assets) {
+      const schedule = calcDepreciationSchedule(asset, asset.businessUseRows);
+      if (schedule.length === 0) {
+        rows.push([
+          asset.name,
+          asset.assetType,
+          asset.status,
+          asset.purchaseDate,
+          asset.purchasePrice.toFixed(2),
+          asset.depreciationMethod ?? "straight-line",
+          String(asset.usefulLifeYears ?? ""),
+          String(asset.salvageValue ?? "0"),
+          "", "", "", "", "",
+        ]);
+      } else {
+        for (const row of schedule) {
+          rows.push([
+            asset.name,
+            asset.assetType,
+            asset.status,
+            asset.purchaseDate,
+            asset.purchasePrice.toFixed(2),
+            asset.depreciationMethod ?? "straight-line",
+            String(asset.usefulLifeYears ?? ""),
+            String(asset.salvageValue ?? "0"),
+            String(row.year),
+            `${row.businessUsePct ?? 100}%`,
+            row.annualDeduction.toFixed(2),
+            row.accumulated.toFixed(2),
+            row.bookValue.toFixed(2),
+          ]);
+        }
+      }
+    }
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map(r => r.map(escape).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `assets-depreciation-schedule-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function handleUploadReceipt(assetId: number) {
     uploadAssetRef.current = assetId;
     fileInputRef.current?.click();
@@ -538,13 +590,25 @@ export default function Assets() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Track equipment, vehicles, and tools — with depreciation schedules for tax planning</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Asset
-        </button>
+        <div className="flex items-center gap-2">
+          {assets.length > 0 && (
+            <button
+              onClick={handleExportCsv}
+              className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+              title="Export full depreciation schedule as CSV"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+          )}
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Asset
+          </button>
+        </div>
       </div>
 
       {/* Summary bar */}
