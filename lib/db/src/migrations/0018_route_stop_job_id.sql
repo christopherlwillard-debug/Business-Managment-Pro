@@ -1,0 +1,1 @@
+ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS job_id integer REFERENCES jobs(id) ON DELETE SET NULL;

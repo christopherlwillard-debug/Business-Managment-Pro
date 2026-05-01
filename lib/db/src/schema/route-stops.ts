@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
 import { prospectsTable } from "./prospects";
+import { jobsTable } from "./jobs";
 
 export const routeStopsTable = pgTable("route_stops", {
   id: serial("id").primaryKey(),
@@ -19,6 +20,7 @@ export const routeStopsTable = pgTable("route_stops", {
   crewLabel: text("crew_label"),
   clientId: integer("client_id").references(() => clientsTable.id, { onDelete: "set null" }),
   prospectId: integer("prospect_id").references(() => prospectsTable.id, { onDelete: "set null" }),
+  jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

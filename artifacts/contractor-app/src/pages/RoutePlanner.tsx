@@ -47,9 +47,12 @@ interface RouteStop {
   crewLabel: string | null;
   clientId: number | null;
   prospectId: number | null;
+  jobId: number | null;
   clientName: string | null;
   prospectContactName: string | null;
   prospectAddress: string | null;
+  jobSqFt: number | null;
+  jobCoats: number | null;
   createdAt: string;
 }
 
@@ -334,6 +337,11 @@ export default function RoutePlanner() {
   }, [asphaltJobs]);
 
   function pickJobForStop(stop: RouteStop) {
+    // If a specific job is directly linked, use it (exact match)
+    if (stop.jobId != null) {
+      return allJobs.find(j => j.id === stop.jobId) ?? undefined;
+    }
+    // Fall back to clientId-based lookup
     if (stop.clientId == null) return undefined;
     const jobs = asphaltJobsByClientId.get(stop.clientId);
     if (!jobs || jobs.length === 0) return undefined;
@@ -364,6 +372,8 @@ export default function RoutePlanner() {
   const tankIsWarning = tankFillPct >= 80 && totalAdjustedSqFt < tankCapacity;
   const tankIsFull = totalAdjustedSqFt >= tankCapacity;
 
+  const [formJobId, setFormJobId] = useState<number | null>(null);
+
   const [form, setForm] = useState<EditFormState>({
     title: "",
     address: "",
@@ -372,7 +382,7 @@ export default function RoutePlanner() {
     estimatedDurationMinutes: 60,
     status: "scheduled",
   });
-  const [editForm, setEditForm] = useState<Partial<EditFormState>>({});
+  const [editForm, setEditForm] = useState<Partial<EditFormState> & { jobId?: number | null }>({});
 
   const { data: clientOptions = [] } = useQuery<ClientOption[]>({
     queryKey: ["/api/clients"],
@@ -397,6 +407,7 @@ export default function RoutePlanner() {
 
   function handleLinkChange(val: string) {
     setFormLinkVal(val);
+    setFormJobId(null);
     if (!val) return;
     const [type, id] = val.split(":");
     if (type === "client") {
@@ -457,7 +468,7 @@ export default function RoutePlanner() {
   });
 
   const createStop = useMutation({
-    mutationFn: (data: Partial<EditFormState> & { lat?: number | null; lng?: number | null }) =>
+    mutationFn: (data: Partial<EditFormState> & { lat?: number | null; lng?: number | null; clientId?: number | null; prospectId?: number | null; jobId?: number | null }) =>
       apiFetch("/route-stops", { method: "POST", body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
@@ -511,6 +522,7 @@ export default function RoutePlanner() {
   function resetForm() {
     setForm({ title: "", address: "", notes: "", scheduledDate: selectedDateStr, estimatedDurationMinutes: 60, status: "scheduled" });
     setFormLinkVal("");
+    setFormJobId(null);
   }
 
   async function persistSortOrder(ordered: RouteStop[]) {
@@ -533,7 +545,7 @@ export default function RoutePlanner() {
     const coords = await geocodeAddress(form.address, BASE);
     setGeocoding(false);
     const { clientId, prospectId } = parsedLinkIds(formLinkVal);
-    createStop.mutate({ ...form, lat: coords?.lat ?? null, lng: coords?.lng ?? null, clientId, prospectId } as any);
+    createStop.mutate({ ...form, lat: coords?.lat ?? null, lng: coords?.lng ?? null, clientId, prospectId, jobId: formJobId });
   }
 
   async function handleOptimize() {
@@ -1130,6 +1142,30 @@ export default function RoutePlanner() {
                 </select>
               </div>
             )}
+            {(() => {
+              const linkedClientId = formLinkVal.startsWith("client:") ? parseInt(formLinkVal.split(":")[1]) : null;
+              const clientJobs = linkedClientId != null ? (asphaltJobsByClientId.get(linkedClientId) ?? []) : [];
+              if (clientJobs.length === 0) return null;
+              return (
+                <div>
+                  <label className="text-[10px] text-muted-foreground flex items-center gap-1 mb-0.5">
+                    <SquareStack className="w-3 h-3" /> Link to specific job (sq ft / coats)
+                  </label>
+                  <select
+                    value={formJobId ?? ""}
+                    onChange={e => setFormJobId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">— Auto-detect —</option>
+                    {clientJobs.map(j => (
+                      <option key={j.id} value={j.id}>
+                        {j.title}{j.sqFt ? ` · ${j.sqFt.toLocaleString()} sq ft` : ""}{j.coats && j.coats > 1 ? ` × ${j.coats}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
             <input
               value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
@@ -1230,7 +1266,7 @@ export default function RoutePlanner() {
                       editForm={editForm}
                       onEdit={() => {
                         setEditingId(stop.id);
-                        setEditForm({ title: stop.title ?? "", address: stop.address, notes: stop.notes ?? "", scheduledDate: stop.scheduledDate ?? selectedDateStr, estimatedDurationMinutes: stop.estimatedDurationMinutes ?? 60, status: stop.status });
+                        setEditForm({ title: stop.title ?? "", address: stop.address, notes: stop.notes ?? "", scheduledDate: stop.scheduledDate ?? selectedDateStr, estimatedDurationMinutes: stop.estimatedDurationMinutes ?? 60, status: stop.status, jobId: stop.jobId });
                       }}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={async () => {
@@ -1252,8 +1288,9 @@ export default function RoutePlanner() {
                       geocoding={geocoding}
                       isOptimized={!!optimizedOrder}
                       retryGeocoding={retryingGeocodeId === stop.id}
-                      jobSqFt={linkedJob?.sqFt ?? null}
-                      jobCoats={linkedJob?.coats ?? null}
+                      jobSqFt={stop.jobId != null ? stop.jobSqFt : (linkedJob?.sqFt ?? null)}
+                      jobCoats={stop.jobId != null ? stop.jobCoats : (linkedJob?.coats ?? null)}
+                      availableJobs={stop.clientId != null ? (asphaltJobsByClientId.get(stop.clientId) ?? []) : []}
                       onRetryGeocode={async () => {
                         setRetryingGeocodeId(stop.id);
                         const coords = await geocodeAddress(stop.address, BASE);
@@ -1408,7 +1445,7 @@ export default function RoutePlanner() {
                               editForm={editForm}
                               onEdit={() => {
                                 setEditingId(stop.id);
-                                setEditForm({ title: stop.title ?? "", address: stop.address, notes: stop.notes ?? "", scheduledDate: stop.scheduledDate ?? selectedDateStr, estimatedDurationMinutes: stop.estimatedDurationMinutes ?? 60, status: stop.status });
+                                setEditForm({ title: stop.title ?? "", address: stop.address, notes: stop.notes ?? "", scheduledDate: stop.scheduledDate ?? selectedDateStr, estimatedDurationMinutes: stop.estimatedDurationMinutes ?? 60, status: stop.status, jobId: stop.jobId });
                               }}
                               onCancelEdit={() => setEditingId(null)}
                               onSaveEdit={async () => {
@@ -1430,8 +1467,9 @@ export default function RoutePlanner() {
                               geocoding={geocoding}
                               isOptimized={!!optimizedOrder}
                               retryGeocoding={retryingGeocodeId === stop.id}
-                              jobSqFt={linkedJob?.sqFt ?? null}
-                              jobCoats={linkedJob?.coats ?? null}
+                              jobSqFt={stop.jobId != null ? stop.jobSqFt : (linkedJob?.sqFt ?? null)}
+                              jobCoats={stop.jobId != null ? stop.jobCoats : (linkedJob?.coats ?? null)}
+                              availableJobs={stop.clientId != null ? (asphaltJobsByClientId.get(stop.clientId) ?? []) : []}
                               onRetryGeocode={async () => {
                                 setRetryingGeocodeId(stop.id);
                                 const coords = await geocodeAddress(stop.address, BASE);
@@ -1539,17 +1577,24 @@ export default function RoutePlanner() {
   );
 }
 
+interface AvailableJob {
+  id: number;
+  title: string;
+  sqFt?: number | null;
+  coats?: number | null;
+}
+
 interface StopCardProps {
   stop: RouteStop;
   idx: number;
   total: number;
   isEditing: boolean;
   isDragOver: boolean;
-  editForm: Partial<EditFormState>;
+  editForm: Partial<EditFormState> & { jobId?: number | null };
   onEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
-  onEditFormChange: (patch: Partial<EditFormState>) => void;
+  onEditFormChange: (patch: Partial<EditFormState> & { jobId?: number | null }) => void;
   onStatusChange: (status: StopStatus) => void;
   onDelete: () => void;
   onMoveUp: () => void;
@@ -1565,6 +1610,7 @@ interface StopCardProps {
   retryGeocoding: boolean;
   jobSqFt?: number | null;
   jobCoats?: number | null;
+  availableJobs?: AvailableJob[];
 }
 
 function StopCard({
@@ -1573,13 +1619,32 @@ function StopCard({
   onDelete, onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
   isSaving, geocoding, isOptimized, onRetryGeocode, retryGeocoding,
-  jobSqFt, jobCoats,
+  jobSqFt, jobCoats, availableJobs = [],
 }: StopCardProps) {
   const cfg = STATUS_CONFIG[stop.status];
 
   if (isEditing) {
     return (
       <div className="px-4 py-3 bg-muted/20 space-y-2">
+        {availableJobs.length > 0 && (
+          <div>
+            <label className="text-[10px] text-muted-foreground flex items-center gap-1 mb-0.5">
+              <SquareStack className="w-3 h-3" /> Linked job (sq ft / coats)
+            </label>
+            <select
+              value={editForm.jobId ?? ""}
+              onChange={e => onEditFormChange({ jobId: e.target.value ? parseInt(e.target.value) : null })}
+              className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">— Auto-detect —</option>
+              {availableJobs.map(j => (
+                <option key={j.id} value={j.id}>
+                  {j.title}{j.sqFt ? ` · ${j.sqFt.toLocaleString()} sq ft` : ""}{j.coats && j.coats > 1 ? ` × ${j.coats}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <input
           value={editForm.title ?? ""}
           onChange={e => onEditFormChange({ title: e.target.value })}

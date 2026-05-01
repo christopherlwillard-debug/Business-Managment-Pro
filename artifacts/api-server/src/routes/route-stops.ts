@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { routeStopsTable, clientsTable, prospectsTable, type RouteStop as RouteStopRow } from "@workspace/db/schema";
+import { routeStopsTable, clientsTable, prospectsTable, jobsTable, type RouteStop as RouteStopRow } from "@workspace/db/schema";
 import { eq, and, gte, lte, isNull, asc, SQL } from "drizzle-orm";
 import { geocodeAddressString } from "../geocode-helpers";
 
@@ -13,11 +13,17 @@ function isValidStatus(s: unknown): s is ValidStatus {
 
 const router = Router();
 
-function formatStop(s: RouteStopRow & { clientName?: string | null; prospectContactName?: string | null }) {
+function formatStop(s: RouteStopRow & { clientName?: string | null; prospectContactName?: string | null; jobSqFt?: number | null; jobCoats?: number | null }) {
   return {
     ...s,
     createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
   };
+}
+
+async function validateJobClientMatch(jobId: number, clientId: number): Promise<boolean> {
+  const [job] = await db.select({ id: jobsTable.id, clientId: jobsTable.clientId }).from(jobsTable).where(eq(jobsTable.id, jobId));
+  if (!job) return false;
+  return job.clientId === clientId;
 }
 
 router.get("/", async (req, res) => {
@@ -44,14 +50,18 @@ router.get("/", async (req, res) => {
         crewLabel: routeStopsTable.crewLabel,
         clientId: routeStopsTable.clientId,
         prospectId: routeStopsTable.prospectId,
+        jobId: routeStopsTable.jobId,
         createdAt: routeStopsTable.createdAt,
         clientName: clientsTable.name,
         prospectContactName: prospectsTable.contactName,
         prospectAddress: prospectsTable.address,
+        jobSqFt: jobsTable.sqFt,
+        jobCoats: jobsTable.coats,
       })
       .from(routeStopsTable)
       .leftJoin(clientsTable, eq(routeStopsTable.clientId, clientsTable.id))
       .leftJoin(prospectsTable, eq(routeStopsTable.prospectId, prospectsTable.id))
+      .leftJoin(jobsTable, eq(routeStopsTable.jobId, jobsTable.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(routeStopsTable.scheduledDate, routeStopsTable.sortOrder, routeStopsTable.createdAt);
 
@@ -67,15 +77,19 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId } = req.body as {
+    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId, jobId } = req.body as {
       title?: string; address: string; lat?: number; lng?: number; notes?: string;
       scheduledDate?: string; status?: string; estimatedDurationMinutes?: number; sortOrder?: number;
       blockNumber?: number | null; crewLabel?: string | null;
-      clientId?: number | null; prospectId?: number | null;
+      clientId?: number | null; prospectId?: number | null; jobId?: number | null;
     };
     if (!address) return res.status(400).json({ error: "Address is required" });
     if (status !== undefined && !isValidStatus(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
+    }
+    if (jobId != null && clientId != null) {
+      const valid = await validateJobClientMatch(jobId, clientId);
+      if (!valid) return res.status(400).json({ error: "The selected job does not belong to the linked client" });
     }
 
     const [stop] = await db.insert(routeStopsTable).values({
@@ -92,6 +106,7 @@ router.post("/", async (req, res) => {
       crewLabel: crewLabel ?? null,
       clientId: clientId ?? null,
       prospectId: prospectId ?? null,
+      jobId: jobId ?? null,
     }).returning();
 
     res.status(201).json(formatStop(stop));
@@ -106,16 +121,20 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid stop ID" });
 
-    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId } = req.body as {
+    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId, jobId } = req.body as {
       title?: string | null; address?: string; lat?: number | null; lng?: number | null;
       notes?: string | null; scheduledDate?: string | null; status?: string;
       estimatedDurationMinutes?: number; sortOrder?: number;
       blockNumber?: number | null; crewLabel?: string | null;
-      clientId?: number | null; prospectId?: number | null;
+      clientId?: number | null; prospectId?: number | null; jobId?: number | null;
     };
 
     if (status !== undefined && !isValidStatus(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
+    }
+    if (jobId != null && clientId != null) {
+      const valid = await validateJobClientMatch(jobId, clientId);
+      if (!valid) return res.status(400).json({ error: "The selected job does not belong to the linked client" });
     }
 
     const updates: Partial<RouteStopRow> = {};
@@ -132,6 +151,7 @@ router.put("/:id", async (req, res) => {
     if (crewLabel !== undefined) updates.crewLabel = crewLabel;
     if (clientId !== undefined) updates.clientId = clientId;
     if (prospectId !== undefined) updates.prospectId = prospectId;
+    if (jobId !== undefined) updates.jobId = jobId;
 
     const [updated] = await db.update(routeStopsTable).set(updates).where(eq(routeStopsTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Route stop not found" });
