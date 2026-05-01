@@ -233,13 +233,12 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
       const locationParts = [job.locationName, job.address, job.city, job.state].filter(Boolean);
       const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
       const laborDesc = `${job.title}${locationSuffix}`;
-      const laborPrice = job.estimatedAmount ? parseFloat(job.estimatedAmount) : 0;
       const laborLineItem: LineItem = {
         id: 1,
         description: laborDesc,
         quantity: 1,
-        unitPrice: laborPrice,
-        total: laborPrice,
+        unitPrice: 0,
+        total: 0,
       };
       // Renumber existing items to avoid id collisions
       const reNumbered = lineItems.map((li, i) => ({ ...li, id: i + 2 }));
