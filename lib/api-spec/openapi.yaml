@@ -1650,9 +1650,6 @@ components:
         endDate:
           type: string
           nullable: true
-        estimatedAmount:
-          type: number
-          nullable: true
         actualAmount:
           type: number
           nullable: true
@@ -1701,9 +1698,6 @@ components:
           nullable: true
         endDate:
           type: string
-          nullable: true
-        estimatedAmount:
-          type: number
           nullable: true
         actualAmount:
           type: number

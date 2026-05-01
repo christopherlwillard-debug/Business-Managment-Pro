@@ -20,7 +20,6 @@ type JobRow = {
   locationName: string | null;
   startDate: string | null;
   endDate: string | null;
-  estimatedAmount: string | null;
   actualAmount: string | null;
   notes: string | null;
   businessLine: string | null;
@@ -32,8 +31,7 @@ type JobRow = {
   subcontractorName?: string | null;
 };
 
-type FormattedJob = Omit<JobRow, "estimatedAmount" | "actualAmount" | "createdAt" | "subcontractorId" | "subcontractorName"> & {
-  estimatedAmount: number | null;
+type FormattedJob = Omit<JobRow, "actualAmount" | "createdAt" | "subcontractorId" | "subcontractorName"> & {
   actualAmount: number | null;
   createdAt: string;
   subcontractorIds: number[];
@@ -44,7 +42,6 @@ function formatJob(row: JobRow & { subcontractorIds: number[]; subcontractorName
   const { subcontractorId: _sid, subcontractorName: _sname, ...rest } = row;
   return {
     ...rest,
-    estimatedAmount: rest.estimatedAmount ? parseFloat(rest.estimatedAmount) : null,
     actualAmount: rest.actualAmount ? parseFloat(rest.actualAmount) : null,
     createdAt: rest.createdAt instanceof Date ? rest.createdAt.toISOString() : rest.createdAt,
     subcontractorIds: row.subcontractorIds,
@@ -68,7 +65,6 @@ async function getJobWithSubs(jobId: number) {
       locationName: jobsTable.locationName,
       startDate: jobsTable.startDate,
       endDate: jobsTable.endDate,
-      estimatedAmount: jobsTable.estimatedAmount,
       actualAmount: jobsTable.actualAmount,
       notes: jobsTable.notes,
       businessLine: jobsTable.businessLine,
@@ -131,7 +127,6 @@ router.get("/", async (req, res) => {
         locationName: jobsTable.locationName,
         startDate: jobsTable.startDate,
         endDate: jobsTable.endDate,
-        estimatedAmount: jobsTable.estimatedAmount,
         actualAmount: jobsTable.actualAmount,
         notes: jobsTable.notes,
         businessLine: jobsTable.businessLine,
@@ -170,7 +165,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine, sqFt, coats } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, actualAmount, notes, businessLine, sqFt, coats } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
@@ -181,7 +176,6 @@ router.post("/", async (req, res) => {
       status: status || "scheduled",
       jobType, address, city, state, locationName,
       startDate, endDate,
-      estimatedAmount: estimatedAmount?.toString(),
       actualAmount: actualAmount?.toString(),
       notes,
       businessLine: businessLine || null,
@@ -321,7 +315,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, estimatedAmount, actualAmount, notes, businessLine, subPaid, sqFt, coats } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, actualAmount, notes, businessLine, subPaid, sqFt, coats } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -339,7 +333,6 @@ router.put("/:id", async (req, res) => {
     if (locationName !== undefined) updates.locationName = locationName;
     if (startDate !== undefined) updates.startDate = startDate;
     if (endDate !== undefined) updates.endDate = endDate;
-    if (estimatedAmount !== undefined) updates.estimatedAmount = estimatedAmount?.toString();
     if (actualAmount !== undefined) updates.actualAmount = actualAmount?.toString();
     if (notes !== undefined) updates.notes = notes;
     if ("businessLine" in req.body) updates.businessLine = businessLine || null;

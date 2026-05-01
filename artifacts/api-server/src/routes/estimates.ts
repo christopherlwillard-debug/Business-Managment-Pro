@@ -161,7 +161,6 @@ router.post("/:id/convert-to-job", async (req, res) => {
       clientId: estimate.clientId,
       status: "scheduled",
       jobType: estimate.jobType,
-      estimatedAmount: estimate.total,
       notes: estimate.notes,
     }).returning();
 

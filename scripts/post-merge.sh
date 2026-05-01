@@ -471,3 +471,12 @@ pool.query(\`
   .then(() => { console.log('asset_business_use table ensured'); pool.end(); })
   .catch(e => { console.error('asset_business_use migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #389: drop estimated_amount column from jobs (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE jobs DROP COLUMN IF EXISTS estimated_amount')
+  .then(() => { console.log('jobs.estimated_amount dropped'); pool.end(); })
+  .catch(e => { console.error('drop estimated_amount error:', e.message); pool.end(); process.exit(1); });
+")
