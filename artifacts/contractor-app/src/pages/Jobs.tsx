@@ -928,15 +928,15 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${BASE}/api/jobs/profit-summary?jobIds=${job.id}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((obj: Record<string, JobProfit>) => { setData(obj[job.id] ?? null); })
+    fetch(`${BASE}/api/jobs/${job.id}/profit`)
+      .then(r => r.ok ? r.json() as Promise<JobProfit> : Promise.reject())
+      .then(d => { setData(d); })
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [job.id]);
 
   const net = data?.netProfit ?? 0;
-  const isProfit = net >= 0;
+  const isProfit = net > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -1174,16 +1174,38 @@ function JobCard({
             )}
           </div>
 
-          {/* Net profit badge */}
-          {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) && (
-            <div className="flex items-center gap-1.5 pt-0.5">
-              <TrendingUp className="w-3 h-3 flex-shrink-0 text-muted-foreground/60" />
-              <span className={`font-semibold ${profitData.netProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                {profitData.netProfit >= 0 ? "+" : ""}{formatCurrency(profitData.netProfit)} net
-              </span>
-            </div>
-          )}
+
         </div>
+
+        {/* Inline Job P&L card — shown when invoices or expenses exist */}
+        {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) && (
+          <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingUp className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job P&amp;L</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              <div className="space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Invoiced</p>
+                <p className="font-semibold text-foreground">{formatCurrency(profitData.grossInvoiced)}</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Collected</p>
+                <p className="font-semibold text-emerald-600">{formatCurrency(profitData.collected)}</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Expenses</p>
+                <p className="font-semibold text-red-500">{formatCurrency(profitData.jobExpenses)}</p>
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-[10px] text-muted-foreground">Net Profit</p>
+                <p className={`font-bold ${profitData.netProfit > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {profitData.netProfit > 0 ? "+" : ""}{formatCurrency(profitData.netProfit)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Daily Log button + indicator */}
         <button
@@ -1231,9 +1253,9 @@ function JobCard({
           <span className="flex-1 text-left">Profit & Loss</span>
           {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) ? (
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-              profitData.netProfit >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
+              profitData.netProfit > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
             }`}>
-              {profitData.netProfit >= 0 ? "+" : ""}{formatCurrency(profitData.netProfit)}
+              {profitData.netProfit > 0 ? "+" : ""}{formatCurrency(profitData.netProfit)}
             </span>
           ) : (
             <span className="text-[10px] text-muted-foreground">View</span>

@@ -189,6 +189,39 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Per-job profit: GET /:id/profit
+// NOTE: this route must be registered before /:id so it is not shadowed
+router.get("/:id/profit", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+
+    const [invRows, expRows] = await Promise.all([
+      db.select({ total: invoicesTable.total, status: invoicesTable.status })
+        .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
+      db.select({ amount: expensesTable.amount, category: expensesTable.category })
+        .from(expensesTable).where(eq(expensesTable.jobId, id)),
+    ]);
+
+    let grossInvoiced = 0;
+    let collected = 0;
+    for (const inv of invRows) {
+      const t = parseFloat(inv.total ?? "0");
+      grossInvoiced += t;
+      if (inv.status === "paid") collected += t;
+    }
+    let jobExpenses = 0;
+    for (const exp of expRows) {
+      if (exp.category !== "Owner Draw") jobExpenses += parseFloat(exp.amount ?? "0");
+    }
+
+    res.json({ grossInvoiced, collected, jobExpenses, netProfit: collected - jobExpenses });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch job profit" });
+  }
+});
+
 // Batch profit summary: GET /profit-summary?jobIds=1,2,3
 router.get("/profit-summary", async (req, res) => {
   try {
