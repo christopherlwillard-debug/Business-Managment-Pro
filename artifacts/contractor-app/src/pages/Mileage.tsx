@@ -257,8 +257,15 @@ export default function Mileage() {
     }
   };
 
-  const handleDelete = async (id: number, classification: string) => {
-    if (!confirm(`Delete this ${classification} trip?`)) return;
+  const handleDelete = async (id: number, classification: string, log?: any) => {
+    const isMonthly = log?.purpose?.startsWith("MileIQ monthly total");
+    const hasLinkedExpense = classification === "business";
+    const msg = isMonthly
+      ? `Delete this monthly mileage entry? The linked IRS mileage expense will also be removed.`
+      : hasLinkedExpense
+      ? `Delete this business trip? The linked IRS mileage expense will also be removed.`
+      : `Delete this personal trip?`;
+    if (!confirm(msg)) return;
     await deleteMileage.mutateAsync({ id });
     queryClient.invalidateQueries();
   };
@@ -658,7 +665,7 @@ export default function Mileage() {
                     <td className="px-6 py-4 text-center">
                       {canEdit("mileage") && (
                         <button
-                          onClick={() => handleDelete(log.id, log.classification)}
+                          onClick={() => handleDelete(log.id, log.classification, log)}
                           className="text-muted-foreground hover:text-destructive transition-colors"
                           title="Delete trip"
                         >
