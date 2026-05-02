@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { mileageLogsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 
 const router = Router();
 
@@ -77,7 +77,26 @@ router.post("/", async (req, res) => {
     const { date, startLocation, endLocation, miles, purpose, jobId, classification, notes, source } = req.body;
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
     const rate = await getRate();
-    const deductionAmount = classification === "business" ? parseFloat(miles) * rate : 0;
+    const milesNum = parseFloat(miles);
+    const deductionAmount = classification === "business" ? milesNum * rate : 0;
+
+    let expenseId: number | null = null;
+
+    if (classification === "business" || classification == null) {
+      const description = purpose
+        ? `Mileage: ${purpose} (${milesNum.toFixed(2)} mi)`
+        : `Mileage: Business trip (${milesNum.toFixed(2)} mi)`;
+      const [expense] = await db.insert(expensesTable).values({
+        date,
+        description,
+        vendor: "IRS Mileage",
+        category: "mileage",
+        amount: deductionAmount.toFixed(2),
+        jobId: jobId || null,
+        notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${rate}/mi`,
+      }).returning();
+      expenseId = expense.id;
+    }
 
     const [log] = await db.insert(mileageLogsTable).values({
       date, startLocation, endLocation,
@@ -88,6 +107,7 @@ router.post("/", async (req, res) => {
       deductionAmount: deductionAmount.toString(),
       notes,
       source: source || "gps",
+      expenseId,
     }).returning();
 
     let jobTitle = null;
@@ -107,7 +127,22 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const { date, startLocation, endLocation, miles, purpose, jobId, classification, notes } = req.body;
     const rate = await getRate();
-    const deductionAmount = classification === "business" ? parseFloat(miles) * rate : 0;
+    const milesNum = parseFloat(miles);
+    const deductionAmount = classification === "business" ? milesNum * rate : 0;
+
+    const [existing] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
+
+    if (existing?.expenseId) {
+      await db.update(expensesTable).set({
+        date,
+        description: purpose
+          ? `Mileage: ${purpose} (${milesNum.toFixed(2)} mi)`
+          : `Mileage: Business trip (${milesNum.toFixed(2)} mi)`,
+        amount: deductionAmount.toFixed(2),
+        jobId: jobId || null,
+        notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${rate}/mi`,
+      }).where(eq(expensesTable.id, existing.expenseId));
+    }
 
     const [log] = await db.update(mileageLogsTable).set({
       date, startLocation, endLocation,
@@ -116,7 +151,7 @@ router.put("/:id", async (req, res) => {
       classification,
       ratePerMile: rate.toString(),
       deductionAmount: deductionAmount.toString(),
-      notes
+      notes,
     }).where(eq(mileageLogsTable.id, id)).returning();
     if (!log) return res.status(404).json({ error: "Mileage log not found" });
 
@@ -137,14 +172,10 @@ router.delete("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
 
     const [log] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
-    if (log) {
-      await db.delete(expensesTable).where(
-        and(
-          eq(expensesTable.date, log.date),
-          eq(expensesTable.vendor, "IRS Mileage"),
-          eq(expensesTable.category, "mileage")
-        )
-      );
+    if (log?.expenseId) {
+      await db.delete(expensesTable).where(eq(expensesTable.id, log.expenseId));
+    } else if (log) {
+      console.warn(`Mileage log ${id} has no expenseId — skipping expense cleanup to avoid affecting other entries.`);
     }
 
     await db.delete(mileageLogsTable).where(eq(mileageLogsTable.id, id));

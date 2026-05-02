@@ -5,7 +5,6 @@ import {
   useGetMileageSummary,
   useCreateMileageLog,
   useDeleteMileageLog,
-  useCreateExpense,
   useListJobs,
   useGetSettings,
 } from "@workspace/api-client-react";
@@ -86,7 +85,6 @@ export default function Mileage() {
   const { data: settings } = useGetSettings();
   const createMileage = useCreateMileageLog();
   const deleteMileage = useDeleteMileageLog();
-  const createExpense = useCreateExpense();
 
   const [activeTab, setActiveTab] = useState<"trip" | "monthly">("trip");
   const [savedMsg, setSavedMsg] = useState("");
@@ -168,7 +166,6 @@ export default function Mileage() {
     const miles = parseFloat(manual.miles);
 
     try {
-      // Step 1: Save mileage log
       try {
         await createMileage.mutateAsync({
           data: {
@@ -186,30 +183,6 @@ export default function Mileage() {
         if (is401(err)) { setSessionExpired(true); return; }
         setManualError(getApiErrorMessage(err, "Couldn't save the trip. Check your connection and try again."));
         return;
-      }
-
-      // Step 2: Create linked expense (business trips only)
-      if (manual.classification === "business") {
-        const deduction = miles * rate;
-        try {
-          await createExpense.mutateAsync({
-            data: {
-              date: manual.date,
-              description: `Mileage: ${manual.purpose || "Business trip"} (${miles.toFixed(2)} mi)`,
-              vendor: "IRS Mileage",
-              category: "mileage",
-              amount: deduction,
-              jobId: manual.jobId ? parseInt(manual.jobId) : undefined,
-              notes: `Manually logged. ${miles.toFixed(2)} mi × $${rate}/mi`,
-            },
-          });
-        } catch (err) {
-          if (is401(err)) { setSessionExpired(true); return; }
-          queryClient.invalidateQueries();
-          setSavedMsg(`Trip saved (${miles.toFixed(2)} mi), but the linked expense couldn't be created — add it manually in Expenses.`);
-          setManual({ date: today, startLocation: "", endLocation: "", miles: "", purpose: "", classification: mileageDefaultClassification, jobId: "" });
-          return;
-        }
       }
 
       queryClient.invalidateQueries();
@@ -242,7 +215,6 @@ export default function Mileage() {
     const deduction = miles * rate;
 
     try {
-      // Step 1: Save mileage log
       try {
         await createMileage.mutateAsync({
           data: {
@@ -257,26 +229,6 @@ export default function Mileage() {
       } catch (err) {
         if (is401(err)) { setSessionExpired(true); return; }
         setMonthlyError(getApiErrorMessage(err, "Couldn't save the mileage log. Check your connection and try again."));
-        return;
-      }
-
-      // Step 2: Create linked expense
-      try {
-        await createExpense.mutateAsync({
-          data: {
-            date: dateStr,
-            description: `Mileage (${getMonthLabel(monthlyForm.month)}): ${purposeNote}`,
-            vendor: "IRS Mileage",
-            category: "mileage",
-            amount: deduction,
-            notes: `MileIQ import. ${miles.toFixed(2)} mi × $${rate}/mi = ${formatCurrency(deduction)}${monthlyForm.notes ? ` | ${monthlyForm.notes}` : ""}`,
-          },
-        });
-      } catch (err) {
-        if (is401(err)) { setSessionExpired(true); return; }
-        queryClient.invalidateQueries();
-        setSavedMsg(`${getMonthLabel(monthlyForm.month)} logged (${miles.toFixed(2)} mi), but the linked expense couldn't be created — add it manually in Expenses.`);
-        setMonthlyForm({ month: currentMonth, miles: "", tripCount: "", notes: "" });
         return;
       }
 

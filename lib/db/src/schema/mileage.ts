@@ -2,6 +2,7 @@ import { pgTable, serial, text, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { jobsTable } from "./jobs";
+import { expensesTable } from "./expenses";
 
 export const mileageLogsTable = pgTable("mileage_logs", {
   id: serial("id").primaryKey(),
@@ -17,6 +18,7 @@ export const mileageLogsTable = pgTable("mileage_logs", {
   deductionAmount: numeric("deduction_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   notes: text("notes"),
   source: text("source").notNull().default("gps"),
+  expenseId: integer("expense_id").references(() => expensesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
