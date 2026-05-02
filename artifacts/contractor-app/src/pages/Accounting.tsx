@@ -1158,30 +1158,6 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         ) : null}
       </div>
 
-      {/* ── Tab navigation cards ── */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Detailed Reports</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {([
-            { tab: "profit-loss" as const, icon: TrendingUp, label: "Profit & Loss", desc: "Full income & expense breakdown by month" },
-            { tab: "schedule-c" as const, icon: FileText, label: "Schedule C", desc: "IRS deduction planner + home office" },
-            { tab: "tax-calendar" as const, icon: Calendar, label: "Tax Calendar", desc: "Quarterly deadlines & compliance tracker" },
-          ] as const).map(({ tab, icon: Icon, label, desc }) => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className="flex items-center gap-3 px-4 py-3.5 bg-card border border-border rounded-2xl shadow-sm hover:border-primary/50 hover:bg-primary/5 active:bg-primary/10 transition-all text-left group">
-              <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
-                <Icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-foreground">{label}</p>
-                <p className="text-[11px] text-muted-foreground leading-tight">{desc}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary flex-shrink-0 transition-colors" />
-            </button>
-          ))}
-        </div>
-      </div>
-
       <p className="text-xs text-muted-foreground text-center pb-2">
         Auto-generated from your invoices, expenses, mileage logs, and subcontractor records. Always verify with your accountant before filing.
       </p>
