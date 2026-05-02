@@ -1093,6 +1093,10 @@ export default function Settings() {
     // compliance notifications
     complianceNotificationEmail: "",
     complianceEmailEnabled: "1",
+    // invoice payment reminders
+    invoiceReminderEnabled: "1",
+    invoiceReminderDay1: "7",
+    invoiceReminderDay2: "14",
   });
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpConfigured, setSmtpConfigured] = useState(false);
@@ -1136,6 +1140,9 @@ export default function Settings() {
         mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
         complianceNotificationEmail: s.complianceNotificationEmail ?? "",
         complianceEmailEnabled: s.complianceEmailEnabled === false ? "0" : "1",
+        invoiceReminderEnabled: (s as any).invoiceReminderEnabled === false ? "0" : "1",
+        invoiceReminderDay1: String((s as any).invoiceReminderDay1 ?? 7),
+        invoiceReminderDay2: String((s as any).invoiceReminderDay2 ?? 14),
       });
       setLogoUrl(s.logoUrl ?? null);
       setDbaLogoUrl(s.dbaLogoUrl ?? null);
@@ -1188,6 +1195,9 @@ export default function Settings() {
           bottomNavItems: bottomNavHrefs,
           complianceNotificationEmail: form.complianceNotificationEmail || null,
           complianceEmailEnabled: form.complianceEmailEnabled === "1",
+          invoiceReminderEnabled: form.invoiceReminderEnabled === "1",
+          invoiceReminderDay1: parseInt(form.invoiceReminderDay1) || 7,
+          invoiceReminderDay2: parseInt(form.invoiceReminderDay2) || 14,
         } as Partial<AppSettings>,
       });
       queryClient.invalidateQueries();
@@ -1566,6 +1576,79 @@ export default function Settings() {
               <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
                 <p className="text-xs text-blue-800">
                   <strong>KY Occupational Tax:</strong> Cities like Louisville and Lexington charge an occupational tax (1–2.2%) on income earned within city limits. Set the default here and override per invoice under the city field. Use the Accounting page's "Income by City" report for city-level tax filing.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Payment Reminder Automation */}
+          <Card className="border-border/50 shadow-md bg-card mt-5">
+            <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+              <CardTitle className="font-display flex items-center gap-2">
+                <Bell className="w-5 h-5 text-primary" /> Payment Reminder Automation
+              </CardTitle>
+              <CardDescription>Automatically email clients when their invoice is still unpaid after a set number of days. Requires SMTP to be configured.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              {/* Enable toggle */}
+              <div className="flex items-start justify-between gap-4 rounded-xl border border-border px-5 py-4 bg-muted/20">
+                <div className="flex items-start gap-3">
+                  <Bell className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Auto-Reminder Emails</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Send reminder emails automatically when an unpaid invoice reaches the day thresholds below.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setF("invoiceReminderEnabled", form.invoiceReminderEnabled === "1" ? "0" : "1")}
+                  className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                    form.invoiceReminderEnabled === "1" ? "bg-primary" : "bg-muted-foreground/30"
+                  }`}
+                  role="switch"
+                  aria-checked={form.invoiceReminderEnabled === "1"}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      form.invoiceReminderEnabled === "1" ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {form.invoiceReminderEnabled === "1" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <LF label="First Reminder (days)" hint="Days after invoice creation to send first reminder">
+                    <input
+                      className={inp}
+                      type="number"
+                      min="1"
+                      max="90"
+                      value={form.invoiceReminderDay1}
+                      onChange={e => setF("invoiceReminderDay1", e.target.value)}
+                      placeholder="7"
+                    />
+                  </LF>
+                  <LF label="Second Reminder (days)" hint="Days after invoice creation to send second reminder">
+                    <input
+                      className={inp}
+                      type="number"
+                      min="1"
+                      max="180"
+                      value={form.invoiceReminderDay2}
+                      onChange={e => setF("invoiceReminderDay2", e.target.value)}
+                      placeholder="14"
+                    />
+                  </LF>
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <Bell className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800">
+                  Reminders are only sent to invoices with a Square payment link and a client email address. SMTP must be configured in Settings for emails to send.
                 </p>
               </div>
             </CardContent>

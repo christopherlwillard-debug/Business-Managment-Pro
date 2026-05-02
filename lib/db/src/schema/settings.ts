@@ -41,6 +41,10 @@ export const settingsTable = pgTable("settings", {
   // Compliance notification preferences
   complianceNotificationEmail: text("compliance_notification_email"),
   complianceEmailEnabled: integer("compliance_email_enabled").default(1),
+  // Invoice payment reminder automation
+  invoiceReminderEnabled: integer("invoice_reminder_enabled").default(1),
+  invoiceReminderDay1: integer("invoice_reminder_day1").default(7),
+  invoiceReminderDay2: integer("invoice_reminder_day2").default(14),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

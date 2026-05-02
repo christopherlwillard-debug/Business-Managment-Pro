@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
+import { sendInvoiceEmail } from "../lib/invoiceEmail";
 
 const router = Router();
 
@@ -60,7 +61,34 @@ router.post("/:id/payment-link", async (req, res) => {
       .where(eq(invoicesTable.id, id));
 
     const [updated] = await buildQuery().where(eq(invoicesTable.id, id));
-    res.json({ paymentLinkUrl: url, paymentLinkId: linkId, invoice: updated });
+
+    // Auto-email the payment link to the client
+    let emailSent = false;
+    let emailWarning: string | null = null;
+
+    if (!inv.clientEmail) {
+      emailWarning = "No client email on file — payment link was not emailed.";
+    } else if (!settings?.smtpHost || !settings?.smtpUser || !settings?.smtpPass) {
+      emailWarning = "SMTP not configured — payment link was not emailed. Configure email in Settings.";
+    } else {
+      try {
+        const invWithLink = { ...updated, squarePaymentLinkUrl: url };
+        await sendInvoiceEmail(
+          invWithLink,
+          settings,
+          inv.clientEmail,
+          `Your Invoice ${inv.invoiceNumber} from ${companyName} — Payment Link`,
+          `Hi ${inv.clientName || "there"},\n\nYour invoice ${inv.invoiceNumber} is ready. Please use the button below to pay securely online.\n\nThank you for your business!`,
+        );
+        emailSent = true;
+      } catch (emailErr: unknown) {
+        const msg = emailErr instanceof Error ? emailErr.message : "Unknown error";
+        emailWarning = `Payment link created but email failed: ${msg}`;
+        console.error("Invoice payment link auto-email error:", emailErr);
+      }
+    }
+
+    res.json({ paymentLinkUrl: url, paymentLinkId: linkId, invoice: updated, emailSent, emailWarning });
   } catch (err: unknown) {
     console.error("Square invoice payment link error:", err);
     const message = err instanceof Error ? err.message : "Failed to create payment link";

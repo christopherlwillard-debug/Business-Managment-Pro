@@ -28,7 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   FileText, Download, Plus, Trash2, X,
   Building2, MapPin, Check, Eye, AlertTriangle,
-  Paperclip, Upload, Package, CreditCard, Copy, ExternalLink,
+  Paperclip, Upload, Package, CreditCard, Copy, ExternalLink, Bell,
 } from "lucide-react";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
 import { MaterialListDialog } from "@/pages/Materials";
@@ -743,20 +743,47 @@ export default function Invoices() {
   const attachMaterialList      = useAttachMaterialListToInvoice();
   const createPaymentLink       = useCreateInvoicePaymentLink();
 
-  const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string } | null>(null);
+  const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number; remindersSentAt?: string[] } | null>(null);
   const [generatingLinkId, setGeneratingLinkId] = useState<number | null>(null);
+  const [sendingReminderId, setSendingReminderId] = useState<number | null>(null);
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
     setGeneratingLinkId(invoiceId);
     try {
       const result = await createPaymentLink.mutateAsync(invoiceId);
-      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber });
+      const inv = result.invoice as any;
+      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber, invoiceId, remindersSentAt: inv?.remindersSentAt ?? [] });
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      if (result.emailSent) {
+        toast({ title: "Payment link created & emailed", description: `Email sent to client for invoice ${invoiceNumber}.` });
+      } else if (result.emailWarning) {
+        toast({ title: "Payment link created", description: result.emailWarning, variant: "destructive" });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to create payment link";
       alert(msg);
     } finally {
       setGeneratingLinkId(null);
+    }
+  }
+
+  async function handleSendReminder(invoiceId: number, invoiceNumber: string) {
+    setSendingReminderId(invoiceId);
+    try {
+      const res = await fetch(`${base}/api/invoices/${invoiceId}/send-reminder`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send reminder");
+      toast({ title: "Reminder sent!", description: `Reminder email sent for invoice ${invoiceNumber}.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      if (paymentLinkResult?.invoiceId === invoiceId) {
+        setPaymentLinkResult(prev => prev ? { ...prev, remindersSentAt: data.invoice?.remindersSentAt ?? [] } : prev);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send reminder";
+      toast({ title: "Reminder failed", description: msg, variant: "destructive" });
+    } finally {
+      setSendingReminderId(null);
     }
   }
 
@@ -1130,32 +1157,46 @@ export default function Invoices() {
                             <Eye className="w-4 h-4" />
                           </button>
                           {inv.status !== "paid" && inv.status !== "cancelled" && (() => {
-                            const base = import.meta.env.BASE_URL.replace(/\/$/, "");
                             const payUrl = inv.squarePaymentLinkUrl ?? inv.stripePaymentLinkUrl ?? null;
-                            return payUrl ? (
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(payUrl);
-                                  setPaymentLinkResult({ url: payUrl, invoiceNumber: inv.invoiceNumber });
-                                }}
-                                className="text-emerald-600 hover:text-emerald-700 transition-colors"
-                                title="Copy payment link"
-                              >
-                                <CreditCard className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleGetPaymentLink(inv.id, inv.invoiceNumber)}
-                                disabled={generatingLinkId === inv.id}
-                                className="text-muted-foreground hover:text-amber-600 transition-colors disabled:opacity-40"
-                                title="Get payment link"
-                              >
-                                {generatingLinkId === inv.id
-                                  ? <span className="text-xs">…</span>
-                                  : <CreditCard className="w-4 h-4" />
-                                }
-                              </button>
-                            );
+                            return (<>
+                              {payUrl ? (
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(payUrl);
+                                    setPaymentLinkResult({ url: payUrl, invoiceNumber: inv.invoiceNumber, invoiceId: inv.id, remindersSentAt: (inv as any).remindersSentAt ?? [] });
+                                  }}
+                                  className="text-emerald-600 hover:text-emerald-700 transition-colors"
+                                  title="Copy payment link"
+                                >
+                                  <CreditCard className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleGetPaymentLink(inv.id, inv.invoiceNumber)}
+                                  disabled={generatingLinkId === inv.id}
+                                  className="text-muted-foreground hover:text-amber-600 transition-colors disabled:opacity-40"
+                                  title="Get payment link"
+                                >
+                                  {generatingLinkId === inv.id
+                                    ? <span className="text-xs">…</span>
+                                    : <CreditCard className="w-4 h-4" />
+                                  }
+                                </button>
+                              )}
+                              {payUrl && (
+                                <button
+                                  onClick={() => handleSendReminder(inv.id, inv.invoiceNumber)}
+                                  disabled={sendingReminderId === inv.id}
+                                  className="text-muted-foreground hover:text-blue-600 transition-colors disabled:opacity-40"
+                                  title="Send reminder email"
+                                >
+                                  {sendingReminderId === inv.id
+                                    ? <span className="text-xs">…</span>
+                                    : <Bell className="w-4 h-4" />
+                                  }
+                                </button>
+                              )}
+                            </>);
                           })()}
                           <button onClick={() => setDeleteTarget(inv)}
                             className="text-muted-foreground hover:text-destructive transition-colors" title="Delete invoice">
@@ -1286,6 +1327,28 @@ export default function Invoices() {
                   <ExternalLink className="w-4 h-4" />
                   Open
                 </a>
+              </div>
+
+              {/* Send Reminder Now */}
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                <button
+                  onClick={() => handleSendReminder(paymentLinkResult.invoiceId, paymentLinkResult.invoiceNumber)}
+                  disabled={sendingReminderId === paymentLinkResult.invoiceId}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl font-semibold text-sm hover:bg-blue-100 transition-colors disabled:opacity-50"
+                >
+                  <Bell className="w-4 h-4" />
+                  {sendingReminderId === paymentLinkResult.invoiceId ? "Sending…" : "Send Reminder Now"}
+                </button>
+                {(paymentLinkResult.remindersSentAt ?? []).length > 0 && (
+                  <div className="bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+                    <p className="text-xs font-medium text-gray-500 mb-1">Reminders sent:</p>
+                    {(paymentLinkResult.remindersSentAt ?? []).map((ts, i) => (
+                      <p key={i} className="text-xs text-gray-600">
+                        {new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <p className="text-xs text-gray-400 text-center">

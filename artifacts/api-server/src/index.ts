@@ -4,6 +4,7 @@ import { execSync, execFileSync } from "node:child_process";
 import { join } from "node:path";
 import app from "./app";
 import { startRecurringExpensesJob } from "./jobs/recurringExpenses.js";
+import { startInvoiceReminderJob } from "./jobs/invoiceReminders.js";
 
 const rawPort = process.env["PORT"];
 
@@ -57,6 +58,7 @@ async function start() {
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     startRecurringExpensesJob();
+    startInvoiceReminderJob();
   });
 }
 

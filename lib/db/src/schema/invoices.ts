@@ -33,6 +33,7 @@ export const invoicesTable = pgTable("invoices", {
   squarePaymentLinkUrl: text("square_payment_link_url"),
   squarePaidAt: timestamp("square_paid_at"),
   payToken: text("pay_token").unique(),
+  remindersSentAt: jsonb("reminders_sent_at").default("[]"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

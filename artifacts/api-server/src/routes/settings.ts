@@ -239,6 +239,9 @@ function format(s: any) {
     bottomNavItems: parseJsonArray(s.bottomNavItems),
     complianceNotificationEmail: s.complianceNotificationEmail ?? null,
     complianceEmailEnabled: s.complianceEmailEnabled === 1 || s.complianceEmailEnabled === true,
+    invoiceReminderEnabled: s.invoiceReminderEnabled === 1 || s.invoiceReminderEnabled === true,
+    invoiceReminderDay1: s.invoiceReminderDay1 ?? 7,
+    invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
   };
 }
 
@@ -315,6 +318,15 @@ router.put("/", async (req, res) => {
       complianceEmailEnabled: body.complianceEmailEnabled !== undefined
         ? (body.complianceEmailEnabled ? 1 : 0)
         : (settings?.complianceEmailEnabled ?? 1),
+      invoiceReminderEnabled: body.invoiceReminderEnabled !== undefined
+        ? (body.invoiceReminderEnabled ? 1 : 0)
+        : (settings?.invoiceReminderEnabled ?? 1),
+      invoiceReminderDay1: body.invoiceReminderDay1 !== undefined
+        ? (parseInt(body.invoiceReminderDay1) || 7)
+        : (settings?.invoiceReminderDay1 ?? 7),
+      invoiceReminderDay2: body.invoiceReminderDay2 !== undefined
+        ? (parseInt(body.invoiceReminderDay2) || 14)
+        : (settings?.invoiceReminderDay2 ?? 14),
       updatedAt: new Date(),
     };
 

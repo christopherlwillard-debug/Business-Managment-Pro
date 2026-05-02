@@ -1,6 +1,7 @@
 import { Router } from "express";
 import nodemailer from "nodemailer";
 import { launchBrowser } from "../lib/launchBrowser.js";
+import { sendInvoiceEmail } from "../lib/invoiceEmail";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
@@ -414,6 +415,50 @@ router.post("/:id/send", async (req, res) => {
   } catch (err: any) {
     console.error("Email send error:", err);
     res.status(500).json({ error: err.message || "Failed to send email" });
+  }
+});
+
+// ── Send reminder email for an invoice ────────────────────────────────────────
+router.post("/:id/send-reminder", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid invoice id" });
+
+    const [[inv], [settings]] = await Promise.all([
+      buildInvoiceQuery().where(eq(invoicesTable.id, id)),
+      db.select().from(settingsTable).limit(1),
+    ]);
+
+    if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (inv.status === "paid") return res.status(400).json({ error: "Invoice is already paid" });
+
+    const paymentLink = inv.squarePaymentLinkUrl ?? inv.stripePaymentLinkUrl;
+    if (!paymentLink) return res.status(400).json({ error: "Invoice has no payment link. Generate one first." });
+
+    const clientEmail = inv.clientEmail;
+    if (!clientEmail) return res.status(400).json({ error: "Client has no email address on file." });
+
+    if (!settings?.smtpHost || !settings?.smtpUser || !settings?.smtpPass) {
+      return res.status(400).json({ error: "Email not configured. Set up SMTP in Settings → Invoice Defaults." });
+    }
+
+    const companyName = settings.companyName ?? "BuildPro";
+    const subject = `Reminder: Invoice ${inv.invoiceNumber} — Payment Due (${companyName})`;
+    const message = `Hi ${inv.clientName || "there"},\n\nThis is a friendly reminder that invoice ${inv.invoiceNumber} is still outstanding. Please use the button below to pay securely online.\n\nThank you for your business!`;
+
+    await sendInvoiceEmail(fmt(inv), settings, clientEmail, subject, message);
+
+    const now = new Date().toISOString();
+    const current = Array.isArray(inv.remindersSentAt) ? (inv.remindersSentAt as string[]) : [];
+    const updated = [...current, now];
+
+    await db.update(invoicesTable).set({ remindersSentAt: updated }).where(eq(invoicesTable.id, id));
+
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    res.json({ success: true, sentAt: now, invoice: fmt(withJoins) });
+  } catch (err: any) {
+    console.error("Send reminder error:", err);
+    res.status(500).json({ error: err.message || "Failed to send reminder" });
   }
 });
 
