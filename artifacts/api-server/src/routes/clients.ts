@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, or } from "drizzle-orm";
 
 const router = Router();
 
@@ -11,8 +11,33 @@ function formatClient(c: typeof clientsTable.$inferSelect) {
 
 router.get("/", async (_req, res) => {
   try {
-    const clients = await db.select().from(clientsTable).orderBy(clientsTable.createdAt);
-    res.json(clients.map(formatClient));
+    const [clients, openInvoices] = await Promise.all([
+      db.select().from(clientsTable).orderBy(clientsTable.createdAt),
+      db.select({
+        clientId: invoicesTable.clientId,
+        total: invoicesTable.total,
+        status: invoicesTable.status,
+      }).from(invoicesTable).where(
+        or(eq(invoicesTable.status, "sent"), eq(invoicesTable.status, "overdue"))
+      ),
+    ]);
+
+    const invoicesByClient = new Map<number, { balance: number; count: number; hasOverdue: boolean }>();
+    for (const inv of openInvoices) {
+      if (inv.clientId == null) continue;
+      const entry = invoicesByClient.get(inv.clientId) ?? { balance: 0, count: 0, hasOverdue: false };
+      entry.balance += parseFloat(inv.total ?? "0");
+      entry.count += 1;
+      if (inv.status === "overdue") entry.hasOverdue = true;
+      invoicesByClient.set(inv.clientId, entry);
+    }
+
+    res.json(clients.map(c => ({
+      ...formatClient(c),
+      outstandingBalance: invoicesByClient.get(c.id)?.balance ?? 0,
+      openInvoiceCount: invoicesByClient.get(c.id)?.count ?? 0,
+      hasOverdueInvoice: invoicesByClient.get(c.id)?.hasOverdue ?? false,
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch clients" });

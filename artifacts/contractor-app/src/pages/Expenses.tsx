@@ -11,7 +11,7 @@ import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
-  RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff,
+  RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff, Search,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
@@ -1247,6 +1247,7 @@ export default function Expenses() {
   const [monthCollapsed, setMonthCollapsed] = useState<Record<string, boolean>>(
     () => initMonthCollapsed(currentYear)
   );
+  const [searchQuery, setSearchQuery] = useState("");
 
   function toggleMonth(key: string) {
     setMonthCollapsed(prev => ({ ...prev, [key]: prev[key] === false }));
@@ -1266,9 +1267,18 @@ export default function Expenses() {
     [expenses, selectedYear]
   );
 
+  const filteredYearExpenses = useMemo(() => {
+    if (!searchQuery.trim()) return yearExpenses;
+    const q = searchQuery.trim().toLowerCase();
+    return yearExpenses.filter(e =>
+      (e.description ?? "").toLowerCase().includes(q) ||
+      (e.vendor ?? "").toLowerCase().includes(q)
+    );
+  }, [yearExpenses, searchQuery]);
+
   const monthlyGroups = useMemo(() => {
-    const groups: Record<string, typeof yearExpenses> = {};
-    yearExpenses.forEach(e => {
+    const groups: Record<string, typeof filteredYearExpenses> = {};
+    filteredYearExpenses.forEach(e => {
       const mk = (e.date ?? "").slice(0, 7);
       if (mk.length === 7) {
         if (!groups[mk]) groups[mk] = [];
@@ -1288,7 +1298,7 @@ export default function Expenses() {
     });
   }, [yearExpenses]);
 
-  const yearTotal = yearExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+  const yearTotal = filteredYearExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
   function jumpToTemplate(id: number) {
     setHighlightedTemplateId(id);
@@ -1384,6 +1394,27 @@ export default function Expenses() {
         )}
       </div>
 
+      {/* Search bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by description or vendor…"
+          className="w-full pl-9 pr-4 py-2 rounded-xl border border-border/60 bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            title="Clear search"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
       {filterCategory && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-50 border border-violet-200 text-sm text-violet-800">
           <span className="font-semibold">Filtered by category:</span>
@@ -1425,15 +1456,15 @@ export default function Expenses() {
             <span className="font-bold text-foreground">{selectedYear}</span>
             <span className="text-muted-foreground">·</span>
             <span className="text-muted-foreground">
-              {yearExpenses.length} {yearExpenses.length === 1 ? "expense" : "expenses"}
+              {filteredYearExpenses.length}{searchQuery.trim() ? ` of ${yearExpenses.length}` : ""} {filteredYearExpenses.length === 1 ? "expense" : "expenses"}
             </span>
             <span className="text-muted-foreground">·</span>
             <span className="font-bold text-foreground">{formatCurrency(yearTotal)} total</span>
-            {yearExpenses.some(e => e.category !== "mileage") && (
+            {filteredYearExpenses.some(e => e.category !== "mileage") && (
               <>
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground text-xs">
-                  {formatCurrency(yearExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0))} excl. mileage
+                  {formatCurrency(filteredYearExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0))} excl. mileage
                 </span>
               </>
             )}
@@ -1447,8 +1478,16 @@ export default function Expenses() {
           </div>
         ) : monthlyGroups.length === 0 ? (
           <div className="px-6 py-14 text-center text-muted-foreground">
-            <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
-            <p className="text-sm">No expenses logged for {selectedYear}</p>
+            {searchQuery.trim()
+              ? <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              : <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
+            }
+            <p className="text-sm">
+              {searchQuery.trim()
+                ? `No expenses match "${searchQuery.trim()}" in ${selectedYear}`
+                : `No expenses logged for ${selectedYear}`
+              }
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-border/40">

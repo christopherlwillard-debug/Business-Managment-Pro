@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useListClients, useCreateClient, useUpdateClient, useDeleteClient } from "@workspace/api-client-react";
-import { Users, Plus, Phone, Mail, MapPin, Edit2, Trash2, AlertTriangle, ChevronRight, Calendar } from "lucide-react";
+import { Users, Plus, Phone, Mail, MapPin, Edit2, Trash2, AlertTriangle, ChevronRight, Calendar, DollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useLocation } from "wouter";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -175,7 +175,22 @@ export default function Clients() {
                       </div>
                     )}
                   </div>
-                  <div className="mt-4 flex items-center text-xs text-primary/60 group-hover:text-primary transition-colors font-medium">
+                  {(c.outstandingBalance > 0) && (
+                    <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold ${
+                      c.hasOverdueInvoice
+                        ? "bg-red-50 text-red-700 border border-red-100"
+                        : "bg-amber-50 text-amber-700 border border-amber-100"
+                    }`}>
+                      <DollarSign className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>
+                        {formatCurrency(c.outstandingBalance)} outstanding
+                        {c.openInvoiceCount > 0 && (
+                          <span className="ml-1 opacity-75">· {c.openInvoiceCount} open {c.openInvoiceCount === 1 ? "invoice" : "invoices"}</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-center text-xs text-primary/60 group-hover:text-primary transition-colors font-medium">
                     View profile <ChevronRight className="w-3.5 h-3.5 ml-1" />
                   </div>
                 </CardContent>
