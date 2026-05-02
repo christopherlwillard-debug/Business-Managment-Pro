@@ -797,7 +797,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
 
   const { canEdit } = useUserPermissions();
 
-  const [drawHistoryOpen, setDrawHistoryOpen] = useState(false);
   type DrawEditForm = { id: number; date: string; amount: string; description: string; notes: string } | null;
   const [drawEditForm, setDrawEditForm] = useState<DrawEditForm>(null);
   const [drawSaving, setDrawSaving] = useState(false);
@@ -961,9 +960,8 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
         ))}
       </div>
 
-      {/* Owner Distributions card — only shown when draws or profit exist */}
-      {((s.ownerDrawTotal ?? 0) > 0 || netProfit > 0) && (
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+      {/* Owner Distributions card — always shown */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60 bg-muted/20">
             <div className="p-2 rounded-xl bg-violet-100 text-violet-700">
               <Wallet className="w-4 h-4" />
@@ -998,26 +996,37 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
               <p className="text-[10px] text-muted-foreground mt-0.5">Still in the business</p>
             </div>
           </div>
-          {/* Draw history toggle */}
-          {ownerDrawRows.length > 0 && (
-            <div className="border-t border-border/60">
-              <div className="flex items-center justify-between px-5 py-3 text-xs font-semibold text-muted-foreground">
-                <button
-                  onClick={() => setDrawHistoryOpen(v => !v)}
-                  className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                >
-                  {drawHistoryOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  Draw History ({ownerDrawRows.length} {ownerDrawRows.length === 1 ? "record" : "records"})
-                </button>
-                <a
-                  href={`${BASE}/expenses?filter_category=Owner+Draw`}
-                  className="flex items-center gap-1 text-violet-600 hover:text-violet-700 hover:underline"
-                >
-                  View all on Expenses <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              {drawHistoryOpen && (
-                <div className="border-t border-border/40 divide-y divide-border/30">
+          {/* Draw transaction list — always visible */}
+          <div className="border-t border-border/60">
+            <div className="flex items-center justify-between px-5 py-2.5 bg-muted/10">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Draw Transactions
+                {ownerDrawRows.length > 0 && (
+                  <span className="ml-1.5 font-normal normal-case">({ownerDrawRows.length} {ownerDrawRows.length === 1 ? "record" : "records"})</span>
+                )}
+              </p>
+              <a
+                href={`${BASE}/expenses?filter_category=Owner+Draw`}
+                className="flex items-center gap-1 text-[11px] text-violet-600 hover:text-violet-700 hover:underline"
+              >
+                View on Expenses <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="divide-y divide-border/30">
+              {ownerDrawRows.length === 0 ? (
+                <>
+                  <div className="px-5 py-8 text-center">
+                    <Wallet className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
+                    <p className="text-sm font-medium text-muted-foreground">No draws recorded for {year}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Use "Record Draw" above to log a personal distribution.</p>
+                  </div>
+                  <div className="flex items-center justify-between px-5 py-3 bg-amber-50/60 border-t border-amber-200/60">
+                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Total Drawn ({year})</span>
+                    <span className="text-base font-display font-bold text-amber-700">{formatCurrency(0)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
                   {ownerDrawRows.map(row => (
                     <div key={row.id} className="px-5 py-3">
                       {drawEditForm?.id === row.id ? (
@@ -1072,13 +1081,15 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                           </div>
                         </form>
                       ) : (
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-bold text-amber-600">{formatCurrency(row.amount)}</span>
-                              <span className="text-[11px] text-muted-foreground">{row.date}</span>
+                              <span className="text-sm font-bold text-amber-600">{formatCurrency(row.amount)}</span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {new Date(row.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              </span>
                             </div>
-                            <p className="text-xs text-foreground mt-0.5 truncate">{row.description}</p>
+                            <p className="text-xs text-foreground mt-0.5">{row.description || <span className="text-muted-foreground italic">No description</span>}</p>
                             {row.notes && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{row.notes}</p>}
                           </div>
                           {canEdit("expenses") && (
@@ -1103,15 +1114,16 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                       )}
                     </div>
                   ))}
-                  {ownerDrawRows.length === 0 && (
-                    <p className="px-5 py-4 text-xs text-muted-foreground text-center">No draws recorded for {year}.</p>
-                  )}
-                </div>
+                  {/* Running total footer */}
+                  <div className="flex items-center justify-between px-5 py-3 bg-amber-50/60 border-t border-amber-200/60">
+                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Total Drawn ({year})</span>
+                    <span className="text-base font-display font-bold text-amber-700">{formatCurrency(s.ownerDrawTotal ?? 0)}</span>
+                  </div>
+                </>
               )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+      </div>
 
       {/* Tax Spend Planner */}
       {data.estimatedTaxes && (
