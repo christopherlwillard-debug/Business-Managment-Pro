@@ -980,7 +980,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
           <div className="grid grid-cols-3 divide-x divide-border/60">
             <div className="px-5 py-4 text-center">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Operating Profit</p>
-              <p className="text-xl font-display font-bold text-emerald-600">{formatCurrency(netProfit)}</p>
+              <p className={`text-xl font-display font-bold ${netProfit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(netProfit)}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Revenue − expenses − mileage</p>
             </div>
             <div className="px-5 py-4 text-center">
