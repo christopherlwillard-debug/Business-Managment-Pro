@@ -94,29 +94,6 @@ function useDeleteOtherIncome(year: number) {
 
 const EXPENSES_API = `${BASE}/api/expenses`;
 
-function useDeleteDrawExpense(year: number) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`${EXPENSES_API}/${id}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 204) throw new Error("Failed to delete draw");
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["accounting", year] }); qc.invalidateQueries({ queryKey: ["profit-loss", year] }); },
-  });
-}
-
-function useUpdateDrawExpense(year: number) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
-      const res = await fetch(`${EXPENSES_API}/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-      if (!res.ok) throw new Error("Failed to update draw");
-      return res.json();
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["accounting", year] }); qc.invalidateQueries({ queryKey: ["profit-loss", year] }); },
-  });
-}
-
 const QUARTERLY_TAX_API = `${BASE}/api/estimated-tax-payments`;
 
 interface TaxPaymentRow {
