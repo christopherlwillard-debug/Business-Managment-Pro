@@ -1140,9 +1140,9 @@ export default function Settings() {
         mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
         complianceNotificationEmail: s.complianceNotificationEmail ?? "",
         complianceEmailEnabled: s.complianceEmailEnabled === false ? "0" : "1",
-        invoiceReminderEnabled: (s as any).invoiceReminderEnabled === false ? "0" : "1",
-        invoiceReminderDay1: String((s as any).invoiceReminderDay1 ?? 7),
-        invoiceReminderDay2: String((s as any).invoiceReminderDay2 ?? 14),
+        invoiceReminderEnabled: s.invoiceReminderEnabled === false ? "0" : "1",
+        invoiceReminderDay1: String(s.invoiceReminderDay1 ?? 7),
+        invoiceReminderDay2: String(s.invoiceReminderDay2 ?? 14),
       });
       setLogoUrl(s.logoUrl ?? null);
       setDbaLogoUrl(s.dbaLogoUrl ?? null);

@@ -752,8 +752,7 @@ export default function Invoices() {
     setGeneratingLinkId(invoiceId);
     try {
       const result = await createPaymentLink.mutateAsync(invoiceId);
-      const inv = result.invoice as any;
-      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber, invoiceId, remindersSentAt: inv?.remindersSentAt ?? [] });
+      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber, invoiceId, remindersSentAt: result.invoice?.remindersSentAt ?? [] });
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       if (result.emailSent) {
         toast({ title: "Payment link created & emailed", description: `Email sent to client for invoice ${invoiceNumber}.` });
@@ -1163,7 +1162,7 @@ export default function Invoices() {
                                 <button
                                   onClick={() => {
                                     navigator.clipboard.writeText(payUrl);
-                                    setPaymentLinkResult({ url: payUrl, invoiceNumber: inv.invoiceNumber, invoiceId: inv.id, remindersSentAt: (inv as any).remindersSentAt ?? [] });
+                                    setPaymentLinkResult({ url: payUrl, invoiceNumber: inv.invoiceNumber, invoiceId: inv.id, remindersSentAt: inv.remindersSentAt ?? [] });
                                   }}
                                   className="text-emerald-600 hover:text-emerald-700 transition-colors"
                                   title="Copy payment link"

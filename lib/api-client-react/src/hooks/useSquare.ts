@@ -28,7 +28,9 @@ export interface CreateQuickChargeRequest {
 export interface CreateInvoicePaymentLinkResponse {
   paymentLinkUrl: string;
   paymentLinkId: string;
-  invoice: unknown;
+  invoice: { remindersSentAt?: string[] | null } | null;
+  emailSent?: boolean;
+  emailWarning?: string;
 }
 
 export interface CreateDepositLinkRequest {

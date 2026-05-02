@@ -226,6 +226,7 @@ export interface Invoice {
   squarePaymentLinkUrl?: string | null;
   squarePaidAt?: string | null;
   payToken?: string | null;
+  remindersSentAt?: string[] | null;
 }
 
 export type CreateInvoiceRequestStatus =
@@ -646,6 +647,9 @@ export interface AppSettings {
   bottomNavItems?: string[] | null;
   complianceNotificationEmail?: string | null;
   complianceEmailEnabled?: boolean | null;
+  invoiceReminderEnabled?: boolean | null;
+  invoiceReminderDay1?: number | null;
+  invoiceReminderDay2?: number | null;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {
