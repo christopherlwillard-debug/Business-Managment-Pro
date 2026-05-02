@@ -2257,9 +2257,14 @@ export default function Jobs() {
               if (relatedCounts.expenses > 0) parts.push(`${relatedCounts.expenses} expense${relatedCounts.expenses !== 1 ? "s" : ""}`);
               if (relatedCounts.mileageLogs > 0) parts.push(`${relatedCounts.mileageLogs} mileage entr${relatedCounts.mileageLogs !== 1 ? "ies" : "y"}`);
               if (relatedCounts.recurringExpenses > 0) parts.push(`${relatedCounts.recurringExpenses} recurring expense${relatedCounts.recurringExpenses !== 1 ? "s" : ""}`);
-              return parts.length > 0
+              const invCount = relatedCounts.invoices ?? 0;
+              const deleteParts = parts.length > 0
                 ? `This will also permanently delete ${parts.join(", ")} linked to this job.`
-                : "No additional records are linked to this job.";
+                : "";
+              const unlinkPart = invCount > 0
+                ? `${invCount} linked invoice${invCount !== 1 ? "s" : ""} will be kept but unlinked from this job.`
+                : "";
+              return [deleteParts, unlinkPart].filter(Boolean).join(" ") || "No additional records are linked to this job.";
             })()
           ) : undefined}
         />

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable } from "@workspace/db/schema";
 import { eq, and, count, inArray } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 
@@ -358,17 +358,19 @@ router.get("/:id/related-counts", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const [[dl], [ex], [ml], [re]] = await Promise.all([
+    const [[dl], [ex], [ml], [re], [inv]] = await Promise.all([
       db.select({ n: count() }).from(dailyLogsTable).where(eq(dailyLogsTable.jobId, id)),
       db.select({ n: count() }).from(expensesTable).where(eq(expensesTable.jobId, id)),
       db.select({ n: count() }).from(mileageLogsTable).where(eq(mileageLogsTable.jobId, id)),
       db.select({ n: count() }).from(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, id)),
+      db.select({ n: count() }).from(invoicesTable).where(eq(invoicesTable.jobId, id)),
     ]);
     res.json({
       dailyLogs: dl.n,
       expenses: ex.n,
       mileageLogs: ml.n,
       recurringExpenses: re.n,
+      invoices: inv.n,
     });
   } catch (err) {
     console.error(err);
@@ -387,6 +389,7 @@ router.delete("/:id", async (req, res) => {
       await tx.delete(expensesTable).where(eq(expensesTable.jobId, id));
       await tx.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id));
       await tx.update(estimatesTable).set({ jobId: null }).where(eq(estimatesTable.jobId, id));
+      await tx.update(invoicesTable).set({ jobId: null }).where(eq(invoicesTable.jobId, id));
       await tx.delete(jobsTable).where(eq(jobsTable.id, id));
     });
     res.status(204).send();
