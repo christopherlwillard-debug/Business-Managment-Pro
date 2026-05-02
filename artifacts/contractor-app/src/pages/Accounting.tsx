@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
   Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell,
   FileCheck, X, Home, PieChart,
-  Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive, Wallet,
+  Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive,
 } from "lucide-react";
 import { useScheduleCReport } from "@workspace/api-client-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -757,7 +757,7 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
 
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
-type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income";
+type ModuleKey = "city" | "monthly" | "expenses" | "subs" | "records" | "other_income";
 
 function OverviewTab({ data, year }: { data: any; year: number }) {
   const [openModule, setOpenModule] = useState<ModuleKey | null>(() => {
@@ -796,27 +796,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
   });
 
   const { canEdit } = useUserPermissions();
-
-  type DrawEditForm = { id: number; date: string; amount: string; description: string; notes: string } | null;
-  const [drawEditForm, setDrawEditForm] = useState<DrawEditForm>(null);
-  const [drawSaving, setDrawSaving] = useState(false);
-  const deleteDrawExpense = useDeleteDrawExpense(year);
-  const updateDrawExpense = useUpdateDrawExpense(year);
-  const ownerDrawRows: { id: number; date: string; amount: number; description: string; notes: string | null; vendor: string | null }[] = data?.ownerDrawRows ?? [];
-
-  async function handleDeleteDraw(id: number) {
-    if (!confirm("Delete this draw record?")) return;
-    await deleteDrawExpense.mutateAsync(id);
-  }
-  async function handleSaveDraw(e: React.FormEvent) {
-    e.preventDefault();
-    if (!drawEditForm) return;
-    setDrawSaving(true);
-    try {
-      await updateDrawExpense.mutateAsync({ id: drawEditForm.id, data: { description: drawEditForm.description, amount: drawEditForm.amount, date: drawEditForm.date, notes: drawEditForm.notes || null, category: "Owner Draw" } });
-      setDrawEditForm(null);
-    } catch { } finally { setDrawSaving(false); }
-  }
 
   useEffect(() => {
     if (pendingEditId == null || oiLoading) return;
@@ -907,11 +886,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
       statLabel: "Total categorized", color: "text-orange-600",
     },
     {
-      key: "mileage", label: "Mileage & Deductions", icon: Navigation,
-      stat: s.totalMiles ? `${s.totalMiles.toFixed(0)} mi` : "0 mi",
-      statLabel: formatCurrency(s.mileageDeduction ?? 0) + " deduction", color: "text-violet-600",
-    },
-    {
       key: "subs", label: "Subcontractor / 1099", icon: HardHat,
       stat: data?.subcontractor1099?.length > 0 ? `${data.subcontractor1099.length} subs` : "None",
       statLabel: formatCurrency(s.totalSubPayments ?? 0) + " total paid", color: "text-amber-600",
@@ -951,171 +925,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
             {t.sub && <p className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</p>}
           </div>
         ))}
-      </div>
-
-      {/* Owner Distributions card — always shown */}
-      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-border/60 bg-muted/20">
-            <div className="p-2 rounded-xl bg-violet-100 text-violet-700">
-              <Wallet className="w-4 h-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-foreground">Owner Distributions ({year})</p>
-              <p className="text-[11px] text-muted-foreground">Profit earned vs. draws taken vs. balance remaining in the business</p>
-            </div>
-            <a
-              href={`${BASE}/expenses?prefill_category=Owner+Draw`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Record Draw
-            </a>
-          </div>
-          <div className="grid grid-cols-3 divide-x divide-border/60">
-            <div className="px-5 py-4 text-center">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Operating Profit</p>
-              <p className={`text-xl font-display font-bold ${netProfit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(netProfit)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Revenue − expenses − mileage</p>
-            </div>
-            <div className="px-5 py-4 text-center">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Draws Taken</p>
-              <p className="text-xl font-display font-bold text-amber-600">{formatCurrency(s.ownerDrawTotal ?? 0)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Personal distributions YTD</p>
-            </div>
-            <div className="px-5 py-4 text-center">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Undrawn Balance</p>
-              <p className={`text-xl font-display font-bold ${(s.undrawnBalance ?? 0) >= 0 ? "text-foreground" : "text-red-600"}`}>
-                {formatCurrency(s.undrawnBalance ?? 0)}
-              </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Still in the business</p>
-            </div>
-          </div>
-          {/* Draw transaction list — always visible */}
-          <div className="border-t border-border/60">
-            <div className="flex items-center justify-between px-5 py-2.5 bg-muted/10">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Draw Transactions
-                {ownerDrawRows.length > 0 && (
-                  <span className="ml-1.5 font-normal normal-case">({ownerDrawRows.length} {ownerDrawRows.length === 1 ? "record" : "records"})</span>
-                )}
-              </p>
-              <a
-                href={`${BASE}/expenses?filter_category=Owner+Draw`}
-                className="flex items-center gap-1 text-[11px] text-violet-600 hover:text-violet-700 hover:underline"
-              >
-                View on Expenses <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <div className="divide-y divide-border/30">
-              {ownerDrawRows.length === 0 ? (
-                <>
-                  <div className="px-5 py-8 text-center">
-                    <Wallet className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
-                    <p className="text-sm font-medium text-muted-foreground">No draws recorded for {year}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1">Use "Record Draw" above to log a personal distribution.</p>
-                  </div>
-                  <div className="flex items-center justify-between px-5 py-3 bg-amber-50/60 border-t border-amber-200/60">
-                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Total Drawn ({year})</span>
-                    <span className="text-base font-display font-bold text-amber-700">{formatCurrency(0)}</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {ownerDrawRows.map(row => (
-                    <div key={row.id} className="px-5 py-3">
-                      {drawEditForm?.id === row.id ? (
-                        <form onSubmit={handleSaveDraw} className="flex flex-col gap-2">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Date</label>
-                              <input
-                                type="date"
-                                value={drawEditForm.date}
-                                onChange={e => setDrawEditForm(f => f && ({ ...f, date: e.target.value }))}
-                                className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
-                                required
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Amount ($)</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={drawEditForm.amount}
-                                onChange={e => setDrawEditForm(f => f && ({ ...f, amount: e.target.value }))}
-                                className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
-                                required
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Description</label>
-                            <input
-                              type="text"
-                              value={drawEditForm.description}
-                              onChange={e => setDrawEditForm(f => f && ({ ...f, description: e.target.value }))}
-                              className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Notes</label>
-                            <input
-                              type="text"
-                              value={drawEditForm.notes}
-                              onChange={e => setDrawEditForm(f => f && ({ ...f, notes: e.target.value }))}
-                              placeholder="Optional"
-                              className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
-                            />
-                          </div>
-                          <div className="flex gap-2 justify-end">
-                            <button type="button" onClick={() => setDrawEditForm(null)} className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-colors">Cancel</button>
-                            <button type="submit" disabled={drawSaving} className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50">{drawSaving ? "Saving…" : "Save"}</button>
-                          </div>
-                        </form>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-amber-600">{formatCurrency(row.amount)}</span>
-                              <span className="text-[11px] text-muted-foreground">
-                                {new Date(row.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </span>
-                            </div>
-                            <p className="text-xs text-foreground mt-0.5">{row.description || <span className="text-muted-foreground italic">No description</span>}</p>
-                            {row.notes && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{row.notes}</p>}
-                          </div>
-                          {canEdit("expenses") && (
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <button
-                                onClick={() => setDrawEditForm({ id: row.id, date: row.date, amount: String(row.amount), description: row.description, notes: row.notes ?? "" })}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                                title="Edit draw"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDraw(row.id)}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
-                                title="Delete draw"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {/* Running total footer */}
-                  <div className="flex items-center justify-between px-5 py-3 bg-amber-50/60 border-t border-amber-200/60">
-                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Total Drawn ({year})</span>
-                    <span className="text-base font-display font-bold text-amber-700">{formatCurrency(s.ownerDrawTotal ?? 0)}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
       </div>
 
       {/* Tax Spend Planner */}
@@ -1306,26 +1115,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                           </tfoot>
                         </table>
                       )}
-                    </div>
-                  )}
-                  {mod.key === "mileage" && (
-                    <div className="border-t border-border p-5 grid grid-cols-3 gap-4">
-                      {[
-                        { label: "Business Miles", value: s.totalMiles?.toFixed(1) ?? "0", sub: "Tracked this year", icon: Navigation, color: "bg-violet-100 text-violet-600" },
-                        { label: "IRS Deduction", value: formatCurrency(s.mileageDeduction), sub: `@ $${s.mileageRate?.toFixed(3)}/mi`, icon: DollarSign, color: "bg-emerald-100 text-emerald-600" },
-                        { label: "Sub Payments", value: formatCurrency(s.totalSubPayments), sub: "Total YTD", icon: HardHat, color: "bg-orange-100 text-orange-600" },
-                      ].map(t => (
-                        <div key={t.label} className="bg-muted/30 rounded-xl p-4 flex gap-3 items-start">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${t.color}`}>
-                            <t.icon className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{t.label}</p>
-                            <p className="text-xl font-display font-bold text-foreground">{t.value}</p>
-                            <p className="text-[11px] text-muted-foreground">{t.sub}</p>
-                          </div>
-                        </div>
-                      ))}
                     </div>
                   )}
                   {mod.key === "subs" && (
