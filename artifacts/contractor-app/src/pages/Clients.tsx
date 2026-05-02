@@ -49,6 +49,7 @@ export default function Clients() {
       state: formData.get("state") as string,
       zip: formData.get("zip") as string,
       notes: formData.get("notes") as string,
+      reminderOptOut: formData.get("reminderOptOut") === "on",
     };
 
     try {
@@ -255,6 +256,19 @@ export default function Clients() {
                 rows={3}
                 placeholder="Additional notes..."
               />
+            </div>
+            <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-border bg-muted/30">
+              <input
+                type="checkbox"
+                name="reminderOptOut"
+                id="reminderOptOut"
+                defaultChecked={editingClient?.reminderOptOut ?? false}
+                className="mt-0.5 h-4 w-4 rounded border-border text-primary accent-primary cursor-pointer"
+              />
+              <label htmlFor="reminderOptOut" className="cursor-pointer select-none">
+                <span className="block text-sm font-medium">Exclude from invoice reminders</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">This client will not receive automated payment reminder emails.</span>
+              </label>
             </div>
             <div className="pt-4 flex justify-end gap-3">
               <button type="button" onClick={closeDialog} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>

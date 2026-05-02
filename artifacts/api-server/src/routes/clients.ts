@@ -21,13 +21,14 @@ router.get("/", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine } = req.body;
+    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
     const [client] = await db.insert(clientsTable).values({
       name, email, phone, address, city, state, zip, notes,
       nextServiceDate: nextServiceDate ?? null,
       serviceIntervalMonths: serviceIntervalMonths ?? null,
       businessLine: businessLine ?? null,
+      reminderOptOut: reminderOptOut === true,
     }).returning();
     res.status(201).json(formatClient(client));
   } catch (err) {
@@ -103,9 +104,9 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine } = req.body;
+    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut } = req.body;
     const [client] = await db.update(clientsTable)
-      .set({ name, email, phone, address, city, state, zip, notes, nextServiceDate: nextServiceDate ?? null, serviceIntervalMonths: serviceIntervalMonths ?? null, businessLine: businessLine ?? null })
+      .set({ name, email, phone, address, city, state, zip, notes, nextServiceDate: nextServiceDate ?? null, serviceIntervalMonths: serviceIntervalMonths ?? null, businessLine: businessLine ?? null, reminderOptOut: reminderOptOut === true })
       .where(eq(clientsTable.id, id))
       .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });

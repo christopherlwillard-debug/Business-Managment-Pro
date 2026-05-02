@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, date } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, date, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,6 +16,7 @@ export const clientsTable = pgTable("clients", {
   serviceIntervalMonths: integer("service_interval_months"),
   businessLine: text("business_line"),
   squareCustomerId: text("square_customer_id"),
+  reminderOptOut: boolean("reminder_opt_out").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

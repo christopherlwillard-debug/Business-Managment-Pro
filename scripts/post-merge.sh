@@ -509,3 +509,12 @@ pool.query('ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS job_id INTEGER REFE
   .then(() => { console.log('route_stops FK columns ensured'); pool.end(); })
   .catch(e => { console.error('route_stops FK columns migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #427: add reminder_opt_out column to clients (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS reminder_opt_out boolean NOT NULL DEFAULT false')
+  .then(() => { console.log('clients.reminder_opt_out ensured'); pool.end(); })
+  .catch(e => { console.error('reminder_opt_out migration error:', e.message); pool.end(); process.exit(1); });
+")
