@@ -489,3 +489,23 @@ pool.query('ALTER TABLE jobs DROP COLUMN IF EXISTS actual_amount')
   .then(() => { console.log('jobs.actual_amount dropped'); pool.end(); })
   .catch(e => { console.error('drop actual_amount error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #423: add expense_id FK to mileage_logs (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE mileage_logs ADD COLUMN IF NOT EXISTS expense_id INTEGER REFERENCES expenses(id) ON DELETE SET NULL')
+  .then(() => { console.log('mileage_logs.expense_id ensured'); pool.end(); })
+  .catch(e => { console.error('mileage_logs.expense_id migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Tasks #111+: add job_id, client_id, prospect_id FKs to route_stops (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS job_id INTEGER REFERENCES jobs(id) ON DELETE SET NULL')
+  .then(() => pool.query('ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL'))
+  .then(() => pool.query('ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS prospect_id INTEGER REFERENCES prospects(id) ON DELETE SET NULL'))
+  .then(() => { console.log('route_stops FK columns ensured'); pool.end(); })
+  .catch(e => { console.error('route_stops FK columns migration error:', e.message); pool.end(); process.exit(1); });
+")
