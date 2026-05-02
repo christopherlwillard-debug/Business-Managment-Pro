@@ -1140,7 +1140,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                 </tbody>
                 <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
                   <tr>
-                    <td colSpan={canEdit("invoices") ? 5 : 4} className="px-4 py-3 text-foreground">{otherIncomeRows.length} entr{otherIncomeRows.length !== 1 ? "ies" : "y"}</td>
+                    <td colSpan={5} className="px-4 py-3 text-foreground">{otherIncomeRows.length} entr{otherIncomeRows.length !== 1 ? "ies" : "y"}</td>
                     <td className="px-4 py-3 text-right text-teal-700">{formatCurrency(otherIncomeTotal)}</td>
                     {canEdit("invoices") && <td />}
                   </tr>
