@@ -734,15 +734,7 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
 
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
-type ModuleKey = "city" | "monthly" | "expenses" | "subs" | "records" | "other_income";
-
-function OverviewTab({ data, year }: { data: any; year: number }) {
-  const [openModule, setOpenModule] = useState<ModuleKey | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const mod = params.get("module");
-    if (mod === "other_income") return "other_income";
-    return null;
-  });
+function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; setActiveTab: (tab: AccountingTab) => void }) {
   const s = data?.summary ?? {};
   const netProfit = s.netProfit ?? 0;
   const otherIncomeTotal: number = s.otherIncomeTotal ?? 0;
@@ -802,7 +794,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     };
     if (canEdit("invoices")) {
       setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: pendingNewEntry.clientId });
-      setOpenModule("other_income");
     }
     setPendingNewEntry(null);
     clearParams();
@@ -810,11 +801,9 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
 
   function openAddOI() {
     setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: null });
-    setOpenModule("other_income");
   }
   function openEditOI(row: any) {
     setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "", businessLine: row.businessLine ?? "", clientId: row.clientId ?? null });
-    setOpenModule("other_income");
   }
   async function handleSaveOI(e: React.FormEvent) {
     e.preventDefault();
@@ -832,52 +821,7 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
     await deleteOI.mutateAsync(id);
   }
 
-  function toggleModule(key: ModuleKey) {
-    setOpenModule(prev => prev === key ? null : key);
-  }
-
   const pendingAmt = (s.grossRevenue ?? 0) - (s.paidRevenue ?? 0);
-  const statTiles = [
-    { label: "Collected", value: formatCurrency(s.paidRevenue), sub: otherIncomeTotal > 0 ? "Paid invoices + other income" : "Paid invoices only", icon: DollarSign, color: "bg-emerald-100 text-emerald-700", border: "border-l-emerald-500" },
-    { label: "Total Invoiced", value: formatCurrency(s.grossRevenue), sub: pendingAmt > 0 ? `${formatCurrency(pendingAmt)} still outstanding` : otherIncomeTotal > 0 ? `Incl. ${formatCurrency(otherIncomeTotal)} other income` : "Incl. unpaid invoices", icon: TrendingUp, color: "bg-blue-100 text-blue-700", border: "border-l-blue-500" },
-    { label: "Business Expenses (excl. mileage)", value: formatCurrency(s.businessExpenses ?? s.totalExpenses), sub: `+${formatCurrency(s.mileageDeduction ?? 0)} mileage`, icon: TrendingDown, color: "bg-red-100 text-red-700", border: "border-l-red-500" },
-    { label: "Est. Net Profit", value: formatCurrency(netProfit), sub: "Collected − Expenses − Mileage", icon: netProfit >= 0 ? TrendingUp : TrendingDown, color: netProfit >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700", border: netProfit >= 0 ? "border-l-emerald-500" : "border-l-red-500" },
-  ];
-
-  const modules: { key: ModuleKey; label: string; icon: any; stat: string; statLabel: string; color: string }[] = [
-    {
-      key: "city", label: "Income by City", icon: MapPin,
-      stat: data?.incomeByCity?.length > 0 ? `${data.incomeByCity.length} cities` : "No data",
-      statLabel: "For local tax filings", color: "text-primary",
-    },
-    {
-      key: "monthly", label: "Monthly Trend", icon: BarChart3,
-      stat: data?.monthlyIncome?.filter((m: any) => m.gross > 0 || m.expenses > 0).length > 0
-        ? `${data.monthlyIncome.filter((m: any) => m.gross > 0 || m.expenses > 0).length} active months`
-        : "No activity",
-      statLabel: `${year} breakdown`, color: "text-violet-600",
-    },
-    {
-      key: "expenses", label: "Expense Breakdown", icon: Receipt,
-      stat: (s.businessExpenses ?? s.totalExpenses) > 0 ? formatCurrency(s.businessExpenses ?? s.totalExpenses) : "$0",
-      statLabel: "Total categorized", color: "text-orange-600",
-    },
-    {
-      key: "subs", label: "Subcontractor / 1099", icon: HardHat,
-      stat: data?.subcontractor1099?.length > 0 ? `${data.subcontractor1099.length} subs` : "None",
-      statLabel: formatCurrency(s.totalSubPayments ?? 0) + " total paid", color: "text-amber-600",
-    },
-    {
-      key: "records", label: "Tax Records", icon: FileSpreadsheet,
-      stat: data?.invoiceRecords?.length > 0 ? `${data.invoiceRecords.length} entries` : "No records",
-      statLabel: "Full ledger · CSV export", color: "text-emerald-600",
-    },
-    {
-      key: "other_income", label: "Other Income", icon: DollarSign,
-      stat: otherIncomeTotal > 0 ? formatCurrency(otherIncomeTotal) : "$0",
-      statLabel: `${otherIncomeRows.length} entr${otherIncomeRows.length !== 1 ? "ies" : "y"} · Non-invoice income`, color: "text-teal-600",
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -888,575 +832,336 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
         </div>
       )}
 
-      {/* Summary stat tiles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {statTiles.map(t => (
-          <div key={t.label} className={`bg-card border border-border rounded-2xl p-4 shadow-sm border-l-4 ${t.border}`}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${t.color}`}>
-                <t.icon className="w-4 h-4" />
-              </div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{t.label}</p>
-            </div>
-            <p className="text-2xl font-display font-bold text-foreground">{t.value}</p>
-            {t.sub && <p className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</p>}
-          </div>
-        ))}
-      </div>
-
-      {/* Tax Spend Planner */}
+      {/* ── Estimated Tax Owed — hero card ── */}
       {data.estimatedTaxes && (
-        <TaxSpendPlanner netProfit={netProfit} estimatedTaxes={data.estimatedTaxes} />
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl overflow-hidden shadow-md">
+          <div className="px-5 py-3 bg-amber-100 border-b border-amber-300 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0" />
+              <span className="font-bold text-sm text-amber-900">Estimated Tax Owed — {year} YTD</span>
+            </div>
+            <span className="text-xs text-amber-700/80">Based on net profit after expenses &amp; mileage</span>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 mb-1">Total Estimated Tax Liability</p>
+              <p className="text-5xl font-black text-amber-800 leading-none">{formatCurrency(data.estimatedTaxes.totalEstimated)}</p>
+            </div>
+            <div className={`grid gap-3 ${data.estimatedTaxes.owensboroOccTax > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
+              <div className="bg-white/80 rounded-xl p-3 text-center border border-amber-200 shadow-sm">
+                <p className="text-[10px] uppercase font-semibold text-amber-700 mb-1">Federal SE Tax</p>
+                <p className="text-xl font-bold text-amber-800">{formatCurrency(data.estimatedTaxes.federalSETax)}</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">15.3% × 92.35% of net profit</p>
+              </div>
+              <div className="bg-white/80 rounded-xl p-3 text-center border border-amber-200 shadow-sm">
+                <p className="text-[10px] uppercase font-semibold text-amber-700 mb-1">KY State Tax</p>
+                <p className="text-xl font-bold text-amber-800">{formatCurrency(data.estimatedTaxes.kyStateTax)}</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">4.0% flat rate on net profit</p>
+              </div>
+              {data.estimatedTaxes.owensboroOccTax > 0 && (
+                <div className="bg-white/80 rounded-xl p-3 text-center border border-amber-200 shadow-sm">
+                  <p className="text-[10px] uppercase font-semibold text-amber-700 mb-1">Owensboro Occ Tax</p>
+                  <p className="text-xl font-bold text-amber-800">{formatCurrency(data.estimatedTaxes.owensboroOccTax)}</p>
+                  <p className="text-[10px] text-amber-600 mt-0.5">{((data.estimatedTaxes.owensboroOccRate ?? 0.0139) * 100).toFixed(2)}% of Owensboro gross</p>
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-amber-700/70 italic text-center">Estimates only — consult a tax professional for your exact figures before filing.</p>
+          </div>
+        </div>
       )}
 
-      {/* Module accordion */}
-      <div className="flex flex-col gap-2">
-        {modules.map(mod => {
-          const isOpen = openModule === mod.key;
-          return (
-            <div key={mod.key} className={`bg-card border rounded-2xl shadow-sm transition-all ${isOpen ? "border-primary/40 ring-1 ring-primary/20" : "border-border"}`}>
-              <button
-                onClick={() => toggleModule(mod.key)}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-2xl transition-colors ${isOpen ? "bg-primary/5" : "hover:bg-muted/40 active:bg-muted/60"}`}
-              >
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${isOpen ? "bg-primary/10" : "bg-muted/60"}`}>
-                  <mod.icon className={`w-4 h-4 ${isOpen ? "text-primary" : mod.color}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm text-foreground">{mod.label}</span>
-                    <span className={`text-sm font-bold ${isOpen ? "text-primary" : mod.color}`}>{mod.stat}</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-tight">{mod.statLabel}</p>
-                </div>
-                {isOpen ? <ChevronUp className="w-4 h-4 text-primary flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
-              </button>
-              <div className={`grid transition-[grid-template-rows] duration-200 ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-                <div className="overflow-hidden min-h-0">
-                  {mod.key === "city" && (
-                    <div className="border-t border-border">
-                      {data.incomeByCity.length === 0 ? (
-                        <div className="p-8 text-center text-muted-foreground text-sm">
-                          <MapPin className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                          No invoices with location data yet. Add a city to your invoices to see this report.
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                              <tr>
-                                <th className="px-5 py-3 text-left">City</th>
-                                <th className="px-5 py-3 text-left">State</th>
-                                <th className="px-5 py-3 text-right">Invoices</th>
-                                <th className="px-5 py-3 text-right">Gross Income</th>
-                                <th className="px-5 py-3 text-right">Collected</th>
-                                <th className="px-5 py-3 text-right">Est. Occ. Tax</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/50">
-                              {data.incomeByCity.map((row: any) => (
-                                <tr key={`${row.city}-${row.state}`} className="hover:bg-muted/20 transition-colors">
-                                  <td className="px-5 py-3 font-semibold text-foreground">{row.city}</td>
-                                  <td className="px-5 py-3 text-muted-foreground">{row.state || "—"}</td>
-                                  <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
-                                  <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
-                                  <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
-                                  <td className="px-5 py-3 text-right text-amber-600 font-medium">{formatCurrency(row.estOccTax ?? 0)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
-                              <tr>
-                                <td colSpan={3} className="px-5 py-3 text-foreground">Totals</td>
-                                <td className="px-5 py-3 text-right">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.gross, 0))}</td>
-                                <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + r.paid, 0))}</td>
-                                <td className="px-5 py-3 text-right text-amber-600">{formatCurrency(data.incomeByCity.reduce((s: number, r: any) => s + (r.estOccTax ?? 0), 0))}</td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      )}
-                      {data.estimatedTaxes && (
-                        <div className="border-t border-border">
-                          <div className="px-5 py-3 bg-amber-50/60 dark:bg-amber-900/10 border-b border-amber-200/50">
-                            <span className="font-semibold text-sm text-amber-900 dark:text-amber-300">Estimated Taxes Owed — YTD</span>
-                            <span className="text-xs text-amber-700/70 dark:text-amber-400/70 ml-2">Based on net profit after expenses &amp; mileage</span>
-                          </div>
-                          <div className="divide-y divide-border/50">
-                            <div className="px-5 py-3 flex justify-between items-center text-sm">
-                              <span className="text-foreground">Owensboro Occupational Tax <span className="text-xs text-muted-foreground">({((data.estimatedTaxes.owensboroOccRate ?? 0.0139) * 100).toFixed(2)}% of Owensboro gross)</span></span>
-                              <span className="font-semibold text-amber-700 dark:text-amber-400">{formatCurrency(data.estimatedTaxes.owensboroOccTax)}</span>
-                            </div>
-                            <div className="px-5 py-3 flex justify-between items-center text-sm">
-                              <span className="text-foreground">Kentucky State Income Tax <span className="text-xs text-muted-foreground">(4.0% flat rate on net profit)</span></span>
-                              <span className="font-semibold text-amber-700 dark:text-amber-400">{formatCurrency(data.estimatedTaxes.kyStateTax)}</span>
-                            </div>
-                            <div className="px-5 py-3 flex justify-between items-center text-sm">
-                              <span className="text-foreground">Federal Self-Employment Tax <span className="text-xs text-muted-foreground">(15.3% × 92.35% of net profit)</span></span>
-                              <span className="font-semibold text-amber-700 dark:text-amber-400">{formatCurrency(data.estimatedTaxes.federalSETax)}</span>
-                            </div>
-                            <div className="px-5 py-3 flex justify-between items-center text-sm bg-amber-50/80 dark:bg-amber-900/20 font-semibold">
-                              <span className="text-foreground">Total Estimated Tax Liability</span>
-                              <span className="text-amber-800 dark:text-amber-300 text-base">{formatCurrency(data.estimatedTaxes.totalEstimated)}</span>
-                            </div>
-                          </div>
-                          <div className="px-5 py-2 bg-muted/30 border-t border-border">
-                            <p className="text-xs text-muted-foreground italic">Estimates only — actual liability depends on deductions, filing status, and other income. Consult a tax professional for your exact figures.</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {mod.key === "monthly" && (
-                    <div className="border-t border-border overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                          <tr>
-                            <th className="px-5 py-3 text-left">Month</th>
-                            <th className="px-5 py-3 text-right">Gross Invoiced</th>
-                            <th className="px-5 py-3 text-right">Collected</th>
-                            <th className="px-5 py-3 text-right">Expenses</th>
-                            <th className="px-5 py-3 text-right">Net</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/50">
-                          {(data.monthlyIncome as any[]).filter((m: any) => m.gross > 0 || m.expenses > 0).length === 0 ? (
-                            <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">No data for {year}</td></tr>
-                          ) : (
-                            (data.monthlyIncome as any[]).filter((m: any) => m.gross > 0 || m.expenses > 0).map((m: any) => {
-                              const net = m.paid - m.expenses;
-                              const monthName = new Date(m.month + "-15").toLocaleString("default", { month: "long" });
-                              return (
-                                <tr key={m.month} className="hover:bg-muted/20 transition-colors">
-                                  <td className="px-5 py-3 font-medium text-foreground">{monthName}</td>
-                                  <td className="px-5 py-3 text-right">{formatCurrency(m.gross)}</td>
-                                  <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency(m.paid)}</td>
-                                  <td className="px-5 py-3 text-right text-red-500">{formatCurrency(m.expenses)}</td>
-                                  <td className={`px-5 py-3 text-right font-semibold ${net >= 0 ? "text-emerald-600" : "text-red-500"}`}>{formatCurrency(net)}</td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {mod.key === "expenses" && (
-                    <div className="border-t border-border">
-                      {data.expensesByCategory.length === 0 ? (
-                        <div className="p-8 text-center text-muted-foreground text-sm">
-                          <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                          No expenses recorded for {year}.
-                        </div>
-                      ) : (
-                        <table className="w-full text-sm">
-                          <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                            <tr>
-                              <th className="px-5 py-3 text-left">Category</th>
-                              <th className="px-5 py-3 text-right">Transactions</th>
-                              <th className="px-5 py-3 text-right">Total Amount</th>
-                              <th className="px-5 py-3 text-right">% of Expenses</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/50">
-                            {data.expensesByCategory.map((cat: any) => {
-                              const businessExp = s.businessExpenses ?? s.totalExpenses;
-                              const pct = businessExp > 0 ? (cat.amount / businessExp * 100).toFixed(1) : "0";
-                              const colorClass = CATEGORY_COLORS[cat.category] ?? "bg-gray-100 text-gray-600";
-                              return (
-                                <tr key={cat.category} className="hover:bg-muted/20 transition-colors">
-                                  <td className="px-5 py-3">
-                                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${colorClass}`}>{cat.category}</span>
-                                  </td>
-                                  <td className="px-5 py-3 text-right text-muted-foreground">{cat.count}</td>
-                                  <td className="px-5 py-3 text-right font-semibold text-foreground">{formatCurrency(cat.amount)}</td>
-                                  <td className="px-5 py-3 text-right">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                                        <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
-                                      </div>
-                                      <span className="text-muted-foreground text-xs w-8 text-right">{pct}%</span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot className="bg-muted/30 border-t border-border font-semibold">
-                            <tr>
-                              <td className="px-5 py-3 text-foreground">Total</td>
-                              <td className="px-5 py-3 text-right text-muted-foreground">{data.expensesByCategory.reduce((s: number, c: any) => s + c.count, 0)}</td>
-                              <td className="px-5 py-3 text-right">{formatCurrency(s.businessExpenses ?? s.totalExpenses)}</td>
-                              <td className="px-5 py-3" />
-                            </tr>
-                          </tfoot>
-                        </table>
-                      )}
-                    </div>
-                  )}
-                  {mod.key === "subs" && (
-                    <div className="border-t border-border">
-                      {data.subcontractor1099.length === 0 ? (
-                        <div className="p-8 text-center text-muted-foreground text-sm">
-                          <HardHat className="w-8 h-8 mx-auto mb-2 opacity-20" />No subcontractors on file.
-                        </div>
-                      ) : (
-                        <table className="w-full text-sm">
-                          <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                            <tr>
-                              <th className="px-5 py-3 text-left">Subcontractor</th>
-                              <th className="px-5 py-3 text-right">YTD Payments</th>
-                              <th className="px-5 py-3 text-center">1099 Required</th>
-                              <th className="px-5 py-3 text-center">W-9 on File</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/50">
-                            {(data.subcontractor1099 as any[]).map((sub: any) => (
-                              <tr key={sub.id} className="hover:bg-muted/20 transition-colors">
-                                <td className="px-5 py-3 font-medium text-foreground">{sub.name}</td>
-                                <td className={`px-5 py-3 text-right font-semibold ${sub.requires1099 ? "text-amber-600" : "text-foreground"}`}>{formatCurrency(sub.ytdPayments)}</td>
-                                <td className="px-5 py-3 text-center">
-                                  {sub.requires1099
-                                    ? <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700"><AlertCircle className="w-3 h-3" /> Yes — File 1099</span>
-                                    : <span className="text-muted-foreground text-xs">Not yet (${(sub.threshold - sub.ytdPayments).toFixed(0)} to go)</span>
-                                  }
-                                </td>
-                                <td className="px-5 py-3 text-center">
-                                  {sub.w9OnFile
-                                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500 mx-auto" />
-                                    : <AlertCircle className="w-4 h-4 text-red-400 mx-auto" />
-                                  }
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  )}
-                  {mod.key === "records" && (
-                    <div className="border-t border-border">
-                      <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Full ledger for {year}</span>
-                        <button
-                          onClick={() => data.invoiceRecords?.length > 0 && downloadCSV(data.invoiceRecords, year)}
-                          disabled={!data.invoiceRecords?.length}
-                          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow transition-colors disabled:opacity-40"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Download CSV
-                        </button>
-                      </div>
-                      {(!data.invoiceRecords || data.invoiceRecords.length === 0) ? (
-                        <div className="p-8 text-center text-muted-foreground text-sm">
-                          <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                          No invoices found for {year}.
-                        </div>
-                      ) : (
-                        <>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                                <tr>
-                                  <th className="px-4 py-3 text-left">Invoice #</th>
-                                  <th className="px-4 py-3 text-left">Date</th>
-                                  <th className="px-4 py-3 text-left">Client</th>
-                                  <th className="px-4 py-3 text-left">City</th>
-                                  <th className="px-4 py-3 text-right">Subtotal</th>
-                                  <th className="px-4 py-3 text-right">Tax</th>
-                                  <th className="px-4 py-3 text-right">Total</th>
-                                  <th className="px-4 py-3 text-center">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-border/50">
-                                {(data.invoiceRecords as any[]).map((r: any, i: number) => (
-                                  <tr key={i} className="hover:bg-muted/20 transition-colors">
-                                    <td className="px-4 py-2.5 font-mono text-xs font-semibold">{r.invoiceNumber}</td>
-                                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{r.issueDate}</td>
-                                    <td className="px-4 py-2.5 font-medium">{r.clientName || "—"}</td>
-                                    <td className="px-4 py-2.5">
-                                      {r.city
-                                        ? <span className="inline-flex items-center gap-1 text-primary font-medium text-xs"><MapPin className="w-3 h-3" />{r.city}</span>
-                                        : <span className="text-muted-foreground italic text-xs">No city</span>
-                                      }
-                                    </td>
-                                    <td className="px-4 py-2.5 text-right">{formatCurrency(r.subtotal)}</td>
-                                    <td className="px-4 py-2.5 text-right text-blue-600">{r.taxAmount > 0 ? formatCurrency(r.taxAmount) : "—"}</td>
-                                    <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(r.total)}</td>
-                                    <td className="px-4 py-2.5 text-center">
-                                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                        r.status === "paid" ? "bg-emerald-100 text-emerald-700" :
-                                        r.status === "sent" ? "bg-blue-100 text-blue-700" :
-                                        r.status === "overdue" ? "bg-red-100 text-red-700" :
-                                        "bg-gray-100 text-gray-600"
-                                      }`}>{r.status}</span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                              <tfoot className="bg-muted/30 border-t-2 border-border font-semibold text-sm">
-                                <tr>
-                                  <td colSpan={4} className="px-4 py-3 text-foreground">{data.invoiceRecords.length} invoice{data.invoiceRecords.length !== 1 ? "s" : ""}</td>
-                                  <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.subtotal, 0))}</td>
-                                  <td className="px-4 py-3 text-right text-blue-600">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.taxAmount, 0))}</td>
-                                  <td className="px-4 py-3 text-right">{formatCurrency((data.invoiceRecords as any[]).reduce((s: number, r: any) => s + r.total, 0))}</td>
-                                  <td />
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </div>
-                          <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                            <p className="text-xs text-amber-800">
-                              <strong>KY Occupational Tax tip:</strong> Use the City column to determine which city jurisdictions you owe local occupational tax to. Download the CSV to attach to your city tax filings.
-                            </p>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {mod.key === "other_income" && (
-                    <div className="border-t border-border">
-                      <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Cash jobs, pre-app payments, retainers, etc.</span>
-                        {canEdit("invoices") && !oiForm && (
-                          <button
-                            onClick={openAddOI}
-                            className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow transition-colors"
-                          >
-                            <Plus className="w-3.5 h-3.5" /> Add Entry
-                          </button>
-                        )}
-                      </div>
-                      {oiForm && (
-                        <form onSubmit={handleSaveOI} className="px-5 py-4 border-b border-border bg-muted/20 space-y-3">
-                          <h4 className="text-sm font-semibold text-foreground">{oiForm.id ? "Edit Entry" : "New Other Income"}</h4>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-semibold text-muted-foreground mb-1">Amount *</label>
-                              <input type="number" step="0.01" min="0" required
-                                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                placeholder="0.00"
-                                value={oiForm.amount ?? ""}
-                                onChange={e => setOiForm(f => f ? { ...f, amount: e.target.value } : f)}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-muted-foreground mb-1">Date *</label>
-                              <input type="date" required
-                                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                value={oiForm.date ?? ""}
-                                onChange={e => setOiForm(f => f ? { ...f, date: e.target.value } : f)}
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Description *</label>
-                            <input type="text" required
-                              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                              placeholder="e.g. Cash payment for fence repair"
-                              value={oiForm.description ?? ""}
-                              onChange={e => setOiForm(f => f ? { ...f, description: e.target.value } : f)}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Client <span className="font-normal">(optional)</span></label>
-                            <select
-                              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                              value={oiForm.clientId ?? ""}
-                              onChange={e => setOiForm(f => f ? { ...f, clientId: e.target.value ? parseInt(e.target.value) : null } : f)}
-                            >
-                              <option value="">— No client —</option>
-                              {clientsList.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-semibold text-muted-foreground mb-1">Received From</label>
-                              <input type="text"
-                                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                placeholder="Client or payer name (optional)"
-                                value={oiForm.source ?? ""}
-                                onChange={e => setOiForm(f => f ? { ...f, source: e.target.value } : f)}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-muted-foreground mb-1">Payment Method</label>
-                              <select
-                                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                value={oiForm.paymentMethod ?? "cash"}
-                                onChange={e => setOiForm(f => f ? { ...f, paymentMethod: e.target.value } : f)}
-                              >
-                                <option value="cash">Cash</option>
-                                <option value="check">Check</option>
-                                <option value="bank_transfer">Bank Transfer</option>
-                                <option value="other">Other</option>
-                              </select>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-semibold text-muted-foreground mb-1">City</label>
-                              <input type="text"
-                                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                placeholder="e.g. Lexington (optional)"
-                                value={oiForm.city ?? ""}
-                                onChange={e => setOiForm(f => f ? { ...f, city: e.target.value } : f)}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-muted-foreground mb-1">State</label>
-                              <input type="text" maxLength={2}
-                                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                placeholder="e.g. KY (optional)"
-                                value={oiForm.state ?? ""}
-                                onChange={e => setOiForm(f => f ? { ...f, state: e.target.value.toUpperCase() } : f)}
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1">Notes</label>
-                            <input type="text"
-                              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                              placeholder="Optional notes"
-                              value={oiForm.notes ?? ""}
-                              onChange={e => setOiForm(f => f ? { ...f, notes: e.target.value } : f)}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Business Line <span className="font-normal">(optional)</span></label>
-                            <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
-                              <button
-                                type="button"
-                                onClick={() => setOiForm(f => f ? { ...f, businessLine: "" } : f)}
-                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                                  !oiForm.businessLine
-                                    ? "bg-white text-gray-800 shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                Untagged
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setOiForm(f => f ? { ...f, businessLine: "general_contracting" } : f)}
-                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                                  oiForm.businessLine === "general_contracting"
-                                    ? "bg-blue-600 text-white shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                General Contracting
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setOiForm(f => f ? { ...f, businessLine: "asphalt_sealing" } : f)}
-                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                                  oiForm.businessLine === "asphalt_sealing"
-                                    ? "bg-amber-500 text-white shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                Asphalt Sealing
-                              </button>
-                            </div>
-                          </div>
-                          <div className="flex justify-end gap-2 pt-1">
-                            <button type="button" onClick={() => setOiForm(null)}
-                              className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted transition-colors">
-                              Cancel
-                            </button>
-                            <button type="submit" disabled={oiSaving}
-                              className="px-5 py-2 rounded-xl text-sm font-bold bg-teal-600 text-white hover:bg-teal-700 transition-colors disabled:opacity-60 shadow">
-                              {oiSaving ? "Saving…" : oiForm.id ? "Save Changes" : "Add Entry"}
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                      {oiLoading ? (
-                        <div className="p-8 text-center text-muted-foreground text-sm animate-pulse">Loading…</div>
-                      ) : otherIncomeRows.length === 0 && !oiForm ? (
-                        <div className="p-8 text-center text-muted-foreground text-sm">
-                          <DollarSign className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                          No other income entries for {year}. Click "Add Entry" to record cash jobs, pre-app payments, etc.
-                        </div>
-                      ) : otherIncomeRows.length > 0 ? (
-                        <>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                                <tr>
-                                  <th className="px-4 py-3 text-left">Date</th>
-                                  <th className="px-4 py-3 text-left">Description</th>
-                                  <th className="px-4 py-3 text-left">From</th>
-                                  <th className="px-4 py-3 text-left">City, ST</th>
-                                  <th className="px-4 py-3 text-left">Method</th>
-                                  <th className="px-4 py-3 text-right">Amount</th>
-                                  {canEdit("invoices") && <th className="px-4 py-3 text-center">Actions</th>}
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-border/50">
-                                {(otherIncomeRows as any[]).map((row: any) => (
-                                  <tr key={row.id} className="hover:bg-muted/20 transition-colors">
-                                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.date}</td>
-                                    <td className="px-4 py-2.5 font-medium text-foreground">{row.description}</td>
-                                    <td className="px-4 py-2.5 text-muted-foreground">
-                                      {row.clientId
-                                        ? (clientsList.find(c => c.id === row.clientId)?.name ?? row.source ?? "—")
-                                        : (row.source || "—")}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                                      {row.city && row.state ? `${row.city}, ${row.state}` : row.city || "—"}
-                                    </td>
-                                    <td className="px-4 py-2.5">
-                                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
-                                        {PAYMENT_METHOD_LABELS[row.paymentMethod] ?? row.paymentMethod}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-2.5 text-right font-semibold text-teal-700">{formatCurrency(parseFloat(row.amount))}</td>
-                                    {canEdit("invoices") && (
-                                      <td className="px-4 py-2.5 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                          <button onClick={() => openEditOI(row)} title="Edit"
-                                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
-                                            <Pencil className="w-3.5 h-3.5" />
-                                          </button>
-                                          <button onClick={() => handleDeleteOI(row.id)} title="Delete"
-                                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          </button>
-                                        </div>
-                                      </td>
-                                    )}
-                                  </tr>
-                                ))}
-                              </tbody>
-                              <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
-                                <tr>
-                                  <td colSpan={canEdit("invoices") ? 5 : 4} className="px-4 py-3 text-foreground">{otherIncomeRows.length} entr{otherIncomeRows.length !== 1 ? "ies" : "y"}</td>
-                                  <td className="px-4 py-3 text-right text-teal-700">{formatCurrency(otherIncomeTotal)}</td>
-                                  {canEdit("invoices") && <td />}
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </div>
-                          {canEdit("invoices") && !oiForm && (
-                            <div className="px-4 py-2.5 border-t border-border">
-                              <button onClick={openAddOI} className="flex items-center gap-1.5 text-xs text-teal-600 font-semibold hover:underline">
-                                <Plus className="w-3.5 h-3.5" /> Add another entry
-                              </button>
-                            </div>
-                          )}
-                        </>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
+      {/* ── Net Profit hero + secondary stat tiles ── */}
+      <div className="space-y-3">
+        <div className={`rounded-2xl p-5 border-l-4 shadow-sm border border-border ${netProfit >= 0 ? "bg-emerald-50 border-l-emerald-500" : "bg-red-50 border-l-red-500"}`}>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Est. Net Profit — {year}</p>
+              <p className={`text-4xl font-display font-black leading-none ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(netProfit)}</p>
+              <p className="text-xs text-muted-foreground mt-1.5">Collected − Business Expenses − Mileage Deduction</p>
+            </div>
+            {netProfit >= 0
+              ? <TrendingUp className="w-12 h-12 text-emerald-300 flex-shrink-0" />
+              : <TrendingDown className="w-12 h-12 text-red-300 flex-shrink-0" />}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-card border border-border border-l-4 border-l-emerald-500 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0"><DollarSign className="w-3.5 h-3.5" /></div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Collected</p>
+            </div>
+            <p className="text-xl font-display font-bold text-foreground">{formatCurrency(s.paidRevenue)}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{otherIncomeTotal > 0 ? "Invoices + other income" : "Paid invoices only"}</p>
+          </div>
+          <div className="bg-card border border-border border-l-4 border-l-blue-500 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0"><TrendingUp className="w-3.5 h-3.5" /></div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Invoiced</p>
+            </div>
+            <p className="text-xl font-display font-bold text-foreground">{formatCurrency(s.grossRevenue)}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{pendingAmt > 0 ? `${formatCurrency(pendingAmt)} outstanding` : "All collected"}</p>
+          </div>
+          <div className="bg-card border border-border border-l-4 border-l-red-500 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-6 h-6 rounded-lg bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0"><TrendingDown className="w-3.5 h-3.5" /></div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Expenses</p>
+            </div>
+            <p className="text-xl font-display font-bold text-foreground">{formatCurrency(s.businessExpenses ?? s.totalExpenses)}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">+{formatCurrency(s.mileageDeduction ?? 0)} mileage</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Revenue by City — always visible ── */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-primary flex-shrink-0" />
+          <span className="font-semibold text-sm text-foreground">Revenue by City</span>
+          <span className="text-xs text-muted-foreground ml-1">— track for occupational license &amp; tax filings</span>
+        </div>
+        {data.incomeByCity.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            <MapPin className="w-8 h-8 mx-auto mb-2 opacity-20" />
+            No invoices with city data yet. Add a city to your invoices to track local tax obligations.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                <tr>
+                  <th className="px-5 py-3 text-left">City</th>
+                  <th className="px-5 py-3 text-left">ST</th>
+                  <th className="px-5 py-3 text-right">Invoices</th>
+                  <th className="px-5 py-3 text-right">Gross Income</th>
+                  <th className="px-5 py-3 text-right">Collected</th>
+                  <th className="px-5 py-3 text-right">Est. Occ. Tax</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {data.incomeByCity.map((row: any) => (
+                  <tr key={`${row.city}-${row.state}`} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-5 py-3 font-semibold text-foreground">{row.city}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{row.state || "—"}</td>
+                    <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
+                    <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
+                    <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
+                    <td className="px-5 py-3 text-right text-amber-600 font-medium">{row.estOccTax > 0 ? formatCurrency(row.estOccTax) : <span className="text-muted-foreground">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
+                <tr>
+                  <td colSpan={3} className="px-5 py-3 text-foreground">Totals</td>
+                  <td className="px-5 py-3 text-right">{formatCurrency(data.incomeByCity.reduce((a: number, r: any) => a + r.gross, 0))}</td>
+                  <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency(data.incomeByCity.reduce((a: number, r: any) => a + r.paid, 0))}</td>
+                  <td className="px-5 py-3 text-right text-amber-600">{formatCurrency(data.incomeByCity.reduce((a: number, r: any) => a + (r.estOccTax ?? 0), 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Other Income — always visible ── */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-teal-600 flex-shrink-0" />
+            <span className="font-semibold text-sm text-foreground">Other Income</span>
+            {otherIncomeTotal > 0 && <span className="text-sm font-bold text-teal-600">{formatCurrency(otherIncomeTotal)}</span>}
+            <span className="text-xs text-muted-foreground">Cash jobs, pre-app payments, retainers</span>
+          </div>
+          {canEdit("invoices") && !oiForm && (
+            <button onClick={openAddOI} className="flex items-center gap-1.5 h-7 px-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow transition-colors">
+              <Plus className="w-3.5 h-3.5" /> Add Entry
+            </button>
+          )}
+        </div>
+        {oiForm && (
+          <form onSubmit={handleSaveOI} className="px-5 py-4 border-b border-border bg-muted/20 space-y-3">
+            <h4 className="text-sm font-semibold text-foreground">{oiForm.id ? "Edit Entry" : "New Other Income"}</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Amount *</label>
+                <input type="number" step="0.01" min="0" required
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  placeholder="0.00" value={oiForm.amount ?? ""} onChange={e => setOiForm(f => f ? { ...f, amount: e.target.value } : f)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Date *</label>
+                <input type="date" required
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  value={oiForm.date ?? ""} onChange={e => setOiForm(f => f ? { ...f, date: e.target.value } : f)} />
               </div>
             </div>
-          );
-        })}
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Description *</label>
+              <input type="text" required
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                placeholder="e.g. Cash payment for fence repair" value={oiForm.description ?? ""} onChange={e => setOiForm(f => f ? { ...f, description: e.target.value } : f)} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Client <span className="font-normal">(optional)</span></label>
+              <select className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                value={oiForm.clientId ?? ""} onChange={e => setOiForm(f => f ? { ...f, clientId: e.target.value ? parseInt(e.target.value) : null } : f)}>
+                <option value="">— No client —</option>
+                {clientsList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Received From</label>
+                <input type="text" className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  placeholder="Client or payer name (optional)" value={oiForm.source ?? ""} onChange={e => setOiForm(f => f ? { ...f, source: e.target.value } : f)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Payment Method</label>
+                <select className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  value={oiForm.paymentMethod ?? "cash"} onChange={e => setOiForm(f => f ? { ...f, paymentMethod: e.target.value } : f)}>
+                  <option value="cash">Cash</option>
+                  <option value="check">Check</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">City</label>
+                <input type="text" className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  placeholder="e.g. Lexington (optional)" value={oiForm.city ?? ""} onChange={e => setOiForm(f => f ? { ...f, city: e.target.value } : f)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">State</label>
+                <input type="text" maxLength={2} className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  placeholder="e.g. KY (optional)" value={oiForm.state ?? ""} onChange={e => setOiForm(f => f ? { ...f, state: e.target.value.toUpperCase() } : f)} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Notes</label>
+              <input type="text" className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                placeholder="Optional notes" value={oiForm.notes ?? ""} onChange={e => setOiForm(f => f ? { ...f, notes: e.target.value } : f)} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Business Line <span className="font-normal">(optional)</span></label>
+              <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
+                <button type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: "" } : f)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!oiForm.businessLine ? "bg-white text-gray-800 shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Untagged</button>
+                <button type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: "general_contracting" } : f)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${oiForm.businessLine === "general_contracting" ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>General Contracting</button>
+                <button type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: "asphalt_sealing" } : f)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${oiForm.businessLine === "asphalt_sealing" ? "bg-amber-500 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Asphalt Sealing</button>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setOiForm(null)}
+                className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
+              <button type="submit" disabled={oiSaving}
+                className="px-5 py-2 rounded-xl text-sm font-bold bg-teal-600 text-white hover:bg-teal-700 transition-colors disabled:opacity-60 shadow">
+                {oiSaving ? "Saving…" : oiForm.id ? "Save Changes" : "Add Entry"}
+              </button>
+            </div>
+          </form>
+        )}
+        {oiLoading ? (
+          <div className="p-8 text-center text-muted-foreground text-sm animate-pulse">Loading…</div>
+        ) : otherIncomeRows.length === 0 && !oiForm ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            <DollarSign className="w-8 h-8 mx-auto mb-2 opacity-20" />
+            No other income entries for {year}. Click "Add Entry" to record cash jobs, pre-app payments, etc.
+          </div>
+        ) : otherIncomeRows.length > 0 ? (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Date</th>
+                    <th className="px-4 py-3 text-left">Description</th>
+                    <th className="px-4 py-3 text-left">From</th>
+                    <th className="px-4 py-3 text-left">City, ST</th>
+                    <th className="px-4 py-3 text-left">Method</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                    {canEdit("invoices") && <th className="px-4 py-3 text-center">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {(otherIncomeRows as any[]).map((row: any) => (
+                    <tr key={row.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{row.date}</td>
+                      <td className="px-4 py-2.5 font-medium text-foreground">{row.description}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">
+                        {row.clientId ? (clientsList.find(c => c.id === row.clientId)?.name ?? row.source ?? "—") : (row.source || "—")}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                        {row.city && row.state ? `${row.city}, ${row.state}` : row.city || "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+                          {PAYMENT_METHOD_LABELS[row.paymentMethod] ?? row.paymentMethod}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-teal-700">{formatCurrency(parseFloat(row.amount))}</td>
+                      {canEdit("invoices") && (
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => openEditOI(row)} title="Edit"
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleDeleteOI(row.id)} title="Delete"
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
+                  <tr>
+                    <td colSpan={canEdit("invoices") ? 5 : 4} className="px-4 py-3 text-foreground">{otherIncomeRows.length} entr{otherIncomeRows.length !== 1 ? "ies" : "y"}</td>
+                    <td className="px-4 py-3 text-right text-teal-700">{formatCurrency(otherIncomeTotal)}</td>
+                    {canEdit("invoices") && <td />}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            {canEdit("invoices") && !oiForm && (
+              <div className="px-4 py-2.5 border-t border-border">
+                <button onClick={openAddOI} className="flex items-center gap-1.5 text-xs text-teal-600 font-semibold hover:underline">
+                  <Plus className="w-3.5 h-3.5" /> Add another entry
+                </button>
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+
+      {/* ── Tab navigation cards ── */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Detailed Reports</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {([
+            { tab: "profit-loss" as const, icon: TrendingUp, label: "Profit & Loss", desc: "Full income & expense breakdown by month" },
+            { tab: "schedule-c" as const, icon: FileText, label: "Schedule C", desc: "IRS deduction planner + home office" },
+            { tab: "tax-calendar" as const, icon: Calendar, label: "Tax Calendar", desc: "Quarterly deadlines & compliance tracker" },
+          ] as const).map(({ tab, icon: Icon, label, desc }) => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className="flex items-center gap-3 px-4 py-3.5 bg-card border border-border rounded-2xl shadow-sm hover:border-primary/50 hover:bg-primary/5 active:bg-primary/10 transition-all text-left group">
+              <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+                <Icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-foreground">{label}</p>
+                <p className="text-[11px] text-muted-foreground leading-tight">{desc}</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary flex-shrink-0 transition-colors" />
+            </button>
+          ))}
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground text-center pb-2">
@@ -4613,7 +4318,7 @@ export default function Accounting() {
         <>
           {isLoading && <div className="text-center py-20 text-muted-foreground animate-pulse">Loading {year} report…</div>}
           {error && <div className="text-center py-20 text-destructive">Failed to load report. Check that the API is running.</div>}
-          {data && <OverviewTab data={data} year={year} />}
+          {data && <OverviewTab data={data} year={year} setActiveTab={setActiveTab} />}
         </>
       )}
 
