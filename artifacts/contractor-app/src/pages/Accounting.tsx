@@ -913,6 +913,91 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         </div>
       </div>
 
+      {/* ── Partner Profit Split (50/50) ── */}
+      {(() => {
+        const profitToSplit = netProfit;
+        const ownerDraw = s.ownerDrawTotal ?? 0;
+        const subPaid = s.totalSubPayments ?? 0;
+        const subName: string = (data.subcontractor1099 as any[])?.[0]?.name ?? "Your Sub";
+        const eachShare = profitToSplit > 0 ? profitToSplit / 2 : 0;
+        const willardBalance = eachShare - ownerDraw;
+        const subBalance = eachShare - subPaid;
+
+        return (
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2 flex-wrap">
+              <PieChart className="w-4 h-4 text-violet-600 flex-shrink-0" />
+              <span className="font-semibold text-sm text-foreground">Partner Profit Split — {year}</span>
+              <span className="text-xs text-muted-foreground">50/50 after all business expenses</span>
+            </div>
+            {profitToSplit <= 0 ? (
+              <div className="p-6 text-center space-y-1">
+                <p className="text-sm font-medium text-muted-foreground">No profit to split yet for {year}.</p>
+                <p className="text-xs text-muted-foreground">Once collected revenue exceeds business expenses, the 50/50 split will appear here.</p>
+              </div>
+            ) : (
+              <div className="p-5 space-y-4">
+                <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-700 mb-0.5">Profit to Split</p>
+                    <p className="text-xs text-violet-600">Net profit − mileage deduction</p>
+                  </div>
+                  <p className="text-2xl font-black text-violet-800">{formatCurrency(profitToSplit)}</p>
+                </div>
+
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left">Person</th>
+                        <th className="px-4 py-2.5 text-right">Owed (50%)</th>
+                        <th className="px-4 py-2.5 text-right">Paid Out</th>
+                        <th className="px-4 py-2.5 text-right">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {([
+                        { label: "You (Willard)", paid: ownerDraw, balance: willardBalance },
+                        { label: subName, paid: subPaid, balance: subBalance },
+                      ] as { label: string; paid: number; balance: number }[]).map(({ label, paid, balance }) => (
+                        <tr key={label} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-3 font-semibold text-foreground">{label}</td>
+                          <td className="px-4 py-3 text-right font-medium text-foreground">{formatCurrency(eachShare)}</td>
+                          <td className="px-4 py-3 text-right text-emerald-600 font-medium">{formatCurrency(paid)}</td>
+                          <td className="px-4 py-3 text-right font-bold">
+                            {balance <= 0 ? (
+                              <span className="text-emerald-600">
+                                {balance < -0.005 ? `${formatCurrency(-balance)} ahead` : "Fully paid"}
+                              </span>
+                            ) : (
+                              <span className="text-amber-600">{formatCurrency(balance)} due</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-muted/30 border-t border-border text-xs font-semibold">
+                      <tr>
+                        <td className="px-4 py-2.5 text-muted-foreground">Totals</td>
+                        <td className="px-4 py-2.5 text-right text-foreground">{formatCurrency(profitToSplit)}</td>
+                        <td className="px-4 py-2.5 text-right text-emerald-600">{formatCurrency(ownerDraw + subPaid)}</td>
+                        <td className="px-4 py-2.5 text-right text-amber-600">
+                          {formatCurrency(Math.max(0, willardBalance) + Math.max(0, subBalance))} remaining
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  "Paid out" to you is your owner draw total. "Paid out" to {subName} is the total recorded in subcontractor payment records.
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── Revenue by City — always visible ── */}
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
