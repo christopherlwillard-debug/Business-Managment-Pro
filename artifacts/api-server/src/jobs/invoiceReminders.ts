@@ -67,8 +67,8 @@ async function processInvoiceReminders() {
       if (inv.dueDate) {
         anchorDate = new Date(inv.dueDate);
         daysSinceAnchor = Math.floor((now - anchorDate.getTime()) / DAY_MS);
-        // Not yet past due — skip
-        if (daysSinceAnchor < 0) continue;
+        // Must be strictly past due (at least 1 full day after due date) — skip
+        if (daysSinceAnchor < 1) continue;
       } else {
         anchorDate = createdAt;
         daysSinceAnchor = Math.floor((now - anchorDate.getTime()) / DAY_MS);
@@ -107,11 +107,12 @@ async function processInvoiceReminders() {
         const reminderNum = needsDay2 && !hasDay2Reminder ? 2 : 1;
         const subject = `Reminder: Invoice ${inv.invoiceNumber} — Payment Due (${companyName})`;
 
-        const hasPaymentLink = !!(inv.squarePaymentLinkUrl || inv.stripePaymentLinkUrl);
+        // Template branching: Square link = "Pay Now" button; everything else = plain contact reminder
+        const hasSquareLink = !!inv.squarePaymentLinkUrl;
         const totalDisplay = `$${parseFloat(inv.total ?? "0").toFixed(2)}`;
 
         let message: string;
-        if (hasPaymentLink) {
+        if (hasSquareLink) {
           message = `Hi ${inv.clientName || "there"},\n\nThis is a friendly reminder that invoice ${inv.invoiceNumber} (${totalDisplay}) is still outstanding. Please use the button below to pay securely online.\n\nThank you for your business!`;
         } else {
           const contactLines: string[] = [];
@@ -121,7 +122,13 @@ async function processInvoiceReminders() {
           message = `Hi ${inv.clientName || "there"},\n\nThis is a friendly reminder that invoice ${inv.invoiceNumber} issued on ${inv.issueDate} for ${totalDisplay} is still outstanding. Please contact us to arrange payment.${contactBlock}\n\nThank you for your business!`;
         }
 
-        await sendInvoiceEmail(inv, settings, inv.clientEmail, subject, message);
+        // For non-Square invoices, null out any Stripe link so the email template
+        // does not render a "Pay Now" button — plain reminder only.
+        const invForEmail = hasSquareLink
+          ? inv
+          : { ...inv, squarePaymentLinkUrl: null, stripePaymentLinkUrl: null };
+
+        await sendInvoiceEmail(invForEmail, settings, inv.clientEmail, subject, message);
 
         const newTimestamp = new Date().toISOString();
         const updatedReminders = [...remindersSentAt, newTimestamp];
@@ -131,7 +138,7 @@ async function processInvoiceReminders() {
           .set({ remindersSentAt: updatedReminders })
           .where(eq(invoicesTable.id, inv.id));
 
-        console.log(`[invoice-reminders] Reminder #${reminderNum} sent for invoice ${inv.invoiceNumber} to ${inv.clientEmail} (paymentLink=${hasPaymentLink}, anchor=${inv.dueDate ? "dueDate" : "createdAt"})`);
+        console.log(`[invoice-reminders] Reminder #${reminderNum} sent for invoice ${inv.invoiceNumber} to ${inv.clientEmail} (squareLink=${hasSquareLink}, anchor=${inv.dueDate ? "dueDate" : "createdAt"})`);
       } catch (err) {
         console.error(`[invoice-reminders] Failed to send reminder for invoice ${inv.invoiceNumber}:`, err);
       }
