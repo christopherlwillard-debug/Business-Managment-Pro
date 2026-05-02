@@ -7,7 +7,7 @@ import {
   Download, FileText, BarChart3, AlertTriangle, Calendar, ExternalLink,
   ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Shield,
   Plus, Pencil, CalendarClock, RefreshCw, Trash2, Bell,
-  FileCheck, X, Home, PieChart,
+  FileCheck, X, Home, PieChart, ChevronRight,
   Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive,
 } from "lucide-react";
 import { useScheduleCReport } from "@workspace/api-client-react";
@@ -959,6 +959,12 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                 </tr>
               </tfoot>
             </table>
+            <div className="px-5 py-2.5 bg-blue-50/60 border-t border-blue-100 flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-800">
+                Cities with revenue may require an occupational license and local tax filing. Owensboro occ. tax is tracked automatically. For other cities, check with that city's revenue office.
+              </p>
+            </div>
           </div>
         )}
       </div>
