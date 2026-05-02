@@ -1541,7 +1541,7 @@ export default function Settings() {
         )}
 
         {/* ── Invoice ── */}
-        {activeTab === "invoice" && (
+        {activeTab === "invoice" && (<>
           <Card className="border-border/50 shadow-md bg-card">
             <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
               <CardTitle className="font-display flex items-center gap-2">
@@ -1653,7 +1653,7 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
-        )}
+        </>)}
 
         {/* ── Financial ── */}
         {activeTab === "financial" && (
