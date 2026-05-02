@@ -68,14 +68,12 @@ router.post("/:id/payment-link", async (req, res) => {
 
     if (!inv.clientEmail) {
       emailWarning = "No client email on file — payment link was not emailed.";
-    } else if (!settings?.smtpHost || !settings?.smtpUser || !settings?.smtpPass) {
-      emailWarning = "SMTP not configured — payment link was not emailed. Configure email in Settings.";
     } else {
       try {
         const invWithLink = { ...updated, squarePaymentLinkUrl: url };
         await sendInvoiceEmail(
           invWithLink,
-          settings,
+          settings ?? {},
           inv.clientEmail,
           `Your Invoice ${inv.invoiceNumber} from ${companyName} — Payment Link`,
           `Hi ${inv.clientName || "there"},\n\nYour invoice ${inv.invoiceNumber} is ready. Please use the button below to pay securely online.\n\nThank you for your business!`,

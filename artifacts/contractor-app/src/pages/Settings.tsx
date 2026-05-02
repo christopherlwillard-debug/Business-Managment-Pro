@@ -1587,7 +1587,7 @@ export default function Settings() {
               <CardTitle className="font-display flex items-center gap-2">
                 <Bell className="w-5 h-5 text-primary" /> Payment Reminder Automation
               </CardTitle>
-              <CardDescription>Automatically email clients when their invoice is still unpaid after a set number of days. Requires SMTP to be configured.</CardDescription>
+              <CardDescription>Automatically email clients when their invoice is still unpaid after a set number of days. Uses your connected Gmail account to send emails.</CardDescription>
             </CardHeader>
             <CardContent className="p-6 space-y-5">
               {/* Enable toggle */}
@@ -1648,7 +1648,7 @@ export default function Settings() {
               <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <Bell className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800">
-                  Reminders are only sent to invoices with a Square payment link and a client email address. SMTP must be configured in Settings for emails to send.
+                  Reminders are only sent to invoices with a Square payment link and a client email address. Emails are sent via your connected Gmail account (or SMTP if configured in Payments).
                 </p>
               </div>
             </CardContent>

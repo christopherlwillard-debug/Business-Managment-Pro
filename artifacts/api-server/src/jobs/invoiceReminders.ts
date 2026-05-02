@@ -9,9 +9,8 @@ async function processInvoiceReminders() {
     const [settings] = await db.select().from(settingsTable).limit(1);
     if (!settings) return;
 
-    // Auto-reminders must be enabled and SMTP must be configured
+    // Auto-reminders must be enabled
     if (!settings.invoiceReminderEnabled) return;
-    if (!settings.smtpHost || !settings.smtpUser || !settings.smtpPass) return;
 
     const day1 = settings.invoiceReminderDay1 ?? 7;
     const day2 = settings.invoiceReminderDay2 ?? 14;

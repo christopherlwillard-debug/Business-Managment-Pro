@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { sendEmail } from "./sendEmail.js";
 
 export interface InvoiceEmailInv {
   invoiceNumber: string;
@@ -121,6 +122,11 @@ export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEma
 </html>`;
 }
 
+/**
+ * Send an invoice email. Uses SMTP (nodemailer) if fully configured, otherwise
+ * falls back to the connected Gmail integration so emails work without any
+ * additional SMTP setup.
+ */
 export async function sendInvoiceEmail(
   inv: InvoiceEmailInv,
   settings: InvoiceEmailSettings,
@@ -128,25 +134,28 @@ export async function sendInvoiceEmail(
   subject: string,
   message?: string,
 ): Promise<void> {
-  if (!settings.smtpHost || !settings.smtpUser || !settings.smtpPass) {
-    throw new Error("Email not configured. Set up SMTP in Settings → Invoice Defaults.");
-  }
-
   const html = buildInvoiceEmailHtml(inv, settings, message);
   const total = parseFloat(inv.total ?? "0");
+  const text = message || `Please find invoice ${inv.invoiceNumber} attached. Total Due: $${total.toFixed(2)}`;
 
-  const transporter = nodemailer.createTransport({
-    host: settings.smtpHost,
-    port: parseInt(settings.smtpPort ?? "587"),
-    secure: settings.smtpSecure === 1,
-    auth: { user: settings.smtpUser!, pass: settings.smtpPass! },
-  });
+  const smtpConfigured = !!(settings.smtpHost && settings.smtpUser && settings.smtpPass);
 
-  await transporter.sendMail({
-    from: `"${settings.companyName || "BuildPro"}" <${settings.companyEmail || settings.smtpUser}>`,
-    to,
-    subject,
-    html,
-    text: message || `Please find invoice ${inv.invoiceNumber} attached. Total Due: $${total.toFixed(2)}`,
-  });
+  if (smtpConfigured) {
+    const transporter = nodemailer.createTransport({
+      host: settings.smtpHost!,
+      port: parseInt(settings.smtpPort ?? "587"),
+      secure: settings.smtpSecure === 1,
+      auth: { user: settings.smtpUser!, pass: settings.smtpPass! },
+    });
+
+    await transporter.sendMail({
+      from: `"${settings.companyName || "BuildPro"}" <${settings.companyEmail || settings.smtpUser}>`,
+      to,
+      subject,
+      html,
+      text,
+    });
+  } else {
+    await sendEmail({ to, subject, html, text });
+  }
 }
