@@ -757,7 +757,7 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
 
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
-type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income" | "business_line";
+type ModuleKey = "city" | "monthly" | "expenses" | "mileage" | "subs" | "records" | "other_income";
 
 function OverviewTab({ data, year }: { data: any; year: number }) {
   const [openModule, setOpenModule] = useState<ModuleKey | null>(() => {
@@ -925,13 +925,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
       key: "other_income", label: "Other Income", icon: DollarSign,
       stat: otherIncomeTotal > 0 ? formatCurrency(otherIncomeTotal) : "$0",
       statLabel: `${otherIncomeRows.length} entr${otherIncomeRows.length !== 1 ? "ies" : "y"} · Non-invoice income`, color: "text-teal-600",
-    },
-    {
-      key: "business_line", label: "DBA Revenue Split", icon: PieChart,
-      stat: data?.byBusinessLine?.length > 0
-        ? formatCurrency((data.byBusinessLine as any[]).filter((r: any) => r.businessLine === "asphalt_sealing").reduce((s: number, r: any) => s + parseFloat(r.totalRevenue ?? 0), 0))
-        : "$0",
-      statLabel: "Asphalt Sealing revenue · GC vs DBA split", color: "text-blue-600",
     },
   ];
 
@@ -1691,62 +1684,6 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
                           )}
                         </>
                       ) : null}
-                    </div>
-                  )}
-                  {mod.key === "business_line" && (
-                    <div className="border-t border-border">
-                      {(!data?.byBusinessLine || data.byBusinessLine.length === 0) ? (
-                        <div className="p-8 text-center text-muted-foreground text-sm">
-                          <PieChart className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                          No business-line data yet. Tag expenses and income entries with a business line to see this report.
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
-                              <tr>
-                                <th className="px-5 py-3 text-left">Business Line</th>
-                                <th className="px-5 py-3 text-right">Invoice Revenue</th>
-                                <th className="px-5 py-3 text-right">Other Income</th>
-                                <th className="px-5 py-3 text-right">Total Revenue</th>
-                                <th className="px-5 py-3 text-right">Expenses</th>
-                                <th className="px-5 py-3 text-right">Net Profit</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/50">
-                              {(data.byBusinessLine as any[]).map((row: any) => {
-                                const label = row.businessLine === "asphalt_sealing" ? "Asphalt Sealing (DBA)" : row.businessLine === "general_contracting" ? "General Contracting" : "Untagged";
-                                const color = row.businessLine === "asphalt_sealing" ? "text-amber-600" : row.businessLine === "general_contracting" ? "text-blue-600" : "text-muted-foreground";
-                                const net = parseFloat(row.netProfit ?? 0);
-                                return (
-                                  <tr key={row.businessLine} className="hover:bg-muted/20 transition-colors">
-                                    <td className="px-5 py-3">
-                                      <span className={`font-semibold ${color}`}>{label}</span>
-                                    </td>
-                                    <td className="px-5 py-3 text-right font-medium">{formatCurrency(parseFloat(row.invoiceGross ?? 0))}</td>
-                                    <td className="px-5 py-3 text-right text-teal-600">{formatCurrency(parseFloat(row.otherIncome ?? 0))}</td>
-                                    <td className="px-5 py-3 text-right font-semibold">{formatCurrency(parseFloat(row.totalRevenue ?? 0))}</td>
-                                    <td className="px-5 py-3 text-right text-red-600">{formatCurrency(parseFloat(row.expenses ?? 0))}</td>
-                                    <td className={`px-5 py-3 text-right font-bold ${net >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                                      {formatCurrency(net)}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                            <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
-                              <tr>
-                                <td className="px-5 py-3 text-foreground">Combined Total</td>
-                                <td className="px-5 py-3 text-right">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.invoiceGross ?? 0), 0))}</td>
-                                <td className="px-5 py-3 text-right text-teal-600">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.otherIncome ?? 0), 0))}</td>
-                                <td className="px-5 py-3 text-right">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.totalRevenue ?? 0), 0))}</td>
-                                <td className="px-5 py-3 text-right text-red-600">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.expenses ?? 0), 0))}</td>
-                                <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency((data.byBusinessLine as any[]).reduce((s: number, r: any) => s + parseFloat(r.netProfit ?? 0), 0))}</td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
