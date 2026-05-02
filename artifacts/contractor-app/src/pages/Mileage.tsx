@@ -22,6 +22,8 @@ import {
   AlertCircle,
   CheckCircle2,
   PenLine,
+  CalendarDays,
+  LogIn,
 } from "lucide-react";
 
 interface ManualForm {
@@ -34,7 +36,36 @@ interface ManualForm {
   jobId: string;
 }
 
+interface MonthlyForm {
+  month: string;
+  miles: string;
+  tripCount: string;
+  notes: string;
+}
+
 const today = localDateString();
+const currentMonth = today.slice(0, 7);
+
+function getMonthLabel(ym: string): string {
+  const [year, month] = ym.split("-");
+  const d = new Date(parseInt(year), parseInt(month) - 1, 1);
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function lastDayOfMonth(ym: string): string {
+  const [year, month] = ym.split("-");
+  const d = new Date(parseInt(year), parseInt(month), 0);
+  return `${ym}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function is401(err: unknown): boolean {
+  return (
+    err != null &&
+    typeof err === "object" &&
+    "status" in err &&
+    (err as { status: number }).status === 401
+  );
+}
 
 export default function Mileage() {
   const { canEdit } = useUserPermissions();
@@ -47,13 +78,22 @@ export default function Mileage() {
   const deleteMileage = useDeleteMileageLog();
   const createExpense = useCreateExpense();
 
+  const [activeTab, setActiveTab] = useState<"trip" | "monthly">("trip");
   const [savedMsg, setSavedMsg] = useState("");
   const [reminderDismissed, setReminderDismissed] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState("");
   const [manual, setManual] = useState<ManualForm>({
     date: today, startLocation: "", endLocation: "", miles: "",
     purpose: "", classification: "business", jobId: "",
+  });
+
+  const [monthlySaving, setMonthlySaving] = useState(false);
+  const [monthlyError, setMonthlyError] = useState("");
+  const [monthlyForm, setMonthlyForm] = useState<MonthlyForm>({
+    month: currentMonth, miles: "", tripCount: "", notes: "",
   });
 
   const rate = parseFloat((settings as any)?.mileageRate ?? "0.725");
@@ -99,6 +139,13 @@ export default function Mileage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [(settings as any)?.mileageDefaultClassification]);
 
+  const handleSwitchTab = (tab: "trip" | "monthly") => {
+    setActiveTab(tab);
+    setManualError("");
+    setMonthlyError("");
+    setSessionExpired(false);
+  };
+
   const saveManualTrip = async () => {
     if (!manual.date || !manual.miles || parseFloat(manual.miles) <= 0) {
       setManualError("Date and miles are required.");
@@ -106,6 +153,7 @@ export default function Mileage() {
     }
     setManualSaving(true);
     setManualError("");
+    setSessionExpired(false);
     try {
       const miles = parseFloat(manual.miles);
       await createMileage.mutateAsync({
@@ -139,14 +187,73 @@ export default function Mileage() {
       queryClient.invalidateQueries();
       setSavedMsg(
         manual.classification === "business"
-          ? `Trip saved! ${miles.toFixed(2)} mi logged + $${(miles * rate).toFixed(2)} expense created.`
+          ? `Trip saved! ${miles.toFixed(2)} mi logged + ${formatCurrency(miles * rate)} expense created.`
           : `Trip saved. ${miles.toFixed(2)} personal miles logged.`
       );
       setManual({ date: today, startLocation: "", endLocation: "", miles: "", purpose: "", classification: mileageDefaultClassification, jobId: "" });
-    } catch {
-      setManualError("Failed to save trip. Please try again.");
+    } catch (err) {
+      if (is401(err)) {
+        setSessionExpired(true);
+      } else {
+        setManualError("Failed to save trip. Please try again.");
+      }
     } finally {
       setManualSaving(false);
+    }
+  };
+
+  const saveMonthlyTotal = async () => {
+    const miles = parseFloat(monthlyForm.miles);
+    if (!monthlyForm.month || !monthlyForm.miles || miles <= 0) {
+      setMonthlyError("Month and total miles are required.");
+      return;
+    }
+    setMonthlySaving(true);
+    setMonthlyError("");
+    setSessionExpired(false);
+    try {
+      const tripCount = parseInt(monthlyForm.tripCount) || 0;
+      const purposeNote = tripCount > 0
+        ? `MileIQ monthly total — ${tripCount} business trips`
+        : "MileIQ monthly total";
+      const dateStr = lastDayOfMonth(monthlyForm.month);
+      const deduction = miles * rate;
+
+      await createMileage.mutateAsync({
+        data: {
+          date: dateStr,
+          miles,
+          classification: "business",
+          purpose: purposeNote,
+          notes: monthlyForm.notes || undefined,
+          source: "manual",
+        },
+      });
+
+      await createExpense.mutateAsync({
+        data: {
+          date: dateStr,
+          description: `Mileage (${getMonthLabel(monthlyForm.month)}): ${purposeNote}`,
+          vendor: "IRS Mileage",
+          category: "mileage",
+          amount: deduction,
+          notes: `MileIQ import. ${miles.toFixed(2)} mi × $${rate}/mi = ${formatCurrency(deduction)}${monthlyForm.notes ? ` | ${monthlyForm.notes}` : ""}`,
+        },
+      });
+
+      queryClient.invalidateQueries();
+      setSavedMsg(
+        `${getMonthLabel(monthlyForm.month)} logged: ${miles.toFixed(2)} mi → ${formatCurrency(deduction)} deduction.`
+      );
+      setMonthlyForm({ month: currentMonth, miles: "", tripCount: "", notes: "" });
+    } catch (err) {
+      if (is401(err)) {
+        setSessionExpired(true);
+      } else {
+        setMonthlyError("Failed to save. Please try again.");
+      }
+    } finally {
+      setMonthlySaving(false);
     }
   };
 
@@ -173,6 +280,19 @@ export default function Mileage() {
         </div>
       )}
 
+      {sessionExpired && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">
+          <LogIn className="w-5 h-5 flex-shrink-0 text-amber-600" />
+          <span className="text-sm font-medium">
+            Your session has expired. Please{" "}
+            <a href="/api/login" className="underline font-bold hover:text-amber-900">
+              sign in again
+            </a>
+            {" "}to save your data.
+          </span>
+        </div>
+      )}
+
       {!reminderDismissed && incompleteReminderTrips.length > 0 && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800">
           <AlertCircle className="w-5 h-5 flex-shrink-0 text-blue-500" />
@@ -185,135 +305,242 @@ export default function Mileage() {
         </div>
       )}
 
-      {/* Manual Entry Card */}
-      {canEdit("mileage") && <Card className="border-border/50 shadow-md bg-card overflow-hidden">
-        <div className="h-1 bg-gradient-to-r from-blue-400 to-blue-600" />
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <PenLine className="w-5 h-5 text-blue-500" />
-            <h3 className="text-base font-bold text-foreground">Log a Trip</h3>
-          </div>
-          <p className="text-xs text-muted-foreground -mt-2">Enter your trip details below.</p>
+      {canEdit("mileage") && (
+        <Card className="border-border/50 shadow-md bg-card overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-blue-400 to-blue-600" />
 
-          {manualError && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" /> {manualError}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Date *</label>
-              <input
-                type="date"
-                value={manual.date}
-                onChange={e => setManual(m => ({ ...m, date: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Miles *</label>
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                placeholder="e.g. 12.5"
-                value={manual.miles}
-                onChange={e => setManual(m => ({ ...m, miles: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Start Location</label>
-              <input
-                type="text"
-                placeholder="e.g. Home"
-                value={manual.startLocation}
-                onChange={e => setManual(m => ({ ...m, startLocation: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">End Location</label>
-              <input
-                type="text"
-                placeholder="e.g. Job site"
-                value={manual.endLocation}
-                onChange={e => setManual(m => ({ ...m, endLocation: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Purpose</label>
-            <input
-              type="text"
-              placeholder="e.g. Material run to Home Depot"
-              value={manual.purpose}
-              onChange={e => setManual(m => ({ ...m, purpose: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+          <div className="flex border-b border-border">
             <button
-              type="button"
-              onClick={() => setManual(m => ({ ...m, classification: "business" }))}
-              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
-                manual.classification === "business"
-                  ? "border-primary bg-primary/10 text-primary font-bold"
-                  : "border-border text-muted-foreground hover:border-primary/40"
+              onClick={() => handleSwitchTab("trip")}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold transition-colors ${
+                activeTab === "trip"
+                  ? "bg-background text-primary border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
               }`}
             >
-              <Briefcase className="w-5 h-5" />
-              Business
+              <PenLine className="w-4 h-4" />
+              Log a Trip
             </button>
             <button
-              type="button"
-              onClick={() => setManual(m => ({ ...m, classification: "personal" }))}
-              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
-                manual.classification === "personal"
-                  ? "border-border bg-muted text-foreground font-bold"
-                  : "border-border text-muted-foreground hover:border-border"
+              onClick={() => handleSwitchTab("monthly")}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold transition-colors ${
+                activeTab === "monthly"
+                  ? "bg-background text-primary border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
               }`}
             >
-              <User className="w-5 h-5" />
-              Personal
+              <CalendarDays className="w-4 h-4" />
+              Monthly Total
             </button>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
-            <select
-              value={manual.jobId}
-              onChange={e => setManual(m => ({ ...m, jobId: e.target.value }))}
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">No specific job</option>
-              {(jobs as any[]).map((j: any) => (
-                <option key={j.id} value={j.id}>{j.title}</option>
-              ))}
-            </select>
-          </div>
+          <CardContent className="p-6 space-y-4">
 
-          {manual.classification === "business" && manual.miles && parseFloat(manual.miles) > 0 && (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-              <span className="font-semibold">Auto-expense:</span>{" "}
-              <span className="font-bold">{formatCurrency(parseFloat(manual.miles) * rate)}</span> mileage expense will be created automatically.
-            </div>
-          )}
+            {activeTab === "trip" && (
+              <>
+                <p className="text-xs text-muted-foreground">Enter individual trip details below.</p>
 
-          <button
-            type="button"
-            onClick={saveManualTrip}
-            disabled={manualSaving}
-            className="w-full py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
-          >
-            {manualSaving ? "Saving..." : manual.classification === "business" ? "Save & Log Expense" : "Save Trip"}
-          </button>
-        </CardContent>
-      </Card>}
+                {manualError && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" /> {manualError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Date *</label>
+                    <input
+                      type="date"
+                      value={manual.date}
+                      onChange={e => setManual(m => ({ ...m, date: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Miles *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      placeholder="e.g. 12.5"
+                      value={manual.miles}
+                      onChange={e => setManual(m => ({ ...m, miles: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Start Location</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Home"
+                      value={manual.startLocation}
+                      onChange={e => setManual(m => ({ ...m, startLocation: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">End Location</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Job site"
+                      value={manual.endLocation}
+                      onChange={e => setManual(m => ({ ...m, endLocation: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Purpose</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Material run to Home Depot"
+                    value={manual.purpose}
+                    onChange={e => setManual(m => ({ ...m, purpose: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setManual(m => ({ ...m, classification: "business" }))}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
+                      manual.classification === "business"
+                        ? "border-primary bg-primary/10 text-primary font-bold"
+                        : "border-border text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    <Briefcase className="w-5 h-5" />
+                    Business
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManual(m => ({ ...m, classification: "personal" }))}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
+                      manual.classification === "personal"
+                        ? "border-border bg-muted text-foreground font-bold"
+                        : "border-border text-muted-foreground hover:border-border"
+                    }`}
+                  >
+                    <User className="w-5 h-5" />
+                    Personal
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
+                  <select
+                    value={manual.jobId}
+                    onChange={e => setManual(m => ({ ...m, jobId: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">No specific job</option>
+                    {(jobs as any[]).map((j: any) => (
+                      <option key={j.id} value={j.id}>{j.title}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {manual.classification === "business" && manual.miles && parseFloat(manual.miles) > 0 && (
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                    <span className="font-semibold">Auto-expense:</span>{" "}
+                    <span className="font-bold">{formatCurrency(parseFloat(manual.miles) * rate)}</span> mileage expense will be created automatically.
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={saveManualTrip}
+                  disabled={manualSaving}
+                  className="w-full py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
+                >
+                  {manualSaving ? "Saving..." : manual.classification === "business" ? "Save & Log Expense" : "Save Trip"}
+                </button>
+              </>
+            )}
+
+            {activeTab === "monthly" && (
+              <>
+                <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+                  <span className="font-semibold">MileIQ Monthly Import</span> — Enter your total business miles for the month from MileIQ or another tracking app. A single mileage entry and IRS deduction expense will be created for the full month.
+                </div>
+
+                {monthlyError && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" /> {monthlyError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-sm font-medium text-foreground">Month *</label>
+                    <input
+                      type="month"
+                      value={monthlyForm.month}
+                      onChange={e => setMonthlyForm(f => ({ ...f, month: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-sm font-medium text-foreground">Total Business Miles *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      placeholder="e.g. 399"
+                      value={monthlyForm.miles}
+                      onChange={e => setMonthlyForm(f => ({ ...f, miles: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-sm font-medium text-foreground">Number of Trips (optional)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="e.g. 30"
+                      value={monthlyForm.tripCount}
+                      onChange={e => setMonthlyForm(f => ({ ...f, tripCount: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="text-sm font-medium text-foreground">Notes (optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. From MileIQ report"
+                      value={monthlyForm.notes}
+                      onChange={e => setMonthlyForm(f => ({ ...f, notes: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                {monthlyForm.miles && parseFloat(monthlyForm.miles) > 0 && (
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 space-y-1">
+                    <div className="font-semibold">{getMonthLabel(monthlyForm.month)} estimate:</div>
+                    <div className="flex justify-between">
+                      <span>{parseFloat(monthlyForm.miles).toFixed(2)} mi × ${rate.toFixed(3)}/mi</span>
+                      <span className="font-bold">{formatCurrency(parseFloat(monthlyForm.miles) * rate)}</span>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={saveMonthlyTotal}
+                  disabled={monthlySaving}
+                  className="w-full py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
+                >
+                  {monthlySaving ? "Saving..." : "Save Monthly Total"}
+                </button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="bg-primary text-primary-foreground border-none shadow-lg">
@@ -366,8 +593,7 @@ export default function Mileage() {
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
               <tr>
                 <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Route</th>
-                <th className="px-6 py-4">Purpose</th>
+                <th className="px-6 py-4">Route / Purpose</th>
                 <th className="px-6 py-4 text-right">{mileageUnits === "km" ? "Km" : "Miles"}</th>
                 <th className="px-6 py-4 text-right">Deduction</th>
                 <th className="px-6 py-4 text-center">Type</th>
@@ -377,15 +603,15 @@ export default function Mileage() {
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground animate-pulse">
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground animate-pulse">
                     Loading logs...
                   </td>
                 </tr>
               ) : !(logs as any[])?.length ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                     <Navigation className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                    No mileage logged yet — add your first trip above.
+                    No mileage logged yet — add your first entry above.
                   </td>
                 </tr>
               ) : (
@@ -393,14 +619,23 @@ export default function Mileage() {
                   <tr key={log.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-6 py-4 text-muted-foreground">{formatDate(log.date)}</td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-foreground font-medium text-xs">
-                        <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                        <span className="truncate max-w-[180px]">
-                          {log.startLocation || "—"} → {log.endLocation || "—"}
-                        </span>
+                      <div className="flex flex-col gap-0.5 max-w-[220px]">
+                        {(log.startLocation || log.endLocation) && (
+                          <div className="flex items-center gap-1.5 text-foreground font-medium text-xs">
+                            <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                            <span className="truncate">
+                              {log.startLocation || "—"} → {log.endLocation || "—"}
+                            </span>
+                          </div>
+                        )}
+                        {log.purpose && (
+                          <span className="text-muted-foreground text-xs truncate">{log.purpose}</span>
+                        )}
+                        {!log.startLocation && !log.endLocation && !log.purpose && (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-muted-foreground max-w-[160px] truncate">{log.purpose || "—"}</td>
                     <td className="px-6 py-4 text-right font-display font-bold text-foreground">
                       {mileageUnits === "km"
                         ? (parseFloat(log.miles) * 1.60934).toFixed(2)
