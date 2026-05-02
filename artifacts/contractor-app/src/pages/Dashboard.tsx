@@ -85,6 +85,40 @@ function useOverdueInvoicesList() {
   });
 }
 
+interface TaxAlertQuarter {
+  quarter: number;
+  label: string;
+  period: string;
+  federalDueDate: string;
+  federalDueDateLabel: string;
+  safeHarborTotal: number;
+  recommendedTotal: number;
+  totalPaid: number;
+  status: "paid" | "partial" | "due" | "overdue";
+}
+
+function useTaxAlerts() {
+  const year = new Date().getFullYear();
+  return useQuery({
+    queryKey: ["tax-alerts-dashboard", year],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/estimated-tax-payments?year=${year}`);
+      if (!res.ok) throw new Error("Failed to load tax data");
+      const data = await res.json() as { quarters: TaxAlertQuarter[] };
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const in14 = new Date(today);
+      in14.setDate(in14.getDate() + 14);
+      return data.quarters.filter(q => {
+        if (q.status === "paid") return false;
+        const due = new Date(q.federalDueDate + "T00:00:00");
+        return due <= in14;
+      });
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
   const [businessLine, setBusinessLine] = useState<"" | "asphalt_sealing" | "general_contracting">("");
@@ -97,6 +131,7 @@ export default function Dashboard() {
   const { data: todayStops = [], isLoading: stopsLoading } = useTodayRouteStops();
   const { data: followUpProspects = [], isLoading: followUpsLoading } = useFollowUpProspects();
   const { data: overdueInvoices = [], isLoading: overdueLoading } = useOverdueInvoicesList();
+  const { data: taxAlerts = [], isLoading: taxAlertsLoading } = useTaxAlerts();
 
   const now = new Date();
   const in90 = new Date(now);
@@ -131,13 +166,14 @@ export default function Dashboard() {
 
   const todayFormatted = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  const todayDataLoading = stopsLoading || followUpsLoading || overdueLoading || complianceLoading;
+  const todayDataLoading = stopsLoading || followUpsLoading || overdueLoading || complianceLoading || taxAlertsLoading;
   const allClear =
     !todayDataLoading &&
     todayStops.length === 0 &&
     followUpProspects.length === 0 &&
     overdueInvoices.length === 0 &&
-    urgentComplianceItems.length === 0;
+    urgentComplianceItems.length === 0 &&
+    taxAlerts.length === 0;
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
@@ -396,6 +432,70 @@ export default function Dashboard() {
                 Open Compliance <ArrowRight className="w-3 h-3 ml-1" />
               </div>
             </div>
+
+            {/* Tax Payment Alerts */}
+            {taxAlerts.length > 0 && (() => {
+              const hasOverdue = taxAlerts.some(q => q.status === "overdue");
+              const colorScheme = hasOverdue
+                ? { bg: "bg-red-50", border: "border-red-200", iconBg: "bg-red-100", iconText: "text-red-700", badgeBg: "bg-red-100", badgeText: "text-red-700", rowHover: "hover:bg-red-100/60", amountText: "text-red-700", linkText: "text-red-600", mutedText: "text-red-500" }
+                : { bg: "bg-amber-50", border: "border-amber-200", iconBg: "bg-amber-100", iconText: "text-amber-700", badgeBg: "bg-amber-100", badgeText: "text-amber-700", rowHover: "hover:bg-amber-100/60", amountText: "text-amber-700", linkText: "text-amber-600", mutedText: "text-amber-500" };
+              return (
+                <div
+                  className={cn("rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow", colorScheme.bg, colorScheme.border)}
+                  onClick={() => navigate("/accounting?tab=tax-calendar")}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") navigate("/accounting?tab=tax-calendar"); }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className={cn("p-1.5 rounded-lg", colorScheme.iconBg, colorScheme.iconText)}>
+                        <CalendarClock className="w-4 h-4" />
+                      </div>
+                      <span className="text-sm font-semibold text-foreground">Est. Tax Payments</span>
+                    </div>
+                    <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", colorScheme.badgeBg, colorScheme.badgeText)}>
+                      {taxAlerts.length} due
+                    </span>
+                  </div>
+                  <div className="space-y-1 mt-2">
+                    {taxAlerts.slice(0, 3).map(q => {
+                      const isOverdue = q.status === "overdue";
+                      const dueMs = new Date(q.federalDueDate + "T00:00:00").getTime() - now.getTime();
+                      const daysAway = Math.ceil(dueMs / 86400000);
+                      const dueLabel = isOverdue ? "Overdue" : daysAway === 0 ? "Due today" : `Due in ${daysAway}d`;
+                      const amount = q.safeHarborTotal > 0 ? q.safeHarborTotal : q.recommendedTotal;
+                      return (
+                        <div
+                          key={q.quarter}
+                          className={cn("w-full flex items-center justify-between gap-2 rounded-lg px-2 py-1.5", colorScheme.rowHover, "transition-colors")}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium text-foreground">
+                              {q.label} ({q.period}) — Federal + KY State
+                            </p>
+                            <p className={cn("text-[10px] font-medium", isOverdue ? "text-red-500" : colorScheme.mutedText)}>
+                              {dueLabel} · {q.federalDueDateLabel}
+                            </p>
+                          </div>
+                          <p className={cn("text-xs font-bold flex-shrink-0", colorScheme.amountText)}>
+                            {formatCurrency(amount)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                    {taxAlerts.length > 3 && (
+                      <p className={cn("text-[10px] font-medium pl-2", colorScheme.linkText)}>
+                        +{taxAlerts.length - 3} more
+                      </p>
+                    )}
+                  </div>
+                  <div className={cn("mt-3 flex items-center text-[10px] font-semibold", colorScheme.linkText)}>
+                    Go to Tax Payments <ArrowRight className="w-3 h-3 ml-1" />
+                  </div>
+                </div>
+              );
+            })()}
 
           </div>
         )}
