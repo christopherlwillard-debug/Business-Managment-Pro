@@ -1157,6 +1157,7 @@ export default function Invoices() {
                           </button>
                           {inv.status !== "paid" && inv.status !== "cancelled" && (() => {
                             const payUrl = inv.squarePaymentLinkUrl ?? inv.stripePaymentLinkUrl ?? null;
+                            const squareUrl = inv.squarePaymentLinkUrl;
                             return (<>
                               {payUrl ? (
                                 <button
@@ -1182,7 +1183,7 @@ export default function Invoices() {
                                   }
                                 </button>
                               )}
-                              {payUrl && (
+                              {squareUrl && (
                                 <button
                                   onClick={() => handleSendReminder(inv.id, inv.invoiceNumber)}
                                   disabled={sendingReminderId === inv.id}

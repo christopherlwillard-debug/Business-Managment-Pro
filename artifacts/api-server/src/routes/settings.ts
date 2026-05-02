@@ -277,6 +277,20 @@ router.put("/", async (req, res) => {
       }
     }
 
+    if (body.invoiceReminderDay1 !== undefined || body.invoiceReminderDay2 !== undefined) {
+      const d1 = parseInt(body.invoiceReminderDay1 ?? "7") || 7;
+      const d2 = parseInt(body.invoiceReminderDay2 ?? "14") || 14;
+      if (d1 < 1 || d1 > 365) {
+        return res.status(400).json({ error: "First reminder day must be between 1 and 365." });
+      }
+      if (d2 < 1 || d2 > 365) {
+        return res.status(400).json({ error: "Second reminder day must be between 1 and 365." });
+      }
+      if (d2 <= d1) {
+        return res.status(400).json({ error: "Second reminder day must be greater than the first reminder day." });
+      }
+    }
+
     let [settings] = await db.select().from(settingsTable).limit(1);
 
     const patch = {

@@ -432,8 +432,8 @@ router.post("/:id/send-reminder", async (req, res) => {
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
     if (inv.status === "paid") return res.status(400).json({ error: "Invoice is already paid" });
 
-    const paymentLink = inv.squarePaymentLinkUrl ?? inv.stripePaymentLinkUrl;
-    if (!paymentLink) return res.status(400).json({ error: "Invoice has no payment link. Generate one first." });
+    const paymentLink = inv.squarePaymentLinkUrl;
+    if (!paymentLink) return res.status(400).json({ error: "Invoice has no Square payment link. Generate one first." });
 
     const clientEmail = inv.clientEmail;
     if (!clientEmail) return res.status(400).json({ error: "Client has no email address on file." });
