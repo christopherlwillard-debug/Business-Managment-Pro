@@ -903,14 +903,16 @@ function DistributionsCard({ operationalNetProfit, ownerDrawTotal, undrawnBalanc
   periodLabel: string;
   onRecordDraw: () => void;
 }) {
-  // Color is based on absolute proximity of the undrawn balance to zero.
-  // Negative → overdrawn (red). Within $500 of zero → well distributed (green).
-  // Above $500 remaining → balance building up (amber).
+  const profitPositive = operationalNetProfit >= 0;
+
+  // "Overdrawn" only applies when draws exceed profit. When profit is negative
+  // and no draws were taken, the business is simply at a loss — not overdrawn.
   const balanceColor =
     undrawnBalance < 0 ? "text-red-600" :
     undrawnBalance <= 500 ? "text-emerald-600" :
     "text-amber-600";
   const balanceLabel =
+    undrawnBalance < 0 && ownerDrawTotal === 0 ? "business at a loss" :
     undrawnBalance < 0 ? "overdrawn" :
     undrawnBalance <= 500 ? "well distributed" :
     "building up";
@@ -936,9 +938,9 @@ function DistributionsCard({ operationalNetProfit, ownerDrawTotal, undrawnBalanc
           </button>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 text-center">
+          <div className={cn("border rounded-xl p-3 text-center", profitPositive ? "bg-emerald-50/60 border-emerald-100" : "bg-red-50/60 border-red-100")}>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Operating Profit</p>
-            <p className="text-lg font-display font-bold text-emerald-600">{formatCurrency(operationalNetProfit)}</p>
+            <p className={cn("text-lg font-display font-bold", profitPositive ? "text-emerald-600" : "text-red-600")}>{formatCurrency(operationalNetProfit)}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Revenue − expenses</p>
           </div>
           <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-3 text-center">
