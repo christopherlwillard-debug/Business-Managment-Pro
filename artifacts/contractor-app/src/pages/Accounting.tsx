@@ -956,7 +956,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                         <th className="px-4 py-2.5 text-left">Person</th>
                         <th className="px-4 py-2.5 text-right">Owed (50%)</th>
                         <th className="px-4 py-2.5 text-right">Paid Out</th>
-                        <th className="px-4 py-2.5 text-right">Balance</th>
+                        <th className="px-4 py-2.5 text-right">Still Due</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
@@ -993,6 +993,12 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                   </table>
                 </div>
 
+                {willardBalance <= 0 && subBalance <= 0 && (
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <p className="text-sm font-semibold text-emerald-700">All settled — both partners are fully paid out for {year}.</p>
+                  </div>
+                )}
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
                   "Paid out" to you is your owner draw total. "Paid out" to {subName} is the total recorded in subcontractor payment records.
                 </p>
