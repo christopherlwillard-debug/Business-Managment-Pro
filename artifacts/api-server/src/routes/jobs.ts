@@ -189,6 +189,48 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Batch profit summary: GET /profit-summary?jobIds=1,2,3
+router.get("/profit-summary", async (req, res) => {
+  try {
+    const { jobIds: jobIdsParam } = req.query;
+    if (!jobIdsParam || typeof jobIdsParam !== "string") return res.json({});
+    const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
+    if (jobIds.length === 0) return res.json({});
+
+    const [invRows, expRows] = await Promise.all([
+      db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
+        .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
+      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
+        .from(expensesTable).where(inArray(expensesTable.jobId, jobIds)),
+    ]);
+
+    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; netProfit: number }> = {};
+    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, jobExpenses: 0, netProfit: 0 };
+
+    for (const inv of invRows) {
+      if (inv.jobId == null) continue;
+      const r = result[inv.jobId];
+      if (!r) continue;
+      const t = parseFloat(inv.total ?? "0");
+      r.grossInvoiced += t;
+      if (inv.status === "paid") r.collected += t;
+    }
+    for (const exp of expRows) {
+      if (exp.jobId == null) continue;
+      const r = result[exp.jobId];
+      if (!r) continue;
+      if (exp.category === "Owner Draw") continue;
+      r.jobExpenses += parseFloat(exp.amount ?? "0");
+    }
+    for (const id of jobIds) result[id].netProfit = result[id].collected - result[id].jobExpenses;
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch profit summary" });
+  }
+});
+
 router.get("/:id/invoice-draft", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

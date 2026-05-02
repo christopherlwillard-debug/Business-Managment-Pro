@@ -27,7 +27,7 @@ import {
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
-  Calculator, DollarSign, Receipt, Layers,
+  Calculator, DollarSign, Receipt, Layers, TrendingUp,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -919,10 +919,108 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
   );
 }
 
+// ─── Job Profit Panel ──────────────────────────────────────────────────────────
+type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; netProfit: number };
+
+function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+  const [data, setData] = useState<JobProfit | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${BASE}/api/jobs/profit-summary?jobIds=${job.id}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((obj: Record<string, JobProfit>) => { setData(obj[job.id] ?? null); })
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [job.id]);
+
+  const net = data?.netProfit ?? 0;
+  const isProfit = net >= 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border shadow-2xl flex flex-col">
+        <div className="h-1 bg-gradient-to-r from-emerald-500 to-emerald-400 flex-shrink-0" />
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-emerald-500" />
+            <div>
+              <h2 className="font-bold text-foreground text-sm">Profit & Loss</h2>
+              <p className="text-xs text-muted-foreground truncate max-w-[180px]">{job.title}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}
+            </div>
+          ) : data == null ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <TrendingUp className="w-10 h-10 text-muted-foreground/30 mb-3" />
+              <p className="text-sm text-muted-foreground">No financial data yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Invoiced</p>
+                  <p className="text-xl font-bold text-foreground mt-0.5">{formatCurrency(data.grossInvoiced)}</p>
+                </div>
+                <Receipt className="w-7 h-7 text-muted-foreground/30" />
+              </div>
+
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Collected</p>
+                  <p className="text-xl font-bold text-emerald-600 mt-0.5">{formatCurrency(data.collected)}</p>
+                </div>
+                <DollarSign className="w-7 h-7 text-emerald-200" />
+              </div>
+
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Job Expenses</p>
+                  <p className="text-xl font-bold text-red-500 mt-0.5">{formatCurrency(data.jobExpenses)}</p>
+                </div>
+                <Briefcase className="w-7 h-7 text-red-100" />
+              </div>
+
+              <div className={`rounded-xl border p-4 flex items-center justify-between ${
+                isProfit ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"
+              }`}>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wide ${isProfit ? "text-emerald-700" : "text-red-700"}`}>Net Profit</p>
+                  <p className={`text-2xl font-bold mt-0.5 ${isProfit ? "text-emerald-700" : "text-red-600"}`}>
+                    {isProfit ? "+" : ""}{formatCurrency(net)}
+                  </p>
+                </div>
+                <TrendingUp className={`w-8 h-8 ${isProfit ? "text-emerald-300" : "text-red-300"}`} />
+              </div>
+
+              {data.grossInvoiced > 0 && data.collected < data.grossInvoiced && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  {formatCurrency(data.grossInvoiced - data.collected)} outstanding (not yet collected)
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
-  invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, onToggleSubPaid,
+  invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, onToggleSubPaid, profitData,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -939,11 +1037,13 @@ function JobCard({
   onClientClick?: (clientId: number) => void;
   hasSubExpenses?: boolean;
   onToggleSubPaid?: (job: Job, paid: boolean) => void;
+  profitData?: JobProfit | null;
 }) {
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
+  const [profitPanelOpen, setProfitPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
@@ -1073,6 +1173,16 @@ function JobCard({
               <span className="text-muted-foreground/60 italic">Not Invoiced</span>
             )}
           </div>
+
+          {/* Net profit badge */}
+          {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) && (
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <TrendingUp className="w-3 h-3 flex-shrink-0 text-muted-foreground/60" />
+              <span className={`font-semibold ${profitData.netProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                {profitData.netProfit >= 0 ? "+" : ""}{formatCurrency(profitData.netProfit)} net
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Daily Log button + indicator */}
@@ -1111,6 +1221,23 @@ function JobCard({
           <Calculator className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
           <span className="flex-1 text-left">Estimates</span>
           <span className="text-[10px] text-muted-foreground">View / Build</span>
+        </button>
+
+        {/* P&L button */}
+        <button
+          onClick={() => setProfitPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+          <TrendingUp className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+          <span className="flex-1 text-left">Profit & Loss</span>
+          {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) ? (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              profitData.netProfit >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
+            }`}>
+              {profitData.netProfit >= 0 ? "+" : ""}{formatCurrency(profitData.netProfit)}
+            </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">View</span>
+          )}
         </button>
 
         {/* Create Invoice quick action — shown when no invoice exists */}
@@ -1168,6 +1295,9 @@ function JobCard({
             ? (ests) => onLoadEstimateIntoInvoice(job, ests)
             : undefined}
         />
+      )}
+      {profitPanelOpen && (
+        <JobProfitPanel job={job} onClose={() => setProfitPanelOpen(false)} />
       )}
     </>
   );
@@ -1842,6 +1972,25 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleJobIds.join(",")]);
 
+  // Fetch profit summary for all visible jobs in a single batch request
+  const [profitMap, setProfitMap] = useState<Map<number, JobProfit | null>>(new Map());
+  useEffect(() => {
+    if (visibleJobIds.length === 0) { setProfitMap(new Map()); return; }
+    const controller = new AbortController();
+    fetch(`${BASE}/api/jobs/profit-summary?jobIds=${visibleJobIds.join(",")}`, { signal: controller.signal })
+      .then(r => r.ok ? r.json() as Promise<Record<string, JobProfit>> : Promise.reject())
+      .then(obj => {
+        if (controller.signal.aborted) return;
+        const entries = Object.entries(obj).map(
+          ([id, p]) => [parseInt(id, 10), p] as [number, JobProfit]
+        );
+        setProfitMap(new Map(entries));
+      })
+      .catch(() => { if (!controller.signal.aborted) setProfitMap(new Map()); });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleJobIds.join(",")]);
+
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Deep-link: ?openJob=<id> → open that job's edit form
@@ -2136,7 +2285,8 @@ export default function Jobs() {
                       onCreateInvoice={() => handleReviewInvoice(job)}
                       onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                       hasSubExpenses={jobsWithSubExpenses.has(job.id)}
-                      onToggleSubPaid={handleToggleSubPaid} />
+                      onToggleSubPaid={handleToggleSubPaid}
+                      profitData={profitMap.get(job.id) ?? null} />
                   );
                 })}
               </div>
@@ -2174,7 +2324,8 @@ export default function Jobs() {
                         onCreateInvoice={() => handleReviewInvoice(job)}
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                         hasSubExpenses={jobsWithSubExpenses.has(job.id)}
-                        onToggleSubPaid={handleToggleSubPaid} />
+                        onToggleSubPaid={handleToggleSubPaid}
+                        profitData={profitMap.get(job.id) ?? null} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
