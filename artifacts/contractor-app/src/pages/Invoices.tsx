@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useSearchParams } from "wouter";
 import {
   useListInvoices,
@@ -28,7 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   FileText, Download, Plus, Trash2, X,
   Building2, MapPin, Check, Eye, AlertTriangle,
-  Paperclip, Upload, Package, CreditCard, Copy, ExternalLink, Bell,
+  Paperclip, Upload, Package, CreditCard, Copy, ExternalLink, Bell, Search,
 } from "lucide-react";
 import { InvoiceViewModal } from "@/components/InvoiceViewModal";
 import { MaterialListDialog } from "@/pages/Materials";
@@ -704,6 +704,8 @@ const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Invoices() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "sent" | "overdue" | "paid">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -853,6 +855,31 @@ export default function Invoices() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  const allInvoices = (invoices as any[]) ?? [];
+
+  const statusCounts = useMemo(() => ({
+    all:     allInvoices.length,
+    draft:   allInvoices.filter((i: any) => i.status === "draft").length,
+    sent:    allInvoices.filter((i: any) => i.status === "sent").length,
+    overdue: allInvoices.filter((i: any) => i.status === "overdue").length,
+    paid:    allInvoices.filter((i: any) => i.status === "paid").length,
+  }), [allInvoices]);
+
+  const filteredInvoices = useMemo(() => {
+    let list = allInvoices;
+    if (filterStatus !== "all") {
+      list = list.filter((inv: any) => inv.status === filterStatus);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((inv: any) =>
+        (inv.clientName ?? "").toLowerCase().includes(q) ||
+        (inv.invoiceNumber ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [allInvoices, filterStatus, searchQuery]);
 
   const s = settings as any;
   const prefix        = s?.invoicePrefix     ?? "INV-2026-";
@@ -1071,6 +1098,42 @@ export default function Invoices() {
         ))}
       </div>
 
+      {/* Search + status filter (All Invoices tab only) */}
+      {activeTab === "all" && (
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search by client or invoice #…"
+              className="w-full pl-9 pr-4 py-2 rounded-xl border border-border/60 bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {(["all", "draft", "sent", "overdue", "paid"] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
+                  filterStatus === s
+                    ? s === "overdue" ? "bg-red-600 text-white"
+                    : s === "paid"    ? "bg-emerald-600 text-white"
+                    : s === "sent"    ? "bg-blue-600 text-white"
+                    : s === "draft"   ? "bg-gray-500 text-white"
+                    : "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
+              >
+                {s === "all" ? "All" : s}
+                <span className="ml-1.5 opacity-80">{statusCounts[s]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Invoice list / tax table */}
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
         <div className="overflow-x-auto">
@@ -1100,12 +1163,17 @@ export default function Invoices() {
               {activeTab === "all" ? (
                 loadingInvoices ? (
                   <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground animate-pulse">Loading invoices…</td></tr>
-                ) : !(invoices as any[])?.length ? (
+                ) : !allInvoices.length ? (
                   <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
                     <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />No invoices yet
                   </td></tr>
+                ) : !filteredInvoices.length ? (
+                  <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                    <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                    No invoices match your search or filter
+                  </td></tr>
                 ) : (
-                  (invoices as any[]).map((inv: any) => (
+                  filteredInvoices.map((inv: any) => (
                     <tr key={inv.id}
                       onClick={() => setViewInvoice(inv)}
                       className="hover:bg-muted/30 transition-colors cursor-pointer group">
