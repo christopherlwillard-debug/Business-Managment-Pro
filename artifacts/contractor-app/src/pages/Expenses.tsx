@@ -1296,7 +1296,7 @@ export default function Expenses() {
         }),
       };
     });
-  }, [yearExpenses]);
+  }, [filteredYearExpenses]);
 
   const yearTotal = filteredYearExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
