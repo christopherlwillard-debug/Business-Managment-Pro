@@ -918,7 +918,11 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         const profitToSplit = netProfit;
         const ownerDraw = s.ownerDrawTotal ?? 0;
         const subPaid = s.totalSubPayments ?? 0;
-        const subName: string = (data.subcontractor1099 as any[])?.[0]?.name ?? "Your Sub";
+        const subs1099 = Array.isArray(data.subcontractor1099) ? data.subcontractor1099 : [];
+        const subName: string =
+          subs1099.length > 0 && typeof subs1099[0]?.name === "string"
+            ? subs1099[0].name
+            : "Your Sub";
         const eachShare = profitToSplit > 0 ? profitToSplit / 2 : 0;
         const willardBalance = eachShare - ownerDraw;
         const subBalance = eachShare - subPaid;
@@ -940,7 +944,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                 <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-700 mb-0.5">Profit to Split</p>
-                    <p className="text-xs text-violet-600">Net profit − mileage deduction</p>
+                    <p className="text-xs text-violet-600">Collected revenue after expenses &amp; mileage</p>
                   </div>
                   <p className="text-2xl font-black text-violet-800">{formatCurrency(profitToSplit)}</p>
                 </div>
