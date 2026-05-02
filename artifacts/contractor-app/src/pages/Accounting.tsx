@@ -752,7 +752,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   });
   const [pendingNewEntry, setPendingNewEntry] = useState<{ clientId: number | null } | null>(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("newEntry") === "true" && params.get("module") === "other_income") {
+    if (params.get("newEntry") === "true") {
       const clientIdRaw = params.get("clientId");
       const clientIdParsed = clientIdRaw ? parseInt(clientIdRaw, 10) : NaN;
       return { clientId: Number.isFinite(clientIdParsed) ? clientIdParsed : null };
@@ -939,16 +939,28 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {data.incomeByCity.map((row: any) => (
-                  <tr key={`${row.city}-${row.state}`} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-5 py-3 font-semibold text-foreground">{row.city}</td>
+                {[...data.incomeByCity].sort((a: any, b: any) => {
+                  if (a.city?.toLowerCase() === "owensboro") return -1;
+                  if (b.city?.toLowerCase() === "owensboro") return 1;
+                  return b.gross - a.gross;
+                }).map((row: any) => {
+                  const isOwensboro = row.city?.toLowerCase() === "owensboro";
+                  return (
+                  <tr key={`${row.city}-${row.state}`} className={`transition-colors ${isOwensboro ? "bg-amber-50/50 hover:bg-amber-50" : "hover:bg-muted/20"}`}>
+                    <td className="px-5 py-3 font-semibold text-foreground">
+                      <span className="flex items-center gap-1.5">
+                        {row.city}
+                        {isOwensboro && <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-800">Occ Tax</span>}
+                      </span>
+                    </td>
                     <td className="px-5 py-3 text-muted-foreground">{row.state || "—"}</td>
                     <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
                     <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
                     <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
                     <td className="px-5 py-3 text-right text-amber-600 font-medium">{row.estOccTax > 0 ? formatCurrency(row.estOccTax) : <span className="text-muted-foreground">—</span>}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
                 <tr>
