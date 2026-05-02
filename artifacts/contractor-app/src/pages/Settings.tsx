@@ -1674,6 +1674,7 @@ export default function Settings() {
                   <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                     <span>IRS 2025: $0.700/mi</span>
                     <span>IRS 2026: $0.725/mi</span>
+                    <span>Your rate: ${Number(form.mileageRate || 0).toFixed(3)}/mi</span>
                     {parseFloat(form.mileageRate) === 0.725 && <span className="text-emerald-600 font-medium">✓ matches 2026</span>}
                     {parseFloat(form.mileageRate) === 0.700 && <span className="text-blue-600 font-medium">✓ matches 2025</span>}
                   </div>
