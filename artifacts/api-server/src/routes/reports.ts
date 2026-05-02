@@ -488,6 +488,11 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
+    const ownerDrawRows = nonMileageExpenses
+      .filter(e => e.category === "Owner Draw")
+      .map(e => ({ id: e.id, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description, notes: e.notes ?? null, vendor: e.vendor ?? null }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
     res.json({
       year,
       summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance },
@@ -499,6 +504,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       invoiceRecords: allRecords,
       otherIncomeRows,
       byBusinessLine,
+      ownerDrawRows,
     });
   } catch (err) {
     console.error(err);

@@ -1154,7 +1154,11 @@ function RecurringSection({
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Expenses() {
   const { canEdit } = useUserPermissions();
-  const { data: expenses, isLoading, refetch } = useListExpenses();
+  const [filterCategory, setFilterCategory] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("filter_category") ?? "";
+  });
+  const { data: expenses, isLoading, refetch } = useListExpenses(filterCategory ? { category: filterCategory } : undefined);
   const { data: jobs }    = useListJobs();
   const { data: subs }    = useListSubcontractors();
   const qc                = useQueryClient();
@@ -1379,6 +1383,19 @@ export default function Expenses() {
           </div>
         )}
       </div>
+
+      {filterCategory && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-50 border border-violet-200 text-sm text-violet-800">
+          <span className="font-semibold">Filtered by category:</span>
+          <span className="font-bold">{filterCategory}</span>
+          <button
+            onClick={() => { setFilterCategory(""); window.history.replaceState({}, "", window.location.pathname); }}
+            className="ml-auto flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold"
+          >
+            Clear filter ×
+          </button>
+        </div>
+      )}
 
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
 

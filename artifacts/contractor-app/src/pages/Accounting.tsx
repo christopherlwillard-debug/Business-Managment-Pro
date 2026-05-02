@@ -92,6 +92,31 @@ function useDeleteOtherIncome(year: number) {
   });
 }
 
+const EXPENSES_API = `${BASE}/api/expenses`;
+
+function useDeleteDrawExpense(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${EXPENSES_API}/${id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to delete draw");
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["accounting", year] }); qc.invalidateQueries({ queryKey: ["profit-loss", year] }); },
+  });
+}
+
+function useUpdateDrawExpense(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+      const res = await fetch(`${EXPENSES_API}/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error("Failed to update draw");
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["accounting", year] }); qc.invalidateQueries({ queryKey: ["profit-loss", year] }); },
+  });
+}
+
 const QUARTERLY_TAX_API = `${BASE}/api/estimated-tax-payments`;
 
 interface TaxPaymentRow {
@@ -772,6 +797,28 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
 
   const { canEdit } = useUserPermissions();
 
+  const [drawHistoryOpen, setDrawHistoryOpen] = useState(false);
+  type DrawEditForm = { id: number; date: string; amount: string; description: string; notes: string } | null;
+  const [drawEditForm, setDrawEditForm] = useState<DrawEditForm>(null);
+  const [drawSaving, setDrawSaving] = useState(false);
+  const deleteDrawExpense = useDeleteDrawExpense(year);
+  const updateDrawExpense = useUpdateDrawExpense(year);
+  const ownerDrawRows: { id: number; date: string; amount: number; description: string; notes: string | null; vendor: string | null }[] = data?.ownerDrawRows ?? [];
+
+  async function handleDeleteDraw(id: number) {
+    if (!confirm("Delete this draw record?")) return;
+    await deleteDrawExpense.mutateAsync(id);
+  }
+  async function handleSaveDraw(e: React.FormEvent) {
+    e.preventDefault();
+    if (!drawEditForm) return;
+    setDrawSaving(true);
+    try {
+      await updateDrawExpense.mutateAsync({ id: drawEditForm.id, data: { description: drawEditForm.description, amount: drawEditForm.amount, date: drawEditForm.date, notes: drawEditForm.notes || null, category: "Owner Draw" } });
+      setDrawEditForm(null);
+    } catch { } finally { setDrawSaving(false); }
+  }
+
   useEffect(() => {
     if (pendingEditId == null || oiLoading) return;
     const clearParams = () => {
@@ -951,6 +998,118 @@ function OverviewTab({ data, year }: { data: any; year: number }) {
               <p className="text-[10px] text-muted-foreground mt-0.5">Still in the business</p>
             </div>
           </div>
+          {/* Draw history toggle */}
+          {ownerDrawRows.length > 0 && (
+            <div className="border-t border-border/60">
+              <div className="flex items-center justify-between px-5 py-3 text-xs font-semibold text-muted-foreground">
+                <button
+                  onClick={() => setDrawHistoryOpen(v => !v)}
+                  className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                >
+                  {drawHistoryOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  Draw History ({ownerDrawRows.length} {ownerDrawRows.length === 1 ? "record" : "records"})
+                </button>
+                <a
+                  href={`${BASE}/expenses?filter_category=Owner+Draw`}
+                  className="flex items-center gap-1 text-violet-600 hover:text-violet-700 hover:underline"
+                >
+                  View all on Expenses <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              {drawHistoryOpen && (
+                <div className="border-t border-border/40 divide-y divide-border/30">
+                  {ownerDrawRows.map(row => (
+                    <div key={row.id} className="px-5 py-3">
+                      {drawEditForm?.id === row.id ? (
+                        <form onSubmit={handleSaveDraw} className="flex flex-col gap-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Date</label>
+                              <input
+                                type="date"
+                                value={drawEditForm.date}
+                                onChange={e => setDrawEditForm(f => f && ({ ...f, date: e.target.value }))}
+                                className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Amount ($)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={drawEditForm.amount}
+                                onChange={e => setDrawEditForm(f => f && ({ ...f, amount: e.target.value }))}
+                                className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
+                                required
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Description</label>
+                            <input
+                              type="text"
+                              value={drawEditForm.description}
+                              onChange={e => setDrawEditForm(f => f && ({ ...f, description: e.target.value }))}
+                              className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Notes</label>
+                            <input
+                              type="text"
+                              value={drawEditForm.notes}
+                              onChange={e => setDrawEditForm(f => f && ({ ...f, notes: e.target.value }))}
+                              placeholder="Optional"
+                              className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-border bg-background text-sm"
+                            />
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button type="button" onClick={() => setDrawEditForm(null)} className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:bg-muted/40 transition-colors">Cancel</button>
+                            <button type="submit" disabled={drawSaving} className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50">{drawSaving ? "Saving…" : "Save"}</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-amber-600">{formatCurrency(row.amount)}</span>
+                              <span className="text-[11px] text-muted-foreground">{row.date}</span>
+                            </div>
+                            <p className="text-xs text-foreground mt-0.5 truncate">{row.description}</p>
+                            {row.notes && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{row.notes}</p>}
+                          </div>
+                          {canEdit("expenses") && (
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button
+                                onClick={() => setDrawEditForm({ id: row.id, date: row.date, amount: String(row.amount), description: row.description, notes: row.notes ?? "" })}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                title="Edit draw"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDraw(row.id)}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+                                title="Delete draw"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {ownerDrawRows.length === 0 && (
+                    <p className="px-5 py-4 text-xs text-muted-foreground text-center">No draws recorded for {year}.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
