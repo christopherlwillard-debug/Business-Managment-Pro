@@ -23,7 +23,32 @@ import {
   PenLine,
   CalendarDays,
   LogIn,
+  Loader2,
 } from "lucide-react";
+
+async function geocodeAddress(address: string): Promise<{ lat: string; lon: string }> {
+  const params = new URLSearchParams({ q: address, format: "json", limit: "1" });
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+    headers: { "User-Agent": "BuildPro/1.0 (contractor-management-app)" },
+  });
+  if (!res.ok) throw new Error("Geocoding service unavailable. Try again in a moment.");
+  const data = await res.json();
+  if (!Array.isArray(data) || data.length === 0) throw new Error(`Address not found: "${address}". Try adding a city or state.`);
+  return { lat: data[0].lat, lon: data[0].lon };
+}
+
+async function getDrivingDistanceMiles(
+  from: { lat: string; lon: string },
+  to: { lat: string; lon: string }
+): Promise<number> {
+  const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Routing service unavailable. Try again in a moment.");
+  const data = await res.json();
+  if (data.code !== "Ok" || !data.routes?.length) throw new Error("No driving route found between these addresses.");
+  const meters: number = data.routes[0].distance;
+  return Math.round((meters / 1609.34) * 10) / 10;
+}
 
 interface ManualForm {
   date: string;
@@ -97,6 +122,30 @@ export default function Mileage() {
     date: today, startLocation: "", endLocation: "", miles: "",
     purpose: "", classification: "business", jobId: "",
   });
+  const [distCalcLoading, setDistCalcLoading] = useState(false);
+  const [distCalcError, setDistCalcError] = useState("");
+
+  const calculateMiles = async () => {
+    if (!manual.startLocation.trim() || !manual.endLocation.trim()) {
+      setDistCalcError("Enter both a start and end address to calculate miles.");
+      return;
+    }
+    setDistCalcLoading(true);
+    setDistCalcError("");
+    try {
+      const [fromCoords, toCoords] = await Promise.all([
+        geocodeAddress(manual.startLocation.trim()),
+        geocodeAddress(manual.endLocation.trim()),
+      ]);
+      const miles = await getDrivingDistanceMiles(fromCoords, toCoords);
+      setManual(m => ({ ...m, miles: String(miles) }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't calculate distance. Try a more specific address.";
+      setDistCalcError(msg);
+    } finally {
+      setDistCalcLoading(false);
+    }
+  };
 
   const [monthlySaving, setMonthlySaving] = useState(false);
   const [monthlyError, setMonthlyError] = useState("");
@@ -192,6 +241,7 @@ export default function Mileage() {
           : `Trip saved. ${miles.toFixed(2)} personal miles logged.`
       );
       setManual({ date: today, startLocation: "", endLocation: "", miles: "", purpose: "", classification: mileageDefaultClassification, jobId: "" });
+      setDistCalcError("");
     } finally {
       setManualSaving(false);
     }
@@ -361,25 +411,53 @@ export default function Mileage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">Start Location</label>
+                    <label className="text-sm font-medium text-foreground">Start Address</label>
                     <input
                       type="text"
-                      placeholder="e.g. Home"
+                      placeholder="e.g. 123 Main St, Owensboro KY"
                       value={manual.startLocation}
-                      onChange={e => setManual(m => ({ ...m, startLocation: e.target.value }))}
+                      onChange={e => { setManual(m => ({ ...m, startLocation: e.target.value })); setDistCalcError(""); }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-foreground">End Location</label>
+                    <label className="text-sm font-medium text-foreground">End Address</label>
                     <input
                       type="text"
-                      placeholder="e.g. Job site"
+                      placeholder="e.g. 456 Oak Ave, Owensboro KY"
                       value={manual.endLocation}
-                      onChange={e => setManual(m => ({ ...m, endLocation: e.target.value }))}
+                      onChange={e => { setManual(m => ({ ...m, endLocation: e.target.value })); setDistCalcError(""); }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
+                </div>
+
+                {/* Calculate Miles button */}
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={calculateMiles}
+                    disabled={distCalcLoading || !manual.startLocation.trim() || !manual.endLocation.trim()}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {distCalcLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Calculating…
+                      </>
+                    ) : (
+                      <>
+                        <Calculator className="w-3.5 h-3.5" />
+                        Calculate Miles from Addresses
+                      </>
+                    )}
+                  </button>
+                  {distCalcError && (
+                    <div className="flex items-start gap-1.5 text-xs text-red-600">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span>{distCalcError}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
