@@ -1785,7 +1785,7 @@ export default function Jobs() {
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const [deleting, setDeleting]         = useState(false);
-  const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number } | null>(null);
+  const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number; invoices: number } | null>(null);
 
   const [invoiceEditorOpen, setInvoiceEditorOpen]       = useState(false);
   const [invoiceDraftData, setInvoiceDraftData]         = useState<InvoiceDraft | null>(null);
