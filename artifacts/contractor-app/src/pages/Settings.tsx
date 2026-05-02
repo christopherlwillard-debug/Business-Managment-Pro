@@ -1666,10 +1666,16 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="p-6 space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <LF label="IRS Mileage Rate ($/mile)" hint="2026 IRS standard rate: $0.725/mile">
+                <LF label="IRS Mileage Rate ($/mile)" hint="">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                     <input className={inp + " pl-7"} type="number" step="0.001" min="0" value={form.mileageRate} onChange={e => setF("mileageRate", e.target.value)} />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    <span>IRS 2025: $0.700/mi</span>
+                    <span>IRS 2026: $0.725/mi</span>
+                    {parseFloat(form.mileageRate) === 0.725 && <span className="text-emerald-600 font-medium">✓ matches 2026</span>}
+                    {parseFloat(form.mileageRate) === 0.700 && <span className="text-blue-600 font-medium">✓ matches 2025</span>}
                   </div>
                 </LF>
                 <LF label="1099-NEC Threshold ($)" hint="2026 OBBBA rule: $2,000 for qualifying (cash/check/ACH) payments">
@@ -1682,7 +1688,7 @@ export default function Settings() {
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                 <p className="text-xs text-amber-800">
-                  <strong>Tip:</strong> The IRS mileage rate applies to all mileage logs and subcontractor mileage in the portal. When the IRS updates the rate each year, update it here and all deduction calculations will reflect the new rate automatically.
+                  <strong>Tip:</strong> The IRS mileage rate applies to all new mileage logs. Update it here when the IRS announces a new rate each January — existing log entries keep the rate they were saved with.
                 </p>
               </div>
             </CardContent>

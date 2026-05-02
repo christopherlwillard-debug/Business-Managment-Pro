@@ -560,7 +560,7 @@ export default function Mileage() {
               <Calculator className="w-8 h-8 opacity-50" />
             </div>
             <p className="text-xs text-primary-foreground/50 mt-4 text-right">
-              ${rate.toFixed(3)}/mile IRS rate
+              ${rate.toFixed(3)}/mile · {rate === 0.725 ? "2026 IRS rate ✓" : rate === 0.700 ? "2025 IRS rate ✓" : "custom rate"}
             </p>
           </CardContent>
         </Card>
