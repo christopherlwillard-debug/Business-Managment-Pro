@@ -332,7 +332,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete, onGetPa
             )}
             {onGetPaymentLink && invoice.status !== "paid" && invoice.status !== "cancelled" && (
               (() => {
-                const payUrl = (invoice as any).squarePaymentLinkUrl ?? (invoice as any).stripePaymentLinkUrl ?? null;
+                const payUrl = invoice.squarePaymentLinkUrl ?? invoice.stripePaymentLinkUrl ?? null;
                 return payUrl ? (
                   <button
                     onClick={() => { navigator.clipboard.writeText(payUrl); onGetPaymentLink(); }}
@@ -340,7 +340,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete, onGetPa
                     title="Copy payment link"
                   >
                     <Copy className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Copy Link</span>
+                    <span className="hidden sm:inline">Copy Payment Link</span>
                   </button>
                 ) : (
                   <button
@@ -353,7 +353,7 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete, onGetPa
                       ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       : <CreditCard className="w-3.5 h-3.5" />
                     }
-                    <span className="hidden sm:inline">{generatingLink ? "Generating…" : "Pay Link"}</span>
+                    <span className="hidden sm:inline">{generatingLink ? "Generating…" : "Get Payment Link"}</span>
                   </button>
                 );
               })()
