@@ -1097,6 +1097,8 @@ export default function Settings() {
     invoiceReminderEnabled: "1",
     invoiceReminderDay1: "7",
     invoiceReminderDay2: "14",
+    // tax filing preference
+    taxFilingFrequency: "quarterly",
   });
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpConfigured, setSmtpConfigured] = useState(false);
@@ -1143,6 +1145,7 @@ export default function Settings() {
         invoiceReminderEnabled: s.invoiceReminderEnabled === false ? "0" : "1",
         invoiceReminderDay1: String(s.invoiceReminderDay1 ?? 7),
         invoiceReminderDay2: String(s.invoiceReminderDay2 ?? 14),
+        taxFilingFrequency: (s.taxFilingFrequency as string | undefined) ?? "quarterly",
       });
       setLogoUrl(s.logoUrl ?? null);
       setDbaLogoUrl(s.dbaLogoUrl ?? null);
@@ -1198,6 +1201,7 @@ export default function Settings() {
           invoiceReminderEnabled: form.invoiceReminderEnabled === "1",
           invoiceReminderDay1: parseInt(form.invoiceReminderDay1) || 7,
           invoiceReminderDay2: parseInt(form.invoiceReminderDay2) || 14,
+          taxFilingFrequency: form.taxFilingFrequency || "quarterly",
         } as Partial<AppSettings>,
       });
       queryClient.invalidateQueries();
@@ -1685,6 +1689,41 @@ export default function Settings() {
                     <input className={inp + " pl-7"} type="number" value={form.thresholdAmount1099} onChange={e => setF("thresholdAmount1099", e.target.value)} />
                   </div>
                 </LF>
+              </div>
+
+              {/* Tax Filing Frequency */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Tax Filing Frequency</label>
+                <p className="text-xs text-muted-foreground">
+                  Choose how you file your income taxes. Selecting "Annual only" hides quarterly estimated tax deadlines and the quarterly payment tracker throughout the app — your data is preserved and can be restored by switching back.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    { key: "quarterly", label: "Quarterly (default)", desc: "File estimated taxes each quarter" },
+                    { key: "annual", label: "Annual only", desc: "Pay taxes once a year at filing" },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setF("taxFilingFrequency", opt.key)}
+                      className={`py-3 px-4 rounded-xl border-2 text-left transition-all ${
+                        (form as any).taxFilingFrequency === opt.key
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/40"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">{opt.label}</p>
+                      <p className="text-[11px] mt-0.5 opacity-70">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+                {(form as any).taxFilingFrequency === "annual" && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                    <p className="text-xs text-blue-800">
+                      Quarterly estimated tax cards and the payment tracker are hidden while this is set to "Annual only." All existing payment records are safely stored and will reappear if you switch back.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">

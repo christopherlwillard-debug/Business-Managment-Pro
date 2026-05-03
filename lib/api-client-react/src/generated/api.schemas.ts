@@ -650,6 +650,7 @@ export interface AppSettings {
   invoiceReminderEnabled?: boolean | null;
   invoiceReminderDay1?: number | null;
   invoiceReminderDay2?: number | null;
+  taxFilingFrequency?: string | null;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {

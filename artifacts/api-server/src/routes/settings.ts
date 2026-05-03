@@ -196,6 +196,7 @@ const DEFAULT_SETTINGS = {
   bottomNavItems: null,
   complianceNotificationEmail: null,
   complianceEmailEnabled: 1,
+  taxFilingFrequency: "quarterly",
 };
 
 /** Convert a raw DB path to a correct serving URL.
@@ -239,6 +240,7 @@ function format(s: any) {
     bottomNavItems: parseJsonArray(s.bottomNavItems),
     complianceNotificationEmail: s.complianceNotificationEmail ?? null,
     complianceEmailEnabled: s.complianceEmailEnabled === 1 || s.complianceEmailEnabled === true,
+    taxFilingFrequency: s.taxFilingFrequency ?? "quarterly",
     invoiceReminderEnabled: s.invoiceReminderEnabled === 1 || s.invoiceReminderEnabled === true,
     invoiceReminderDay1: s.invoiceReminderDay1 ?? 7,
     invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
@@ -341,6 +343,9 @@ router.put("/", async (req, res) => {
       invoiceReminderDay2: body.invoiceReminderDay2 !== undefined
         ? (parseInt(body.invoiceReminderDay2) || 14)
         : (settings?.invoiceReminderDay2 ?? 14),
+      taxFilingFrequency: body.taxFilingFrequency !== undefined
+        ? (body.taxFilingFrequency || "quarterly")
+        : (settings?.taxFilingFrequency ?? "quarterly"),
       updatedAt: new Date(),
     };
 

@@ -11,7 +11,7 @@ import {
   FileCheck, X, Home, PieChart, ChevronRight,
   Upload, Eye, EyeOff, Settings2, Paperclip, HardDrive,
 } from "lucide-react";
-import { useScheduleCReport } from "@workspace/api-client-react";
+import { useScheduleCReport, useGetSettings } from "@workspace/api-client-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { openDrivePicker } from "@/lib/googleDrivePicker";
@@ -2220,6 +2220,9 @@ const STATUS_SORT_ORDER: Record<UnifiedStatus, number> = {
 
 function TaxCalendarTab({ year }: { year: number }) {
   const { canEdit, isOwner } = useUserPermissions();
+  const { data: appSettings } = useGetSettings();
+  const taxFilingFrequency = (appSettings as any)?.taxFilingFrequency ?? "quarterly";
+  const annualOnly = taxFilingFrequency === "annual";
   const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn: googleSignIn } = useGoogleAuth();
   const { toast } = useToast();
   const storageKey = `ky-filing-statuses-${year}`;
@@ -2311,9 +2314,12 @@ function TaxCalendarTab({ year }: { year: number }) {
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
+  const QUARTERLY_FILING_IDS = new Set(["est-q1", "est-q2", "est-q3", "est-q4"]);
+
   // Build unified list from both KY filings (filtered by enabled) and compliance items
   const kyEntries: UnifiedEntry[] = KY_FILINGS
     .filter(f => {
+      if (annualOnly && QUARTERLY_FILING_IDS.has(f.id)) return false;
       const setting = kySettingsMap[f.id];
       return setting ? setting.enabled : true;
     })
@@ -2415,7 +2421,19 @@ function TaxCalendarTab({ year }: { year: number }) {
 
   return (
     <div className="space-y-6">
-      {isOwner && <QuarterlyTaxTracker year={year} />}
+      {isOwner && !annualOnly && <QuarterlyTaxTracker year={year} />}
+      {isOwner && annualOnly && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 flex items-start gap-3">
+          <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-blue-800">Annual filing mode is on</p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Quarterly estimated tax deadlines and the payment tracker are hidden. All your payment history is safely preserved.
+              To re-enable, go to <strong>Settings → Financial → Tax Filing Frequency</strong>.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Add Item form */}
       {(showForm || editTarget) && (

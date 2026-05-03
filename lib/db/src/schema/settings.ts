@@ -45,6 +45,8 @@ export const settingsTable = pgTable("settings", {
   invoiceReminderEnabled: integer("invoice_reminder_enabled").default(1),
   invoiceReminderDay1: integer("invoice_reminder_day1").default(7),
   invoiceReminderDay2: integer("invoice_reminder_day2").default(14),
+  // Tax filing preference
+  taxFilingFrequency: text("tax_filing_frequency").default("quarterly"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
