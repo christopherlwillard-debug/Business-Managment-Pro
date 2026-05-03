@@ -4,6 +4,7 @@ import { sendInvoiceEmail } from "../lib/invoiceEmail";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
+import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 
 const router = Router();
 
@@ -283,7 +284,24 @@ router.patch("/:id/status", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(invoicesTable).where(eq(invoicesTable.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id);
+
+    // Fetch the invoice first so we can clean up its Square payment link
+    const [inv] = await db
+      .select({ squarePaymentLinkId: invoicesTable.squarePaymentLinkId })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id));
+
+    // Best-effort Square cleanup — never block deletion if Square fails
+    if (inv?.squarePaymentLinkId && isSquareConfigured()) {
+      try {
+        await deleteSquarePaymentLink(inv.squarePaymentLinkId);
+      } catch (squareErr) {
+        console.warn("Square payment link deletion failed (continuing anyway):", squareErr);
+      }
+    }
+
+    await db.delete(invoicesTable).where(eq(invoicesTable.id, id));
     res.status(204).send();
   } catch (err) {
     console.error(err);

@@ -75,6 +75,11 @@ export async function createSquarePaymentLink(opts: {
   };
 }
 
+export async function deleteSquarePaymentLink(linkId: string): Promise<void> {
+  const client = getSquareClient();
+  await client.checkout.paymentLinks.delete({ id: linkId });
+}
+
 export function verifySquareWebhookSignature(opts: {
   signatureKey: string;
   notificationUrl: string;

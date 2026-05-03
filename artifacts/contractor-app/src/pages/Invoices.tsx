@@ -704,7 +704,7 @@ const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Invoices() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
-  const [filterStatus, setFilterStatus] = useState<"all" | "draft" | "sent" | "overdue" | "paid">("all");
+  const [filterStatus, setFilterStatus] = useState<"active" | "all" | "draft" | "sent" | "overdue" | "paid">("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -858,7 +858,10 @@ export default function Invoices() {
 
   const allInvoices = (invoices as any[]) ?? [];
 
+  const ACTIVE_STATUSES = new Set(["sent", "overdue", "paid"]);
+
   const statusCounts = useMemo(() => ({
+    active:  allInvoices.filter((i: any) => ACTIVE_STATUSES.has(i.status)).length,
     all:     allInvoices.length,
     draft:   allInvoices.filter((i: any) => i.status === "draft").length,
     sent:    allInvoices.filter((i: any) => i.status === "sent").length,
@@ -868,7 +871,9 @@ export default function Invoices() {
 
   const filteredInvoices = useMemo(() => {
     let list = allInvoices;
-    if (filterStatus !== "all") {
+    if (filterStatus === "active") {
+      list = list.filter((inv: any) => ACTIVE_STATUSES.has(inv.status));
+    } else if (filterStatus !== "all") {
       list = list.filter((inv: any) => inv.status === filterStatus);
     }
     if (searchQuery.trim()) {
@@ -1112,7 +1117,7 @@ export default function Invoices() {
             />
           </div>
           <div className="flex gap-2 flex-wrap">
-            {(["all", "draft", "sent", "overdue", "paid"] as const).map(s => (
+            {(["active", "all", "draft", "sent", "overdue", "paid"] as const).map(s => (
               <button
                 key={s}
                 onClick={() => setFilterStatus(s)}
@@ -1126,7 +1131,7 @@ export default function Invoices() {
                     : "bg-muted text-muted-foreground hover:bg-muted/70"
                 }`}
               >
-                {s === "all" ? "All" : s}
+                {s === "active" ? "Sent & Paid" : s === "all" ? "All (incl. Drafts)" : s}
                 <span className="ml-1.5 opacity-80">{statusCounts[s]}</span>
               </button>
             ))}
