@@ -27,6 +27,7 @@
     "openai": "^6.32.0",
     "openid-client": "^6.8.2",
     "pdf-parse": "^2.4.5",
+    "plaid": "^42.2.0",
     "puppeteer": "^24.42.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",

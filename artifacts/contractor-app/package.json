@@ -81,6 +81,7 @@
     "heic2any": "^0.0.4",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "react-plaid-link": "^4.1.1"
   }
 }
