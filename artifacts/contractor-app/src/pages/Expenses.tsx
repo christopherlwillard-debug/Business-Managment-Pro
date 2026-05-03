@@ -1270,10 +1270,16 @@ export default function Expenses() {
   const filteredYearExpenses = useMemo(() => {
     if (!searchQuery.trim()) return yearExpenses;
     const q = searchQuery.trim().toLowerCase();
-    return yearExpenses.filter(e =>
-      (e.description ?? "").toLowerCase().includes(q) ||
-      (e.vendor ?? "").toLowerCase().includes(q)
-    );
+    return yearExpenses.filter(e => {
+      const amt = e.amount ?? "0";
+      const amtFormatted = parseFloat(amt).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return (
+        (e.description ?? "").toLowerCase().includes(q) ||
+        (e.vendor ?? "").toLowerCase().includes(q) ||
+        amt.includes(q) ||
+        amtFormatted.includes(q)
+      );
+    });
   }, [yearExpenses, searchQuery]);
 
   const monthlyGroups = useMemo(() => {
@@ -1478,15 +1484,19 @@ export default function Expenses() {
           </div>
         ) : monthlyGroups.length === 0 ? (
           <div className="px-6 py-14 text-center text-muted-foreground">
-            {searchQuery.trim()
+            {(searchQuery.trim() || filterCategory)
               ? <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
               : <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
             }
             <p className="text-sm">
-              {searchQuery.trim()
-                ? `No expenses match "${searchQuery.trim()}" in ${selectedYear}`
-                : `No expenses logged for ${selectedYear}`
-              }
+              {(() => {
+                const parts: string[] = [];
+                if (searchQuery.trim()) parts.push(`"${searchQuery.trim()}"`);
+                if (filterCategory) parts.push(`category "${filterCategory}"`);
+                return parts.length > 0
+                  ? `No expenses in ${selectedYear} match ${parts.join(" + ")}`
+                  : `No expenses logged for ${selectedYear}`;
+              })()}
             </p>
           </div>
         ) : (
