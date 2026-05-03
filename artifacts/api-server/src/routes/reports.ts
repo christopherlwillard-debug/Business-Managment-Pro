@@ -35,7 +35,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     }
     const endDate = now.toISOString().split("T")[0];
 
-    // Mileage deduction is always shown YTD regardless of the period selector
+    // For display stats on the "Tax Deductions" card, always show YTD mileage
     const ytdStart = `${now.getFullYear()}-01-01`;
 
     // For the YTD ("year") period, query expenses across the full calendar year
@@ -57,8 +57,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // KPI queries — DB-level filter applied when validBl is set
       db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine))),
-      // Mileage has no businessLine column — always fetch full YTD
-      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
+      // Period-consistent mileage for the profit formula — matches the selected period
+      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"))),
       db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
       db.select().from(jobsTable).where(and(eq(jobsTable.status, "in_progress"), blWhere(jobsTable.businessLine))),
       // Recent rows — always unfiltered
@@ -77,6 +77,11 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         ])
       : [kpiInvoices, kpiExpenses, kpiOtherIncome, kpiActiveJobs];
 
+    // YTD mileage — fetched separately for the "Tax Deductions" display card (always shows YTD totals)
+    const ytdMileageLogs = period === "year"
+      ? allMileage
+      : await db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business")));
+
     const invoiceRevenue = kpiInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeTotal = kpiOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
@@ -91,16 +96,19 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       .filter(e => e.excludeFromNetProfit)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const excludedExpenseCount = kpiExpenses.filter(e => e.excludeFromNetProfit).length;
-    const mileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    // Period-consistent mileage deduction used in the profit formula
+    const periodMileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    // YTD mileage deduction for the "Tax Deductions" display card (always YTD)
+    const mileageDeduction = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
     // Mileage cannot be attributed to a single business line — exclude from filtered net profit
-    const mileageForNetProfit = validBl ? 0 : mileageDeduction;
+    const mileageForNetProfit = validBl ? 0 : periodMileageDeduction;
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;
     // Owner draws — tracked separately, never reduce taxable profit
     const ownerDrawTotal = nonMileageExpenses
       .filter(e => e.category === "Owner Draw")
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const undrawnBalance = operationalNetProfit - ownerDrawTotal;
-    const ytdMiles = allMileage.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
+    const ytdMiles = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
     // Subcontractor pay metrics — expenses categorised as "Subcontractor", joined to jobs for subPaid status
@@ -144,6 +152,26 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
+    // Unattributed: revenue/expenses not tagged to any known business line
+    const knownBls = KNOWN_BL as readonly string[];
+    const unattribExpenses = rawExpenses.filter(e => (!e.businessLine || !knownBls.includes(e.businessLine)) && e.category !== "mileage");
+    const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.includes(i.businessLine));
+    const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.includes(o.businessLine));
+    const unattribRevenue = unattribInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
+      + unattribOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+    const unattribExpenseTotal = unattribExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const unattribExcluded = unattribExpenses.filter(e => e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    if (unattribRevenue > 0 || unattribExpenseTotal > 0) {
+      byBusinessLine.push({
+        businessLine: "unattributed",
+        label: "Unattributed",
+        totalRevenue: unattribRevenue,
+        totalExpenses: unattribExpenseTotal,
+        operationalNetProfit: unattribRevenue - (unattribExpenseTotal - unattribExcluded),
+        activeJobs: 0,
+      });
+    }
+
     // Monthly revenue for last 6 months — DB-level filter applied for chart data
     const monthlyRevenue = [];
     for (let i = 5; i >= 0; i--) {
@@ -170,6 +198,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       activeJobs: kpiActiveJobs.length,
       totalExpenses,
       mileageDeduction,
+      periodMileageDeduction,
       ytdMiles,
       ytdMileageRate,
       overdueInvoices,

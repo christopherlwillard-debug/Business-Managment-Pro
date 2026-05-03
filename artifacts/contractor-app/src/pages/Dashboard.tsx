@@ -206,14 +206,10 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-            {/* Route Stops */}
+            {/* Route Stops — only shown when there are stops today */}
+            {todayStops.length > 0 && (
             <div
-              className={cn(
-                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
-                todayStops.length > 0
-                  ? "bg-blue-50 border-blue-200"
-                  : "bg-muted/30 border-border"
-              )}
+              className="rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow bg-blue-50 border-blue-200"
               onClick={() => navigate("/route-planner")}
               role="button"
               tabIndex={0}
@@ -221,55 +217,45 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={cn("p-1.5 rounded-lg", todayStops.length > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground")}>
+                  <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
                     <Navigation className="w-4 h-4" />
                   </div>
                   <span className="text-sm font-semibold text-foreground">Route Today</span>
                 </div>
-                <span className={cn(
-                  "text-xs font-bold px-2 py-0.5 rounded-full",
-                  todayStops.length > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"
-                )}>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
                   {todayStops.length} stop{todayStops.length !== 1 ? "s" : ""}
                 </span>
               </div>
-              {todayStops.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No stops scheduled for today</p>
-              ) : (
-                <div className="space-y-1 mt-2">
-                  {todayStops.slice(0, 3).map(stop => (
-                    <button
-                      key={stop.id}
-                      className="w-full flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-blue-100/60 transition-colors text-left"
-                      onClick={e => { e.stopPropagation(); navigate("/route-planner"); }}
-                    >
-                      <MapPin className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">
-                          {stop.clientName ?? stop.prospectContactName ?? stop.title ?? stop.address}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground truncate">{stop.address}</p>
-                      </div>
-                    </button>
-                  ))}
-                  {todayStops.length > 3 && (
-                    <p className="text-[10px] text-blue-600 font-medium pl-2">+{todayStops.length - 3} more</p>
-                  )}
-                </div>
-              )}
+              <div className="space-y-1 mt-2">
+                {todayStops.slice(0, 3).map(stop => (
+                  <button
+                    key={stop.id}
+                    className="w-full flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-blue-100/60 transition-colors text-left"
+                    onClick={e => { e.stopPropagation(); navigate("/route-planner"); }}
+                  >
+                    <MapPin className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {stop.clientName ?? stop.prospectContactName ?? stop.title ?? stop.address}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">{stop.address}</p>
+                    </div>
+                  </button>
+                ))}
+                {todayStops.length > 3 && (
+                  <p className="text-[10px] text-blue-600 font-medium pl-2">+{todayStops.length - 3} more</p>
+                )}
+              </div>
               <div className="mt-3 flex items-center text-[10px] font-semibold text-blue-600">
                 Open Route Planner <ArrowRight className="w-3 h-3 ml-1" />
               </div>
             </div>
+            )}
 
-            {/* Follow-up Prospects */}
+            {/* Follow-up Prospects — only shown when there are follow-ups due */}
+            {followUpProspects.length > 0 && (
             <div
-              className={cn(
-                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
-                followUpProspects.length > 0
-                  ? "bg-amber-50 border-amber-200"
-                  : "bg-muted/30 border-border"
-              )}
+              className="rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow bg-amber-50 border-amber-200"
               onClick={() => navigate("/prospects")}
               role="button"
               tabIndex={0}
@@ -277,57 +263,47 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={cn("p-1.5 rounded-lg", followUpProspects.length > 0 ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground")}>
+                  <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
                     <Phone className="w-4 h-4" />
                   </div>
                   <span className="text-sm font-semibold text-foreground">Follow-ups</span>
                 </div>
-                <span className={cn(
-                  "text-xs font-bold px-2 py-0.5 rounded-full",
-                  followUpProspects.length > 0 ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"
-                )}>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
                   {followUpProspects.length} due
                 </span>
               </div>
-              {followUpProspects.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No follow-ups due today</p>
-              ) : (
-                <div className="space-y-1 mt-2">
-                  {followUpProspects.slice(0, 3).map(p => (
-                    <button
-                      key={p.id}
-                      className="w-full flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-amber-100/60 transition-colors text-left"
-                      onClick={e => { e.stopPropagation(); navigate(`/prospects?openProspect=${p.id}`); }}
-                    >
-                      <Phone className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">
-                          {p.contactName ?? p.address}
-                        </p>
-                        {p.contactName && (
-                          <p className="text-[10px] text-muted-foreground truncate">{p.address}</p>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                  {followUpProspects.length > 3 && (
-                    <p className="text-[10px] text-amber-600 font-medium pl-2">+{followUpProspects.length - 3} more</p>
-                  )}
-                </div>
-              )}
+              <div className="space-y-1 mt-2">
+                {followUpProspects.slice(0, 3).map(p => (
+                  <button
+                    key={p.id}
+                    className="w-full flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-amber-100/60 transition-colors text-left"
+                    onClick={e => { e.stopPropagation(); navigate(`/prospects?openProspect=${p.id}`); }}
+                  >
+                    <Phone className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {p.contactName ?? p.address}
+                      </p>
+                      {p.contactName && (
+                        <p className="text-[10px] text-muted-foreground truncate">{p.address}</p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                {followUpProspects.length > 3 && (
+                  <p className="text-[10px] text-amber-600 font-medium pl-2">+{followUpProspects.length - 3} more</p>
+                )}
+              </div>
               <div className="mt-3 flex items-center text-[10px] font-semibold text-amber-600">
                 Open Prospects <ArrowRight className="w-3 h-3 ml-1" />
               </div>
             </div>
+            )}
 
-            {/* Overdue Invoices */}
+            {/* Overdue Invoices — only shown when there are overdue invoices */}
+            {overdueInvoices.length > 0 && (
             <div
-              className={cn(
-                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
-                overdueInvoices.length > 0
-                  ? "bg-red-50 border-red-200"
-                  : "bg-muted/30 border-border"
-              )}
+              className="rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow bg-red-50 border-red-200"
               onClick={() => navigate("/accounting")}
               role="button"
               tabIndex={0}
@@ -335,57 +311,47 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={cn("p-1.5 rounded-lg", overdueInvoices.length > 0 ? "bg-red-100 text-red-700" : "bg-muted text-muted-foreground")}>
+                  <div className="p-1.5 rounded-lg bg-red-100 text-red-700">
                     <FileText className="w-4 h-4" />
                   </div>
                   <span className="text-sm font-semibold text-foreground">Overdue Invoices</span>
                 </div>
-                <span className={cn(
-                  "text-xs font-bold px-2 py-0.5 rounded-full",
-                  overdueInvoices.length > 0 ? "bg-red-100 text-red-700" : "bg-muted text-muted-foreground"
-                )}>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                   {overdueInvoices.length} overdue
                 </span>
               </div>
-              {overdueInvoices.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No overdue invoices</p>
-              ) : (
-                <div className="space-y-1 mt-2">
-                  {overdueInvoices.slice(0, 3).map(inv => (
-                    <button
-                      key={inv.id}
-                      className="w-full flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-red-100/60 transition-colors text-left"
-                      onClick={e => { e.stopPropagation(); navigate(`/invoices?openInvoice=${inv.id}`); }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-foreground truncate">
-                          #{inv.invoiceNumber}{inv.clientName ? ` · ${inv.clientName}` : ""}
-                        </p>
-                        {inv.dueDate && (
-                          <p className="text-[10px] text-red-500 font-medium">Due {inv.dueDate}</p>
-                        )}
-                      </div>
-                      <p className="text-xs font-bold text-red-700 flex-shrink-0">{formatCurrency(inv.total)}</p>
-                    </button>
-                  ))}
-                  {overdueInvoices.length > 3 && (
-                    <p className="text-[10px] text-red-600 font-medium pl-2">+{overdueInvoices.length - 3} more</p>
-                  )}
-                </div>
-              )}
+              <div className="space-y-1 mt-2">
+                {overdueInvoices.slice(0, 3).map(inv => (
+                  <button
+                    key={inv.id}
+                    className="w-full flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-red-100/60 transition-colors text-left"
+                    onClick={e => { e.stopPropagation(); navigate(`/invoices?openInvoice=${inv.id}`); }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        #{inv.invoiceNumber}{inv.clientName ? ` · ${inv.clientName}` : ""}
+                      </p>
+                      {inv.dueDate && (
+                        <p className="text-[10px] text-red-500 font-medium">Due {inv.dueDate}</p>
+                      )}
+                    </div>
+                    <p className="text-xs font-bold text-red-700 flex-shrink-0">{formatCurrency(inv.total)}</p>
+                  </button>
+                ))}
+                {overdueInvoices.length > 3 && (
+                  <p className="text-[10px] text-red-600 font-medium pl-2">+{overdueInvoices.length - 3} more</p>
+                )}
+              </div>
               <div className="mt-3 flex items-center text-[10px] font-semibold text-red-600">
                 Open Invoices <ArrowRight className="w-3 h-3 ml-1" />
               </div>
             </div>
+            )}
 
-            {/* Compliance Alerts */}
+            {/* Compliance Alerts — only shown when there are urgent items */}
+            {urgentComplianceItems.length > 0 && (
             <div
-              className={cn(
-                "rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow",
-                urgentComplianceItems.length > 0
-                  ? "bg-orange-50 border-orange-200"
-                  : "bg-muted/30 border-border"
-              )}
+              className="rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-shadow bg-orange-50 border-orange-200"
               onClick={() => navigate("/accounting?tab=tax-calendar")}
               role="button"
               tabIndex={0}
@@ -393,45 +359,37 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={cn("p-1.5 rounded-lg", urgentComplianceItems.length > 0 ? "bg-orange-100 text-orange-700" : "bg-muted text-muted-foreground")}>
+                  <div className="p-1.5 rounded-lg bg-orange-100 text-orange-700">
                     <ShieldAlert className="w-4 h-4" />
                   </div>
                   <span className="text-sm font-semibold text-foreground">Compliance</span>
                 </div>
-                <span className={cn(
-                  "text-xs font-bold px-2 py-0.5 rounded-full",
-                  urgentComplianceItems.length > 0 ? "bg-orange-100 text-orange-700" : "bg-emerald-100 text-emerald-700"
-                )}>
-                  {urgentComplianceItems.length > 0 ? `${urgentComplianceItems.length} urgent` : "All clear"}
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                  {urgentComplianceItems.length} urgent
                 </span>
               </div>
-              {complianceLoading ? (
-                <p className="text-xs text-muted-foreground animate-pulse">Loading…</p>
-              ) : urgentComplianceItems.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No filings due within 7 days</p>
-              ) : (
-                <div className="space-y-1 mt-2">
-                  {urgentComplianceItems.slice(0, 3).map(item => (
-                    <button
-                      key={item.id}
-                      className="w-full flex items-start justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-orange-100/60 transition-colors text-left"
-                      onClick={e => { e.stopPropagation(); navigate("/accounting?tab=tax-calendar"); }}
-                    >
-                      <p className="text-xs font-medium text-foreground truncate flex-1">{item.title}</p>
-                      <span className={cn(
-                        "text-[10px] font-bold flex-shrink-0",
-                        item.computedStatus === "overdue" ? "text-red-600" : "text-orange-600"
-                      )}>
-                        {item.computedStatus === "overdue" ? "Overdue" : `${item.daysUntilDue}d`}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className="space-y-1 mt-2">
+                {urgentComplianceItems.slice(0, 3).map(item => (
+                  <button
+                    key={item.id}
+                    className="w-full flex items-start justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-orange-100/60 transition-colors text-left"
+                    onClick={e => { e.stopPropagation(); navigate("/accounting?tab=tax-calendar"); }}
+                  >
+                    <p className="text-xs font-medium text-foreground truncate flex-1">{item.title}</p>
+                    <span className={cn(
+                      "text-[10px] font-bold flex-shrink-0",
+                      item.computedStatus === "overdue" ? "text-red-600" : "text-orange-600"
+                    )}>
+                      {item.computedStatus === "overdue" ? "Overdue" : `${item.daysUntilDue}d`}
+                    </span>
+                  </button>
+                ))}
+              </div>
               <div className="mt-3 flex items-center text-[10px] font-semibold text-orange-600">
                 Open Compliance <ArrowRight className="w-3 h-3 ml-1" />
               </div>
             </div>
+            )}
 
             {/* Tax Payment Alerts */}
             {taxAlerts.length > 0 && (() => {
@@ -684,16 +642,29 @@ export default function Dashboard() {
           <CardContent className="px-5 pb-5 space-y-3">
             {stats.byBusinessLine.map(bl => {
               const isAsphalt = bl.businessLine === "asphalt_sealing";
+              const isUnattributed = bl.businessLine === "unattributed";
               const profitPositive = bl.operationalNetProfit >= 0;
+              const rowStyle = isUnattributed
+                ? "bg-muted/30 border-border/50"
+                : isAsphalt
+                  ? "bg-amber-50/60 border-amber-200/70"
+                  : "bg-primary/5 border-primary/15";
+              const badgeStyle = isUnattributed
+                ? "bg-muted text-muted-foreground"
+                : isAsphalt
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-primary/10 text-primary";
               return (
-                <div key={bl.businessLine} className={`rounded-xl border p-4 ${isAsphalt ? "bg-amber-50/60 border-amber-200/70" : "bg-primary/5 border-primary/15"}`}>
+                <div key={bl.businessLine} className={`rounded-xl border p-4 ${rowStyle}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isAsphalt ? "bg-amber-100 text-amber-700" : "bg-primary/10 text-primary"}`}>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badgeStyle}`}>
                       {bl.label}
                     </span>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${bl.activeJobs > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
-                      {bl.activeJobs} active job{bl.activeJobs !== 1 ? "s" : ""}
-                    </span>
+                    {!isUnattributed && (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${bl.activeJobs > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
+                        {bl.activeJobs} active job{bl.activeJobs !== 1 ? "s" : ""}
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <div>
@@ -714,6 +685,16 @@ export default function Dashboard() {
                 </div>
               );
             })}
+            {/* Mileage deduction reconciliation row — shows why total ≠ sum of business lines */}
+            {(stats.periodMileageDeduction ?? 0) > 0 && (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-3 flex items-center justify-between bg-muted/10">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground">Mileage Deduction ({periodLabel})</p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">Deducted from Operating Profit · not tied to a single business line</p>
+                </div>
+                <p className="text-sm font-bold text-red-500 flex-shrink-0">-{formatCurrency(stats.periodMileageDeduction ?? 0)}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
