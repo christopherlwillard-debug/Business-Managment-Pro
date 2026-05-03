@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useGetDashboardStats, useListClients } from "@workspace/api-client-react";
+import { useGetDashboardStats, useListClients, useGetSettings } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,6 +132,8 @@ export default function Dashboard() {
   const { data: followUpProspects = [], isLoading: followUpsLoading } = useFollowUpProspects();
   const { data: overdueInvoices = [], isLoading: overdueLoading } = useOverdueInvoicesList();
   const { data: taxAlerts = [], isLoading: taxAlertsLoading } = useTaxAlerts();
+  const { data: appSettings } = useGetSettings();
+  const annualOnly = (appSettings as any)?.taxFilingFrequency === "annual";
 
   const now = new Date();
   const in90 = new Date(now);
@@ -173,7 +175,7 @@ export default function Dashboard() {
     followUpProspects.length === 0 &&
     overdueInvoices.length === 0 &&
     urgentComplianceItems.length === 0 &&
-    taxAlerts.length === 0;
+    (annualOnly || taxAlerts.length === 0);
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
@@ -391,8 +393,8 @@ export default function Dashboard() {
             </div>
             )}
 
-            {/* Tax Payment Alerts */}
-            {taxAlerts.length > 0 && (() => {
+            {/* Tax Payment Alerts — hidden in annual filing mode */}
+            {!annualOnly && taxAlerts.length > 0 && (() => {
               const hasOverdue = taxAlerts.some(q => q.status === "overdue");
               const colorScheme = hasOverdue
                 ? { bg: "bg-red-50", border: "border-red-200", iconBg: "bg-red-100", iconText: "text-red-700", badgeBg: "bg-red-100", badgeText: "text-red-700", rowHover: "hover:bg-red-100/60", amountText: "text-red-700", linkText: "text-red-600", mutedText: "text-red-500" }
