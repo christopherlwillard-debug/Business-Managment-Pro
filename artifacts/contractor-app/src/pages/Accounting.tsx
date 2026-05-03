@@ -1024,6 +1024,15 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
             No invoices with city data yet. Add a city to your invoices to track local tax obligations.
           </div>
         ) : (
+          <>
+          {data.incomeByCity.length === 1 && data.incomeByCity[0]?.city === "Unspecified" && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800">
+                All of your invoices are missing a city. Edit each invoice and add a city so revenue is tracked correctly for local tax purposes.
+              </p>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
@@ -1037,13 +1046,16 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                 </tr>
               </thead>
               <tbody>
-                {[...data.incomeByCity].sort((a: any, b: any) => {
-                  if (a.city === "Unspecified") return 1;
-                  if (b.city === "Unspecified") return -1;
-                  if (a.city?.toLowerCase() === "owensboro") return -1;
-                  if (b.city?.toLowerCase() === "owensboro") return 1;
-                  return b.gross - a.gross;
-                }).map((row: any) => {
+                {(() => {
+                  const sorted = [...data.incomeByCity].sort((a: any, b: any) => {
+                    if (a.city === "Unspecified") return 1;
+                    if (b.city === "Unspecified") return -1;
+                    if (a.city?.toLowerCase() === "owensboro") return -1;
+                    if (b.city?.toLowerCase() === "owensboro") return 1;
+                    return b.gross - a.gross;
+                  });
+                  const onlyUnspecified = sorted.length === 1 && sorted[0].city === "Unspecified";
+                  return sorted.map((row: any) => {
                   const isOwensboro = row.city?.toLowerCase() === "owensboro";
                   const isUnspecified = row.city === "Unspecified";
                   const cityKey = `${row.city}||${row.state}`;
@@ -1052,7 +1064,9 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                   const cityRecords: any[] = (data.invoiceRecords ?? []).filter((r: any) => {
                     const rCity = (r.city ?? "").trim();
                     const rState = (r.state ?? "").trim();
-                    if (isUnspecified) return !rCity;
+                    if (isUnspecified) {
+                      return r.type === "invoice" && !rCity;
+                    }
                     return rCity.toLowerCase() === (row.city ?? "").toLowerCase() &&
                            rState.toLowerCase() === (row.state ?? "").toLowerCase();
                   });
@@ -1118,7 +1132,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                                     const isInvoice = r.type === "invoice";
                                     return (
                                       <tr
-                                        key={i}
+                                        key={isInvoice ? `inv-${r.id ?? i}` : `oi-${r.issueDate}-${i}`}
                                         onClick={isInvoice && r.id ? () => navigate(`/invoices?openInvoice=${r.id}`) : undefined}
                                         className={`transition-colors ${isInvoice && r.id ? "cursor-pointer hover:bg-primary/5" : "hover:bg-muted/20"}`}
                                       >
@@ -1149,7 +1163,8 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                       )}
                     </React.Fragment>
                   );
-                })}
+                  });
+                })()}
               </tbody>
               <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
                 <tr>
@@ -1167,6 +1182,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
               </p>
             </div>
           </div>
+          </>
         )}
       </div>
 
