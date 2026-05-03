@@ -1271,12 +1271,15 @@ export default function Expenses() {
     if (!searchQuery.trim()) return yearExpenses;
     const q = searchQuery.trim().toLowerCase();
     return yearExpenses.filter(e => {
-      const amt = e.amount ?? "0";
-      const amtFormatted = parseFloat(amt).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const amtNum = parseFloat(String(e.amount ?? "0"));
+      const amtRaw = String(e.amount ?? "");
+      const amtFormatted = Number.isFinite(amtNum)
+        ? amtNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "";
       return (
         (e.description ?? "").toLowerCase().includes(q) ||
         (e.vendor ?? "").toLowerCase().includes(q) ||
-        amt.includes(q) ||
+        amtRaw.includes(q) ||
         amtFormatted.includes(q)
       );
     });
