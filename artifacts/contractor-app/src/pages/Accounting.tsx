@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -735,6 +736,7 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
 function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; setActiveTab: (tab: AccountingTab) => void }) {
+  const [, navigate] = useLocation();
   const s = data?.summary ?? {};
   const netProfit = s.netProfit ?? 0;
   const otherIncomeTotal: number = s.otherIncomeTotal ?? 0;
@@ -1113,17 +1115,23 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                                       draft: "bg-muted text-muted-foreground",
                                     };
                                     const statusLabel = r.status === "paid" ? "Paid" : r.status === "sent" ? "Sent" : r.status === "overdue" ? "Overdue" : r.status === "draft" ? "Draft" : r.status;
+                                    const isInvoice = r.type === "invoice";
                                     return (
-                                      <tr key={i} className="hover:bg-muted/20 transition-colors">
+                                      <tr
+                                        key={i}
+                                        onClick={isInvoice && r.id ? () => navigate(`/invoices?openInvoice=${r.id}`) : undefined}
+                                        className={`transition-colors ${isInvoice && r.id ? "cursor-pointer hover:bg-primary/5" : "hover:bg-muted/20"}`}
+                                      >
                                         <td className="px-6 py-2.5 text-muted-foreground whitespace-nowrap">
                                           {r.issueDate ? new Date(r.issueDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
                                         </td>
-                                        <td className="px-4 py-2.5 font-medium text-foreground">
-                                          {r.type === "other_income"
-                                            ? <span className="text-teal-700">Other Income</span>
-                                            : r.invoiceNumber}
+                                        <td className="px-4 py-2.5 font-medium">
+                                          {isInvoice
+                                            ? <span className="text-foreground font-mono">{r.invoiceNumber}</span>
+                                            : <span className="text-teal-700">{r.jobTitle || "Other Income"}</span>
+                                          }
                                         </td>
-                                        <td className="px-4 py-2.5 text-muted-foreground">{r.clientName || r.jobTitle || "—"}</td>
+                                        <td className="px-4 py-2.5 text-muted-foreground">{r.clientName || "—"}</td>
                                         <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(r.total ?? 0)}</td>
                                         <td className="px-4 py-2.5 text-right">
                                           <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${statusStyles[r.status] ?? "bg-muted text-muted-foreground"}`}>

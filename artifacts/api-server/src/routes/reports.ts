@@ -383,6 +383,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     // Full records for tax spreadsheet — invoices + other income rows
     const invoiceRecords = invoices.map(inv => ({
+      id: inv.id,
       invoiceNumber: inv.invoiceNumber,
       issueDate: inv.issueDate,
       clientName: inv.clientName ?? "",
