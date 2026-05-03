@@ -1134,14 +1134,18 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                                       <tr
                                         key={isInvoice ? `inv-${r.id ?? i}` : `oi-${r.issueDate}-${i}`}
                                         onClick={isInvoice && r.id ? () => navigate(`/invoices?openInvoice=${r.id}`) : undefined}
-                                        className={`transition-colors ${isInvoice && r.id ? "cursor-pointer hover:bg-primary/5" : "hover:bg-muted/20"}`}
+                                        title={isInvoice && r.id ? `Open invoice ${r.invoiceNumber}` : undefined}
+                                        className={`transition-colors ${isInvoice && r.id ? "cursor-pointer hover:bg-primary/5 group" : "hover:bg-muted/20"}`}
                                       >
                                         <td className="px-6 py-2.5 text-muted-foreground whitespace-nowrap">
                                           {r.issueDate ? new Date(r.issueDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
                                         </td>
                                         <td className="px-4 py-2.5 font-medium">
                                           {isInvoice
-                                            ? <span className="text-foreground font-mono">{r.invoiceNumber}</span>
+                                            ? <span className="flex items-center gap-1 text-foreground font-mono">
+                                                {r.invoiceNumber}
+                                                <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                              </span>
                                             : <span className="text-teal-700">{r.jobTitle || "Other Income"}</span>
                                           }
                                         </td>
