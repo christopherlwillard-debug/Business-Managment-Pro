@@ -708,6 +708,7 @@ export interface DashboardStats {
   activeJobs: number;
   totalExpenses: number;
   mileageDeduction: number;
+  periodMileageDeduction?: number;
   ytdMiles: number;
   ytdMileageRate: number;
   overdueInvoices: number;
@@ -718,6 +719,8 @@ export interface DashboardStats {
   excludedFromProfit?: number;
   formulaExcludedFromProfit?: number;
   excludedExpenseCount?: number;
+  ownerDrawTotal?: number;
+  undrawnBalance?: number;
   subContractorOwed?: number;
   subContractorPaid?: number;
   subContractorRemaining?: number;

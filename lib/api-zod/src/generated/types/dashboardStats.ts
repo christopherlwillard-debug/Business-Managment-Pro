@@ -15,11 +15,29 @@ export interface DashboardStats {
   activeJobs: number;
   totalExpenses: number;
   mileageDeduction: number;
+  periodMileageDeduction?: number;
+  ytdMiles?: number;
+  ytdMileageRate?: number;
   overdueInvoices: number;
   recentJobs: Job[];
   recentInvoices: Invoice[];
   monthlyRevenue: DashboardStatsMonthlyRevenueItem[];
   operationalNetProfit?: number;
   excludedFromProfit?: number;
+  formulaExcludedFromProfit?: number;
   excludedExpenseCount?: number;
+  ownerDrawTotal?: number;
+  undrawnBalance?: number;
+  subContractorOwed?: number;
+  subContractorPaid?: number;
+  subContractorRemaining?: number;
+  ownerProfit?: number;
+  byBusinessLine?: Array<{
+    businessLine: string;
+    label: string;
+    totalRevenue: number;
+    totalExpenses: number;
+    operationalNetProfit: number;
+    activeJobs: number;
+  }>;
 }
