@@ -35,19 +35,17 @@ const BOTTOM_NAV_OPTIONS = [
   { href: "/jobs", label: "Jobs" },
   { href: "/expenses", label: "Expenses" },
   { href: "/mileage", label: "Mileage" },
-  { href: "/clients", label: "Clients" },
+  { href: "/people", label: "People" },
   { href: "/subcontractors", label: "Subcontractors" },
   { href: "/materials", label: "Materials" },
   { href: "/route-planner", label: "Route Planner" },
-  { href: "/prospects", label: "Prospects" },
   { href: "/assets", label: "Assets" },
   { href: "/accounting", label: "Accounting & Tax" },
-  { href: "/quick-charge", label: "Quick Charge" },
   { href: "/square-transactions", label: "Square Transactions" },
   { href: "/settings", label: "Settings" },
 ];
 
-const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/prospects", "/accounting"];
+const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/people", "/accounting"];
 
 const ENTITY_TYPES = ["LLC", "Single-Member LLC", "Multi-Member LLC", "S Corporation", "C Corporation", "Sole Proprietor", "Partnership", "DBA"];
 

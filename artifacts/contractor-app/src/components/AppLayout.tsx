@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, UsersRound,
-  Settings, Menu, X, BookOpen, LogOut, Package, Route, Target, Wrench, Crosshair, Zap, CreditCard, FileText, FilePen,
+  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,11 +20,9 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/subcontractors": { name: "Subcontractors", icon: HardHat },
   "/materials": { name: "Materials", icon: Package },
   "/route-planner": { name: "Route Planner", icon: Route },
-  "/prospects": { name: "Prospects", icon: Target },
   "/assets": { name: "Assets", icon: Wrench },
   "/aerial-quote": { name: "Aerial Quote", icon: Crosshair },
   "/accounting": { name: "Accounting & Tax", icon: BookOpen },
-  "/quick-charge": { name: "Quick Charge", icon: Zap },
   "/square-transactions": { name: "Square Transactions", icon: CreditCard },
   "/settings": { name: "Settings", icon: Settings },
 };
@@ -67,12 +65,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors", group: "operations" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
-    { name: "Prospects", href: "/prospects", icon: Target, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Aerial Quote", href: "/aerial-quote", icon: Crosshair, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Estimates", href: "/estimates", icon: FilePen, feature: null, section: null, ownerOnly: true, group: "finance" },
     { name: "Invoices", href: "/invoices", icon: FileText, feature: null, section: null, ownerOnly: true, group: "finance" },
-    { name: "Quick Charge", href: "/quick-charge", icon: Zap, feature: null, section: null, ownerOnly: true, group: "finance" },
     { name: "Square Transactions", href: "/square-transactions", icon: CreditCard, feature: null, section: null, ownerOnly: true, group: "finance" },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices", group: "finance" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
