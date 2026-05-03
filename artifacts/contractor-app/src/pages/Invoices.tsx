@@ -1336,6 +1336,16 @@ export default function Invoices() {
             setDeleteTarget(viewInvoice);
             setViewInvoice(null);
           }}
+          onGetPaymentLink={() => {
+            const inv = viewInvoice;
+            const payUrl = (inv as any).squarePaymentLinkUrl ?? (inv as any).stripePaymentLinkUrl ?? null;
+            if (payUrl) {
+              setPaymentLinkResult({ url: payUrl, invoiceNumber: inv.invoiceNumber, invoiceId: inv.id, remindersSentAt: (inv as any).remindersSentAt ?? [] });
+            } else {
+              handleGetPaymentLink(inv.id, inv.invoiceNumber);
+            }
+          }}
+          generatingLink={generatingLinkId === viewInvoice.id}
         />
       )}
 

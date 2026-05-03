@@ -5,7 +5,7 @@ import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
 import {
   FileText, Trash2, X,
   Building2, MapPin, Printer, Mail, Phone,
-  Paperclip, Send, Check, Eye,
+  Paperclip, Send, Check, Eye, CreditCard, Copy,
 } from "lucide-react";
 import { Invoice, InvoiceLineItem, InvoiceAttachment, AppSettings } from "@workspace/api-client-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
@@ -24,9 +24,11 @@ interface InvoiceViewModalProps {
   settings: AppSettings | undefined;
   onClose: () => void;
   onDelete?: () => void;
+  onGetPaymentLink?: () => void;
+  generatingLink?: boolean;
 }
 
-export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: InvoiceViewModalProps) {
+export function InvoiceViewModal({ invoice, settings, onClose, onDelete, onGetPaymentLink, generatingLink }: InvoiceViewModalProps) {
   const s = settings ?? ({} as AppSettings);
   const companyName    = s.companyName    || "";
   const companyEmail   = s.companyEmail   || "";
@@ -327,6 +329,34 @@ export function InvoiceViewModal({ invoice, settings, onClose, onDelete }: Invoi
                 <Send className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Gmail</span>
               </button>
+            )}
+            {onGetPaymentLink && invoice.status !== "paid" && invoice.status !== "cancelled" && (
+              (() => {
+                const payUrl = (invoice as any).squarePaymentLinkUrl ?? (invoice as any).stripePaymentLinkUrl ?? null;
+                return payUrl ? (
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(payUrl); onGetPaymentLink(); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors"
+                    title="Copy payment link"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Copy Link</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={onGetPaymentLink}
+                    disabled={generatingLink}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-emerald-50 hover:text-emerald-700 transition-colors disabled:opacity-40"
+                    title="Get Square payment link"
+                  >
+                    {generatingLink
+                      ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      : <CreditCard className="w-3.5 h-3.5" />
+                    }
+                    <span className="hidden sm:inline">{generatingLink ? "Generating…" : "Pay Link"}</span>
+                  </button>
+                );
+              })()
             )}
             {onDelete && (
               <button onClick={onDelete}
