@@ -745,6 +745,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   const deleteOI = useDeleteOtherIncome(year);
   const [oiForm, setOiForm] = useState<null | Partial<{ id: number; amount: string; date: string; description: string; source: string; paymentMethod: string; city: string; state: string; notes: string; businessLine: string; clientId: number | null }>>(null);
   const [oiSaving, setOiSaving] = useState(false);
+  const [expandedCity, setExpandedCity] = useState<string | null>(null);
   const [pendingEditId, setPendingEditId] = useState<number | null>(() => {
     const params = new URLSearchParams(window.location.search);
     const editId = params.get("editId");
@@ -1027,33 +1028,118 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                 <tr>
                   <th className="px-5 py-3 text-left">City</th>
                   <th className="px-5 py-3 text-left">ST</th>
-                  <th className="px-5 py-3 text-right">Invoices</th>
+                  <th className="px-5 py-3 text-right">Items</th>
                   <th className="px-5 py-3 text-right">Gross Income</th>
                   <th className="px-5 py-3 text-right">Collected</th>
                   <th className="px-5 py-3 text-right">Est. Occ. Tax</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/50">
+              <tbody>
                 {[...data.incomeByCity].sort((a: any, b: any) => {
+                  if (a.city === "Unspecified") return 1;
+                  if (b.city === "Unspecified") return -1;
                   if (a.city?.toLowerCase() === "owensboro") return -1;
                   if (b.city?.toLowerCase() === "owensboro") return 1;
                   return b.gross - a.gross;
                 }).map((row: any) => {
                   const isOwensboro = row.city?.toLowerCase() === "owensboro";
+                  const isUnspecified = row.city === "Unspecified";
+                  const cityKey = `${row.city}||${row.state}`;
+                  const isExpanded = expandedCity === cityKey;
+
+                  const cityRecords: any[] = (data.invoiceRecords ?? []).filter((r: any) => {
+                    const rCity = (r.city ?? "").trim();
+                    const rState = (r.state ?? "").trim();
+                    if (isUnspecified) return !rCity;
+                    return rCity.toLowerCase() === (row.city ?? "").toLowerCase() &&
+                           rState.toLowerCase() === (row.state ?? "").toLowerCase();
+                  });
+
                   return (
-                  <tr key={`${row.city}-${row.state}`} className={`transition-colors ${isOwensboro ? "bg-amber-50/50 hover:bg-amber-50" : "hover:bg-muted/20"}`}>
-                    <td className="px-5 py-3 font-semibold text-foreground">
-                      <span className="flex items-center gap-1.5">
-                        {row.city}
-                        {isOwensboro && <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-800">Occ Tax</span>}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-muted-foreground">{row.state || "—"}</td>
-                    <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
-                    <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
-                    <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
-                    <td className="px-5 py-3 text-right text-amber-600 font-medium">{row.estOccTax > 0 ? formatCurrency(row.estOccTax) : <span className="text-muted-foreground">—</span>}</td>
-                  </tr>
+                    <React.Fragment key={cityKey}>
+                      <tr
+                        onClick={() => setExpandedCity(isExpanded ? null : cityKey)}
+                        className={`cursor-pointer border-b border-border/50 transition-colors ${
+                          isOwensboro ? "bg-amber-50/50 hover:bg-amber-50" :
+                          isUnspecified ? "bg-muted/20 hover:bg-muted/40" :
+                          "hover:bg-muted/20"
+                        }`}
+                      >
+                        <td className="px-5 py-3 font-semibold text-foreground">
+                          <span className="flex items-center gap-1.5">
+                            {isExpanded
+                              ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                              : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            }
+                            {isUnspecified
+                              ? <span className="text-muted-foreground font-normal italic">No city set</span>
+                              : row.city
+                            }
+                            {isOwensboro && <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-800">Occ Tax</span>}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-muted-foreground">{row.state || "—"}</td>
+                        <td className="px-5 py-3 text-right text-muted-foreground">{row.invoiceCount}</td>
+                        <td className="px-5 py-3 text-right font-medium">{formatCurrency(row.gross)}</td>
+                        <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatCurrency(row.paid)}</td>
+                        <td className="px-5 py-3 text-right text-amber-600 font-medium">{row.estOccTax > 0 ? formatCurrency(row.estOccTax) : <span className="text-muted-foreground">—</span>}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-b border-border/50">
+                          <td colSpan={6} className="px-0 py-0 bg-muted/10">
+                            {cityRecords.length === 0 ? (
+                              <div className="px-8 py-4 text-sm text-muted-foreground italic">
+                                {isUnspecified
+                                  ? "Invoices without a city set land here. Edit each invoice to assign a city."
+                                  : "No individual records found for this city."}
+                              </div>
+                            ) : (
+                              <table className="w-full text-xs border-t border-border/30">
+                                <thead>
+                                  <tr className="bg-muted/30 text-muted-foreground uppercase font-semibold">
+                                    <th className="px-6 py-2 text-left">Date</th>
+                                    <th className="px-4 py-2 text-left">Invoice # / Type</th>
+                                    <th className="px-4 py-2 text-left">Client / Source</th>
+                                    <th className="px-4 py-2 text-right">Amount</th>
+                                    <th className="px-4 py-2 text-right">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/30">
+                                  {cityRecords.map((r: any, i: number) => {
+                                    const statusStyles: Record<string, string> = {
+                                      paid: "bg-emerald-100 text-emerald-700",
+                                      sent: "bg-blue-100 text-blue-700",
+                                      overdue: "bg-red-100 text-red-700",
+                                      draft: "bg-muted text-muted-foreground",
+                                    };
+                                    const statusLabel = r.status === "paid" ? "Paid" : r.status === "sent" ? "Sent" : r.status === "overdue" ? "Overdue" : r.status === "draft" ? "Draft" : r.status;
+                                    return (
+                                      <tr key={i} className="hover:bg-muted/20 transition-colors">
+                                        <td className="px-6 py-2.5 text-muted-foreground whitespace-nowrap">
+                                          {r.issueDate ? new Date(r.issueDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                                        </td>
+                                        <td className="px-4 py-2.5 font-medium text-foreground">
+                                          {r.type === "other_income"
+                                            ? <span className="text-teal-700">Other Income</span>
+                                            : r.invoiceNumber}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-muted-foreground">{r.clientName || r.jobTitle || "—"}</td>
+                                        <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(r.total ?? 0)}</td>
+                                        <td className="px-4 py-2.5 text-right">
+                                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${statusStyles[r.status] ?? "bg-muted text-muted-foreground"}`}>
+                                            {statusLabel}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

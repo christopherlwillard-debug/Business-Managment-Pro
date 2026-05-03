@@ -351,6 +351,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const amt = parseFloat(o.amount ?? "0");
       existing.gross += amt;
       existing.paid += amt;
+      existing.invoiceCount++;
       cityMap.set(key, existing);
     }
     // Compute estOccTax after all income is accumulated (only for Owensboro rows)
