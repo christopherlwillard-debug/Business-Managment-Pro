@@ -1071,11 +1071,6 @@ function JobCard({
                   GC
                 </span>
               )}
-              {job.jobType && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground">
-                  {job.jobType}
-                </span>
-              )}
               {hasSubExpenses && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                   job.subPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
@@ -1339,15 +1334,6 @@ function JobFormDialog({
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
 
-  const ASPHALT_JOB_TYPES = ["Sealcoating", "Crack Fill", "Patch Work", "Line Striping"];
-  const CONTRACTING_JOB_TYPES = ["Interior Finish", "Exterior Work", "Repairs", "New Construction"];
-
-  function getJobTypeOptions(bl: "" | "general_contracting" | "asphalt_sealing") {
-    if (bl === "asphalt_sealing") return ASPHALT_JOB_TYPES;
-    if (bl === "general_contracting") return CONTRACTING_JOB_TYPES;
-    return [...ASPHALT_JOB_TYPES, ...CONTRACTING_JOB_TYPES];
-  }
-
   function makeForm() {
     if (editJob) {
       return {
@@ -1361,7 +1347,6 @@ function JobFormDialog({
         endDate: editJob.endDate ?? "",
         notes: editJob.notes ?? "",
         businessLine: (editJob.businessLine as "" | "general_contracting" | "asphalt_sealing") ?? "",
-        jobType: editJob.jobType ?? "",
         sqFt: editJob.sqFt != null ? String(editJob.sqFt) : "",
         coats: editJob.coats != null ? String(editJob.coats) : "1",
       };
@@ -1371,7 +1356,6 @@ function JobFormDialog({
       locationName: "", city: "", state: "KY",
       startDate: "", endDate: "", notes: "",
       businessLine: "" as "" | "general_contracting" | "asphalt_sealing",
-      jobType: "",
       sqFt: "",
       coats: "1",
     };
@@ -1383,17 +1367,7 @@ function JobFormDialog({
   const [error, setError] = useState("");
 
   function setField(k: string, v: string) {
-    setFormState(f => {
-      const next = { ...f, [k]: v };
-      // Reset jobType when business line changes if the current type isn't valid for new line
-      if (k === "businessLine") {
-        const options = getJobTypeOptions(v as "" | "general_contracting" | "asphalt_sealing");
-        if (f.jobType && !options.includes(f.jobType)) {
-          next.jobType = "";
-        }
-      }
-      return next;
-    });
+    setFormState(f => ({ ...f, [k]: v }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -1414,7 +1388,6 @@ function JobFormDialog({
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
         businessLine: form.businessLine || undefined,
-        jobType: form.jobType || undefined,
         sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
         coats: form.businessLine === "asphalt_sealing" && form.coats !== "" ? parseInt(form.coats) : undefined,
       };
@@ -1491,20 +1464,6 @@ function JobFormDialog({
                 </label>
               ))}
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Job Type</label>
-            <select
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-              value={form.jobType}
-              onChange={e => setField("jobType", e.target.value)}
-            >
-              <option value="">— Select type —</option>
-              {getJobTypeOptions(form.businessLine).map(opt => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
           </div>
 
           {form.businessLine === "asphalt_sealing" && (
