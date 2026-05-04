@@ -518,3 +518,15 @@ pool.query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS reminder_opt_out boolea
   .then(() => { console.log('clients.reminder_opt_out ensured'); pool.end(); })
   .catch(e => { console.error('reminder_opt_out migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #465: add Plaid balance cache columns to plaid_connections (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE plaid_connections ADD COLUMN IF NOT EXISTS cached_balance_current numeric')
+  .then(() => pool.query('ALTER TABLE plaid_connections ADD COLUMN IF NOT EXISTS cached_balance_available numeric'))
+  .then(() => pool.query('ALTER TABLE plaid_connections ADD COLUMN IF NOT EXISTS cached_balance_currency text'))
+  .then(() => pool.query('ALTER TABLE plaid_connections ADD COLUMN IF NOT EXISTS balance_cached_at timestamp'))
+  .then(() => { console.log('plaid_connections balance cache columns ensured'); pool.end(); })
+  .catch(e => { console.error('plaid balance cache migration error:', e.message); pool.end(); process.exit(1); });
+")
