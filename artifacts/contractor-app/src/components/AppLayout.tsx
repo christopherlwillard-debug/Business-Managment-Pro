@@ -5,8 +5,10 @@ import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, UsersRound,
   Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark,
+  Sun, Moon,
   type LucideIcon,
 } from "lucide-react";
+import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
 import { useAuth } from "@workspace/replit-auth-web";
@@ -36,6 +38,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isDark, toggle: toggleTheme } = useTheme();
 
   const { logout } = useAuth();
   const { canView, isOwner, companyName: ctxCompanyName, logoUrl: ctxLogoUrl } = useUserPermissions();
@@ -237,8 +240,20 @@ export function AppLayout({ children }: AppLayoutProps) {
           </nav>
         </div>
 
-        {/* Logout button at bottom of sidebar */}
-        <div className="flex-shrink-0 px-3 pb-4 border-t border-primary-foreground/10 pt-3">
+        {/* Bottom sidebar actions */}
+        <div className="flex-shrink-0 px-3 pb-4 border-t border-primary-foreground/10 pt-3 space-y-0.5">
+          <button
+            onClick={toggleTheme}
+            className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white transition-colors group"
+            aria-label="Toggle dark mode"
+          >
+            {isDark ? (
+              <Sun className="w-5 h-5 mr-3 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80" />
+            ) : (
+              <Moon className="w-5 h-5 mr-3 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80" />
+            )}
+            {isDark ? "Light mode" : "Dark mode"}
+          </button>
           <button
             onClick={logout}
             className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white transition-colors group"
