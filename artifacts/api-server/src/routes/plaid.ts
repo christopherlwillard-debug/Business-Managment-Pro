@@ -5,6 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
 } from "@workspace/db";
+import { expensesTable } from "@workspace/db/schema";
 import { eq, like, isNotNull, inArray, and, gte } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
@@ -192,10 +193,13 @@ router.get("/transactions", wrapAsync(async (req, res) => {
 
   const txns = await db
     .select({
+      id: bankTransactionsTable.id,
       date: bankTransactionsTable.date,
       description: bankTransactionsTable.description,
       amount: bankTransactionsTable.amount,
       transactionType: bankTransactionsTable.transactionType,
+      status: bankTransactionsTable.status,
+      matchedExpenseId: bankTransactionsTable.matchedExpenseId,
     })
     .from(bankTransactionsTable)
     .where(
@@ -305,6 +309,64 @@ router.post("/sync", wrapAsync(async (req, res) => {
     .where(eq(plaidConnectionsTable.id, connection.id));
 
   res.json({ synced: plaidTxns.length, inserted: insertedCount, updated: updatedCount, batchId: batch.id });
+}));
+
+router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) => {
+  const txnId = parseInt(req.params.txnId, 10);
+  if (isNaN(txnId)) {
+    res.status(400).json({ error: "Invalid transaction ID" });
+    return;
+  }
+
+  const { description, vendor, category, jobId, businessLine, notes } = req.body as {
+    description?: string;
+    vendor?: string;
+    category: string;
+    jobId?: number | null;
+    businessLine?: string | null;
+    notes?: string | null;
+  };
+
+  if (!category?.trim()) {
+    res.status(400).json({ error: "Category is required" });
+    return;
+  }
+
+  const [txn] = await db
+    .select()
+    .from(bankTransactionsTable)
+    .where(eq(bankTransactionsTable.id, txnId));
+
+  if (!txn) {
+    res.status(404).json({ error: "Transaction not found" });
+    return;
+  }
+
+  if (txn.status === "matched") {
+    res.status(409).json({ error: "Transaction is already filed as an expense" });
+    return;
+  }
+
+  const [expense] = await db
+    .insert(expensesTable)
+    .values({
+      description: description?.trim() || txn.description,
+      amount: txn.amount,
+      category,
+      date: txn.date,
+      vendor: vendor?.trim() || null,
+      jobId: jobId || null,
+      businessLine: businessLine || null,
+      notes: notes?.trim() || null,
+    })
+    .returning();
+
+  await db
+    .update(bankTransactionsTable)
+    .set({ status: "matched", matchedExpenseId: expense.id })
+    .where(eq(bankTransactionsTable.id, txnId));
+
+  res.status(201).json(expense);
 }));
 
 router.delete("/connection", wrapAsync(async (req, res) => {

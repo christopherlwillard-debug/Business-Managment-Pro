@@ -3,6 +3,17 @@ import { usePlaidLink } from "react-plaid-link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -31,6 +42,22 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+const CATEGORIES = [
+  "Materials",
+  "Advertising",
+  "Fuel/Travel",
+  "Subcontractor",
+  "Insurance",
+  "Professional Services",
+  "Office/Admin",
+  "Rent/Lease",
+  "Repairs/Maintenance",
+  "Tools/Equipment",
+  "Utilities",
+  "Other",
+  "Owner Draw",
+];
 
 interface PlaidStatus {
   configured: boolean;
@@ -53,15 +80,39 @@ interface PlaidBalance {
 }
 
 interface PlaidTransaction {
+  id: number;
   date: string;
   description: string;
   amount: string;
   transactionType: string;
+  status: string;
+  matchedExpenseId: number | null;
 }
 
 interface SyncResult {
   synced: number;
   batchId: number;
+}
+
+interface Vendor {
+  id: number;
+  name: string;
+  category: string | null;
+}
+
+interface Job {
+  id: number;
+  title: string;
+  status: string;
+}
+
+interface FileExpenseForm {
+  description: string;
+  vendor: string;
+  category: string;
+  jobId: string;
+  businessLine: string;
+  notes: string;
 }
 
 function formatCurrency(amount: number | string | null | undefined, currency = "USD") {
@@ -74,6 +125,15 @@ export default function Banking() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [filingTxn, setFilingTxn] = useState<PlaidTransaction | null>(null);
+  const [form, setForm] = useState<FileExpenseForm>({
+    description: "",
+    vendor: "",
+    category: "Materials",
+    jobId: "",
+    businessLine: "",
+    notes: "",
+  });
 
   const { data: status } = useQuery<PlaidStatus>({
     queryKey: ["plaid-status"],
@@ -97,6 +157,20 @@ export default function Banking() {
     queryKey: ["plaid-transactions"],
     queryFn: () => apiFetch("/api/plaid/transactions"),
     enabled: !!connection?.lastSyncedAt,
+  });
+
+  const { data: vendors } = useQuery<Vendor[]>({
+    queryKey: ["vendors"],
+    queryFn: () => apiFetch("/api/vendors"),
+    enabled: !!filingTxn,
+    staleTime: 60_000,
+  });
+
+  const { data: jobs } = useQuery<Job[]>({
+    queryKey: ["jobs-list"],
+    queryFn: () => apiFetch("/api/jobs"),
+    enabled: !!filingTxn,
+    staleTime: 60_000,
   });
 
   const getLinkTokenMutation = useMutation({
@@ -139,6 +213,21 @@ export default function Banking() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const fileAsExpenseMutation = useMutation({
+    mutationFn: ({ txnId, body }: { txnId: number; body: object }) =>
+      apiFetch(`/api/plaid/transactions/${txnId}/file-as-expense`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+      setFilingTxn(null);
+      toast({ title: "Expense filed", description: "Transaction has been recorded as an expense." });
+    },
+    onError: (err: Error) => toast({ title: "Failed to file expense", description: err.message, variant: "destructive" }),
+  });
+
   const onPlaidSuccess = useCallback(
     (public_token: string, metadata: unknown) => {
       exchangeMutation.mutate({ public_token, metadata });
@@ -161,6 +250,34 @@ export default function Banking() {
       openPlaid();
     }
   }, [linkToken, plaidReady, openPlaid]);
+
+  function openFilingSheet(txn: PlaidTransaction) {
+    setFilingTxn(txn);
+    setForm({
+      description: txn.description,
+      vendor: "",
+      category: "Materials",
+      jobId: "",
+      businessLine: "",
+      notes: "",
+    });
+  }
+
+  function handleFileSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!filingTxn) return;
+    fileAsExpenseMutation.mutate({
+      txnId: filingTxn.id,
+      body: {
+        description: form.description,
+        vendor: form.vendor || undefined,
+        category: form.category,
+        jobId: form.jobId ? parseInt(form.jobId, 10) : null,
+        businessLine: form.businessLine || null,
+        notes: form.notes || undefined,
+      },
+    });
+  }
 
   if (connectionLoading) {
     return (
@@ -373,14 +490,19 @@ export default function Banking() {
                       <th className="text-left px-6 py-2.5 font-medium text-muted-foreground">Date</th>
                       <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Description</th>
                       <th className="text-right px-6 py-2.5 font-medium text-muted-foreground">Amount</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[...transactions].reverse().map((txn, i) => {
+                    {[...transactions].reverse().map((txn) => {
                       const isCredit = txn.transactionType === "credit";
                       const amt = parseFloat(txn.amount);
+                      const isFiled = txn.status === "matched";
                       return (
-                        <tr key={i} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        <tr
+                          key={txn.id}
+                          className={`border-b last:border-0 transition-colors ${isFiled ? "opacity-50" : "hover:bg-muted/30"}`}
+                        >
                           <td className="px-6 py-3 whitespace-nowrap text-muted-foreground">
                             {new Date(txn.date + "T00:00:00").toLocaleDateString("en-US", {
                               month: "short", day: "numeric",
@@ -389,6 +511,24 @@ export default function Banking() {
                           <td className="px-4 py-3 max-w-xs truncate">{txn.description}</td>
                           <td className={`px-6 py-3 text-right font-medium tabular-nums ${isCredit ? "text-emerald-600" : "text-foreground"}`}>
                             {isCredit ? "+" : "-"}{formatCurrency(amt)}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {isFiled ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                Filed
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs px-2.5"
+                                onClick={() => openFilingSheet(txn)}
+                              >
+                                <Receipt className="w-3 h-3 mr-1" />
+                                File as Expense
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -400,6 +540,156 @@ export default function Banking() {
           </CardContent>
         </Card>
       )}
+
+      <Sheet open={!!filingTxn} onOpenChange={(open) => { if (!open) setFilingTxn(null); }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>File as Expense</SheetTitle>
+            <SheetDescription>
+              {filingTxn && (
+                <>
+                  {new Date(filingTxn.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  {" · "}
+                  <span className="font-medium">{formatCurrency(parseFloat(filingTxn.amount))}</span>
+                  {" "}
+                  <span className="text-muted-foreground">({filingTxn.transactionType})</span>
+                </>
+              )}
+            </SheetDescription>
+          </SheetHeader>
+
+          <form onSubmit={handleFileSubmit} className="space-y-4 mt-6">
+            <div className="space-y-1.5">
+              <Label htmlFor="fe-description">Description</Label>
+              <Input
+                id="fe-description"
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="fe-vendor">Vendor</Label>
+              <Input
+                id="fe-vendor"
+                placeholder="e.g. Home Depot"
+                list="vendor-suggestions"
+                value={form.vendor}
+                onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
+              />
+              <datalist id="vendor-suggestions">
+                {vendors?.map((v) => (
+                  <option key={v.id} value={v.name} />
+                ))}
+              </datalist>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="fe-category">Category</Label>
+              <select
+                id="fe-category"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                required
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Business Line</Label>
+              <div className="flex gap-2">
+                {[
+                  { val: "", label: "Untagged" },
+                  { val: "general_contracting", label: "General Contracting" },
+                  { val: "asphalt_sealing", label: "Asphalt Sealing" },
+                ].map(({ val, label }) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, businessLine: val }))}
+                    className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors ${
+                      form.businessLine === val
+                        ? val === "asphalt_sealing"
+                          ? "bg-amber-500 text-white border-amber-500"
+                          : val === "general_contracting"
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-muted text-foreground border-input"
+                        : "bg-background text-muted-foreground border-input hover:bg-muted/50"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="fe-job">Job (optional)</Label>
+              <select
+                id="fe-job"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={form.jobId}
+                onChange={(e) => setForm((f) => ({ ...f, jobId: e.target.value }))}
+              >
+                <option value="">— None —</option>
+                {jobs
+                  ?.filter((j) => j.status !== "completed" && j.status !== "cancelled")
+                  .map((j) => (
+                    <option key={j.id} value={String(j.id)}>{j.title}</option>
+                  ))}
+                {jobs
+                  ?.filter((j) => j.status === "completed" || j.status === "cancelled")
+                  .length ? (
+                    <optgroup label="Closed jobs">
+                      {jobs
+                        .filter((j) => j.status === "completed" || j.status === "cancelled")
+                        .map((j) => (
+                          <option key={j.id} value={String(j.id)}>{j.title}</option>
+                        ))}
+                    </optgroup>
+                  ) : null}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="fe-notes">Notes (optional)</Label>
+              <Textarea
+                id="fe-notes"
+                rows={2}
+                placeholder="Any additional details…"
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+
+            <SheetFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setFilingTxn(null)}
+                disabled={fileAsExpenseMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={fileAsExpenseMutation.isPending}>
+                {fileAsExpenseMutation.isPending ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Filing…
+                  </>
+                ) : (
+                  "File as Expense"
+                )}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
