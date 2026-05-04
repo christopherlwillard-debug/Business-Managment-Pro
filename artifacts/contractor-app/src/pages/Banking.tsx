@@ -77,6 +77,7 @@ interface PlaidBalance {
   available: number | null;
   current: number | null;
   currency: string;
+  cachedAt: string | null;
 }
 
 interface PlaidTransaction {
@@ -427,9 +428,16 @@ export default function Banking() {
             {balanceLoading ? (
               <div className="h-9 w-32 bg-muted rounded animate-pulse" />
             ) : (
-              <p className="text-3xl font-bold tracking-tight">
-                {formatCurrency(balance?.current, balance?.currency)}
-              </p>
+              <>
+                <p className="text-3xl font-bold tracking-tight">
+                  {formatCurrency(balance?.current, balance?.currency)}
+                </p>
+                {balance?.cachedAt && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    as of {new Date(balance.cachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -445,9 +453,16 @@ export default function Banking() {
             {balanceLoading ? (
               <div className="h-9 w-32 bg-muted rounded animate-pulse" />
             ) : (
-              <p className="text-3xl font-bold tracking-tight">
-                {formatCurrency(balance?.available, balance?.currency)}
-              </p>
+              <>
+                <p className="text-3xl font-bold tracking-tight">
+                  {formatCurrency(balance?.available, balance?.currency)}
+                </p>
+                {balance?.cachedAt && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    as of {new Date(balance.cachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

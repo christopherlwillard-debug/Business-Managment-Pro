@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, numeric } from "drizzle-orm/pg-core";
 
 export const plaidConnectionsTable = pgTable("plaid_connections", {
   id: serial("id").primaryKey(),
@@ -11,6 +11,10 @@ export const plaidConnectionsTable = pgTable("plaid_connections", {
   accountMask: text("account_mask"),
   accountType: text("account_type"),
   lastSyncedAt: timestamp("last_synced_at"),
+  cachedBalanceCurrent: numeric("cached_balance_current"),
+  cachedBalanceAvailable: numeric("cached_balance_available"),
+  cachedBalanceCurrency: text("cached_balance_currency"),
+  balanceCachedAt: timestamp("balance_cached_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import app from "./app";
 import { startRecurringExpensesJob } from "./jobs/recurringExpenses.js";
 import { startInvoiceReminderJob } from "./jobs/invoiceReminders.js";
+import { startPlaidSyncJob } from "./jobs/plaidSync.js";
 
 const rawPort = process.env["PORT"];
 
@@ -59,6 +60,7 @@ async function start() {
     console.log(`Server listening on port ${port}`);
     startRecurringExpensesJob();
     startInvoiceReminderJob();
+    startPlaidSyncJob();
   });
 }
 

@@ -150,17 +150,38 @@ router.get("/connection", wrapAsync(async (req, res) => {
   });
 }));
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 router.get("/balance", wrapAsync(async (req, res) => {
   const connections = await db.select().from(plaidConnectionsTable).limit(1);
   if (connections.length === 0) {
     res.status(404).json({ error: "No bank account connected" });
     return;
   }
+
+  const connection = connections[0];
+
+  // Return cached balance if it's less than 30 days old
+  const cacheAge = connection.balanceCachedAt
+    ? Date.now() - new Date(connection.balanceCachedAt).getTime()
+    : Infinity;
+
+  if (cacheAge < THIRTY_DAYS_MS && connection.cachedBalanceCurrent != null) {
+    res.json({
+      available: connection.cachedBalanceAvailable != null ? parseFloat(connection.cachedBalanceAvailable) : null,
+      current: parseFloat(connection.cachedBalanceCurrent),
+      currency: connection.cachedBalanceCurrency ?? "USD",
+      cachedAt: connection.balanceCachedAt,
+    });
+    return;
+  }
+
+  // Cache is stale or missing — fetch live from Plaid and store it
   if (!isPlaidConfigured()) {
     res.status(503).json({ error: "Plaid is not configured." });
     return;
   }
-  const connection = connections[0];
+
   const client = getPlaidClient();
   const response = await client.accountsGet({ access_token: connection.accessToken });
 
@@ -173,10 +194,22 @@ router.get("/balance", wrapAsync(async (req, res) => {
     return;
   }
 
+  const now = new Date();
+  await db
+    .update(plaidConnectionsTable)
+    .set({
+      cachedBalanceCurrent: account.balances.current != null ? String(account.balances.current) : null,
+      cachedBalanceAvailable: account.balances.available != null ? String(account.balances.available) : null,
+      cachedBalanceCurrency: account.balances.iso_currency_code ?? "USD",
+      balanceCachedAt: now,
+    })
+    .where(eq(plaidConnectionsTable.id, connection.id));
+
   res.json({
     available: account.balances.available,
     current: account.balances.current,
     currency: account.balances.iso_currency_code ?? "USD",
+    cachedAt: now,
   });
 }));
 
