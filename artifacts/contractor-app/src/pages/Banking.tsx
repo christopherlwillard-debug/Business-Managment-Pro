@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -156,9 +156,11 @@ export default function Banking() {
     await getLinkTokenMutation.mutateAsync();
   };
 
-  if (linkToken && plaidReady) {
-    openPlaid();
-  }
+  useEffect(() => {
+    if (linkToken && plaidReady) {
+      openPlaid();
+    }
+  }, [linkToken, plaidReady, openPlaid]);
 
   if (connectionLoading) {
     return (

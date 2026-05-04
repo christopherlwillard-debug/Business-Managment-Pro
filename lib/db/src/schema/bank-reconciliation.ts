@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp } from "drizzle-orm/pg-core";
 import { expensesTable } from "./expenses";
 import { invoicesTable } from "./invoices";
 import { otherIncomeTable } from "./other-income";
