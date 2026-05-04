@@ -1196,7 +1196,9 @@ export default function RoutePlanner() {
                   <div className="text-center px-1.5 py-1.5 rounded-lg border border-border bg-card">
                     <div className="text-[9px] text-muted-foreground mb-0.5">Expenses</div>
                     <div className="text-[11px] font-semibold text-foreground">
-                      {routeProfitStats.totalExpenses != null ? `$${routeProfitStats.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                      {routeProfitStats.totalExpenses != null && routeProfitStats.totalExpenses !== 0
+                        ? `$${routeProfitStats.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        : "—"}
                     </div>
                   </div>
                 </div>
@@ -1205,10 +1207,14 @@ export default function RoutePlanner() {
                     <div className="text-[9px] text-muted-foreground mb-0.5">Net Profit</div>
                     <div className={cn(
                       "text-[11px] font-semibold",
-                      routeProfitStats.netProfit != null && routeProfitStats.netProfit >= 0 ? "text-emerald-600" : "text-red-600"
+                      routeProfitStats.netProfit != null && routeProfitStats.netProfit !== 0
+                        ? routeProfitStats.netProfit > 0 ? "text-emerald-600" : "text-red-600"
+                        : "text-muted-foreground"
                     )}>
-                      {routeProfitStats.netProfit != null
-                        ? `${routeProfitStats.netProfit >= 0 ? "+" : ""}$${routeProfitStats.netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                      {routeProfitStats.netProfit != null && routeProfitStats.netProfit !== 0
+                        ? routeProfitStats.netProfit > 0
+                          ? `+$${routeProfitStats.netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          : `-$${Math.abs(routeProfitStats.netProfit).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                         : "—"}
                     </div>
                   </div>
@@ -1427,6 +1433,7 @@ export default function RoutePlanner() {
                       })()}
                       showNoInvoice={
                         stop.jobId != null &&
+                        stop.jobSqFt != null && stop.jobSqFt > 0 &&
                         profitSummary[stop.jobId] != null &&
                         profitSummary[stop.jobId].grossInvoiced === 0
                       }
@@ -1616,6 +1623,7 @@ export default function RoutePlanner() {
                               })()}
                               showNoInvoice={
                                 stop.jobId != null &&
+                                stop.jobSqFt != null && stop.jobSqFt > 0 &&
                                 profitSummary[stop.jobId] != null &&
                                 profitSummary[stop.jobId].grossInvoiced === 0
                               }
