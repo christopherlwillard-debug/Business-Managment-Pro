@@ -5,7 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
 } from "@workspace/db";
-import { eq, like } from "drizzle-orm";
+import { eq, like, isNotNull, inArray } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
@@ -31,19 +31,22 @@ function plaidAccountLabel(connection: { institutionName: string | null; account
   return connection.institutionName ?? connection.accountName ?? "Connected Bank";
 }
 
-async function deletePlaidBatches(accountLabel: string): Promise<void> {
+async function deletePlaidDataForConnection(connectionId: number): Promise<void> {
   const batches = await db
     .select({ id: bankImportBatchesTable.id })
     .from(bankImportBatchesTable)
-    .where(like(bankImportBatchesTable.fileName, "plaid-sync-%"));
+    .where(like(bankImportBatchesTable.fileName, `plaid-conn-${connectionId}-%`));
 
-  for (const batch of batches) {
-    await db
-      .delete(bankTransactionsTable)
-      .where(eq(bankTransactionsTable.importBatchId, batch.id));
+  if (batches.length === 0) return;
+
+  const batchIds = batches.map((b) => b.id);
+  await db
+    .delete(bankTransactionsTable)
+    .where(inArray(bankTransactionsTable.importBatchId, batchIds));
+  for (const batchId of batchIds) {
     await db
       .delete(bankImportBatchesTable)
-      .where(eq(bankImportBatchesTable.id, batch.id));
+      .where(eq(bankImportBatchesTable.id, batchId));
   }
 }
 
@@ -101,7 +104,7 @@ router.post("/exchange-token", wrapAsync(async (req, res) => {
       }
     } catch {
     }
-    await deletePlaidBatches(plaidAccountLabel(conn));
+    await deletePlaidDataForConnection(conn.id);
     await db.delete(plaidConnectionsTable).where(eq(plaidConnectionsTable.id, conn.id));
   }
 
@@ -182,11 +185,12 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     res.json([]);
     return;
   }
+  const connection = connections[0];
 
   const batches = await db
     .select({ id: bankImportBatchesTable.id })
     .from(bankImportBatchesTable)
-    .where(like(bankImportBatchesTable.fileName, "plaid-sync-%"));
+    .where(like(bankImportBatchesTable.fileName, `plaid-conn-${connection.id}-%`));
 
   if (batches.length === 0) {
     res.json([]);
@@ -236,32 +240,67 @@ router.post("/sync", wrapAsync(async (req, res) => {
     },
   });
 
-  const transactions = response.data.transactions;
-
-  await deletePlaidBatches(plaidAccountLabel(connection));
-
+  const plaidTxns = response.data.transactions;
   const accountLabel = plaidAccountLabel(connection);
+  const batchFileName = `plaid-conn-${connection.id}-${endDate}`;
 
-  const [batch] = await db
-    .insert(bankImportBatchesTable)
-    .values({
-      accountName: accountLabel,
-      fileName: `plaid-sync-${endDate}`,
-      rowCount: transactions.length,
-    })
-    .returning();
+  let batch = await db
+    .select()
+    .from(bankImportBatchesTable)
+    .where(eq(bankImportBatchesTable.fileName, batchFileName))
+    .then((rows) => rows[0] ?? null);
 
-  if (transactions.length > 0) {
-    await db.insert(bankTransactionsTable).values(
-      transactions.map((t) => ({
+  if (!batch) {
+    const [newBatch] = await db
+      .insert(bankImportBatchesTable)
+      .values({
+        accountName: accountLabel,
+        fileName: batchFileName,
+        rowCount: plaidTxns.length,
+      })
+      .returning();
+    batch = newBatch;
+  } else {
+    await db
+      .update(bankImportBatchesTable)
+      .set({ rowCount: plaidTxns.length, importedAt: new Date() })
+      .where(eq(bankImportBatchesTable.id, batch.id));
+  }
+
+  let insertedCount = 0;
+  let updatedCount = 0;
+
+  for (const t of plaidTxns) {
+    const txnAmount = String(-t.amount);
+    const txnType = t.amount < 0 ? "credit" : "debit";
+    const description = t.merchant_name ?? t.name;
+
+    const existing = await db
+      .select({ id: bankTransactionsTable.id, status: bankTransactionsTable.status })
+      .from(bankTransactionsTable)
+      .where(eq(bankTransactionsTable.plaidTransactionId, t.transaction_id))
+      .then((rows) => rows[0] ?? null);
+
+    if (existing) {
+      if (existing.status === "unmatched") {
+        await db
+          .update(bankTransactionsTable)
+          .set({ date: t.date, description, amount: txnAmount, transactionType: txnType })
+          .where(eq(bankTransactionsTable.id, existing.id));
+        updatedCount++;
+      }
+    } else {
+      await db.insert(bankTransactionsTable).values({
         importBatchId: batch.id,
         date: t.date,
-        description: t.merchant_name ?? t.name,
-        amount: String(-t.amount),
-        transactionType: t.amount < 0 ? "credit" : "debit",
-        status: "unmatched" as const,
-      }))
-    );
+        description,
+        amount: txnAmount,
+        transactionType: txnType,
+        status: "unmatched",
+        plaidTransactionId: t.transaction_id,
+      });
+      insertedCount++;
+    }
   }
 
   await db
@@ -269,7 +308,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
     .set({ lastSyncedAt: new Date() })
     .where(eq(plaidConnectionsTable.id, connection.id));
 
-  res.json({ synced: transactions.length, batchId: batch.id });
+  res.json({ synced: plaidTxns.length, inserted: insertedCount, updated: updatedCount, batchId: batch.id });
 }));
 
 router.delete("/connection", wrapAsync(async (req, res) => {
@@ -289,7 +328,7 @@ router.delete("/connection", wrapAsync(async (req, res) => {
     }
   }
 
-  await deletePlaidBatches(plaidAccountLabel(connection));
+  await deletePlaidDataForConnection(connection.id);
   await db.delete(plaidConnectionsTable).where(eq(plaidConnectionsTable.id, connection.id));
 
   res.json({ ok: true });

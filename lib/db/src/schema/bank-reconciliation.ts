@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { expensesTable } from "./expenses";
 import { invoicesTable } from "./invoices";
 import { otherIncomeTable } from "./other-income";
@@ -25,6 +25,7 @@ export const bankTransactionsTable = pgTable("bank_transactions", {
   matchedOtherIncomeId: integer("matched_other_income_id").references(() => otherIncomeTable.id, { onDelete: "set null" }),
   suggestedMatchType: text("suggested_match_type"),
   suggestedMatchId: integer("suggested_match_id"),
+  plaidTransactionId: text("plaid_transaction_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
