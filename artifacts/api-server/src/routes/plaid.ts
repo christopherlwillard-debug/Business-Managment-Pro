@@ -327,8 +327,20 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
     notes?: string | null;
   };
 
-  if (!category?.trim()) {
-    res.status(400).json({ error: "Category is required" });
+  const VALID_CATEGORIES = [
+    "Materials", "Advertising", "Fuel/Travel", "Subcontractor", "Insurance",
+    "Professional Services", "Office/Admin", "Rent/Lease", "Repairs/Maintenance",
+    "Tools/Equipment", "Utilities", "Other", "Owner Draw",
+  ];
+  const VALID_BUSINESS_LINES = ["", "general_contracting", "asphalt_sealing"];
+
+  if (!category?.trim() || !VALID_CATEGORIES.includes(category)) {
+    res.status(400).json({ error: `Category must be one of: ${VALID_CATEGORIES.join(", ")}` });
+    return;
+  }
+
+  if (businessLine !== undefined && businessLine !== null && !VALID_BUSINESS_LINES.includes(businessLine)) {
+    res.status(400).json({ error: "Invalid businessLine value" });
     return;
   }
 

@@ -516,7 +516,7 @@ export default function Banking() {
                             {isFiled ? (
                               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                Filed
+                                Filed ✓
                               </span>
                             ) : (
                               <Button
