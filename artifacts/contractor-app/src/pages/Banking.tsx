@@ -14,9 +14,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/components/ui/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, ArrowDownLeft, ArrowUpRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -53,12 +52,6 @@ interface PlaidBalance {
   currency: string;
 }
 
-interface PlaidTransaction {
-  date: string;
-  description: string;
-  amount: string;
-  transactionType: string;
-}
 
 interface SyncResult {
   synced: number;
@@ -241,8 +234,6 @@ export default function Banking() {
       </div>
     );
   }
-
-  const isDebit = (amount: string) => parseFloat(amount) < 0;
 
   return (
     <div className="space-y-6">
