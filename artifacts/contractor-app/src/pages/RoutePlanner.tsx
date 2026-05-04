@@ -10,6 +10,7 @@ import {
   Edit2, X, Save, GripVertical, Users, Link as LinkIcon, RefreshCw,
   Layers, Scissors, ExternalLink, Share2, Check,
   Droplets, AlertTriangle, Info, Settings2, CheckCircle2, SquareStack,
+  TrendingUp,
 } from "lucide-react";
 import { useListJobs } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
@@ -88,6 +89,13 @@ interface ClientOption {
   city: string | null;
   state: string | null;
   zip: string | null;
+}
+
+interface JobProfitData {
+  grossInvoiced: number;
+  collected: number;
+  jobExpenses: number;
+  netProfit: number;
 }
 
 interface ProspectOption {
@@ -448,6 +456,47 @@ export default function RoutePlanner() {
 
   // Optimize always operates on the selected day's stops only
   const dayStops = allStops.filter(s => s.scheduledDate === selectedDateStr);
+
+  const dayJobIds = useMemo(
+    () => [...new Set(dayStops.filter(s => s.jobId != null).map(s => s.jobId!))].sort((a, b) => a - b),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dayStops.map(s => s.jobId).join(",")],
+  );
+  const dayJobIdsKey = dayJobIds.join(",");
+
+  const { data: profitSummary = {} } = useQuery<Record<number, JobProfitData>>({
+    queryKey: ["job-profit-summary", dayJobIdsKey],
+    queryFn: () =>
+      apiFetch(`/jobs/profit-summary?jobIds=${dayJobIdsKey}`) as Promise<Record<number, JobProfitData>>,
+    staleTime: 60_000,
+    enabled: dayJobIds.length > 0,
+  });
+
+  const routeProfitStats = useMemo(() => {
+    let totalSqFt = 0;
+    let totalNetProfit = 0;
+    let totalExpenses = 0;
+    let counted = 0;
+    for (const stop of dayStops) {
+      if (stop.jobId == null) continue;
+      const p = profitSummary[stop.jobId];
+      if (!p) continue;
+      const sqft = stop.jobSqFt ?? 0;
+      if (sqft <= 0) continue;
+      totalSqFt += sqft;
+      totalNetProfit += p.netProfit;
+      totalExpenses += p.jobExpenses;
+      counted++;
+    }
+    if (counted === 0 || totalSqFt === 0) return null;
+    return {
+      profitPerSqFt: totalNetProfit / totalSqFt,
+      costPerSqFt: totalExpenses / totalSqFt,
+      totalNetProfit,
+      totalSqFt,
+      counted,
+    };
+  }, [dayStops, profitSummary]);
 
   const displayStops = optimizedOrder ?? viewStops;
 
@@ -1104,6 +1153,39 @@ export default function RoutePlanner() {
           )}
         </div>
 
+        {routeProfitStats && (
+          <div className="px-4 py-2.5 border-b border-border bg-muted/20">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" />
+                Route Profit ({routeProfitStats.counted} job{routeProfitStats.counted !== 1 ? "s" : ""})
+              </p>
+              <span className="text-[10px] text-muted-foreground">{routeProfitStats.totalSqFt.toLocaleString()} sq ft</span>
+            </div>
+            <div className="flex gap-2">
+              <div className={cn(
+                "flex-1 text-center px-2 py-1.5 rounded-lg border text-xs font-semibold",
+                routeProfitStats.profitPerSqFt >= 0.15
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : routeProfitStats.profitPerSqFt >= 0.05
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-red-50 text-red-700 border-red-200"
+              )}>
+                <div className="text-[10px] font-normal opacity-70 mb-0.5">Profit / sq ft</div>
+                {routeProfitStats.profitPerSqFt >= 0 ? "+" : ""}${routeProfitStats.profitPerSqFt.toFixed(2)}
+              </div>
+              <div className="flex-1 text-center px-2 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-muted-foreground">
+                <div className="text-[10px] font-normal opacity-70 mb-0.5">Cost / sq ft</div>
+                ${routeProfitStats.costPerSqFt.toFixed(2)}
+              </div>
+              <div className="flex-1 text-center px-2 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-foreground">
+                <div className="text-[10px] font-normal opacity-70 mb-0.5">Net Profit</div>
+                {routeProfitStats.totalNetProfit >= 0 ? "+" : ""}${routeProfitStats.totalNetProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {showAddForm ? (
           <form onSubmit={handleAddStop} className="px-4 py-3 border-b border-border bg-muted/20 space-y-2">
             <div className="flex items-center justify-between mb-1">
@@ -1291,6 +1373,11 @@ export default function RoutePlanner() {
                       jobSqFt={stop.jobId != null ? stop.jobSqFt : (linkedJob?.sqFt ?? null)}
                       jobCoats={stop.jobId != null ? stop.jobCoats : (linkedJob?.coats ?? null)}
                       availableJobs={stop.clientId != null ? (asphaltJobsByClientId.get(stop.clientId) ?? []) : []}
+                      profitPerSqFt={
+                        stop.jobId != null && stop.jobSqFt && stop.jobSqFt > 0 && profitSummary[stop.jobId]
+                          ? profitSummary[stop.jobId].netProfit / stop.jobSqFt
+                          : null
+                      }
                       onRetryGeocode={async () => {
                         setRetryingGeocodeId(stop.id);
                         const coords = await geocodeAddress(stop.address, BASE);
@@ -1470,6 +1557,11 @@ export default function RoutePlanner() {
                               jobSqFt={stop.jobId != null ? stop.jobSqFt : (linkedJob?.sqFt ?? null)}
                               jobCoats={stop.jobId != null ? stop.jobCoats : (linkedJob?.coats ?? null)}
                               availableJobs={stop.clientId != null ? (asphaltJobsByClientId.get(stop.clientId) ?? []) : []}
+                              profitPerSqFt={
+                                stop.jobId != null && stop.jobSqFt && stop.jobSqFt > 0 && profitSummary[stop.jobId]
+                                  ? profitSummary[stop.jobId].netProfit / stop.jobSqFt
+                                  : null
+                              }
                               onRetryGeocode={async () => {
                                 setRetryingGeocodeId(stop.id);
                                 const coords = await geocodeAddress(stop.address, BASE);
@@ -1611,6 +1703,7 @@ interface StopCardProps {
   jobSqFt?: number | null;
   jobCoats?: number | null;
   availableJobs?: AvailableJob[];
+  profitPerSqFt?: number | null;
 }
 
 function StopCard({
@@ -1619,7 +1712,7 @@ function StopCard({
   onDelete, onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
   isSaving, geocoding, isOptimized, onRetryGeocode, retryGeocoding,
-  jobSqFt, jobCoats, availableJobs = [],
+  jobSqFt, jobCoats, availableJobs = [], profitPerSqFt,
 }: StopCardProps) {
   const cfg = STATUS_CONFIG[stop.status];
 
@@ -1738,6 +1831,19 @@ function StopCard({
             <span className={cn("inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0", cfg.bg, cfg.color)}>
               {cfg.label}
             </span>
+            {profitPerSqFt != null && (
+              <span className={cn(
+                "inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0",
+                profitPerSqFt >= 0.15
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : profitPerSqFt >= 0.05
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-red-50 text-red-700 border-red-200"
+              )}>
+                <TrendingUp className="w-2.5 h-2.5" />
+                {profitPerSqFt >= 0 ? "+" : ""}${profitPerSqFt.toFixed(2)}/sqft
+              </span>
+            )}
             {(!stop.lat || !stop.lng) && (
               <>
                 <span className="inline-flex items-center text-[9px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
