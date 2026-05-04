@@ -5,7 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
@@ -23,6 +23,29 @@ function requireOwnerMiddleware() {
 }
 
 router.use(requireOwnerMiddleware());
+
+function plaidAccountLabel(connection: { institutionName: string | null; accountName: string | null }): string {
+  if (connection.institutionName && connection.accountName) {
+    return `${connection.institutionName} – ${connection.accountName}`;
+  }
+  return connection.institutionName ?? connection.accountName ?? "Connected Bank";
+}
+
+async function deletePlaidBatches(accountLabel: string): Promise<void> {
+  const batches = await db
+    .select({ id: bankImportBatchesTable.id })
+    .from(bankImportBatchesTable)
+    .where(like(bankImportBatchesTable.fileName, "plaid-sync-%"));
+
+  for (const batch of batches) {
+    await db
+      .delete(bankTransactionsTable)
+      .where(eq(bankTransactionsTable.importBatchId, batch.id));
+    await db
+      .delete(bankImportBatchesTable)
+      .where(eq(bankImportBatchesTable.id, batch.id));
+  }
+}
 
 router.get("/status", (req, res) => {
   res.json({ configured: isPlaidConfigured() });
@@ -69,7 +92,18 @@ router.post("/exchange-token", wrapAsync(async (req, res) => {
   const account = metadata?.accounts?.[0];
   const institution = metadata?.institution;
 
-  await db.delete(plaidConnectionsTable).where(eq(plaidConnectionsTable.id, plaidConnectionsTable.id));
+  const existing = await db.select().from(plaidConnectionsTable);
+  for (const conn of existing) {
+    try {
+      if (isPlaidConfigured()) {
+        const c = getPlaidClient();
+        await c.itemRemove({ access_token: conn.accessToken });
+      }
+    } catch {
+    }
+    await deletePlaidBatches(plaidAccountLabel(conn));
+    await db.delete(plaidConnectionsTable).where(eq(plaidConnectionsTable.id, conn.id));
+  }
 
   const [connection] = await db
     .insert(plaidConnectionsTable)
@@ -142,6 +176,39 @@ router.get("/balance", wrapAsync(async (req, res) => {
   });
 }));
 
+router.get("/transactions", wrapAsync(async (req, res) => {
+  const connections = await db.select().from(plaidConnectionsTable).limit(1);
+  if (connections.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const batches = await db
+    .select({ id: bankImportBatchesTable.id })
+    .from(bankImportBatchesTable)
+    .where(like(bankImportBatchesTable.fileName, "plaid-sync-%"));
+
+  if (batches.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const latestBatchId = Math.max(...batches.map((b) => b.id));
+
+  const txns = await db
+    .select({
+      date: bankTransactionsTable.date,
+      description: bankTransactionsTable.description,
+      amount: bankTransactionsTable.amount,
+      transactionType: bankTransactionsTable.transactionType,
+    })
+    .from(bankTransactionsTable)
+    .where(eq(bankTransactionsTable.importBatchId, latestBatchId))
+    .orderBy(bankTransactionsTable.date);
+
+  res.json(txns);
+}));
+
 router.post("/sync", wrapAsync(async (req, res) => {
   const connections = await db.select().from(plaidConnectionsTable).limit(1);
   if (connections.length === 0) {
@@ -171,14 +238,14 @@ router.post("/sync", wrapAsync(async (req, res) => {
 
   const transactions = response.data.transactions;
 
-  const accountName = connection.institutionName
-    ? `${connection.institutionName} – ${connection.accountName ?? "Account"}`
-    : (connection.accountName ?? "Connected Bank");
+  await deletePlaidBatches(plaidAccountLabel(connection));
+
+  const accountLabel = plaidAccountLabel(connection);
 
   const [batch] = await db
     .insert(bankImportBatchesTable)
     .values({
-      accountName,
+      accountName: accountLabel,
       fileName: `plaid-sync-${endDate}`,
       rowCount: transactions.length,
     })
@@ -222,6 +289,7 @@ router.delete("/connection", wrapAsync(async (req, res) => {
     }
   }
 
+  await deletePlaidBatches(plaidAccountLabel(connection));
   await db.delete(plaidConnectionsTable).where(eq(plaidConnectionsTable.id, connection.id));
 
   res.json({ ok: true });

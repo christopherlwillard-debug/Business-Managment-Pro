@@ -52,23 +52,22 @@ interface PlaidBalance {
   currency: string;
 }
 
+interface PlaidTransaction {
+  date: string;
+  description: string;
+  amount: string;
+  transactionType: string;
+}
 
 interface SyncResult {
   synced: number;
   batchId: number;
 }
 
-function formatCurrency(amount: number | null | undefined, currency = "USD") {
+function formatCurrency(amount: number | string | null | undefined, currency = "USD") {
   if (amount == null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const n = typeof amount === "string" ? parseFloat(amount) : amount;
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(n);
 }
 
 export default function Banking() {
@@ -94,6 +93,12 @@ export default function Banking() {
     retry: false,
   });
 
+  const { data: transactions, isLoading: txnsLoading } = useQuery<PlaidTransaction[]>({
+    queryKey: ["plaid-transactions"],
+    queryFn: () => apiFetch("/api/plaid/transactions"),
+    enabled: !!connection?.lastSyncedAt,
+  });
+
   const getLinkTokenMutation = useMutation({
     mutationFn: () => apiFetch<{ link_token: string }>("/api/plaid/link-token", { method: "POST" }),
     onSuccess: (data) => setLinkToken(data.link_token),
@@ -106,6 +111,7 @@ export default function Banking() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plaid-connection"] });
       qc.invalidateQueries({ queryKey: ["plaid-balance"] });
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
       setLinkToken(null);
       toast({ title: "Bank account connected!", description: "Your account is now linked." });
     },
@@ -116,6 +122,7 @@ export default function Banking() {
     mutationFn: () => apiFetch<SyncResult>("/api/plaid/sync", { method: "POST" }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["plaid-connection"] });
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
       toast({ title: "Sync complete", description: `${data.synced} transaction${data.synced !== 1 ? "s" : ""} imported.` });
     },
     onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
@@ -126,6 +133,7 @@ export default function Banking() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plaid-connection"] });
       qc.invalidateQueries({ queryKey: ["plaid-balance"] });
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
       toast({ title: "Bank account disconnected" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -271,7 +279,7 @@ export default function Banking() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Disconnect bank account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will remove your linked bank account and its credentials. Previously imported transactions will remain in Bank Reconciliation. You can re-connect at any time.
+                  This will remove your linked bank account and all imported transactions. You can re-connect at any time.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -326,16 +334,7 @@ export default function Banking() {
         </Card>
       </div>
 
-      {connection.lastSyncedAt && (
-        <p className="text-xs text-muted-foreground">
-          Last synced: {new Date(connection.lastSyncedAt).toLocaleString()}
-          {" · "}
-          Transactions are stored in{" "}
-          <a href="#/accounting" className="underline">Bank Reconciliation</a> for matching.
-        </p>
-      )}
-
-      {!connection.lastSyncedAt && (
+      {!connection.lastSyncedAt ? (
         <Card className="border-dashed">
           <CardContent className="flex items-start gap-3 py-5">
             <RefreshCw className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
@@ -343,9 +342,59 @@ export default function Banking() {
               <p className="font-medium">No transactions synced yet</p>
               <p className="text-sm text-muted-foreground mt-0.5">
                 Click <span className="font-semibold">Sync Transactions</span> above to import the last 30 days of activity.
-                Imported transactions appear in Bank Reconciliation where you can match them to expenses and invoices.
               </p>
             </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Recent Transactions (Last 30 Days)</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Synced {new Date(connection.lastSyncedAt).toLocaleString()}
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            {txnsLoading ? (
+              <div className="space-y-2 p-4">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="h-10 bg-muted rounded animate-pulse" />
+                ))}
+              </div>
+            ) : !transactions || transactions.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-6 py-4">No transactions found for this period.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left px-6 py-2.5 font-medium text-muted-foreground">Date</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Description</th>
+                      <th className="text-right px-6 py-2.5 font-medium text-muted-foreground">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...transactions].reverse().map((txn, i) => {
+                      const amt = parseFloat(txn.amount);
+                      const isCredit = amt > 0;
+                      return (
+                        <tr key={i} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                          <td className="px-6 py-3 whitespace-nowrap text-muted-foreground">
+                            {new Date(txn.date + "T00:00:00").toLocaleDateString("en-US", {
+                              month: "short", day: "numeric",
+                            })}
+                          </td>
+                          <td className="px-4 py-3 max-w-xs truncate">{txn.description}</td>
+                          <td className={`px-6 py-3 text-right font-medium tabular-nums ${isCredit ? "text-emerald-600" : "text-foreground"}`}>
+                            {isCredit ? "+" : ""}{formatCurrency(amt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
