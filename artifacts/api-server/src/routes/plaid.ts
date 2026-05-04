@@ -5,7 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
 } from "@workspace/db";
-import { eq, like, isNotNull, inArray } from "drizzle-orm";
+import { eq, like, isNotNull, inArray, and, gte } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
@@ -185,19 +185,10 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     res.json([]);
     return;
   }
-  const connection = connections[0];
 
-  const batches = await db
-    .select({ id: bankImportBatchesTable.id })
-    .from(bankImportBatchesTable)
-    .where(like(bankImportBatchesTable.fileName, `plaid-conn-${connection.id}-%`));
-
-  if (batches.length === 0) {
-    res.json([]);
-    return;
-  }
-
-  const latestBatchId = Math.max(...batches.map((b) => b.id));
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
   const txns = await db
     .select({
@@ -207,7 +198,12 @@ router.get("/transactions", wrapAsync(async (req, res) => {
       transactionType: bankTransactionsTable.transactionType,
     })
     .from(bankTransactionsTable)
-    .where(eq(bankTransactionsTable.importBatchId, latestBatchId))
+    .where(
+      and(
+        isNotNull(bankTransactionsTable.plaidTransactionId),
+        gte(bankTransactionsTable.date, thirtyDaysAgo)
+      )
+    )
     .orderBy(bankTransactionsTable.date);
 
   res.json(txns);
@@ -271,8 +267,8 @@ router.post("/sync", wrapAsync(async (req, res) => {
   let updatedCount = 0;
 
   for (const t of plaidTxns) {
-    const txnAmount = String(-t.amount);
-    const txnType = t.amount < 0 ? "credit" : "debit";
+    const absAmount = String(Math.abs(t.amount));
+    const txnType: "debit" | "credit" = t.amount > 0 ? "debit" : "credit";
     const description = t.merchant_name ?? t.name;
 
     const existing = await db
@@ -285,7 +281,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
       if (existing.status === "unmatched") {
         await db
           .update(bankTransactionsTable)
-          .set({ date: t.date, description, amount: txnAmount, transactionType: txnType })
+          .set({ date: t.date, description, amount: absAmount, transactionType: txnType })
           .where(eq(bankTransactionsTable.id, existing.id));
         updatedCount++;
       }
@@ -294,7 +290,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
         importBatchId: batch.id,
         date: t.date,
         description,
-        amount: txnAmount,
+        amount: absAmount,
         transactionType: txnType,
         status: "unmatched",
         plaidTransactionId: t.transaction_id,

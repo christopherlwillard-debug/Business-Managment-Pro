@@ -375,8 +375,8 @@ export default function Banking() {
                   </thead>
                   <tbody>
                     {[...transactions].reverse().map((txn, i) => {
+                      const isCredit = txn.transactionType === "credit";
                       const amt = parseFloat(txn.amount);
-                      const isCredit = amt > 0;
                       return (
                         <tr key={i} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                           <td className="px-6 py-3 whitespace-nowrap text-muted-foreground">
@@ -386,7 +386,7 @@ export default function Banking() {
                           </td>
                           <td className="px-4 py-3 max-w-xs truncate">{txn.description}</td>
                           <td className={`px-6 py-3 text-right font-medium tabular-nums ${isCredit ? "text-emerald-600" : "text-foreground"}`}>
-                            {isCredit ? "+" : ""}{formatCurrency(amt)}
+                            {isCredit ? "+" : "-"}{formatCurrency(amt)}
                           </td>
                         </tr>
                       );
