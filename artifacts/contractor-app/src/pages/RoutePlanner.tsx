@@ -464,7 +464,7 @@ export default function RoutePlanner() {
   );
   const dayJobIdsKey = dayJobIds.join(",");
 
-  const { data: profitSummary = {} } = useQuery<Record<number, JobProfitData>>({
+  const { data: profitSummary = {}, isLoading: isLoadingProfit } = useQuery<Record<number, JobProfitData>>({
     queryKey: ["job-profit-summary", dayJobIdsKey],
     queryFn: () =>
       apiFetch(`/jobs/profit-summary?jobIds=${dayJobIdsKey}`) as Promise<Record<number, JobProfitData>>,
@@ -473,28 +473,40 @@ export default function RoutePlanner() {
   });
 
   const routeProfitStats = useMemo(() => {
-    let totalSqFt = 0;
-    let totalNetProfit = 0;
+    const stopsWithJobs = dayStops.filter(s => s.jobId != null);
+    if (stopsWithJobs.length === 0) return null;
+
+    let totalAdjSqFt = 0;
+    let totalInvoiced = 0;
+    let totalCollected = 0;
     let totalExpenses = 0;
-    let counted = 0;
-    for (const stop of dayStops) {
-      if (stop.jobId == null) continue;
-      const p = profitSummary[stop.jobId];
+    let jobsWithData = 0;
+    let jobsWithInvoice = 0;
+
+    for (const stop of stopsWithJobs) {
+      const p = profitSummary[stop.jobId!];
       if (!p) continue;
-      const sqft = stop.jobSqFt ?? 0;
-      if (sqft <= 0) continue;
-      totalSqFt += sqft;
-      totalNetProfit += p.netProfit;
+      const adjSqFt = (stop.jobSqFt ?? 0) * (stop.jobCoats ?? 1);
+      totalAdjSqFt += adjSqFt;
+      totalInvoiced += p.grossInvoiced;
+      totalCollected += p.collected;
       totalExpenses += p.jobExpenses;
-      counted++;
+      jobsWithData++;
+      if (p.grossInvoiced > 0) jobsWithInvoice++;
     }
-    if (counted === 0 || totalSqFt === 0) return null;
+
+    const netProfit = totalCollected - totalExpenses;
+    const profitPerSqFt = totalAdjSqFt > 0 && jobsWithInvoice > 0 ? netProfit / totalAdjSqFt : null;
+
     return {
-      profitPerSqFt: totalNetProfit / totalSqFt,
-      costPerSqFt: totalExpenses / totalSqFt,
-      totalNetProfit,
-      totalSqFt,
-      counted,
+      stopsWithJobs: stopsWithJobs.length,
+      jobsWithData,
+      hasInvoiceData: jobsWithInvoice > 0,
+      totalAdjSqFt: totalAdjSqFt > 0 ? totalAdjSqFt : null,
+      totalInvoiced: jobsWithInvoice > 0 ? totalInvoiced : null,
+      totalExpenses: jobsWithData > 0 ? totalExpenses : null,
+      netProfit: jobsWithData > 0 ? netProfit : null,
+      profitPerSqFt,
     };
   }, [dayStops, profitSummary]);
 
@@ -1158,31 +1170,66 @@ export default function RoutePlanner() {
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
                 <TrendingUp className="w-3 h-3" />
-                Route Profit ({routeProfitStats.counted} job{routeProfitStats.counted !== 1 ? "s" : ""})
+                Route Profit
               </p>
-              <span className="text-[10px] text-muted-foreground">{routeProfitStats.totalSqFt.toLocaleString()} sq ft</span>
+              {isLoadingProfit && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
             </div>
-            <div className="flex gap-2">
-              <div className={cn(
-                "flex-1 text-center px-2 py-1.5 rounded-lg border text-xs font-semibold",
-                routeProfitStats.profitPerSqFt >= 0.15
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : routeProfitStats.profitPerSqFt >= 0.05
-                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                    : "bg-red-50 text-red-700 border-red-200"
-              )}>
-                <div className="text-[10px] font-normal opacity-70 mb-0.5">Profit / sq ft</div>
-                {routeProfitStats.profitPerSqFt >= 0 ? "+" : ""}${routeProfitStats.profitPerSqFt.toFixed(2)}
-              </div>
-              <div className="flex-1 text-center px-2 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-muted-foreground">
-                <div className="text-[10px] font-normal opacity-70 mb-0.5">Cost / sq ft</div>
-                ${routeProfitStats.costPerSqFt.toFixed(2)}
-              </div>
-              <div className="flex-1 text-center px-2 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-foreground">
-                <div className="text-[10px] font-normal opacity-70 mb-0.5">Net Profit</div>
-                {routeProfitStats.totalNetProfit >= 0 ? "+" : ""}${routeProfitStats.totalNetProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </div>
-            </div>
+            {!routeProfitStats.hasInvoiceData ? (
+              <p className="text-[11px] text-muted-foreground italic">
+                Link jobs with invoices to see profit data.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+                  <div className="text-center px-1.5 py-1.5 rounded-lg border border-border bg-card">
+                    <div className="text-[9px] text-muted-foreground mb-0.5">Total Sqft</div>
+                    <div className="text-[11px] font-semibold text-foreground">
+                      {routeProfitStats.totalAdjSqFt != null ? routeProfitStats.totalAdjSqFt.toLocaleString() : "—"}
+                    </div>
+                  </div>
+                  <div className="text-center px-1.5 py-1.5 rounded-lg border border-border bg-card">
+                    <div className="text-[9px] text-muted-foreground mb-0.5">Invoiced</div>
+                    <div className="text-[11px] font-semibold text-foreground">
+                      {routeProfitStats.totalInvoiced != null ? `$${routeProfitStats.totalInvoiced.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                    </div>
+                  </div>
+                  <div className="text-center px-1.5 py-1.5 rounded-lg border border-border bg-card">
+                    <div className="text-[9px] text-muted-foreground mb-0.5">Expenses</div>
+                    <div className="text-[11px] font-semibold text-foreground">
+                      {routeProfitStats.totalExpenses != null ? `$${routeProfitStats.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="text-center px-1.5 py-1.5 rounded-lg border border-border bg-card">
+                    <div className="text-[9px] text-muted-foreground mb-0.5">Net Profit</div>
+                    <div className={cn(
+                      "text-[11px] font-semibold",
+                      routeProfitStats.netProfit != null && routeProfitStats.netProfit >= 0 ? "text-emerald-600" : "text-red-600"
+                    )}>
+                      {routeProfitStats.netProfit != null
+                        ? `${routeProfitStats.netProfit >= 0 ? "+" : ""}$${routeProfitStats.netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className={cn(
+                    "text-center px-1.5 py-1.5 rounded-lg border text-[11px] font-semibold",
+                    routeProfitStats.profitPerSqFt == null
+                      ? "border-border bg-card text-muted-foreground"
+                      : routeProfitStats.profitPerSqFt >= 0.15
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : routeProfitStats.profitPerSqFt >= 0.05
+                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : "bg-red-50 text-red-700 border-red-200"
+                  )}>
+                    <div className="text-[9px] font-normal opacity-70 mb-0.5">Profit / sqft</div>
+                    {routeProfitStats.profitPerSqFt != null
+                      ? `${routeProfitStats.profitPerSqFt >= 0 ? "+" : ""}$${routeProfitStats.profitPerSqFt.toFixed(2)}`
+                      : "—"}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1373,10 +1420,15 @@ export default function RoutePlanner() {
                       jobSqFt={stop.jobId != null ? stop.jobSqFt : (linkedJob?.sqFt ?? null)}
                       jobCoats={stop.jobId != null ? stop.jobCoats : (linkedJob?.coats ?? null)}
                       availableJobs={stop.clientId != null ? (asphaltJobsByClientId.get(stop.clientId) ?? []) : []}
-                      profitPerSqFt={
-                        stop.jobId != null && stop.jobSqFt && stop.jobSqFt > 0 && profitSummary[stop.jobId]
-                          ? profitSummary[stop.jobId].netProfit / stop.jobSqFt
-                          : null
+                      profitPerSqFt={(() => {
+                        const p = stop.jobId != null ? profitSummary[stop.jobId] : undefined;
+                        if (!p || p.grossInvoiced === 0 || !stop.jobSqFt || stop.jobSqFt <= 0) return null;
+                        return p.netProfit / stop.jobSqFt;
+                      })()}
+                      showNoInvoice={
+                        stop.jobId != null &&
+                        profitSummary[stop.jobId] != null &&
+                        profitSummary[stop.jobId].grossInvoiced === 0
                       }
                       onRetryGeocode={async () => {
                         setRetryingGeocodeId(stop.id);
@@ -1557,10 +1609,15 @@ export default function RoutePlanner() {
                               jobSqFt={stop.jobId != null ? stop.jobSqFt : (linkedJob?.sqFt ?? null)}
                               jobCoats={stop.jobId != null ? stop.jobCoats : (linkedJob?.coats ?? null)}
                               availableJobs={stop.clientId != null ? (asphaltJobsByClientId.get(stop.clientId) ?? []) : []}
-                              profitPerSqFt={
-                                stop.jobId != null && stop.jobSqFt && stop.jobSqFt > 0 && profitSummary[stop.jobId]
-                                  ? profitSummary[stop.jobId].netProfit / stop.jobSqFt
-                                  : null
+                              profitPerSqFt={(() => {
+                                const p = stop.jobId != null ? profitSummary[stop.jobId] : undefined;
+                                if (!p || p.grossInvoiced === 0 || !stop.jobSqFt || stop.jobSqFt <= 0) return null;
+                                return p.netProfit / stop.jobSqFt;
+                              })()}
+                              showNoInvoice={
+                                stop.jobId != null &&
+                                profitSummary[stop.jobId] != null &&
+                                profitSummary[stop.jobId].grossInvoiced === 0
                               }
                               onRetryGeocode={async () => {
                                 setRetryingGeocodeId(stop.id);
@@ -1704,6 +1761,7 @@ interface StopCardProps {
   jobCoats?: number | null;
   availableJobs?: AvailableJob[];
   profitPerSqFt?: number | null;
+  showNoInvoice?: boolean;
 }
 
 function StopCard({
@@ -1712,7 +1770,7 @@ function StopCard({
   onDelete, onMoveUp, onMoveDown,
   onDragStart, onDragOver, onDrop, onDragEnd,
   isSaving, geocoding, isOptimized, onRetryGeocode, retryGeocoding,
-  jobSqFt, jobCoats, availableJobs = [], profitPerSqFt,
+  jobSqFt, jobCoats, availableJobs = [], profitPerSqFt, showNoInvoice,
 }: StopCardProps) {
   const cfg = STATUS_CONFIG[stop.status];
 
@@ -1831,19 +1889,6 @@ function StopCard({
             <span className={cn("inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0", cfg.bg, cfg.color)}>
               {cfg.label}
             </span>
-            {profitPerSqFt != null && (
-              <span className={cn(
-                "inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0",
-                profitPerSqFt >= 0.15
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : profitPerSqFt >= 0.05
-                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                    : "bg-red-50 text-red-700 border-red-200"
-              )}>
-                <TrendingUp className="w-2.5 h-2.5" />
-                {profitPerSqFt >= 0 ? "+" : ""}${profitPerSqFt.toFixed(2)}/sqft
-              </span>
-            )}
             {(!stop.lat || !stop.lng) && (
               <>
                 <span className="inline-flex items-center text-[9px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
@@ -1888,6 +1933,25 @@ function StopCard({
               </span>
             )}
           </div>
+          {(profitPerSqFt != null || showNoInvoice) && (
+            <div className="mt-1 ml-0">
+              {showNoInvoice ? (
+                <span className="text-[10px] text-muted-foreground italic">No invoice</span>
+              ) : profitPerSqFt != null ? (
+                <span className={cn(
+                  "inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md border",
+                  profitPerSqFt >= 0.15
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : profitPerSqFt >= 0.05
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-red-50 text-red-700 border-red-200"
+                )}>
+                  <TrendingUp className="w-2.5 h-2.5" />
+                  {profitPerSqFt >= 0 ? "+" : ""}${profitPerSqFt.toFixed(2)} / sqft
+                </span>
+              ) : null}
+            </div>
+          )}
           {stop.notes && <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{stop.notes}</p>}
         </div>
 
