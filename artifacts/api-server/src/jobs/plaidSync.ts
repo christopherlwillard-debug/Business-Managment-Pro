@@ -1,9 +1,8 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { plaidConnectionsTable } from "@workspace/db";
+import { plaidConnectionsTable, bankImportBatchesTable, bankTransactionsTable } from "@workspace/db";
 import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
-import { bankImportBatchesTable, bankTransactionsTable } from "@workspace/db";
-import { eq, like, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -148,9 +147,13 @@ async function runPlaidSync(): Promise<void> {
   for (const connection of connections) {
     try {
       await syncTransactions(connection);
+    } catch (err) {
+      console.error(`[plaid-sync] Transaction sync failed for connection #${connection.id}:`, err);
+    }
+    try {
       await refreshBalanceIfStale(connection);
     } catch (err) {
-      console.error(`[plaid-sync] Error syncing connection #${connection.id}:`, err);
+      console.error(`[plaid-sync] Balance refresh failed for connection #${connection.id}:`, err);
     }
   }
 }
