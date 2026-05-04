@@ -347,26 +347,44 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
     return;
   }
 
-  const [expense] = await db
-    .insert(expensesTable)
-    .values({
-      description: description?.trim() || txn.description,
-      amount: txn.amount,
-      category,
-      date: txn.date,
-      vendor: vendor?.trim() || null,
-      jobId: jobId || null,
-      businessLine: businessLine || null,
-      notes: notes?.trim() || null,
-    })
-    .returning();
+  const result = await db.transaction(async (tx) => {
+    const [fresh] = await tx
+      .select({ status: bankTransactionsTable.status })
+      .from(bankTransactionsTable)
+      .where(eq(bankTransactionsTable.id, txnId));
 
-  await db
-    .update(bankTransactionsTable)
-    .set({ status: "matched", matchedExpenseId: expense.id })
-    .where(eq(bankTransactionsTable.id, txnId));
+    if (fresh?.status === "matched") {
+      return { conflict: true } as const;
+    }
 
-  res.status(201).json(expense);
+    const [newExpense] = await tx
+      .insert(expensesTable)
+      .values({
+        description: description?.trim() || txn.description,
+        amount: txn.amount,
+        category,
+        date: txn.date,
+        vendor: vendor?.trim() || null,
+        jobId: jobId || null,
+        businessLine: businessLine || null,
+        notes: notes?.trim() || null,
+      })
+      .returning();
+
+    await tx
+      .update(bankTransactionsTable)
+      .set({ status: "matched", matchedExpenseId: newExpense.id })
+      .where(eq(bankTransactionsTable.id, txnId));
+
+    return newExpense;
+  });
+
+  if ("conflict" in result) {
+    res.status(409).json({ error: "Transaction is already filed as an expense" });
+    return;
+  }
+
+  res.status(201).json(result);
 }));
 
 router.delete("/connection", wrapAsync(async (req, res) => {
