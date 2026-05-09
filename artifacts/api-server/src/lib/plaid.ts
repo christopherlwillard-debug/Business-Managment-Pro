@@ -28,7 +28,7 @@ export function getPlaidClient(): PlaidApi {
 }
 
 export function isPlaidConfigured(): boolean {
-  return !!(process.env["PLAID_CLIENT_ID"] && process.env["PLAID_SECRET"]);
+  return !!(process.env["PLAID_CLIENT_ID"] && process.env["PLAID_SECRET"] && process.env["PLAID_ENV"]);
 }
 
 export interface PlaidErrorDetail {

@@ -73,7 +73,9 @@ router.post("/link-token", wrapAsync(async (req, res) => {
   } catch (err) {
     const plaidErr = extractPlaidError(err);
     if (plaidErr) {
-      console.error("[Plaid] link-token error:", JSON.stringify(plaidErr, null, 2));
+      const rawData = (err as { response?: { data?: unknown } }).response?.data;
+      console.error("[Plaid] link-token error (raw):", JSON.stringify(rawData, null, 2));
+      console.error("[Plaid] link-token error (parsed):", JSON.stringify(plaidErr, null, 2));
       const userMessage =
         plaidErr.error_code === "INVALID_PRODUCT"
           ? "The Transactions product hasn't been approved for your Plaid production account yet. Complete the production approval in your Plaid dashboard."
