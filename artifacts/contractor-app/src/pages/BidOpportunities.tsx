@@ -241,6 +241,7 @@ function SummaryPanel({
 export default function BidOpportunities() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<"all" | "new" | "interested" | "dismissed">("all");
+  const [fitOnly, setFitOnly] = useState(false);
   const [panelBid, setPanelBid] = useState<BidOpportunity | null>(null);
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
   const [panelLoading, setPanelLoading] = useState(false);
@@ -323,9 +324,15 @@ export default function BidOpportunities() {
     dismissed: dismissedBids.length,
   };
 
-  const displayedBids = filter === "dismissed" ? dismissedBids
+  const statusFiltered = filter === "dismissed" ? dismissedBids
     : filter === "all" ? bids
     : bids.filter((b) => b.status === filter);
+
+  const fitCount = statusFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true).length;
+
+  const displayedBids = fitOnly
+    ? statusFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true)
+    : statusFiltered;
 
   return (
     <div className="space-y-6">
@@ -365,6 +372,26 @@ export default function BidOpportunities() {
             </span>
           </button>
         ))}
+        <button
+          onClick={() => setFitOnly((v) => !v)}
+          className={cn(
+            "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
+            fitOnly
+              ? "bg-green-600 text-white border-green-600"
+              : "bg-card text-muted-foreground border-border hover:border-green-500/50 hover:text-foreground"
+          )}
+        >
+          <span className="flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Fit
+          </span>
+          <span className={cn(
+            "ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
+            fitOnly ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+          )}>
+            {fitCount}
+          </span>
+        </button>
       </div>
 
       {isLoading ? (
