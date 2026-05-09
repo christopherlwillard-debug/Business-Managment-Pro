@@ -61,14 +61,29 @@ router.post("/link-token", wrapAsync(async (req, res) => {
     return;
   }
   const client = getPlaidClient();
-  const response = await client.linkTokenCreate({
-    user: { client_user_id: "willard-gc" },
-    client_name: "Willard's General Contracting",
-    products: [Products.Transactions],
-    country_codes: [CountryCode.Us],
-    language: "en",
-  });
-  res.json({ link_token: response.data.link_token });
+  try {
+    const response = await client.linkTokenCreate({
+      user: { client_user_id: "willard-gc" },
+      client_name: "Willard's General Contracting",
+      products: [Products.Transactions],
+      country_codes: [CountryCode.Us],
+      language: "en",
+    });
+    res.json({ link_token: response.data.link_token });
+  } catch (err) {
+    const plaidErr = extractPlaidError(err);
+    if (plaidErr) {
+      console.error("[Plaid] link-token error:", JSON.stringify(plaidErr, null, 2));
+      const userMessage =
+        plaidErr.error_code === "INVALID_PRODUCT"
+          ? "The Transactions product hasn't been approved for your Plaid production account yet. Complete the production approval in your Plaid dashboard."
+          : plaidErr.display_message ?? `Plaid error: ${plaidErr.error_code} — ${plaidErr.error_message}`;
+      res.status(502).json({ error: userMessage, plaid_error_code: plaidErr.error_code, plaid_error_type: plaidErr.error_type });
+    } else {
+      console.error("[Plaid] link-token unexpected error:", err);
+      throw err;
+    }
+  }
 }));
 
 router.post("/exchange-token", wrapAsync(async (req, res) => {
