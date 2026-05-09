@@ -140,102 +140,108 @@ export default function BidOpportunities() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {(filter === "dismissed" ? dismissedBids : filter === "all" ? bids : bids.filter((b) => b.status === filter)).map((bid) => (
-            <div
-              key={bid.id}
-              className={cn(
-                "bg-card border border-border rounded-xl p-5 transition-opacity",
-                bid.status === "dismissed" && "opacity-60"
-              )}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-start gap-3">
-                <div className="flex-1 min-w-0 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", STATUS_COLORS[bid.status] ?? STATUS_COLORS.new)}>
-                      {STATUS_LABELS[bid.status] ?? bid.status}
-                    </span>
-                    {bid.naicsCode && (
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                        NAICS {bid.naicsCode}
-                      </span>
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">Title</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide hidden md:table-cell">Agency</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide hidden sm:table-cell">Posted</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">Due Date</th>
+                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {(filter === "dismissed" ? dismissedBids : filter === "all" ? bids : bids.filter((b) => b.status === filter)).map((bid) => (
+                  <tr
+                    key={bid.id}
+                    className={cn(
+                      "hover:bg-muted/30 transition-colors",
+                      bid.status === "dismissed" && "opacity-60"
                     )}
-                  </div>
-
-                  <h3 className="font-semibold text-foreground leading-snug">{bid.title}</h3>
-
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
-                    {bid.agency && (
-                      <span className="flex items-center gap-1.5 text-muted-foreground">
-                        <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
-                        {bid.agency}
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", STATUS_COLORS[bid.status] ?? STATUS_COLORS.new)}>
+                        {STATUS_LABELS[bid.status] ?? bid.status}
                       </span>
-                    )}
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                      Posted: {bid.postedDate ?? "—"}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
-                      <span className="text-muted-foreground mr-0.5">Due:</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-0.5">
+                        <p className="font-medium text-foreground leading-snug">{bid.title}</p>
+                        {bid.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-1">{bid.description}</p>
+                        )}
+                        {bid.naicsCode && (
+                          <span className="text-xs text-muted-foreground">NAICS {bid.naicsCode}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      {bid.agency ? (
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate max-w-[200px]">{bid.agency}</span>
+                        </span>
+                      ) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-muted-foreground whitespace-nowrap">
+                      {bid.postedDate ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <DeadlineBadge deadline={bid.responseDeadline} />
-                    </span>
-                  </div>
-
-                  {bid.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{bid.description}</p>
-                  )}
-                </div>
-
-                <div className="flex sm:flex-col gap-2 flex-shrink-0">
-                  {bid.url && (
-                    <a
-                      href={bid.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      View on SAM.gov
-                    </a>
-                  )}
-
-                  {bid.status !== "interested" && (
-                    <button
-                      onClick={() => updateStatus.mutate({ id: bid.id, status: "interested" })}
-                      disabled={updateStatus.isPending}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30 transition-colors"
-                    >
-                      <Star className="w-3.5 h-3.5" />
-                      Interested
-                    </button>
-                  )}
-
-                  {bid.status !== "dismissed" && (
-                    <button
-                      onClick={() => updateStatus.mutate({ id: bid.id, status: "dismissed" })}
-                      disabled={updateStatus.isPending}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-                    >
-                      <EyeOff className="w-3.5 h-3.5" />
-                      Dismiss
-                    </button>
-                  )}
-
-                  {bid.status === "dismissed" && (
-                    <button
-                      onClick={() => updateStatus.mutate({ id: bid.id, status: "new" })}
-                      disabled={updateStatus.isPending}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Restore
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        {bid.url && (
+                          <a
+                            href={bid.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            View
+                          </a>
+                        )}
+                        {bid.status !== "interested" && (
+                          <button
+                            onClick={() => updateStatus.mutate({ id: bid.id, status: "interested" })}
+                            disabled={updateStatus.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30 transition-colors whitespace-nowrap"
+                          >
+                            <Star className="w-3 h-3" />
+                            Interested
+                          </button>
+                        )}
+                        {bid.status !== "dismissed" && (
+                          <button
+                            onClick={() => updateStatus.mutate({ id: bid.id, status: "dismissed" })}
+                            disabled={updateStatus.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                          >
+                            <EyeOff className="w-3 h-3" />
+                            Dismiss
+                          </button>
+                        )}
+                        {bid.status === "dismissed" && (
+                          <button
+                            onClick={() => updateStatus.mutate({ id: bid.id, status: "new" })}
+                            disabled={updateStatus.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Restore
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

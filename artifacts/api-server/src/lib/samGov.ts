@@ -8,6 +8,7 @@ const KEYWORDS = [
   "parking lot",
   "parking-lot",
   "striping",
+  "crack",
   "crack seal",
   "crack-seal",
   "paving",
