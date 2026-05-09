@@ -1,5 +1,9 @@
 import { launchBrowser } from "./launchBrowser.js";
 import { lookup } from "node:dns/promises";
+import { createRequire } from "node:module";
+const _require = createRequire(import.meta.url);
+// pdf-parse is CJS-only; use createRequire for ESM-safe interop
+const pdfParse = _require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
 const SAM_API_BASE = "https://api.sam.gov/opportunities/v2/search";
 
@@ -35,8 +39,6 @@ export interface FetchedDocument {
 }
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
   const result = await pdfParse(buffer);
   return result.text?.slice(0, 30000) ?? "";
 }
