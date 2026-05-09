@@ -1,8 +1,22 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Star, EyeOff, RefreshCw, Building2, Calendar, FileSearch } from "lucide-react";
+import {
+  ExternalLink, Star, EyeOff, RefreshCw, Building2,
+  FileSearch, Sparkles, X, CheckCircle2, XCircle,
+  Calendar, ShieldCheck, DollarSign, Briefcase
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+interface AiSummary {
+  description?: string;
+  estimatedValue?: string | null;
+  requirements?: string[];
+  veteranPreference?: boolean;
+  importantDates?: Array<{ label: string; date: string }>;
+  isFit?: boolean;
+  fitReason?: string;
+}
 
 interface BidOpportunity {
   id: number;
@@ -17,6 +31,8 @@ interface BidOpportunity {
   status: string;
   source: string;
   sourceLabel: string | null;
+  aiSummary: AiSummary | null;
+  aiSummaryAt: string | null;
   createdAt: string;
 }
 
@@ -57,9 +73,179 @@ function DeadlineBadge({ deadline }: { deadline: string | null }) {
   );
 }
 
+function SummaryPanel({
+  bid,
+  summary,
+  loading,
+  error,
+  onClose,
+}: {
+  bid: BidOpportunity;
+  summary: AiSummary | null;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div
+        className="relative w-full max-w-lg h-full bg-card border-l border-border shadow-2xl overflow-y-auto flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
+              <span className="text-xs font-semibold text-primary uppercase tracking-wide">AI Summary</span>
+            </div>
+            <p className="font-semibold text-foreground text-sm leading-snug line-clamp-2">{bid.title}</p>
+            {bid.agency && <p className="text-xs text-muted-foreground mt-0.5">{bid.agency}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            className="flex-shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors"
+          >
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="flex-1 p-5 space-y-5">
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-16 space-y-3">
+              <RefreshCw className="w-7 h-7 animate-spin text-primary/60" />
+              <p className="text-sm text-muted-foreground font-medium">Reading the solicitation…</p>
+              <p className="text-xs text-muted-foreground/60">This takes 5–15 seconds</p>
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
+              <XCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+
+          {summary && !loading && (
+            <>
+              {summary.isFit !== undefined && (
+                <div className={cn(
+                  "flex items-start gap-3 p-4 rounded-xl border",
+                  summary.isFit
+                    ? "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800"
+                    : "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800"
+                )}>
+                  {summary.isFit
+                    ? <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                    : <XCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  }
+                  <div>
+                    <p className={cn(
+                      "font-semibold text-sm",
+                      summary.isFit ? "text-green-800 dark:text-green-300" : "text-amber-800 dark:text-amber-300"
+                    )}>
+                      {summary.isFit ? "Looks like a good fit" : "May not be a fit"}
+                    </p>
+                    {summary.fitReason && (
+                      <p className="text-xs mt-1 text-muted-foreground">{summary.fitReason}</p>
+                    )}
+                    {summary.veteranPreference && (
+                      <p className="text-xs mt-1 font-medium text-blue-700 dark:text-blue-400">
+                        Veteran-owned preference mentioned
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {summary.description && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">The Job</span>
+                  </div>
+                  <p className="text-sm text-foreground leading-relaxed pl-6">{summary.description}</p>
+                </div>
+              )}
+
+              {summary.estimatedValue && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estimated Value</span>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground pl-6">{summary.estimatedValue}</p>
+                </div>
+              )}
+
+              {summary.requirements && summary.requirements.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Requirements</span>
+                  </div>
+                  <ul className="space-y-1.5 pl-6">
+                    {summary.requirements.map((req, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+                        {req}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {summary.importantDates && summary.importantDates.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Important Dates</span>
+                  </div>
+                  <ul className="space-y-2 pl-6">
+                    {summary.importantDates.map((d, i) => (
+                      <li key={i} className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{d.label}</span>
+                        <span className="font-medium text-foreground">{d.date}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-border">
+                <p className="text-xs text-muted-foreground/60">
+                  AI summary — always verify against the original solicitation.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
+        {bid.url && (
+          <div className="sticky bottom-0 bg-card border-t border-border px-5 py-3">
+            <a
+              href={bid.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              View Original Solicitation
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function BidOpportunities() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<"all" | "new" | "interested" | "dismissed">("all");
+  const [panelBid, setPanelBid] = useState<BidOpportunity | null>(null);
+  const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
+  const [panelLoading, setPanelLoading] = useState(false);
+  const [panelError, setPanelError] = useState<string | null>(null);
+  const [summaryCache, setSummaryCache] = useState<Record<number, AiSummary>>({});
 
   const { data: bids = [], isLoading } = useQuery<BidOpportunity[]>({
     queryKey: ["bids", filter],
@@ -89,7 +275,45 @@ export default function BidOpportunities() {
     },
   });
 
-  const activeBids = bids.filter((b) => b.status !== "dismissed");
+  async function openSummaryPanel(bid: BidOpportunity) {
+    setPanelBid(bid);
+    setPanelError(null);
+
+    if (summaryCache[bid.id]) {
+      setPanelSummary(summaryCache[bid.id]);
+      setPanelLoading(false);
+      return;
+    }
+
+    if (bid.aiSummary) {
+      setPanelSummary(bid.aiSummary);
+      setSummaryCache((prev) => ({ ...prev, [bid.id]: bid.aiSummary as AiSummary }));
+      setPanelLoading(false);
+      return;
+    }
+
+    setPanelSummary(null);
+    setPanelLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${bid.id}/summarize`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to generate summary");
+      }
+      const data = await res.json() as { summary: AiSummary };
+      setPanelSummary(data.summary);
+      setSummaryCache((prev) => ({ ...prev, [bid.id]: data.summary }));
+      queryClient.invalidateQueries({ queryKey: ["bids"] });
+    } catch (err) {
+      setPanelError(err instanceof Error ? err.message : "Failed to generate summary");
+    } finally {
+      setPanelLoading(false);
+    }
+  }
+
   const dismissedBids = bids.filter((b) => b.status === "dismissed");
 
   const counts = {
@@ -99,8 +323,22 @@ export default function BidOpportunities() {
     dismissed: dismissedBids.length,
   };
 
+  const displayedBids = filter === "dismissed" ? dismissedBids
+    : filter === "all" ? bids
+    : bids.filter((b) => b.status === filter);
+
   return (
     <div className="space-y-6">
+      {panelBid && (
+        <SummaryPanel
+          bid={panelBid}
+          summary={panelSummary}
+          loading={panelLoading}
+          error={panelError}
+          onClose={() => setPanelBid(null)}
+        />
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-foreground">Bid Opportunities</h1>
         <p className="text-muted-foreground mt-1">Federal &amp; Kentucky local contracts — asphalt, sealcoating &amp; pavement work</p>
@@ -157,7 +395,7 @@ export default function BidOpportunities() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(filter === "dismissed" ? dismissedBids : filter === "all" ? bids : bids.filter((b) => b.status === filter)).map((bid) => (
+                {displayedBids.map((bid) => (
                   <tr
                     key={bid.id}
                     className={cn(
@@ -190,6 +428,12 @@ export default function BidOpportunities() {
                         {bid.naicsCode && (
                           <span className="text-xs text-muted-foreground">NAICS {bid.naicsCode}</span>
                         )}
+                        {(bid.aiSummary || summaryCache[bid.id]) && (
+                          <span className="inline-flex items-center gap-1 text-xs text-primary/70">
+                            <Sparkles className="w-3 h-3" />
+                            Summarized
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
@@ -208,12 +452,19 @@ export default function BidOpportunities() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => openSummaryPanel(bid)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          {bid.aiSummary || summaryCache[bid.id] ? "Summary" : "Summarize"}
+                        </button>
                         {bid.url && (
                           <a
                             href={bid.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap"
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors whitespace-nowrap"
                           >
                             <ExternalLink className="w-3 h-3" />
                             View

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, jsonb } from "drizzle-orm/pg-core";
 
 export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   id: serial("id").primaryKey(),
@@ -13,6 +13,8 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   status: text("status").notNull().default("new"),
   source: text("source").notNull().default("federal"),
   sourceLabel: text("source_label"),
+  aiSummary: jsonb("ai_summary"),
+  aiSummaryAt: timestamp("ai_summary_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

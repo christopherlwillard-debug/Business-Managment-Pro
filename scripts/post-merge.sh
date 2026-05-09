@@ -562,3 +562,13 @@ pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS source text N
   .then(() => { console.log('bid_opportunities source columns ensured'); pool.end(); })
   .catch(e => { console.error('bid_opportunities source migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #474: add ai_summary and ai_summary_at columns to bid_opportunities (idempotent; must run after #473)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS ai_summary jsonb')
+  .then(() => pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS ai_summary_at timestamp'))
+  .then(() => { console.log('bid_opportunities ai_summary columns ensured'); pool.end(); })
+  .catch(e => { console.error('bid_opportunities ai_summary migration error:', e.message); pool.end(); process.exit(1); });
+")

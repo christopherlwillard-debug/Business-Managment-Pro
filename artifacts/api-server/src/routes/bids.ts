@@ -2,6 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { bidOpportunitiesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
+import { openai } from "@workspace/integrations-openai-ai-server";
+import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
 
 const router = Router();
 
@@ -58,6 +60,81 @@ router.patch("/:id", async (req, res) => {
   } catch (err) {
     console.error("[bids] PATCH /bids/:id error:", err);
     res.status(500).json({ error: "Failed to update bid" });
+  }
+});
+
+router.post("/:id/summarize", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [bid] = await db
+      .select()
+      .from(bidOpportunitiesTable)
+      .where(eq(bidOpportunitiesTable.id, id))
+      .limit(1);
+
+    if (!bid) {
+      res.status(404).json({ error: "Bid not found" });
+      return;
+    }
+
+    if (bid.aiSummary) {
+      res.json({ summary: bid.aiSummary, cached: true });
+      return;
+    }
+
+    const doc = await fetchBidDocument({
+      noticeId: bid.noticeId,
+      url: bid.url,
+      source: bid.source,
+      description: bid.description,
+    });
+
+    const prompt = `You are analyzing a government bid solicitation for an asphalt and sealcoating contractor. Extract key information and return ONLY valid JSON (no markdown, no code fences).
+
+Solicitation content:
+${doc.text}
+
+Return JSON with exactly these fields:
+{
+  "description": "Plain-English description of the work (1-2 sentences)",
+  "estimatedValue": "Dollar amount if listed, or null",
+  "requirements": ["array of key requirements: bonding, insurance, certifications, prevailing wage, etc."],
+  "veteranPreference": true or false (is SDVOSB or veteran-owned preference mentioned?),
+  "importantDates": [{"label": "Event name", "date": "Date or deadline"}],
+  "isFit": true or false (is NAICS 237310 asphalt/sealcoating work a good fit based on the scope?),
+  "fitReason": "Brief explanation of why it is or isn't a fit for an asphalt/sealcoating contractor"
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+
+    let summary: Record<string, unknown>;
+    try {
+      summary = JSON.parse(raw);
+    } catch {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      summary = jsonMatch ? JSON.parse(jsonMatch[0]) : { description: raw };
+    }
+
+    await db
+      .update(bidOpportunitiesTable)
+      .set({ aiSummary: summary, aiSummaryAt: new Date() })
+      .where(eq(bidOpportunitiesTable.id, id));
+
+    res.json({ summary, cached: false });
+  } catch (err) {
+    console.error("[bids] POST /bids/:id/summarize error:", err);
+    res.status(500).json({ error: "Failed to generate summary" });
   }
 });
 
