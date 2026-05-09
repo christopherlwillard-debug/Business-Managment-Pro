@@ -531,16 +531,6 @@ pool.query('ALTER TABLE plaid_connections ADD COLUMN IF NOT EXISTS cached_balanc
   .catch(e => { console.error('plaid balance cache migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
-# Task #473: add source and source_label columns to bid_opportunities (idempotent)
-(cd lib/db && node -e "
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT \'federal\'')
-  .then(() => pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS source_label text'))
-  .then(() => { console.log('bid_opportunities source columns ensured'); pool.end(); })
-  .catch(e => { console.error('bid_opportunities source migration error:', e.message); pool.end(); process.exit(1); });
-")
-
 # Task #470: create bid_opportunities table (idempotent)
 (cd lib/db && node -e "
 const { Pool } = require('pg');
@@ -561,4 +551,14 @@ pool.query(\`
   )
 \`).then(() => { console.log('bid_opportunities table ensured'); pool.end(); })
   .catch(e => { console.error('bid_opportunities migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Task #473: add source and source_label columns to bid_opportunities (idempotent; must run after #470)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT \'federal\'')
+  .then(() => pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS source_label text'))
+  .then(() => { console.log('bid_opportunities source columns ensured'); pool.end(); })
+  .catch(e => { console.error('bid_opportunities source migration error:', e.message); pool.end(); process.exit(1); });
 ")
