@@ -428,12 +428,34 @@ export default function BidOpportunities() {
                         {bid.naicsCode && (
                           <span className="text-xs text-muted-foreground">NAICS {bid.naicsCode}</span>
                         )}
-                        {(bid.aiSummary || summaryCache[bid.id]) && (
-                          <span className="inline-flex items-center gap-1 text-xs text-primary/70">
-                            <Sparkles className="w-3 h-3" />
-                            Summarized
-                          </span>
-                        )}
+                        {(() => {
+                          const summary = summaryCache[bid.id] ?? bid.aiSummary;
+                          if (!summary) return null;
+                          if (summary.isFit !== undefined) {
+                            return (
+                              <button
+                                onClick={() => openSummaryPanel(bid)}
+                                className={cn(
+                                  "inline-flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-md transition-colors",
+                                  summary.isFit
+                                    ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                    : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50"
+                                )}
+                              >
+                                {summary.isFit
+                                  ? <><CheckCircle2 className="w-3 h-3" /> Fit</>
+                                  : <><XCircle className="w-3 h-3" /> No fit</>
+                                }
+                              </button>
+                            );
+                          }
+                          return (
+                            <span className="inline-flex items-center gap-1 text-xs text-primary/70">
+                              <Sparkles className="w-3 h-3" />
+                              Summarized
+                            </span>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
