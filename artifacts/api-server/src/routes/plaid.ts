@@ -7,7 +7,7 @@ import {
 } from "@workspace/db";
 import { expensesTable } from "@workspace/db/schema";
 import { eq, like, isNotNull, inArray, and, gte } from "drizzle-orm";
-import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
+import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
 
