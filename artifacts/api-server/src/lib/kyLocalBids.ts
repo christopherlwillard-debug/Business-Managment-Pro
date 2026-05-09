@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { launchBrowser } from "./launchBrowser.js";
 import { SamOpportunity } from "./samGov.js";
 
@@ -5,21 +6,54 @@ const PAGE_TIMEOUT_MS = 30000;
 
 const PAVEMENT_KEYWORDS = [
   "asphalt", "sealcoat", "sealcoating", "pavement", "parking lot",
-  "parking-lot", "striping", "crack seal", "paving", "road", "milling",
-  "resurfacing", "overlay", "bid",
+  "parking-lot", "striping", "crack seal", "paving", "milling",
+  "resurfacing", "overlay",
 ];
 
-function containsKeyword(text: string): boolean {
+const BROAD_BID_KEYWORDS = [...PAVEMENT_KEYWORDS, "bid", "rfp", "rfq"];
+
+function containsKeyword(text: string, keywords = BROAD_BID_KEYWORDS): boolean {
   const lower = text.toLowerCase();
-  return PAVEMENT_KEYWORDS.some((kw) => lower.includes(kw));
+  return keywords.some((kw) => lower.includes(kw));
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60);
+function stableId(prefix: string, discriminator: string): string {
+  return `${prefix}-${createHash("sha1").update(discriminator).digest("hex").slice(0, 12)}`;
+}
+
+function parseIsoDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const patterns = [
+    /(\d{4}-\d{2}-\d{2})/,
+    /(\d{1,2})\/(\d{1,2})\/(\d{4})/,
+    /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*\d{4}/i,
+    /(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}/i,
+  ];
+  for (const pat of patterns) {
+    const m = pat.exec(raw);
+    if (m) {
+      try {
+        const d = new Date(m[0]);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      } catch { /* skip */ }
+    }
+  }
+  return null;
+}
+
+function parseDueDateFromText(text: string): string | null {
+  const duePats = [
+    /(?:due|deadline|closes?|submit(?:ted)?\s+by|bid\s+opening|proposals?\s+due)[:\s]+([A-Za-z0-9\s,\/\-]+)/i,
+    /(?:due\s+date|response\s+deadline)[:\s]+([A-Za-z0-9\s,\/\-]+)/i,
+  ];
+  for (const pat of duePats) {
+    const m = pat.exec(text);
+    if (m) {
+      const d = parseIsoDate(m[1].trim());
+      if (d) return d;
+    }
+  }
+  return null;
 }
 
 export type LocalOpportunity = SamOpportunity & {
@@ -30,7 +64,6 @@ export type LocalOpportunity = SamOpportunity & {
 async function scrapeHancockCounty(): Promise<LocalOpportunity[]> {
   const url = "https://hancockky.us/resources/bids/";
   const browser = await launchBrowser();
-
   try {
     const page = await browser.newPage();
     await page.setUserAgent(
@@ -38,39 +71,43 @@ async function scrapeHancockCounty(): Promise<LocalOpportunity[]> {
     );
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_TIMEOUT_MS });
 
-    const bids = await page.evaluate(() => {
-      const results: Array<{ text: string; href: string }> = [];
-      const links = document.querySelectorAll<HTMLAnchorElement>(
+    const bids = await page.evaluate((pageUrl: string) => {
+      const results: Array<{ text: string; href: string; dateText: string }> = [];
+      const contentAreas = document.querySelectorAll(
         ".entry-content a, .page-content a, article a, main a"
       );
-      links.forEach((a) => {
+      contentAreas.forEach((el) => {
+        const a = el as HTMLAnchorElement;
         const text = a.textContent?.trim() ?? "";
         const href = a.href ?? "";
-        if (text.length > 4 && href && !href.includes("facebook.com")) {
-          results.push({ text, href });
-        }
+        if (text.length < 4 || !href || href.includes("facebook.com")) return;
+        if (href === pageUrl) return;
+
+        const container = a.closest("li, p, div, article") as HTMLElement | null;
+        const dateText = container?.textContent?.trim() ?? "";
+        results.push({ text, href, dateText });
       });
       return results;
-    });
+    }, url);
 
     const results: LocalOpportunity[] = [];
-    for (const { text, href } of bids) {
+    for (const { text, href, dateText } of bids) {
       if (!containsKeyword(text)) continue;
-      if (href === url) continue;
+      const postedDate = parseIsoDate(dateText);
+      const responseDeadline = parseDueDateFromText(dateText);
       results.push({
-        noticeId: `ky-hancock-${slugify(text)}`,
+        noticeId: stableId("ky-hancock", href || text),
         title: text,
         agency: "Hancock County Government",
         naicsCode: null,
-        description: null,
-        postedDate: null,
-        responseDeadline: null,
+        description: dateText.slice(0, 300) || null,
+        postedDate,
+        responseDeadline,
         url: href,
         source: "state-local",
         sourceLabel: "Hancock County",
       });
     }
-
     console.log(`[ky-local] Hancock County: ${results.length} bids found`);
     return results;
   } catch (err) {
@@ -84,7 +121,6 @@ async function scrapeHancockCounty(): Promise<LocalOpportunity[]> {
 async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
   const url = "https://www.daviessky.org/notices/";
   const browser = await launchBrowser();
-
   try {
     const page = await browser.newPage();
     await page.setUserAgent(
@@ -93,58 +129,64 @@ async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_TIMEOUT_MS });
 
     const notices = await page.evaluate(() => {
-      const results: Array<{ title: string; href: string; snippet: string }> = [];
+      const results: Array<{
+        title: string;
+        href: string;
+        fullText: string;
+        dateAttr: string;
+      }> = [];
+
       const cards = document.querySelectorAll<HTMLElement>(
-        "article, .entry, .notice, .post, .wp-block-post"
+        "article, .entry, .notice-item, .post, .wp-block-post"
       );
 
       cards.forEach((card) => {
-        const headingEl = card.querySelector<HTMLElement>("h1, h2, h3, h4, h5");
+        const headingEl = card.querySelector<HTMLElement>("h1,h2,h3,h4,h5");
         const linkEl = card.querySelector<HTMLAnchorElement>("a[href]");
         const title = (headingEl?.textContent ?? linkEl?.textContent ?? "").trim();
         const href = linkEl?.href ?? "";
-        const snippet = (card.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
-        if (title.length > 5) {
-          results.push({ title, href, snippet });
-        }
+        const fullText = (card.textContent ?? "").replace(/\s+/g, " ").trim();
+        const timeEl = card.querySelector<HTMLElement>("time");
+        const dateAttr = timeEl?.getAttribute("datetime") ?? timeEl?.textContent?.trim() ?? "";
+        if (title.length > 5) results.push({ title, href, fullText, dateAttr });
       });
 
       if (results.length === 0) {
         document.querySelectorAll<HTMLAnchorElement>("main a, .content a").forEach((a) => {
           const text = a.textContent?.trim() ?? "";
+          const parent = a.closest("p, li, div") as HTMLElement | null;
+          const fullText = parent?.textContent?.trim() ?? text;
           if (text.length > 5) {
-            results.push({ title: text, href: a.href, snippet: "" });
+            results.push({ title: text, href: a.href, fullText, dateAttr: "" });
           }
         });
       }
-
       return results;
     });
 
     const seen = new Set<string>();
     const results: LocalOpportunity[] = [];
 
-    for (const { title, href, snippet } of notices) {
-      const combined = `${title} ${snippet}`;
-      if (!containsKeyword(combined)) continue;
-      const noticeId = `ky-daviess-${slugify(title)}`;
+    for (const { title, href, fullText, dateAttr } of notices) {
+      if (!containsKeyword(`${title} ${fullText}`)) continue;
+      const noticeId = stableId("ky-daviess", href || title);
       if (seen.has(noticeId)) continue;
       seen.add(noticeId);
-
+      const postedDate = parseIsoDate(dateAttr) ?? parseIsoDate(fullText);
+      const responseDeadline = parseDueDateFromText(fullText);
       results.push({
         noticeId,
         title,
         agency: "Daviess County Government",
         naicsCode: null,
-        description: snippet.slice(0, 500) || null,
-        postedDate: null,
-        responseDeadline: null,
+        description: fullText.slice(0, 500) || null,
+        postedDate,
+        responseDeadline,
         url: href || url,
         source: "state-local",
         sourceLabel: "Daviess County",
       });
     }
-
     console.log(`[ky-local] Daviess County: ${results.length} bids found`);
     return results;
   } catch (err) {
@@ -155,12 +197,12 @@ async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
   }
 }
 
-async function scrapeOhioCounty(): Promise<LocalOpportunity[]> {
-  const urls = [
-    "https://www.ohiocounty.ky.gov",
-    "https://ohiocountyky.gov",
-  ];
-
+async function scrapeCountyGeneric(
+  urls: string[],
+  prefix: string,
+  agency: string,
+  sourceLabel: string
+): Promise<LocalOpportunity[]> {
   for (const base of urls) {
     const browser = await launchBrowser();
     try {
@@ -171,114 +213,63 @@ async function scrapeOhioCounty(): Promise<LocalOpportunity[]> {
       await page.goto(base, { waitUntil: "domcontentloaded", timeout: PAGE_TIMEOUT_MS });
 
       const links = await page.evaluate(() => {
-        const results: Array<{ text: string; href: string }> = [];
+        const results: Array<{ text: string; href: string; contextText: string }> = [];
         document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
           const text = a.textContent?.trim() ?? "";
-          if (text.length > 4) results.push({ text, href: a.href });
+          if (text.length < 4) return;
+          const container = a.closest("li, p, tr, div, article") as HTMLElement | null;
+          const contextText = container?.textContent?.replace(/\s+/g, " ").trim() ?? text;
+          results.push({ text, href: a.href, contextText });
         });
         return results;
       });
 
       const results: LocalOpportunity[] = [];
-      for (const { text, href } of links) {
+      for (const { text, href, contextText } of links) {
         if (!containsKeyword(text)) continue;
+        const postedDate = parseIsoDate(contextText);
+        const responseDeadline = parseDueDateFromText(contextText);
         results.push({
-          noticeId: `ky-ohio-${slugify(text)}`,
+          noticeId: stableId(prefix, href || text),
           title: text,
-          agency: "Ohio County Government",
+          agency,
           naicsCode: null,
-          description: null,
-          postedDate: null,
-          responseDeadline: null,
+          description: contextText.slice(0, 300) || null,
+          postedDate,
+          responseDeadline,
           url: href,
           source: "state-local",
-          sourceLabel: "Ohio County",
+          sourceLabel,
         });
       }
 
       if (results.length > 0) {
-        console.log(`[ky-local] Ohio County: ${results.length} bids found`);
+        console.log(`[ky-local] ${sourceLabel} (${base}): ${results.length} bids found`);
         return results;
       }
     } catch (err) {
-      console.warn(`[ky-local] Ohio County (${base}) failed:`, (err as Error).message);
+      console.warn(`[ky-local] ${sourceLabel} (${base}) failed:`, (err as Error).message);
     } finally {
       await browser.close();
     }
   }
-
-  console.log("[ky-local] Ohio County: site unreachable or no matching bids");
-  return [];
-}
-
-async function scrapeMcLeanCounty(): Promise<LocalOpportunity[]> {
-  const urls = [
-    "https://www.mcleancounty.ky.gov",
-    "https://mcleancountyky.gov",
-  ];
-
-  for (const base of urls) {
-    const browser = await launchBrowser();
-    try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-      );
-      await page.goto(base, { waitUntil: "domcontentloaded", timeout: PAGE_TIMEOUT_MS });
-
-      const links = await page.evaluate(() => {
-        const results: Array<{ text: string; href: string }> = [];
-        document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
-          const text = a.textContent?.trim() ?? "";
-          if (text.length > 4) results.push({ text, href: a.href });
-        });
-        return results;
-      });
-
-      const results: LocalOpportunity[] = [];
-      for (const { text, href } of links) {
-        if (!containsKeyword(text)) continue;
-        results.push({
-          noticeId: `ky-mclean-${slugify(text)}`,
-          title: text,
-          agency: "McLean County Government",
-          naicsCode: null,
-          description: null,
-          postedDate: null,
-          responseDeadline: null,
-          url: href,
-          source: "state-local",
-          sourceLabel: "McLean County",
-        });
-      }
-
-      if (results.length > 0) {
-        console.log(`[ky-local] McLean County: ${results.length} bids found`);
-        return results;
-      }
-    } catch (err) {
-      console.warn(`[ky-local] McLean County (${base}) failed:`, (err as Error).message);
-    } finally {
-      await browser.close();
-    }
-  }
-
-  console.log("[ky-local] McLean County: site unreachable or no matching bids");
+  console.log(`[ky-local] ${sourceLabel}: site unreachable or no matching bids`);
   return [];
 }
 
 async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
-  const urls = [
-    "https://procurement.ky.gov/Pages/BidOpportunities.aspx",
-    "https://eprocurement.ky.gov",
-    "https://emars.ky.gov",
+  const KY_NAICS = "237310";
+  const CONSTRUCTION_KEYWORDS = ["asphalt", "sealcoat", "pavement", "road", "parking"];
+
+  const searchUrls = [
+    `https://procurement.ky.gov/Pages/BidOpportunities.aspx?Category=Construction`,
+    `https://procurement.ky.gov/Pages/BidOpportunities.aspx?NAICS=${KY_NAICS}`,
+    `https://finance.ky.gov/services/procurement/Pages/BidOpportunities.aspx`,
+    `https://emars.ky.gov`,
+    `https://procurement.ky.gov`,
   ];
 
-  const PROCUREMENT_KEYWORDS = [
-    "asphalt", "paving", "sealcoat", "pavement", "road", "parking", "resurfacing",
-  ];
-
-  for (const base of urls) {
+  for (const base of searchUrls) {
     const browser = await launchBrowser();
     try {
       const page = await browser.newPage();
@@ -287,27 +278,56 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
       );
       await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
 
-      const links = await page.evaluate(() => {
-        const results: Array<{ text: string; href: string }> = [];
-        document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
-          const text = a.textContent?.trim() ?? "";
-          if (text.length > 4) results.push({ text, href: a.href });
+      const rows = await page.evaluate(() => {
+        const results: Array<{
+          text: string;
+          href: string;
+          contextText: string;
+          dateText: string;
+        }> = [];
+
+        const rowEls = document.querySelectorAll<HTMLElement>(
+          "tr, .bid-item, .opportunity-row, .result-item, li"
+        );
+        rowEls.forEach((row) => {
+          const link = row.querySelector<HTMLAnchorElement>("a[href]");
+          if (!link) return;
+          const text = link.textContent?.trim() ?? "";
+          const href = link.href ?? "";
+          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
+          const timeEl = row.querySelector<HTMLElement>("time");
+          const dateText = timeEl?.getAttribute("datetime") ?? timeEl?.textContent?.trim() ?? fullText;
+          if (text.length > 4) results.push({ text, href, contextText: fullText, dateText });
         });
+
+        if (results.length === 0) {
+          document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
+            const text = a.textContent?.trim() ?? "";
+            const parent = a.closest("li, p, div") as HTMLElement | null;
+            const contextText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
+            if (text.length > 4) {
+              results.push({ text, href: a.href, contextText, dateText: "" });
+            }
+          });
+        }
+
         return results;
       });
 
       const results: LocalOpportunity[] = [];
-      for (const { text, href } of links) {
-        const lower = text.toLowerCase();
-        if (!PROCUREMENT_KEYWORDS.some((kw) => lower.includes(kw))) continue;
+      for (const { text, href, contextText, dateText } of rows) {
+        const combined = `${text} ${contextText}`;
+        if (!CONSTRUCTION_KEYWORDS.some((kw) => combined.toLowerCase().includes(kw))) continue;
+        const postedDate = parseIsoDate(dateText) ?? parseIsoDate(contextText);
+        const responseDeadline = parseDueDateFromText(contextText);
         results.push({
-          noticeId: `ky-eprocure-${slugify(text)}`,
+          noticeId: stableId("ky-eprocure", href || text),
           title: text,
           agency: "Kentucky eProcurement",
-          naicsCode: null,
-          description: null,
-          postedDate: null,
-          responseDeadline: null,
+          naicsCode: KY_NAICS,
+          description: contextText.slice(0, 500) || null,
+          postedDate,
+          responseDeadline,
           url: href,
           source: "state-local",
           sourceLabel: "KY eProcurement",
@@ -335,13 +355,22 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
   const [hancock, daviess, ohio, mclean, kyState] = await Promise.allSettled([
     scrapeHancockCounty(),
     scrapeDaviessCounty(),
-    scrapeOhioCounty(),
-    scrapeMcLeanCounty(),
+    scrapeCountyGeneric(
+      ["https://www.ohiocounty.ky.gov", "https://ohiocountyky.gov"],
+      "ky-ohio",
+      "Ohio County Government",
+      "Ohio County"
+    ),
+    scrapeCountyGeneric(
+      ["https://www.mcleancounty.ky.gov", "https://mcleancountyky.gov"],
+      "ky-mclean",
+      "McLean County Government",
+      "McLean County"
+    ),
     scrapeKyEProcurement(),
   ]);
 
   const all: LocalOpportunity[] = [];
-
   for (const result of [hancock, daviess, ohio, mclean, kyState]) {
     if (result.status === "fulfilled") {
       all.push(...result.value);
