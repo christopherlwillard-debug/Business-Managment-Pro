@@ -5,6 +5,48 @@ import { eq, desc } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
 
+interface AiSummary {
+  description: string | null;
+  estimatedValue: string | null;
+  requirements: string[];
+  veteranPreference: boolean;
+  importantDates: Array<{ label: string; date: string }>;
+  isFit: boolean;
+  fitReason: string | null;
+}
+
+function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
+  const toStr = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+
+  const toStrArr = (v: unknown): string[] => {
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+  };
+
+  const toDates = (v: unknown): Array<{ label: string; date: string }> => {
+    if (!Array.isArray(v)) return [];
+    return v.flatMap((x) => {
+      if (x && typeof x === "object" && "label" in x && "date" in x) {
+        const label = typeof x.label === "string" ? x.label : String(x.label ?? "");
+        const date = typeof x.date === "string" ? x.date : String(x.date ?? "");
+        return label ? [{ label, date }] : [];
+      }
+      return [];
+    });
+  };
+
+  return {
+    description: toStr(raw.description),
+    estimatedValue: toStr(raw.estimatedValue),
+    requirements: toStrArr(raw.requirements),
+    veteranPreference: raw.veteranPreference === true,
+    importantDates: toDates(raw.importantDates),
+    isFit: raw.isFit === true,
+    fitReason: toStr(raw.fitReason),
+  };
+}
+
 const router = Router();
 
 router.get("/", async (req, res) => {
@@ -118,13 +160,15 @@ Return JSON with exactly these fields:
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
 
-    let summary: Record<string, unknown>;
+    let parsed: Record<string, unknown>;
     try {
-      summary = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch {
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      summary = jsonMatch ? JSON.parse(jsonMatch[0]) : { description: raw };
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { description: raw };
     }
+
+    const summary = sanitizeSummary(parsed);
 
     await db
       .update(bidOpportunitiesTable)

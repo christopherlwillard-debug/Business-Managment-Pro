@@ -43,17 +43,38 @@ async function extractTextFromPdf(buffer: Buffer): Promise<string> {
   return result.text?.slice(0, 30000) ?? "";
 }
 
-async function fetchPdfBuffer(url: string): Promise<Buffer | null> {
-  if (!(await isSafeUrl(url))) {
-    console.warn("[bid-doc] Blocked unsafe URL:", url);
-    return null;
-  }
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; BuildPro/1.0)" },
-      signal: AbortSignal.timeout(20000),
+const MAX_REDIRECTS = 5;
+
+async function safeFetch(startUrl: string, init: RequestInit = {}): Promise<Response | null> {
+  let currentUrl = startUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (!(await isSafeUrl(currentUrl))) {
+      console.warn("[bid-doc] Blocked unsafe URL (hop", hop, "):", currentUrl);
+      return null;
+    }
+    const res = await fetch(currentUrl, {
+      ...init,
+      redirect: "manual",
+      signal: init.signal ?? AbortSignal.timeout(20000),
     });
-    if (!res.ok) return null;
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) return null;
+      currentUrl = new URL(location, currentUrl).href;
+      continue;
+    }
+    return res;
+  }
+  console.warn("[bid-doc] Too many redirects for:", startUrl);
+  return null;
+}
+
+async function fetchPdfBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const res = await safeFetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; BuildPro/1.0)" },
+    });
+    if (!res || !res.ok) return null;
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.includes("pdf") && !url.toLowerCase().endsWith(".pdf")) return null;
     return Buffer.from(await res.arrayBuffer());
@@ -70,6 +91,17 @@ async function fetchHtmlText(url: string): Promise<string | null> {
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on("request", async (req) => {
+      const reqUrl = req.url();
+      const safe = await isSafeUrl(reqUrl).catch(() => false);
+      if (!safe) {
+        console.warn("[bid-doc] Puppeteer blocked unsafe nav:", reqUrl);
+        req.abort("blockedbyclient");
+      } else {
+        req.continue();
+      }
+    });
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
     const text = await page.evaluate(() => document.body?.innerText ?? "");
     return text.slice(0, 30000);
