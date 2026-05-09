@@ -1,6 +1,33 @@
 import { launchBrowser } from "./launchBrowser.js";
+import { lookup } from "node:dns/promises";
 
 const SAM_API_BASE = "https://api.sam.gov/opportunities/v2/search";
+
+const PRIVATE_IP_RE = /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:)/i;
+
+async function isSafeUrl(rawUrl: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+
+  const hostname = parsed.hostname;
+  if (PRIVATE_IP_RE.test(hostname)) return false;
+  if (hostname === "localhost" || hostname.endsWith(".local")) return false;
+
+  try {
+    const { address } = await lookup(hostname);
+    if (PRIVATE_IP_RE.test(address)) return false;
+    if (address === "127.0.0.1" || address === "::1") return false;
+  } catch {
+    return false;
+  }
+
+  return true;
+}
 
 export interface FetchedDocument {
   text: string;
@@ -15,6 +42,10 @@ async function extractTextFromPdf(buffer: Buffer): Promise<string> {
 }
 
 async function fetchPdfBuffer(url: string): Promise<Buffer | null> {
+  if (!(await isSafeUrl(url))) {
+    console.warn("[bid-doc] Blocked unsafe URL:", url);
+    return null;
+  }
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; BuildPro/1.0)" },
@@ -30,6 +61,10 @@ async function fetchPdfBuffer(url: string): Promise<Buffer | null> {
 }
 
 async function fetchHtmlText(url: string): Promise<string | null> {
+  if (!(await isSafeUrl(url))) {
+    console.warn("[bid-doc] Blocked unsafe URL for Puppeteer:", url);
+    return null;
+  }
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
