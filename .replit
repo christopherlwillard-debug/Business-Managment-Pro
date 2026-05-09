@@ -54,4 +54,3 @@ channel = "stable-25_05"
 
 [userenv.shared]
 PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"
-SAM_GOV_API_KEY = "z5htGUNQqBzFAb3ahET0ATFKW2hNtRdGoj5AZRT0"

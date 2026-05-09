@@ -63,8 +63,8 @@ export default function BidOpportunities() {
     queryKey: ["bids", filter],
     queryFn: async () => {
       const url = filter === "all"
-        ? `${BASE_URL}api/bids`
-        : `${BASE_URL}api/bids?status=${filter}`;
+        ? `${BASE_URL}/api/bids`
+        : `${BASE_URL}/api/bids?status=${filter}`;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load bids");
       return res.json();
@@ -73,7 +73,7 @@ export default function BidOpportunities() {
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      const res = await fetch(`${BASE_URL}api/bids/${id}`, {
+      const res = await fetch(`${BASE_URL}/api/bids/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
