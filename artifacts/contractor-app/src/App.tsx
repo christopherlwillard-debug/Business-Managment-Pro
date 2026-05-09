@@ -31,6 +31,7 @@ const Pay = lazy(() => import("./pages/Pay"));
 const QuickCharge = lazy(() => import("./pages/QuickCharge"));
 const SquareTransactions = lazy(() => import("./pages/SquareTransactions"));
 const Banking = lazy(() => import("./pages/Banking"));
+const BidOpportunities = lazy(() => import("./pages/BidOpportunities"));
 const NotFound = lazy(() => import("./pages/not-found"));
 
 const queryClient = new QueryClient({
@@ -274,6 +275,9 @@ function AdminApp() {
           </Route>
           <Route path="/banking">
             <PermissionGuard ownerOnly><Banking /></PermissionGuard>
+          </Route>
+          <Route path="/bids">
+            <PermissionGuard ownerOnly><BidOpportunities /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

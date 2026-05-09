@@ -55,6 +55,7 @@ import squareTransactionsRouter from "./square-transactions";
 import squareCustomersRouter from "./square-customers";
 import pdfRouter from "./pdf";
 import plaidRouter from "./plaid.js";
+import bidsRouter from "./bids.js";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -206,5 +207,6 @@ router.use(requireOwner, squareMobileRouter);
 router.use(requireOwner, squareTransactionsRouter);
 router.use("/square/customers", requireOwner, squareCustomersRouter);
 router.use("/plaid", plaidRouter);
+router.use("/bids", requireOwner, bidsRouter);
 
 export default router;

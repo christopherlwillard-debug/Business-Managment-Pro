@@ -530,3 +530,25 @@ pool.query('ALTER TABLE plaid_connections ADD COLUMN IF NOT EXISTS cached_balanc
   .then(() => { console.log('plaid_connections balance cache columns ensured'); pool.end(); })
   .catch(e => { console.error('plaid balance cache migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #470: create bid_opportunities table (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS bid_opportunities (
+    id serial PRIMARY KEY NOT NULL,
+    notice_id text NOT NULL UNIQUE,
+    title text NOT NULL,
+    agency text,
+    naics_code text,
+    description text,
+    posted_date text,
+    response_deadline text,
+    url text,
+    status text NOT NULL DEFAULT 'new',
+    created_at timestamp DEFAULT now() NOT NULL
+  )
+\`).then(() => { console.log('bid_opportunities table ensured'); pool.end(); })
+  .catch(e => { console.error('bid_opportunities migration error:', e.message); pool.end(); process.exit(1); });
+")

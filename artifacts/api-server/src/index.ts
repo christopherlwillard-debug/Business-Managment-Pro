@@ -6,6 +6,7 @@ import app from "./app";
 import { startRecurringExpensesJob } from "./jobs/recurringExpenses.js";
 import { startInvoiceReminderJob } from "./jobs/invoiceReminders.js";
 import { startPlaidSyncJob } from "./jobs/plaidSync.js";
+import { startBidSyncJob } from "./jobs/bidSync.js";
 
 const rawPort = process.env["PORT"];
 
@@ -61,6 +62,7 @@ async function start() {
     startRecurringExpensesJob();
     startInvoiceReminderJob();
     startPlaidSyncJob();
+    startBidSyncJob();
   });
 }
 

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, UsersRound,
-  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark,
+  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText,
   Sun, Moon,
   type LucideIcon,
 } from "lucide-react";
@@ -74,6 +74,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Invoices", href: "/invoices", icon: FileText, feature: null, section: null, ownerOnly: true, group: "finance" },
     { name: "Square Transactions", href: "/square-transactions", icon: CreditCard, feature: null, section: null, ownerOnly: true, group: "finance" },
     { name: "Banking", href: "/banking", icon: Landmark, feature: null, section: null, ownerOnly: true, group: "finance" },
+    { name: "Bid Opportunities", href: "/bids", icon: ScrollText, feature: null, section: null, ownerOnly: true, group: "finance" },
     { name: "Accounting & Tax", href: "/accounting", icon: BookOpen, feature: null, section: "invoices", group: "finance" },
     { name: "Settings", href: "/settings", icon: Settings, feature: null, section: null, ownerOnly: true },
   ];

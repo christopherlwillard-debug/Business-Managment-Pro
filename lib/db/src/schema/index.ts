@@ -32,3 +32,4 @@ export * from "./prospect-events";
 export * from "./prospect-service-visits";
 export * from "./square-payments";
 export * from "./plaid-connections";
+export * from "./bid-opportunities";
