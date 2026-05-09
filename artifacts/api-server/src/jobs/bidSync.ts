@@ -2,24 +2,18 @@ import cron from "node-cron";
 import { db } from "@workspace/db";
 import { bidOpportunitiesTable, settingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { fetchSamOpportunities } from "../lib/samGov.js";
+import { fetchSamOpportunities, SamOpportunity } from "../lib/samGov.js";
+import { fetchKyLocalBids } from "../lib/kyLocalBids.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 
-async function runBidSync(): Promise<void> {
-  console.log("[bid-sync] Starting SAM.gov opportunity sync");
+type OppWithSource = SamOpportunity & { source?: string; sourceLabel?: string };
 
-  if (!process.env["SAM_GOV_API_KEY"]) {
-    console.log("[bid-sync] SAM_GOV_API_KEY not set, skipping");
-    return;
-  }
-
-  const opportunities = await fetchSamOpportunities();
-  if (opportunities.length === 0) {
-    console.log("[bid-sync] No opportunities returned from SAM.gov");
-    return;
-  }
-
-  const newOnes: typeof opportunities = [];
+async function upsertOpportunities(
+  opportunities: OppWithSource[],
+  defaultSource: string,
+  defaultSourceLabel: string
+): Promise<OppWithSource[]> {
+  const newOnes: OppWithSource[] = [];
 
   for (const opp of opportunities) {
     const existing = await db
@@ -39,14 +33,54 @@ async function runBidSync(): Promise<void> {
         responseDeadline: opp.responseDeadline,
         url: opp.url,
         status: "new",
+        source: opp.source ?? defaultSource,
+        sourceLabel: opp.sourceLabel ?? defaultSourceLabel,
       });
       newOnes.push(opp);
     }
   }
 
-  console.log(`[bid-sync] ${opportunities.length} fetched, ${newOnes.length} new`);
+  return newOnes;
+}
 
-  if (newOnes.length === 0) return;
+async function runBidSync(): Promise<void> {
+  console.log("[bid-sync] Starting bid opportunity sync (federal + KY local)");
+
+  const [fedOpps, localOpps] = await Promise.allSettled([
+    process.env["SAM_GOV_API_KEY"]
+      ? fetchSamOpportunities()
+      : Promise.resolve([] as SamOpportunity[]),
+    fetchKyLocalBids(),
+  ]);
+
+  const federal: OppWithSource[] =
+    fedOpps.status === "fulfilled" ? fedOpps.value : [];
+  const local: OppWithSource[] =
+    localOpps.status === "fulfilled" ? localOpps.value : [];
+
+  if (fedOpps.status === "rejected") {
+    console.error("[bid-sync] SAM.gov fetch error:", fedOpps.reason);
+  }
+  if (localOpps.status === "rejected") {
+    console.error("[bid-sync] KY local fetch error:", localOpps.reason);
+  }
+
+  if (!process.env["SAM_GOV_API_KEY"]) {
+    console.log("[bid-sync] SAM_GOV_API_KEY not set, skipping federal sync");
+  }
+
+  const [newFederal, newLocal] = await Promise.all([
+    upsertOpportunities(federal, "federal", "Federal"),
+    upsertOpportunities(local, "state-local", "KY Local"),
+  ]);
+
+  console.log(
+    `[bid-sync] Federal: ${federal.length} fetched, ${newFederal.length} new` +
+    ` | KY Local: ${local.length} fetched, ${newLocal.length} new`
+  );
+
+  const allNew = [...newFederal, ...newLocal];
+  if (allNew.length === 0) return;
 
   const [settings] = await db.select().from(settingsTable).limit(1);
   const emailTo = settings?.complianceNotificationEmail ?? null;
@@ -56,23 +90,24 @@ async function runBidSync(): Promise<void> {
     return;
   }
 
-  const rows = newOnes
-    .map(
-      (o) => `
+  const buildRows = (opps: OppWithSource[], badgeColor: string, badgeText: string) =>
+    opps.map((o) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">
+          <span style="display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600;background:${badgeColor === "blue" ? "#dbeafe" : "#fef3c7"};color:${badgeColor === "blue" ? "#1d4ed8" : "#92400e"};margin-right:8px;">${escapeHtml(badgeText)}</span>
           <a href="${escapeHtml(o.url)}" style="color:#2563eb;font-weight:600;">${escapeHtml(o.title)}</a>
         </td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${escapeHtml(o.agency ?? "—")}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${o.responseDeadline ?? "—"}</td>
-      </tr>`
-    )
-    .join("");
+      </tr>`).join("");
+
+  const fedRows = buildRows(newFederal, "blue", "Federal");
+  const localRows = buildRows(newLocal, "amber", "KY Local");
 
   const html = `
     <div style="font-family:sans-serif;max-width:700px;margin:0 auto;">
       <h2 style="color:#111827;">New Government Bid Opportunities</h2>
-      <p style="color:#374151;">${newOnes.length} new contract opportunit${newOnes.length === 1 ? "y" : "ies"} matching NAICS 237310 (asphalt / parking lot) were found on SAM.gov.</p>
+      <p style="color:#374151;">${allNew.length} new contract opportunit${allNew.length === 1 ? "y" : "ies"} found — ${newFederal.length} federal (SAM.gov) and ${newLocal.length} KY local.</p>
       <table style="width:100%;border-collapse:collapse;margin-top:16px;">
         <thead>
           <tr style="background:#f3f4f6;">
@@ -81,23 +116,20 @@ async function runBidSync(): Promise<void> {
             <th style="padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;">Due Date</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${fedRows}${localRows}</tbody>
       </table>
       <p style="margin-top:24px;color:#6b7280;font-size:14px;">
         Log in to BuildPro to view all opportunities and mark ones you're interested in.
       </p>
     </div>`;
 
-  await sendEmail({
-    to: emailTo,
-    subject: `${newOnes.length} New Bid Opportunit${newOnes.length === 1 ? "y" : "ies"} on SAM.gov`,
-    html,
-  });
+  const subject = `${allNew.length} New Bid Opportunit${allNew.length === 1 ? "y" : "ies"} — ${newFederal.length} Federal, ${newLocal.length} KY Local`;
 
+  await sendEmail({ to: emailTo, subject, html });
   console.log(`[bid-sync] Alert email sent to ${emailTo}`);
 }
 
 export function startBidSyncJob(): void {
   cron.schedule("0 7 * * *", runBidSync);
-  console.log("[bid-sync] Daily SAM.gov sync scheduled at 7:00 AM");
+  console.log("[bid-sync] Daily bid sync scheduled at 7:00 AM");
 }

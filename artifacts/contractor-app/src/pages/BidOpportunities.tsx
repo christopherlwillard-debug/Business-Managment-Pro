@@ -15,6 +15,8 @@ interface BidOpportunity {
   responseDeadline: string | null;
   url: string | null;
   status: string;
+  source: string;
+  sourceLabel: string | null;
   createdAt: string;
 }
 
@@ -101,7 +103,7 @@ export default function BidOpportunities() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Bid Opportunities</h1>
-        <p className="text-muted-foreground mt-1">Federal contracts matching NAICS 237310 — asphalt, sealcoating &amp; pavement work</p>
+        <p className="text-muted-foreground mt-1">Federal &amp; Kentucky local contracts — asphalt, sealcoating &amp; pavement work</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -136,7 +138,7 @@ export default function BidOpportunities() {
           <FileSearch className="w-10 h-10 text-muted-foreground/40" />
           <p className="text-muted-foreground font-medium">No bid opportunities yet</p>
           <p className="text-sm text-muted-foreground/70 max-w-sm">
-            The system checks SAM.gov daily at 7 AM for matching contracts. New opportunities will appear here automatically.
+            The system checks SAM.gov and Kentucky county bid pages daily at 7 AM. New opportunities will appear here automatically.
           </p>
         </div>
       ) : (
@@ -146,6 +148,7 @@ export default function BidOpportunities() {
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">Source</th>
                   <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide">Title</th>
                   <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide hidden md:table-cell">Agency</th>
                   <th className="text-left px-4 py-3 font-semibold text-muted-foreground text-xs uppercase tracking-wide hidden sm:table-cell">Posted</th>
@@ -166,6 +169,17 @@ export default function BidOpportunities() {
                       <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", STATUS_COLORS[bid.status] ?? STATUS_COLORS.new)}>
                         {STATUS_LABELS[bid.status] ?? bid.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {bid.source === "state-local" ? (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                          {bid.sourceLabel ?? "KY Local"}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          Federal
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="space-y-0.5">
