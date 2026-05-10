@@ -26,15 +26,15 @@ interface TypeRates {
 const FLOORING_RATES: Record<FlooringType, TypeRates> = {
   Carpet: {
     full:  { low: 3.00, mid: 5.00, high: 7.00,  range: "$3–$7/SF"   },
-    labor: { low: 1.50, mid: 2.75, high: 4.00,  range: "$1.50–$4/SF" },
+    labor: { low: 2.00, mid: 4.50, high: 6.00,  range: "$2–$6/SF" },
   },
   Laminate: {
     full:  { low: 4.00, mid: 6.50, high: 9.00,  range: "$4–$9/SF"   },
-    labor: { low: 1.50, mid: 2.75, high: 4.00,  range: "$1.50–$4/SF" },
+    labor: { low: 2.00, mid: 4.50, high: 6.00,  range: "$2–$6/SF" },
   },
   LVP: {
     full:  { low: 4.00, mid: 7.00, high: 10.00, range: "$4–$10/SF"  },
-    labor: { low: 1.50, mid: 2.75, high: 4.00,  range: "$1.50–$4/SF" },
+    labor: { low: 2.00, mid: 4.50, high: 6.00,  range: "$2–$6/SF" },
   },
   Hardwood: {
     full:  { low: 6.00, mid: 11.50, high: 25.00, range: "$6–$25/SF" },
@@ -78,9 +78,9 @@ function makeRoom(label?: string): Room {
 
 export function FlooringCalculator({ onClose, onUseNumbers }: FlooringCalculatorProps) {
   const [flooringType, setFlooringType] = useState<FlooringType>("LVP");
-  const [mode, setMode] = useState<QuoteMode>("full");
+  const [mode, setMode] = useState<QuoteMode>("labor");
   const [tier, setTier] = useState<RateTier>("mid");
-  const [rate, setRate] = useState(FLOORING_RATES["LVP"].full.mid);
+  const [rate, setRate] = useState(FLOORING_RATES["LVP"].labor.mid);
 
   const [rooms, setRooms] = useState<Room[]>([makeRoom("Room 1")]);
 

@@ -43,9 +43,9 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
   const [laborRate, setLaborRate] = useState(LABOR_TIERS["standard"].rate);
 
   const [winQty, setWinQty]   = useState(0);
-  const [winRate, setWinRate] = useState(100);
+  const [winRate, setWinRate] = useState(150);
   const [doorQty, setDoorQty] = useState(0);
-  const [doorRate, setDoorRate] = useState(137.5);
+  const [doorRate, setDoorRate] = useState(250);
   const [copied, setCopied] = useState(false);
 
   const [tearoff, setTearoff]   = useState(false);
@@ -85,7 +85,7 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
     const matTotal     = rawMat + matMarkup;
 
     const subtotal  = laborTotal + openingsAmt + tearoffAmt + matTotal;
-    const final     = Math.max(500, ceil50(subtotal));
+    const final     = Math.max(600, ceil50(subtotal));
 
     return {
       w, l, h,

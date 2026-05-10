@@ -39,18 +39,20 @@ function ceil50(n: number) {
   return Math.ceil(n / 50) * 50;
 }
 
-type SizeTier = "small" | "medium" | "large";
+type SizeTier = "small" | "medium" | "large" | "commercial";
 
-const TIER_RATES: Record<SizeTier, { label: string; sfRange: string; rateRange: string; defaultRate: number; maxSF: number }> = {
-  small:  { label: "Small",  sfRange: "< 1,000 SF",           rateRange: "$0.30–$0.50/SF", defaultRate: 0.40, maxSF: 999 },
-  medium: { label: "Medium", sfRange: "1,000–3,000 SF",       rateRange: "$0.22–$0.35/SF", defaultRate: 0.28, maxSF: 3000 },
-  large:  { label: "Large",  sfRange: "> 3,000 SF",           rateRange: "$0.15–$0.25/SF", defaultRate: 0.20, maxSF: Infinity },
+const TIER_RATES: Record<SizeTier, { label: string; sfRange: string; rateRange: string; defaultRate: number; note?: string }> = {
+  small:      { label: "Small",      sfRange: "0–5,000 SF",      rateRange: "$0.36–$0.45/SF", defaultRate: 0.40 },
+  medium:     { label: "Medium",     sfRange: "5,001–15,000 SF", rateRange: "$0.28–$0.36/SF", defaultRate: 0.32 },
+  large:      { label: "Large",      sfRange: "15,001–30,000 SF",rateRange: "$0.22–$0.30/SF", defaultRate: 0.26 },
+  commercial: { label: "Commercial", sfRange: "30,000+ SF",      rateRange: "$0.20–$0.28/SF", defaultRate: 0.24, note: "Call for commercial quote" },
 };
 
 function autoTier(sf: number): SizeTier {
-  if (sf < 1000) return "small";
-  if (sf <= 3000) return "medium";
-  return "large";
+  if (sf <= 5000) return "small";
+  if (sf <= 15000) return "medium";
+  if (sf <= 30000) return "large";
+  return "commercial";
 }
 
 let nextId = 1;
@@ -59,8 +61,10 @@ function makeSection(label?: string): Section {
 }
 
 const CRACK_REPAIR_RATE_DEFAULT = 2.50;
-const OIL_STAIN_RATE_DEFAULT = 0.35;
-const SECOND_COAT_RATE_DEFAULT = 0.15;
+const SECOND_COAT_RATE_DEFAULT  = 0.18;
+const OIL_STAIN_RATE_DEFAULT    = 0.35;
+const OIL_PRIMER_RATE_DEFAULT   = 0.08;
+const RESTRIP_RATE_DEFAULT      = 0.75;
 
 export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: AsphaltCalculatorProps) {
   const [sections, setSections] = useState<Section[]>([makeSection("Driveway / Lot")]);
@@ -68,17 +72,26 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
   const [manualTier, setManualTier] = useState<SizeTier | null>(null);
   const [customRate, setCustomRate] = useState<string>("");
 
-  const [crackLF, setCrackLF] = useState("");
+  const [crackLF, setCrackLF]   = useState("");
   const [crackRate, setCrackRate] = useState(CRACK_REPAIR_RATE_DEFAULT);
 
-  const [secondCoat, setSecondCoat] = useState(false);
+  const [secondCoat, setSecondCoat]         = useState(false);
   const [secondCoatRate, setSecondCoatRate] = useState(SECOND_COAT_RATE_DEFAULT);
 
-  const [oilStain, setOilStain] = useState(false);
+  const [oilStain, setOilStain]         = useState(false);
   const [oilStainRate, setOilStainRate] = useState(OIL_STAIN_RATE_DEFAULT);
 
-  const [materialCost, setMaterialCost] = useState("");
+  const [oilPrimer, setOilPrimer]         = useState(false);
+  const [oilPrimerRate, setOilPrimerRate] = useState(OIL_PRIMER_RATE_DEFAULT);
 
+  const [restrip, setRestrip]       = useState(false);
+  const [restripLF, setRestripLF]   = useState("");
+  const [restripRate, setRestripRate] = useState(RESTRIP_RATE_DEFAULT);
+
+  const [handwork, setHandwork]     = useState(false);
+  const [handworkAmt, setHandworkAmt] = useState<string>("");
+
+  const [materialCost, setMaterialCost] = useState("");
   const [copied, setCopied] = useState(false);
 
   const calc = useMemo(() => {
@@ -90,33 +103,41 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
     const sealAmt = totalSF * sealRate;
 
     const crackLFNum = parseFloat(crackLF) || 0;
-    const crackAmt = crackLFNum * crackRate;
+    const crackAmt   = crackLFNum * crackRate;
 
     const secondCoatAmt = secondCoat ? totalSF * secondCoatRate : 0;
-    const oilStainAmt = oilStain ? totalSF * oilStainRate : 0;
+    const oilStainAmt   = oilStain   ? totalSF * oilStainRate   : 0;
+    const oilPrimerAmt  = oilPrimer  ? totalSF * oilPrimerRate  : 0;
+
+    const restripLFNum = parseFloat(restripLF) || 0;
+    const restripAmt   = restrip ? restripLFNum * restripRate : 0;
+
+    const handworkRaw  = parseFloat(handworkAmt) || 0;
+    const handworkTotal = handwork ? handworkRaw : 0;
 
     const matCostRaw = parseFloat(materialCost) || 0;
 
-    const subtotal = sealAmt + crackAmt + secondCoatAmt + oilStainAmt + matCostRaw;
-    const final = Math.max(300, ceil50(subtotal));
-    const profit = final - matCostRaw;
+    const subtotal = sealAmt + crackAmt + secondCoatAmt + oilStainAmt + oilPrimerAmt + restripAmt + handworkTotal + matCostRaw;
+    const final    = Math.max(600, ceil50(subtotal));
+    const profit   = final - matCostRaw;
 
     return {
-      totalSF,
-      tier,
-      tierInfo,
-      sealRate,
-      sealAmt,
-      crackLFNum,
-      crackAmt,
-      secondCoatAmt,
-      oilStainAmt,
-      matCostRaw,
-      subtotal,
-      final,
-      profit,
+      totalSF, tier, tierInfo, sealRate, sealAmt,
+      crackLFNum, crackAmt,
+      secondCoatAmt, oilStainAmt, oilPrimerAmt,
+      restripLFNum, restripAmt,
+      handworkTotal, matCostRaw, subtotal, final, profit,
     };
-  }, [sections, manualTier, customRate, crackLF, crackRate, secondCoat, secondCoatRate, oilStain, oilStainRate, materialCost]);
+  }, [
+    sections, manualTier, customRate,
+    crackLF, crackRate,
+    secondCoat, secondCoatRate,
+    oilStain, oilStainRate,
+    oilPrimer, oilPrimerRate,
+    restrip, restripLF, restripRate,
+    handwork, handworkAmt,
+    materialCost,
+  ]);
 
   function addSection() {
     setSections(s => [...s, makeSection(`Section ${s.length + 1}`)]);
@@ -141,7 +162,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
     if (calc.sealAmt > 0) {
       lines.push({
         category: "Labor",
-        description: `Asphalt Sealing – ${calc.tierInfo.label} Lot (${calc.totalSF.toFixed(0)} SF @ $${fmt(calc.sealRate)}/SF)`,
+        description: `Asphalt Sealing – ${calc.tierInfo.label} (${calc.totalSF.toFixed(0)} SF @ $${fmt(calc.sealRate)}/SF)`,
         quantity: parseFloat(calc.totalSF.toFixed(1)),
         unit: "SF",
         unitCost: calc.sealRate,
@@ -178,6 +199,36 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
       });
     }
 
+    if (calc.oilPrimerAmt > 0) {
+      lines.push({
+        category: "Labor",
+        description: `Oil Spot Primer (${calc.totalSF.toFixed(0)} SF)`,
+        quantity: parseFloat(calc.totalSF.toFixed(1)),
+        unit: "SF",
+        unitCost: oilPrimerRate,
+      });
+    }
+
+    if (calc.restripAmt > 0) {
+      lines.push({
+        category: "Labor",
+        description: "Restriping",
+        quantity: parseFloat(calc.restripLFNum.toFixed(1)),
+        unit: "LF",
+        unitCost: restripRate,
+      });
+    }
+
+    if (calc.handworkTotal > 0) {
+      lines.push({
+        category: "Labor",
+        description: "Handwork / Tight Edges",
+        quantity: 1,
+        unit: "LOT",
+        unitCost: calc.handworkTotal,
+      });
+    }
+
     if (calc.matCostRaw > 0) {
       lines.push({
         category: "Material",
@@ -192,7 +243,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
     if (adjustment > 0.005) {
       lines.push({
         category: "Other",
-        description: "Rounding Adjustment (to nearest $50)",
+        description: "Rounding / Minimum Adjustment",
         quantity: 1,
         unit: "LOT",
         unitCost: adjustment,
@@ -203,7 +254,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
   }
 
   function copyQuote() {
-    const { totalSF, tier, tierInfo, sealRate, sealAmt, crackLFNum, crackAmt, secondCoatAmt, oilStainAmt, matCostRaw, subtotal, final, profit } = calc;
+    const { totalSF, tier, tierInfo, sealRate, sealAmt, crackLFNum, crackAmt, secondCoatAmt, oilStainAmt, oilPrimerAmt, restripLFNum, restripAmt, handworkTotal, matCostRaw, subtotal, final, profit } = calc;
 
     const lines = [
       "=== ASPHALT SEALING ESTIMATE (Willard's General Contracting) ===",
@@ -214,18 +265,13 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
       `Sealing (${totalSF.toFixed(0)} SF × $${fmt(sealRate)}/SF): $${fmt(sealAmt)}`,
     ];
 
-    if (crackAmt > 0) {
-      lines.push(`Crack Repair (${crackLFNum.toFixed(0)} LF × $${fmt(crackRate)}/LF): $${fmt(crackAmt)}`);
-    }
-    if (secondCoatAmt > 0) {
-      lines.push(`Second Coat (${totalSF.toFixed(0)} SF × $${fmt(secondCoatRate)}/SF): $${fmt(secondCoatAmt)}`);
-    }
-    if (oilStainAmt > 0) {
-      lines.push(`Oil Stain Treatment (${totalSF.toFixed(0)} SF × $${fmt(oilStainRate)}/SF): $${fmt(oilStainAmt)}`);
-    }
-    if (matCostRaw > 0) {
-      lines.push(`Materials: $${fmt(matCostRaw)}`);
-    }
+    if (crackAmt > 0)     lines.push(`Crack Repair (${crackLFNum.toFixed(0)} LF × $${fmt(crackRate)}/LF): $${fmt(crackAmt)}`);
+    if (secondCoatAmt > 0) lines.push(`Second Coat (${totalSF.toFixed(0)} SF × $${fmt(secondCoatRate)}/SF): $${fmt(secondCoatAmt)}`);
+    if (oilStainAmt > 0)  lines.push(`Oil Stain Treatment (${totalSF.toFixed(0)} SF × $${fmt(oilStainRate)}/SF): $${fmt(oilStainAmt)}`);
+    if (oilPrimerAmt > 0) lines.push(`Oil Spot Primer (${totalSF.toFixed(0)} SF × $${fmt(oilPrimerRate)}/SF): $${fmt(oilPrimerAmt)}`);
+    if (restripAmt > 0)   lines.push(`Restriping (${restripLFNum.toFixed(0)} LF × $${fmt(restripRate)}/LF): $${fmt(restripAmt)}`);
+    if (handworkTotal > 0) lines.push(`Handwork / Tight Edges: $${fmt(handworkTotal)}`);
+    if (matCostRaw > 0)   lines.push(`Materials: $${fmt(matCostRaw)}`);
 
     lines.push(
       "",
@@ -243,7 +289,6 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
   }
 
   const sectionHd = "text-xs font-bold uppercase tracking-wider text-gray-500 mb-2";
-
   const activeTier = manualTier ?? calc.tier;
 
   return (
@@ -279,55 +324,32 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
                   </div>
                   <div className="w-20">
                     <label className="block text-[10px] font-semibold text-gray-400 mb-1">Length (ft)</label>
-                    <input
-                      type="number" min="0" step="1"
-                      value={sec.length}
-                      onChange={e => updateSection(sec.id, "length", e.target.value)}
-                      placeholder="0"
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
+                    <input type="number" min="0" step="1" value={sec.length} onChange={e => updateSection(sec.id, "length", e.target.value)} placeholder="0"
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                   </div>
                   <div className="w-20">
                     <label className="block text-[10px] font-semibold text-gray-400 mb-1">Width (ft)</label>
-                    <input
-                      type="number" min="0" step="1"
-                      value={sec.width}
-                      onChange={e => updateSection(sec.id, "width", e.target.value)}
-                      placeholder="0"
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
+                    <input type="number" min="0" step="1" value={sec.width} onChange={e => updateSection(sec.id, "width", e.target.value)} placeholder="0"
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                   </div>
                   <div className="w-20">
                     <label className="block text-[10px] font-semibold text-gray-400 mb-1">Or SF</label>
-                    <input
-                      type="number" min="0" step="1"
-                      value={sec.manualSF}
-                      onChange={e => updateSection(sec.id, "manualSF", e.target.value)}
-                      placeholder="manual"
-                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
+                    <input type="number" min="0" step="1" value={sec.manualSF} onChange={e => updateSection(sec.id, "manualSF", e.target.value)} placeholder="manual"
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                   </div>
                   <div className="w-16 text-right pb-1.5">
                     <div className="text-[10px] text-gray-400 font-semibold">SF</div>
                     <div className="text-sm font-bold text-amber-700">{sectionSF(sec).toFixed(0)}</div>
                   </div>
                   {sections.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeSection(sec.id)}
-                      className="pb-1.5 text-gray-300 hover:text-red-400 transition-colors"
-                    >
+                    <button type="button" onClick={() => removeSection(sec.id)} className="pb-1.5 text-gray-300 hover:text-red-400 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={addSection}
-              className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700"
-            >
+            <button type="button" onClick={addSection} className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700">
               <Plus className="w-3.5 h-3.5" /> Add another section
             </button>
             <div className="mt-3 bg-amber-50 rounded-lg px-4 py-2 inline-flex items-center gap-3">
@@ -340,46 +362,32 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
           {/* 2. Pricing tier */}
           <div>
             <p className={sectionHd}>2 · Pricing Tier</p>
-            <div className="flex gap-2 mb-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
               {(Object.entries(TIER_RATES) as [SizeTier, typeof TIER_RATES[SizeTier]][]).map(([key, info]) => {
                 const isActive = activeTier === key;
-                const isAuto = (manualTier === null) && key === calc.tier;
+                const isAuto   = (manualTier === null) && key === calc.tier;
                 return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => handleTierClick(key)}
-                    className={`flex-1 py-2.5 rounded-lg text-xs font-bold border transition-colors ${
-                      isActive
-                        ? "bg-amber-500 text-white border-amber-500"
-                        : "bg-white text-gray-600 border-gray-200 hover:border-amber-300"
+                  <button key={key} type="button" onClick={() => handleTierClick(key)}
+                    className={`py-2.5 px-2 rounded-lg text-xs font-bold border transition-colors ${
+                      isActive ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-600 border-gray-200 hover:border-amber-300"
                     }`}
                   >
                     {info.label}
-                    <div className={`text-[10px] font-normal mt-0.5 ${isActive ? "text-amber-100" : "text-gray-400"}`}>
-                      {info.sfRange}
-                    </div>
-                    <div className={`text-[10px] font-normal ${isActive ? "text-amber-100" : "text-gray-400"}`}>
-                      {info.rateRange}
-                    </div>
-                    {isAuto && !isActive && (
-                      <div className="text-[9px] mt-0.5 text-amber-500 font-semibold">auto</div>
-                    )}
-                    {isAuto && isActive && (
-                      <div className="text-[9px] mt-0.5 text-amber-200 font-semibold">auto-selected</div>
-                    )}
+                    <div className={`text-[10px] font-normal mt-0.5 ${isActive ? "text-amber-100" : "text-gray-400"}`}>{info.sfRange}</div>
+                    <div className={`text-[10px] font-normal ${isActive ? "text-amber-100" : "text-gray-400"}`}>{info.rateRange}</div>
+                    {isAuto && !isActive && <div className="text-[9px] mt-0.5 text-amber-500 font-semibold">auto</div>}
+                    {isAuto && isActive  && <div className="text-[9px] mt-0.5 text-amber-200 font-semibold">auto-selected</div>}
+                    {info.note && <div className={`text-[9px] mt-0.5 ${isActive ? "text-amber-200" : "text-gray-400"} italic`}>{info.note}</div>}
                   </button>
                 );
               })}
             </div>
             <div className="flex items-center gap-3">
               <label className="text-xs font-semibold text-gray-500 whitespace-nowrap">$/SF (editable)</label>
-              <input
-                type="number" min="0" step="0.01"
+              <input type="number" min="0" step="0.01"
                 value={customRate !== "" ? customRate : calc.tierInfo.defaultRate}
                 onChange={e => { setCustomRate(e.target.value); }}
-                className="w-28 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-              />
+                className="w-28 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
             </div>
           </div>
 
@@ -391,38 +399,22 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
               {/* Crack repair */}
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="text-sm text-gray-700 w-44 shrink-0">Crack Repair</label>
-                <input
-                  type="number" min="0" step="1"
-                  value={crackLF}
-                  onChange={e => setCrackLF(e.target.value)}
-                  placeholder="LF"
-                  className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
+                <input type="number" min="0" step="1" value={crackLF} onChange={e => setCrackLF(e.target.value)} placeholder="LF"
+                  className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                 <span className="text-xs text-gray-400">LF @</span>
                 <div className="relative">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                  <input
-                    type="number" min="0" step="0.25"
-                    value={crackRate}
-                    onChange={e => setCrackRate(parseFloat(e.target.value) || 0)}
-                    className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20"
-                  />
+                  <input type="number" min="0" step="0.25" value={crackRate} onChange={e => setCrackRate(parseFloat(e.target.value) || 0)}
+                    className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20" />
                 </div>
                 <span className="text-xs text-gray-400">/LF</span>
-                {calc.crackLFNum > 0 && (
-                  <span className="text-xs font-bold text-gray-600">= ${fmt(calc.crackAmt)}</span>
-                )}
+                {calc.crackLFNum > 0 && <span className="text-xs font-bold text-gray-600">= ${fmt(calc.crackAmt)}</span>}
               </div>
 
               {/* Second coat */}
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 w-44 shrink-0 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={secondCoat}
-                    onChange={e => setSecondCoat(e.target.checked)}
-                    className="w-4 h-4 accent-amber-500"
-                  />
+                  <input type="checkbox" checked={secondCoat} onChange={e => setSecondCoat(e.target.checked)} className="w-4 h-4 accent-amber-500" />
                   <span className="text-sm text-gray-700">Second Coat</span>
                 </label>
                 {secondCoat && (
@@ -430,12 +422,8 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
                     <span className="text-xs text-gray-400">{calc.totalSF.toFixed(0)} SF @</span>
                     <div className="relative">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={secondCoatRate}
-                        onChange={e => setSecondCoatRate(parseFloat(e.target.value) || 0)}
-                        className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20"
-                      />
+                      <input type="number" min="0" step="0.01" value={secondCoatRate} onChange={e => setSecondCoatRate(parseFloat(e.target.value) || 0)}
+                        className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20" />
                     </div>
                     <span className="text-xs text-gray-400">/SF</span>
                     <span className="text-xs font-bold text-gray-600">= ${fmt(calc.secondCoatAmt)}</span>
@@ -446,12 +434,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
               {/* Oil stain treatment */}
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-2 w-44 shrink-0 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={oilStain}
-                    onChange={e => setOilStain(e.target.checked)}
-                    className="w-4 h-4 accent-amber-500"
-                  />
+                  <input type="checkbox" checked={oilStain} onChange={e => setOilStain(e.target.checked)} className="w-4 h-4 accent-amber-500" />
                   <span className="text-sm text-gray-700">Oil Stain Treatment</span>
                 </label>
                 {oilStain && (
@@ -459,15 +442,72 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
                     <span className="text-xs text-gray-400">{calc.totalSF.toFixed(0)} SF @</span>
                     <div className="relative">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={oilStainRate}
-                        onChange={e => setOilStainRate(parseFloat(e.target.value) || 0)}
-                        className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20"
-                      />
+                      <input type="number" min="0" step="0.01" value={oilStainRate} onChange={e => setOilStainRate(parseFloat(e.target.value) || 0)}
+                        className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20" />
                     </div>
                     <span className="text-xs text-gray-400">/SF</span>
                     <span className="text-xs font-bold text-gray-600">= ${fmt(calc.oilStainAmt)}</span>
+                  </>
+                )}
+              </div>
+
+              {/* Oil Spot Primer */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 w-44 shrink-0 cursor-pointer">
+                  <input type="checkbox" checked={oilPrimer} onChange={e => setOilPrimer(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                  <span className="text-sm text-gray-700">Oil Spot Primer</span>
+                </label>
+                {oilPrimer && (
+                  <>
+                    <span className="text-xs text-gray-400">{calc.totalSF.toFixed(0)} SF @</span>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      <input type="number" min="0" step="0.01" value={oilPrimerRate} onChange={e => setOilPrimerRate(parseFloat(e.target.value) || 0)}
+                        className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20" />
+                    </div>
+                    <span className="text-xs text-gray-400">/SF</span>
+                    <span className="text-xs font-bold text-gray-600">= ${fmt(calc.oilPrimerAmt)}</span>
+                  </>
+                )}
+              </div>
+
+              {/* Restriping */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 w-44 shrink-0 cursor-pointer">
+                  <input type="checkbox" checked={restrip} onChange={e => setRestrip(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                  <span className="text-sm text-gray-700">Restriping</span>
+                </label>
+                {restrip && (
+                  <>
+                    <input type="number" min="0" step="1" value={restripLF} onChange={e => setRestripLF(e.target.value)} placeholder="LF"
+                      className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                    <span className="text-xs text-gray-400">LF @</span>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      <input type="number" min="0" step="0.05" value={restripRate} onChange={e => setRestripRate(parseFloat(e.target.value) || 0)}
+                        className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-20" />
+                    </div>
+                    <span className="text-xs text-gray-400">/LF</span>
+                    {calc.restripAmt > 0 && <span className="text-xs font-bold text-gray-600">= ${fmt(calc.restripAmt)}</span>}
+                  </>
+                )}
+              </div>
+
+              {/* Handwork / Tight Edges */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 w-44 shrink-0 cursor-pointer">
+                  <input type="checkbox" checked={handwork} onChange={e => setHandwork(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                  <span className="text-sm text-gray-700">Handwork / Tight Edges</span>
+                </label>
+                {handwork && (
+                  <>
+                    <span className="text-xs text-gray-400">flat $</span>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      <input type="number" min="0" step="25" value={handworkAmt} onChange={e => setHandworkAmt(e.target.value)} placeholder="0"
+                        className="pl-6 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-24" />
+                    </div>
+                    {calc.handworkTotal > 0 && <span className="text-xs font-bold text-gray-600">= ${fmt(calc.handworkTotal)}</span>}
                   </>
                 )}
               </div>
@@ -482,13 +522,8 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
               <label className="text-xs font-semibold text-gray-500 whitespace-nowrap">Sealer & supplies ($)</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input
-                  type="number" min="0" step="10"
-                  value={materialCost}
-                  onChange={e => setMaterialCost(e.target.value)}
-                  placeholder="0"
-                  className="pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-36"
-                />
+                <input type="number" min="0" step="10" value={materialCost} onChange={e => setMaterialCost(e.target.value)} placeholder="0"
+                  className="pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 w-36" />
               </div>
             </div>
           </div>
@@ -521,6 +556,24 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
                   <span className="font-semibold">${fmt(calc.oilStainAmt)}</span>
                 </div>
               )}
+              {calc.oilPrimerAmt > 0 && (
+                <div className="flex items-center justify-between py-1.5 text-sm">
+                  <span className="text-gray-300">Oil Spot Primer</span>
+                  <span className="font-semibold">${fmt(calc.oilPrimerAmt)}</span>
+                </div>
+              )}
+              {calc.restripAmt > 0 && (
+                <div className="flex items-center justify-between py-1.5 text-sm">
+                  <span className="text-gray-300">Restriping ({calc.restripLFNum.toFixed(0)} LF)</span>
+                  <span className="font-semibold">${fmt(calc.restripAmt)}</span>
+                </div>
+              )}
+              {calc.handworkTotal > 0 && (
+                <div className="flex items-center justify-between py-1.5 text-sm">
+                  <span className="text-gray-300">Handwork / Tight Edges</span>
+                  <span className="font-semibold">${fmt(calc.handworkTotal)}</span>
+                </div>
+              )}
               {calc.matCostRaw > 0 && (
                 <div className="flex items-center justify-between py-1.5 text-sm">
                   <span className="text-gray-300">Materials</span>
@@ -537,7 +590,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
                   <span className="font-bold text-amber-400 text-base">Final Price</span>
                   <span className="font-bold text-amber-400 text-xl">${fmt(calc.final)}</span>
                 </div>
-                <p className="text-[10px] text-gray-500 mb-3">Rounded up to nearest $50 · Minimum $300</p>
+                <p className="text-[10px] text-gray-500 mb-3">Rounded up to nearest $50 · Minimum $600</p>
                 {calc.matCostRaw > 0 && (
                   <div className="bg-emerald-900/40 border border-emerald-700/50 rounded-lg px-4 py-2 flex items-center justify-between">
                     <span className="text-emerald-300 text-sm font-semibold">Est. Profit (excl. materials)</span>
@@ -552,28 +605,17 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={copyQuote}
+          <button type="button" onClick={copyQuote}
             className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-sm font-semibold transition-colors ${
-              copied
-                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              copied ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
             }`}
           >
             <Copy className="w-4 h-4" /> {copied ? "Copied!" : "Copy Quote"}
           </button>
           <div className="flex gap-3 flex-wrap">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
-            >
-              Cancel
-            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
             {onRequestDeposit && calc.final > 0 && (
-              <button
-                type="button"
+              <button type="button"
                 onClick={() => {
                   const desc = sections.map(s => s.label).filter(Boolean).join(", ") || "Asphalt Sealing";
                   onRequestDeposit(calc.final, `${desc} — ${calc.totalSF.toFixed(0)} SF`);
@@ -584,9 +626,7 @@ export function AsphaltCalculator({ onClose, onUseNumbers, onRequestDeposit }: A
                 Get Payment Link (${fmt(calc.final)})
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => { onUseNumbers(buildLines()); onClose(); }}
+            <button type="button" onClick={() => { onUseNumbers(buildLines()); onClose(); }}
               className="flex items-center gap-2 px-5 py-2 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors"
             >
               Use These Numbers <ChevronRight className="w-4 h-4" />
