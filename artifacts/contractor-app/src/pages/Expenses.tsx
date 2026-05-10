@@ -289,6 +289,17 @@ function isHeic(f: File) {
   return mimeCheck || nameCheck;
 }
 
+async function processReceiptFile(f: File): Promise<File> {
+  if (!isHeic(f)) return f;
+  const heic2anyModule = await import("heic2any");
+  const heic2any = heic2anyModule.default || heic2anyModule;
+  const result = await heic2any({ blob: f, toType: "image/jpeg", quality: 0.92 });
+  const jpegBlob = Array.isArray(result) ? result[0] : result;
+  if (!(jpegBlob instanceof Blob)) throw new Error("Unexpected output from HEIC converter");
+  const baseName = f.name.replace(/\.(heic|heif)$/i, "");
+  return new File([jpegBlob], `${baseName}.jpg`, { type: "image/jpeg" });
+}
+
 function ReceiptDropZone({ file, onFile, onClear, onDriveClick, driveLoading, showDrive }: {
   file: File | null; onFile: (f: File) => void; onClear: () => void;
   onDriveClick?: () => void; driveLoading?: boolean; showDrive?: boolean;
@@ -304,17 +315,11 @@ function ReceiptDropZone({ file, onFile, onClear, onDriveClick, driveLoading, sh
     if (isHeic(f)) {
       setConverting(true);
       try {
-        const heic2anyModule = await import("heic2any");
-        const heic2any = heic2anyModule.default || heic2anyModule;
-        const result = await heic2any({ blob: f, toType: "image/jpeg", quality: 0.92 });
-        const jpegBlob = Array.isArray(result) ? result[0] : result;
-        if (!(jpegBlob instanceof Blob)) throw new Error("Unexpected output from converter");
-        const baseName = f.name.replace(/\.(heic|heif)$/i, "");
-        const jpegFile = new File([jpegBlob], `${baseName}.jpg`, { type: "image/jpeg" });
-        onFile(jpegFile);
+        const processed = await processReceiptFile(f);
+        onFile(processed);
         const reader = new FileReader();
         reader.onload = e => setPreview(e.target?.result as string);
-        reader.readAsDataURL(jpegFile);
+        reader.readAsDataURL(processed);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error("HEIC conversion error:", errMsg);
@@ -1254,7 +1259,10 @@ export default function Expenses() {
     try {
       const token = await getToken();
       const file = await openDrivePicker(token);
-      if (file) setReceiptFile(file);
+      if (file) {
+        const processed = await processReceiptFile(file);
+        setReceiptFile(processed);
+      }
     } catch (err: any) {
       console.error("Drive pick error:", err);
     } finally {
@@ -1271,7 +1279,10 @@ export default function Expenses() {
     try {
       const token = await getToken();
       const file = await openDrivePicker(token);
-      if (file) setEditReceiptFile(file);
+      if (file) {
+        const processed = await processReceiptFile(file);
+        setEditReceiptFile(processed);
+      }
     } catch (err: any) {
       console.error("Drive pick error:", err);
     } finally {
@@ -1663,6 +1674,24 @@ export default function Expenses() {
                                           className="text-xs text-muted-foreground hover:text-amber-500 flex items-center gap-1">
                                           <Upload className="w-3 h-3" />Replace
                                         </button>
+                                        {googleConfigured && (
+                                          <button type="button" onClick={handleDrivePickEdit} disabled={drivePickingEdit}
+                                            className="text-xs text-muted-foreground hover:text-blue-600 flex items-center gap-1 disabled:opacity-60">
+                                            {drivePickingEdit ? (
+                                              <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                                            ) : (
+                                              <svg className="w-3 h-3" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                                                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                                                <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                                                <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                                                <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                                                <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                                              </svg>
+                                            )}
+                                            Drive
+                                          </button>
+                                        )}
                                       </div>
                                     ) : (
                                       <div className="flex items-center gap-2">
