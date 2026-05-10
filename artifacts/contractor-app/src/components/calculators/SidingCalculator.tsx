@@ -417,7 +417,7 @@ export function SidingCalculator({ onClose, onUseNumbers }: SidingCalculatorProp
                   <span className="font-bold text-amber-400 text-base">Final Price</span>
                   <span className="font-bold text-amber-400 text-xl">${fmt(calc.final)}</span>
                 </div>
-                <p className="text-[10px] text-gray-500">Rounded up to nearest $50 · Minimum $500</p>
+                <p className="text-[10px] text-gray-500">Rounded up to nearest $50 · Minimum $600</p>
               </div>
             </div>
           </div>
