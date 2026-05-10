@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
+import { useGoogleAuth } from "@/contexts/GoogleAuth";
+import { openDrivePicker } from "@/lib/googleDrivePicker";
 
 const CATEGORIES = [
   "Materials",             // Sch C Line 4
@@ -287,8 +289,9 @@ function isHeic(f: File) {
   return mimeCheck || nameCheck;
 }
 
-function ReceiptDropZone({ file, onFile, onClear }: {
+function ReceiptDropZone({ file, onFile, onClear, onDriveClick, driveLoading, showDrive }: {
   file: File | null; onFile: (f: File) => void; onClear: () => void;
+  onDriveClick?: () => void; driveLoading?: boolean; showDrive?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -377,7 +380,7 @@ function ReceiptDropZone({ file, onFile, onClear }: {
   }
 
   return (
-    <div>
+    <div className="space-y-2">
       <div
         onClick={() => inputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
@@ -395,8 +398,30 @@ function ReceiptDropZone({ file, onFile, onClear }: {
         <input ref={inputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       </div>
+      {showDrive && onDriveClick && (
+        <button
+          type="button"
+          onClick={onDriveClick}
+          disabled={driveLoading}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-muted/40 transition-all disabled:opacity-60"
+        >
+          {driveLoading ? (
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <svg className="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+              <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+              <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+              <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+              <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+              <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+              <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+            </svg>
+          )}
+          Pick from Google Drive
+        </button>
+      )}
       {convertError && (
-        <p className="mt-1.5 text-xs text-red-600 text-center">{convertError}</p>
+        <p className="text-xs text-red-600 text-center">{convertError}</p>
       )}
     </div>
   );
@@ -1154,6 +1179,10 @@ function RecurringSection({
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Expenses() {
   const { canEdit } = useUserPermissions();
+  const { isConfigured: googleConfigured, isConnected: googleConnected, signIn: googleSignIn, getToken } = useGoogleAuth();
+  const [drivePickingNew, setDrivePickingNew] = useState(false);
+  const [drivePickingEdit, setDrivePickingEdit] = useState(false);
+
   const [filterCategory, setFilterCategory] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("filter_category") ?? "";
@@ -1215,6 +1244,40 @@ export default function Expenses() {
   const [receiptLightboxUrl, setReceiptLightboxUrl]   = useState<string | null>(null);
   const [receiptLightboxIsPdf, setReceiptLightboxIsPdf] = useState(false);
   const [receiptLightboxImgError, setReceiptLightboxImgError] = useState(false);
+
+  async function handleDrivePickNew() {
+    if (!googleConnected) {
+      googleSignIn(() => handleDrivePickNew());
+      return;
+    }
+    setDrivePickingNew(true);
+    try {
+      const token = await getToken();
+      const file = await openDrivePicker(token);
+      if (file) setReceiptFile(file);
+    } catch (err: any) {
+      console.error("Drive pick error:", err);
+    } finally {
+      setDrivePickingNew(false);
+    }
+  }
+
+  async function handleDrivePickEdit() {
+    if (!googleConnected) {
+      googleSignIn(() => handleDrivePickEdit());
+      return;
+    }
+    setDrivePickingEdit(true);
+    try {
+      const token = await getToken();
+      const file = await openDrivePicker(token);
+      if (file) setEditReceiptFile(file);
+    } catch (err: any) {
+      console.error("Drive pick error:", err);
+    } finally {
+      setDrivePickingEdit(false);
+    }
+  }
 
   function openReceiptLightbox(url: string) {
     const path = url.split("?")[0];
@@ -1602,10 +1665,30 @@ export default function Expenses() {
                                         </button>
                                       </div>
                                     ) : (
-                                      <button type="button" onClick={() => editReceiptInputRef.current?.click()}
-                                        className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
-                                        <Upload className="w-3 h-3" />Add Receipt
-                                      </button>
+                                      <div className="flex items-center gap-2">
+                                        <button type="button" onClick={() => editReceiptInputRef.current?.click()}
+                                          className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+                                          <Upload className="w-3 h-3" />Add Receipt
+                                        </button>
+                                        {googleConfigured && (
+                                          <button type="button" onClick={handleDrivePickEdit} disabled={drivePickingEdit}
+                                            className="text-xs text-muted-foreground hover:text-blue-600 flex items-center gap-1 disabled:opacity-60">
+                                            {drivePickingEdit ? (
+                                              <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                                            ) : (
+                                              <svg className="w-3 h-3" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                                                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                                                <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                                                <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                                                <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                                                <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                                              </svg>
+                                            )}
+                                            Drive
+                                          </button>
+                                        )}
+                                      </div>
                                     )}
                                     <input ref={editReceiptInputRef} type="file" className="hidden"
                                       accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
@@ -1990,7 +2073,14 @@ export default function Expenses() {
                 <ImageIcon className="w-4 h-4" /> Receipt Photo / PDF
                 <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
               </label>
-              <ReceiptDropZone file={receiptFile} onFile={setReceiptFile} onClear={() => setReceiptFile(null)} />
+              <ReceiptDropZone
+                file={receiptFile}
+                onFile={setReceiptFile}
+                onClear={() => setReceiptFile(null)}
+                showDrive={googleConfigured}
+                onDriveClick={handleDrivePickNew}
+                driveLoading={drivePickingNew}
+              />
             </div>
 
             {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
