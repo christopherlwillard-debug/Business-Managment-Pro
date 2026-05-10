@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
@@ -339,6 +340,15 @@ function ReceiptDropZone({ file, onFile, onClear, onDriveClick, driveLoading, sh
       setPreview(null);
     }
   }, [onFile]);
+
+  useEffect(() => {
+    if (!file) { setPreview(null); return; }
+    if (file.type.startsWith("image/") && !preview) {
+      const reader = new FileReader();
+      reader.onload = e => setPreview(e.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  }, [file]);
 
   const handleClear = () => { onClear(); setPreview(null); setConvertError(null); if (inputRef.current) inputRef.current.value = ""; };
   const handleDrop  = (e: React.DragEvent) => {
@@ -1184,6 +1194,7 @@ function RecurringSection({
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Expenses() {
   const { canEdit } = useUserPermissions();
+  const { toast } = useToast();
   const { isConfigured: googleConfigured, isConnected: googleConnected, signIn: googleSignIn, getToken } = useGoogleAuth();
   const [drivePickingNew, setDrivePickingNew] = useState(false);
   const [drivePickingEdit, setDrivePickingEdit] = useState(false);
@@ -1264,7 +1275,7 @@ export default function Expenses() {
         setReceiptFile(processed);
       }
     } catch (err: any) {
-      console.error("Drive pick error:", err);
+      toast({ title: "Drive error", description: err?.message ?? "Could not open Google Drive picker.", variant: "destructive" });
     } finally {
       setDrivePickingNew(false);
     }
@@ -1284,7 +1295,7 @@ export default function Expenses() {
         setEditReceiptFile(processed);
       }
     } catch (err: any) {
-      console.error("Drive pick error:", err);
+      toast({ title: "Drive error", description: err?.message ?? "Could not open Google Drive picker.", variant: "destructive" });
     } finally {
       setDrivePickingEdit(false);
     }
