@@ -102,12 +102,12 @@ async function runBidSync(): Promise<void> {
       </tr>`).join("");
 
   const fedRows = buildRows(newFederal, "blue", "Federal");
-  const localRows = buildRows(newLocal, "amber", "KY Local");
+  const localRows = buildRows(newLocal, "amber", "KY/IN Local");
 
   const html = `
     <div style="font-family:sans-serif;max-width:700px;margin:0 auto;">
       <h2 style="color:#111827;">New Government Bid Opportunities</h2>
-      <p style="color:#374151;">${allNew.length} new contract opportunit${allNew.length === 1 ? "y" : "ies"} found — ${newFederal.length} federal (SAM.gov) and ${newLocal.length} KY local.</p>
+      <p style="color:#374151;">${allNew.length} new contract opportunit${allNew.length === 1 ? "y" : "ies"} found — ${newFederal.length} federal (SAM.gov) and ${newLocal.length} KY/IN local.</p>
       <table style="width:100%;border-collapse:collapse;margin-top:16px;">
         <thead>
           <tr style="background:#f3f4f6;">
@@ -123,7 +123,7 @@ async function runBidSync(): Promise<void> {
       </p>
     </div>`;
 
-  const subject = `${allNew.length} New Bid Opportunit${allNew.length === 1 ? "y" : "ies"} — ${newFederal.length} Federal, ${newLocal.length} KY Local`;
+  const subject = `${allNew.length} New Bid Opportunit${allNew.length === 1 ? "y" : "ies"} — ${newFederal.length} Federal, ${newLocal.length} KY/IN Local`;
 
   await sendEmail({ to: emailTo, subject, html });
   console.log(`[bid-sync] Alert email sent to ${emailTo}`);
