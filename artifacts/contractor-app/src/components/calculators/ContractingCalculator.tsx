@@ -72,12 +72,10 @@ function SectionShell({
         </button>
       </div>
 
-      {/* Collapsible body */}
-      {open && enabled && (
-        <div className="px-4 pb-4 space-y-3 border-t border-zinc-700/60 pt-3">
-          {children}
-        </div>
-      )}
+      {/* Always mounted — hidden via CSS so child state is preserved on collapse/disable */}
+      <div className={`px-4 pb-4 space-y-3 border-t border-zinc-700/60 pt-3 ${(!open || !enabled) ? "hidden" : ""}`}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -712,11 +710,11 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/80 backdrop-blur-sm overflow-y-auto py-4 px-2">
-      <div className="bg-zinc-900 w-full max-w-2xl rounded-2xl border border-zinc-700 shadow-2xl mb-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4">
+      <div className="bg-zinc-900 w-full max-w-2xl rounded-2xl border border-zinc-700 shadow-2xl flex flex-col max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)]">
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        {/* Header — fixed */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
           <div>
             <h2 className="font-bold text-white text-base">Contracting Calculator</h2>
             <p className="text-xs text-zinc-400">Toggle the trades that apply — one clean line per section</p>
@@ -726,8 +724,8 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
           </button>
         </div>
 
-        {/* Trade sections */}
-        <div className="p-4 space-y-3">
+        {/* Trade sections — scrollable middle */}
+        <div className="p-4 space-y-3 overflow-y-auto flex-1">
           <SectionShell
             icon="🪵"
             title="Trim Work"
@@ -773,8 +771,8 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
           </SectionShell>
         </div>
 
-        {/* Sticky summary footer */}
-        <div className="border-t border-zinc-700 px-5 py-4 bg-zinc-900 rounded-b-2xl space-y-3">
+        {/* Sticky summary footer — always visible */}
+        <div className="border-t border-zinc-700 px-5 py-4 bg-zinc-900 rounded-b-2xl space-y-3 shrink-0">
           {/* Active section breakdown */}
           {activeSections > 0 && (
             <div className="space-y-1.5">
