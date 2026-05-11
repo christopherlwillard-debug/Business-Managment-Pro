@@ -350,9 +350,10 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
 }
 
 export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
-  console.log("[ky-local] Starting Kentucky local bid scrape");
+  console.log("[ky-local] Starting local bid scrape (KY + IN 50-mile radius)");
 
-  const [hancock, daviess, ohio, mclean, kyState] = await Promise.allSettled([
+  const results = await Promise.allSettled([
+    // ── Existing KY county scrapers ──────────────────────────────────────
     scrapeHancockCounty(),
     scrapeDaviessCounty(),
     scrapeCountyGeneric(
@@ -368,10 +369,149 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "McLean County"
     ),
     scrapeKyEProcurement(),
+
+    // ── Owensboro, KY (city) ─────────────────────────────────────────────
+    scrapeCountyGeneric(
+      ["https://owensboro.org/purchasing", "https://owensboro.org/bids"],
+      "ky-owensboro",
+      "City of Owensboro",
+      "Owensboro"
+    ),
+
+    // ── Henderson, KY (city) ─────────────────────────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://hendersonky.gov/170/Current-Bids-RFPs",
+        "https://hendersonky.gov/135/Purchasing",
+        "https://hendersonky.gov/bids",
+      ],
+      "ky-henderson-city",
+      "City of Henderson",
+      "Henderson City"
+    ),
+
+    // ── Henderson County, KY ─────────────────────────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://hendersoncountyky.gov/government/purchasing",
+        "https://hendersoncountyky.gov/bids",
+        "https://hendersoncountyky.gov",
+      ],
+      "ky-henderson-county",
+      "Henderson County Government",
+      "Henderson County"
+    ),
+
+    // ── Grayson County, KY (includes Leitchfield city bids) ─────────────
+    scrapeCountyGeneric(
+      [
+        "https://graysoncountyky.gov/bids",
+        "https://leitchfield.ky.gov/bids",
+        "https://graysoncountyky.gov",
+      ],
+      "ky-grayson",
+      "Grayson County Government",
+      "Grayson County"
+    ),
+
+    // ── Hopkins County, KY (Madisonville area) ───────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://hopkinscounty.ky.gov/bids",
+        "https://hopkinscounty.ky.gov",
+        "https://hopkinscountyky.gov",
+      ],
+      "ky-hopkins",
+      "Hopkins County Government",
+      "Hopkins County"
+    ),
+
+    // ── Union County, KY (Morganfield area) ─────────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://unioncounty.ky.gov/bids",
+        "https://unioncounty.ky.gov",
+        "https://unioncountyky.gov",
+      ],
+      "ky-union",
+      "Union County Government",
+      "Union County"
+    ),
+
+    // ── Webster County, KY ───────────────────────────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://webstercounty.ky.gov/bids",
+        "https://webstercounty.ky.gov",
+        "https://webstercountyky.gov",
+      ],
+      "ky-webster",
+      "Webster County Government",
+      "Webster County"
+    ),
+
+    // ── Muhlenberg County, KY (Central City / Greenville) ───────────────
+    scrapeCountyGeneric(
+      [
+        "https://muhlenbergcounty.ky.gov/bids",
+        "https://muhlenbergcounty.ky.gov",
+        "https://muhlenbergcountyky.gov",
+      ],
+      "ky-muhlenberg",
+      "Muhlenberg County Government",
+      "Muhlenberg County"
+    ),
+
+    // ── Evansville, IN (city) ─────────────────────────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://evansvillegov.org/city/department/index.php?structureid=88",
+        "https://evansvillegov.org/purchasing",
+        "https://evansvillegov.org/bids",
+      ],
+      "in-evansville",
+      "City of Evansville",
+      "Evansville IN"
+    ),
+
+    // ── Vanderburgh County, IN (Evansville metro) ────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://vanderburghcounty.com/purchasing",
+        "https://www.vanderburghcounty.com/bids",
+        "https://vanderburghcounty.com/government/purchasing",
+      ],
+      "in-vanderburgh",
+      "Vanderburgh County Government",
+      "Vanderburgh County IN"
+    ),
+
+    // ── Warrick County, IN ───────────────────────────────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://www.warrickcounty.gov/purchasing",
+        "https://warrickcounty.gov/bids",
+        "https://www.warrickcounty.gov/bids",
+      ],
+      "in-warrick",
+      "Warrick County Government",
+      "Warrick County IN"
+    ),
+
+    // ── Indiana eProcurement (state-level IN bids) ───────────────────────
+    scrapeCountyGeneric(
+      [
+        "https://www.in.gov/idoa/procurement/",
+        "https://www.in.gov/idoa/procurement/current-solicitations/",
+      ],
+      "in-eprocure",
+      "Indiana eProcurement",
+      "IN eProcurement"
+    ),
   ]);
 
   const all: LocalOpportunity[] = [];
-  for (const result of [hancock, daviess, ohio, mclean, kyState]) {
+  for (const result of results) {
     if (result.status === "fulfilled") {
       all.push(...result.value);
     } else {
@@ -386,6 +526,6 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
     return true;
   });
 
-  console.log(`[ky-local] Total KY local bids: ${deduped.length}`);
+  console.log(`[ky-local] Total local bids (KY + IN): ${deduped.length}`);
   return deduped;
 }
