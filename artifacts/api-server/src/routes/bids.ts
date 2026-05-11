@@ -4,6 +4,7 @@ import { bidOpportunitiesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
+import { runBidSync } from "../jobs/bidSync.js";
 
 interface AiSummary {
   description: string | null;
@@ -179,6 +180,21 @@ Return JSON with exactly these fields:
   } catch (err) {
     console.error("[bids] POST /bids/:id/summarize error:", err);
     res.status(500).json({ error: "Failed to generate summary" });
+  }
+});
+
+router.post("/sync", async (_req, res) => {
+  try {
+    const result = await runBidSync();
+    res.json({
+      ok: true,
+      newFederal: result.newFederal,
+      newLocal: result.newLocal,
+      total: result.total,
+    });
+  } catch (err) {
+    console.error("[bids] POST /bids/sync error:", err);
+    res.status(500).json({ error: "Bid sync failed" });
   }
 });
 

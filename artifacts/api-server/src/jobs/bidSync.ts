@@ -43,7 +43,7 @@ async function upsertOpportunities(
   return newOnes;
 }
 
-async function runBidSync(): Promise<void> {
+export async function runBidSync(): Promise<{ newFederal: number; newLocal: number; total: number }> {
   console.log("[bid-sync] Starting bid opportunity sync (federal + KY local)");
 
   const [fedOpps, localOpps] = await Promise.allSettled([
@@ -80,14 +80,17 @@ async function runBidSync(): Promise<void> {
   );
 
   const allNew = [...newFederal, ...newLocal];
-  if (allNew.length === 0) return;
+
+  const result = { newFederal: newFederal.length, newLocal: newLocal.length, total: allNew.length };
+
+  if (allNew.length === 0) return result;
 
   const [settings] = await db.select().from(settingsTable).limit(1);
   const emailTo = settings?.complianceNotificationEmail ?? null;
 
   if (!emailTo) {
     console.log("[bid-sync] No notification email configured, skipping alert");
-    return;
+    return result;
   }
 
   const buildRows = (opps: OppWithSource[], badgeColor: string, badgeText: string) =>
@@ -127,6 +130,8 @@ async function runBidSync(): Promise<void> {
 
   await sendEmail({ to: emailTo, subject, html });
   console.log(`[bid-sync] Alert email sent to ${emailTo}`);
+
+  return result;
 }
 
 export function startBidSyncJob(): void {

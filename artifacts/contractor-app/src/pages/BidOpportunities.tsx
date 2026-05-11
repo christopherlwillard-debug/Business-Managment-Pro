@@ -6,6 +6,7 @@ import {
   Calendar, ShieldCheck, DollarSign, Briefcase
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface AiSummary {
@@ -240,6 +241,7 @@ function SummaryPanel({
 
 export default function BidOpportunities() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [filter, setFilter] = useState<"all" | "new" | "interested" | "dismissed">("all");
   const [fitOnly, setFitOnly] = useState(false);
   const [panelBid, setPanelBid] = useState<BidOpportunity | null>(null);
@@ -247,6 +249,30 @@ export default function BidOpportunities() {
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [summaryCache, setSummaryCache] = useState<Record<number, AiSummary>>({});
+
+  const syncBids = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${BASE_URL}/api/bids/sync`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Sync failed");
+      }
+      return res.json() as Promise<{ total: number; newFederal: number; newLocal: number }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["bids"] });
+      const msg = data.total === 0
+        ? "No new bids found — you're up to date."
+        : `Found ${data.total} new bid${data.total !== 1 ? "s" : ""} (${data.newFederal} federal, ${data.newLocal} local).`;
+      toast({ title: "Bids refreshed", description: msg });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const { data: bids = [], isLoading } = useQuery<BidOpportunity[]>({
     queryKey: ["bids", filter],
@@ -346,9 +372,19 @@ export default function BidOpportunities() {
         />
       )}
 
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Bid Opportunities</h1>
-        <p className="text-muted-foreground mt-1">Federal &amp; Kentucky local contracts — asphalt, sealcoating &amp; pavement work</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Bid Opportunities</h1>
+          <p className="text-muted-foreground mt-1">Federal &amp; Kentucky local contracts — asphalt, sealcoating &amp; pavement work</p>
+        </div>
+        <button
+          onClick={() => syncBids.mutate()}
+          disabled={syncBids.isPending}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex-shrink-0"
+        >
+          <RefreshCw className={cn("w-4 h-4", syncBids.isPending && "animate-spin")} />
+          {syncBids.isPending ? "Refreshing…" : "Refresh Bids"}
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2">
