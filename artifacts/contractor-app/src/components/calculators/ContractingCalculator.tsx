@@ -163,7 +163,8 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
 
   const [crown, setCrown]           = useState(false);
   const [crownRate, setCrownRate]   = useState(8);
-  const [doorJams, setDoorJams]     = useState("");
+  const [doorJamsOn, setDoorJamsOn] = useState(false);
+  const [doorJams, setDoorJams]     = useState("0");
   const [doorRate, setDoorRate]     = useState(350);
   const [marriage, setMarriage]     = useState(false);
   const [marriageAmt, setMarriageAmt] = useState(1400);
@@ -200,9 +201,9 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
     const vm = vaulted ? 1 + vaultPct / 100 : 1;
     const base = feet * rate * vm;
     const crownAmt = crown ? feet * crownRate * vm : 0;
-    const jams = (parseInt(doorJams) || 0) * doorRate;
+    const jams = doorJamsOn ? (parseInt(doorJams) || 0) * doorRate : 0;
     return base + crownAmt + jams + (marriage ? marriageAmt : 0) + (ceilPatch ? ceilAmt : 0);
-  }, [lf, rate, vaulted, vaultPct, crown, crownRate, doorJams, doorRate, marriage, marriageAmt, ceilPatch, ceilAmt]);
+  }, [lf, rate, vaulted, vaultPct, crown, crownRate, doorJamsOn, doorJams, doorRate, marriage, marriageAmt, ceilPatch, ceilAmt]);
 
   useEffect(() => { onTotalChange(total); }, [total]);
 
@@ -279,13 +280,19 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
 
         {/* Door Jams */}
         <div className="bg-zinc-900 rounded-xl p-3 border border-zinc-700 space-y-2">
-          <p className="text-sm text-zinc-200">Door Jams</p>
-          <div className="flex items-center gap-2">
-            <NumField label="Count" value={doorJams} onChange={setDoorJams} small />
-            <span className="text-zinc-500 mt-4">×</span>
-            <NumField label="$/ea" value={doorRate} onChange={v => setDoorRate(parseFloat(v) || 0)} prefix="$" small />
-            {parseInt(doorJams) > 0 && <span className="text-amber-300 text-xs font-mono mt-4">${fmtInt(parseInt(doorJams) * doorRate)}</span>}
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={doorJamsOn} onChange={e => setDoorJamsOn(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+            <span className="text-sm text-zinc-200 flex-1">Door Jams</span>
+            {doorJamsOn && parseInt(doorJams) > 0 && <span className="text-amber-300 text-xs font-mono">${fmtInt(parseInt(doorJams) * doorRate)}</span>}
+            {!doorJamsOn && <span className="text-zinc-500 text-sm">$350/ea</span>}
+          </label>
+          {doorJamsOn && (
+            <div className="flex items-center gap-2 pl-6">
+              <NumField label="Count" value={doorJams} onChange={setDoorJams} small />
+              <span className="text-zinc-500 mt-4">×</span>
+              <NumField label="$/ea" value={doorRate} onChange={v => setDoorRate(parseFloat(v) || 0)} prefix="$" small />
+            </div>
+          )}
         </div>
 
         {/* Marriage Line */}
@@ -339,6 +346,7 @@ const SIDING_TIERS: Record<SidingTier, { label: string; range: string; rate: num
 function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }) {
   const [sf, setSf]         = useState("");
   const [wallW, setWallW]   = useState("");
+  const [wallL, setWallL]   = useState("");
   const [wallH, setWallH]   = useState("");
   const [tier, setTier]     = useState<SidingTier>("standard");
   const [rate, setRate]     = useState(SIDING_TIERS.standard.rate);
@@ -354,16 +362,17 @@ function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }
 
   function applyDoubleWide() {
     setWallW("36");
+    setWallL("90");
     setWallH("13.6");
   }
 
   function calcSf() {
     const w = parseFloat(wallW) || 0;
+    const l = parseFloat(wallL) || 0;
     const h = parseFloat(wallH) || 0;
-    if (w > 0 && h > 0) {
-      setSf(String(Math.round(w * h * 4)));
-      setWallW("");
-      setWallH("");
+    if (w > 0 && l > 0 && h > 0) {
+      setSf(String(Math.round(2 * (w + l) * h)));
+      setWallW(""); setWallL(""); setWallH("");
     }
   }
 
@@ -395,20 +404,22 @@ function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }
             <p className="text-xs text-zinc-400">Or calculate from wall dimensions:</p>
             <button type="button" onClick={applyDoubleWide}
               className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-900/40 border border-amber-700/40 text-amber-400 text-xs font-semibold hover:bg-amber-800/40">
-              <Zap className="w-3 h-3" /> Dbl Wide
+              <Zap className="w-3 h-3" /> Standard Double Wide (36×90×13.6)
             </button>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1 flex-wrap">
             <NumField label="Width ft" value={wallW} onChange={setWallW} small />
             <span className="text-zinc-500 pb-2">×</span>
+            <NumField label="Length ft" value={wallL} onChange={setWallL} small />
+            <span className="text-zinc-500 pb-2">×</span>
             <NumField label="Height ft" value={wallH} onChange={setWallH} small />
-            <button type="button" onClick={calcSf} disabled={!wallW || !wallH}
+            <button type="button" onClick={calcSf} disabled={!wallW || !wallL || !wallH}
               className="px-3 py-2 rounded-xl bg-amber-500 text-black text-xs font-bold disabled:opacity-40 hover:bg-amber-400 transition-colors whitespace-nowrap">
               <Zap className="w-3.5 h-3.5 inline mr-1" />Calc SF
             </button>
           </div>
-          {wallW && wallH && (
-            <p className="text-xs text-zinc-500">= {Math.round(parseFloat(wallW || "0") * parseFloat(wallH || "0") * 4)} SF total (4 walls)</p>
+          {wallW && wallL && wallH && (
+            <p className="text-xs text-zinc-500">= {Math.round(2 * (parseFloat(wallW || "0") + parseFloat(wallL || "0")) * parseFloat(wallH || "0"))} SF total (perimeter × height)</p>
           )}
         </div>
       </div>
