@@ -642,7 +642,7 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
     const transAmt = transQty * transRate;
     const stairAmt = stairQty * stairRate;
     const subtotal = installAmt + subfloor + remAmt + underAmt + transAmt + stairAmt;
-    const final = Math.max(500, Math.ceil(subtotal / 50) * 50);
+    const final = subtotal > 0 ? Math.max(500, Math.ceil(subtotal / 50) * 50) : 0;
     return { totalSF, installAmt, subfloor, remSF, remAmt, underAmt, transAmt, stairAmt, subtotal, final };
   }, [rooms, rate, subfloorCost, removalSF, removalRate, underlayment, underlayRate, transQty, transRate, stairQty, stairRate]);
 
