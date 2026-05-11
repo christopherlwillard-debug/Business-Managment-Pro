@@ -54,7 +54,7 @@ router.get(
       return;
     }
 
-    const radius = 80;
+    const radius = 60;
 
     const query = `
 [out:json][timeout:15];
@@ -65,7 +65,14 @@ router.get(
   way["surface"="paved"](around:${radius},${lat},${lng});
   way["landuse"="parking"](around:${radius},${lat},${lng});
   way["landuse"="commercial"](around:${radius},${lat},${lng});
+  way["highway"="service"](around:${radius},${lat},${lng});
   relation["amenity"="parking"](around:${radius},${lat},${lng});
+  relation["surface"="asphalt"](around:${radius},${lat},${lng});
+  relation["surface"="concrete"](around:${radius},${lat},${lng});
+  relation["surface"="paved"](around:${radius},${lat},${lng});
+  relation["landuse"="parking"](around:${radius},${lat},${lng});
+  relation["landuse"="commercial"](around:${radius},${lat},${lng});
+  relation["highway"="service"](around:${radius},${lat},${lng});
 );
 out geom;
     `.trim();
