@@ -352,13 +352,11 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
 export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
   console.log("[ky-local] Starting local bid scrape (KY + IN 50-mile radius)");
 
-  // Note: Hawesville, KY (Hancock County seat) is covered by scrapeHancockCounty() above.
-  // Note: Hartford, KY (Ohio County seat) has no publicly accessible city bid portal
-  //       (DNS resolves to nothing); bids are covered by the Ohio County scraper below.
-  // Note: Beaverdam, KY is an unincorporated community in Ohio County, also covered below.
+  // Hawesville (Hancock County seat) is covered by scrapeHancockCounty().
+  // Hartford (Ohio County seat) has no separate city bid portal; covered by Ohio County below.
 
   const results = await Promise.allSettled([
-    // Existing county scrapers
+    // Core KY counties (original)
     scrapeHancockCounty(),
     scrapeDaviessCounty(),
     scrapeCountyGeneric(
@@ -375,7 +373,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
     ),
     scrapeKyEProcurement(),
 
-    // Owensboro, KY city (owensboro.org/purchasing confirmed reachable)
+    // Owensboro, KY (city)
     scrapeCountyGeneric(
       ["https://owensboro.org/purchasing", "https://owensboro.org/bids"],
       "ky-owensboro",
@@ -383,7 +381,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Owensboro"
     ),
 
-    // Henderson, KY city (hendersonky.gov/170/Current-Bids-RFPs confirmed reachable)
+    // Henderson, KY (city)
     scrapeCountyGeneric(
       [
         "https://hendersonky.gov/170/Current-Bids-RFPs",
@@ -395,7 +393,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Henderson City"
     ),
 
-    // Henderson County, KY (hendersoncountyky.gov root confirmed reachable)
+    // Henderson County, KY
     scrapeCountyGeneric(
       [
         "https://hendersoncountyky.gov/government/purchasing",
@@ -407,19 +405,23 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Henderson County"
     ),
 
-    // Grayson County, KY / Leitchfield city (both confirmed reachable)
+    // Grayson County, KY
     scrapeCountyGeneric(
-      [
-        "https://graysoncountyky.gov/bids",
-        "https://leitchfield.ky.gov/bids",
-        "https://graysoncountyky.gov",
-      ],
+      ["https://graysoncountyky.gov/bids", "https://graysoncountyky.gov"],
       "ky-grayson",
       "Grayson County Government",
       "Grayson County"
     ),
 
-    // Hopkins County, KY — Madisonville area (site returns 403; fails gracefully)
+    // Leitchfield, KY (city — separate portal from Grayson County)
+    scrapeCountyGeneric(
+      ["https://leitchfield.ky.gov/bids", "https://leitchfield.ky.gov"],
+      "ky-leitchfield",
+      "City of Leitchfield",
+      "Leitchfield"
+    ),
+
+    // Hopkins County, KY
     scrapeCountyGeneric(
       [
         "https://hopkinscounty.ky.gov/bids",
@@ -431,7 +433,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Hopkins County"
     ),
 
-    // Union County, KY — Morganfield area (DNS unresolvable; fails gracefully)
+    // Union County, KY
     scrapeCountyGeneric(
       [
         "https://unioncounty.ky.gov/bids",
@@ -443,7 +445,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Union County"
     ),
 
-    // Webster County, KY (DNS unresolvable; fails gracefully)
+    // Webster County, KY
     scrapeCountyGeneric(
       [
         "https://webstercounty.ky.gov/bids",
@@ -455,7 +457,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Webster County"
     ),
 
-    // Muhlenberg County, KY — Central City / Greenville (site returns 403; fails gracefully)
+    // Muhlenberg County, KY
     scrapeCountyGeneric(
       [
         "https://muhlenbergcounty.ky.gov/bids",
@@ -467,7 +469,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Muhlenberg County"
     ),
 
-    // City of Evansville, IN (evansvillegov.org purchasing dept confirmed reachable)
+    // City of Evansville, IN
     scrapeCountyGeneric(
       [
         "https://evansvillegov.org/city/department/index.php?structureid=88",
@@ -479,7 +481,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Evansville IN"
     ),
 
-    // Vanderburgh County, IN — Evansville metro (vanderburghcounty.com confirmed reachable)
+    // Vanderburgh County, IN
     scrapeCountyGeneric(
       [
         "https://vanderburghcounty.com/purchasing",
@@ -491,7 +493,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Vanderburgh County IN"
     ),
 
-    // Warrick County, IN (warrickcounty.gov/purchasing confirmed reachable)
+    // Warrick County, IN
     scrapeCountyGeneric(
       [
         "https://www.warrickcounty.gov/purchasing",
@@ -503,7 +505,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Warrick County IN"
     ),
 
-    // Indiana eProcurement — state-level IN bids (in.gov/idoa/procurement confirmed reachable)
+    // Indiana eProcurement (state-level)
     scrapeCountyGeneric(
       [
         "https://www.in.gov/idoa/procurement/",
