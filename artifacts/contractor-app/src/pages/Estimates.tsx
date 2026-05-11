@@ -17,8 +17,7 @@ import {
   ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
   CreditCard, ExternalLink, Copy, CheckCircle2,
 } from "lucide-react";
-import { TrimCalculator } from "@/components/calculators/TrimCalculator";
-import { SidingCalculator } from "@/components/calculators/SidingCalculator";
+import { ContractingCalculator } from "@/components/calculators/ContractingCalculator";
 import { FlooringCalculator } from "@/components/calculators/FlooringCalculator";
 import { PlumbingCalculator } from "@/components/calculators/PlumbingCalculator";
 import { AsphaltCalculator } from "@/components/calculators/AsphaltCalculator";
@@ -255,8 +254,7 @@ export function EstimateModal({
         : [emptyLine()]
   );
   const [templateApplied, setTemplateApplied] = useState(fromTemplate === "asphalt_sealing_proposal");
-  const [showTrimCalc, setShowTrimCalc]         = useState(false);
-  const [showSidingCalc, setShowSidingCalc]     = useState(false);
+  const [showContractingCalc, setShowContractingCalc] = useState(false);
   const [showFlooringCalc, setShowFlooringCalc] = useState(false);
   const [showPlumbingCalc, setShowPlumbingCalc] = useState(false);
   const [showAsphaltCalc, setShowAsphaltCalc]   = useState(false);
@@ -446,22 +444,13 @@ export function EstimateModal({
                 <p className="text-xs text-amber-600 mt-1">Tap "Use Template" to pre-fill line items for {jobType}</p>
               )}
               {/* Trade-specific interactive calculator buttons */}
-              {jobType === "Trim Work" && (
+              {!["Asphalt Sealing", "Flooring", "Plumbing", "Punch List"].includes(jobType) && (
                 <button
                   type="button"
-                  onClick={() => setShowTrimCalc(true)}
+                  onClick={() => setShowContractingCalc(true)}
                   className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
                 >
-                  <Calculator className="w-3.5 h-3.5" /> Open Trim Calculator
-                </button>
-              )}
-              {jobType === "Siding" && (
-                <button
-                  type="button"
-                  onClick={() => setShowSidingCalc(true)}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
-                >
-                  <Calculator className="w-3.5 h-3.5" /> Open Siding Calculator
+                  <Calculator className="w-3.5 h-3.5" /> Open Contracting Calculator
                 </button>
               )}
               {jobType === "Flooring" && (
@@ -664,27 +653,10 @@ export function EstimateModal({
         </div>
       </div>
 
-      {/* Trim calculator overlay */}
-      {showTrimCalc && (
-        <TrimCalculator
-          onClose={() => setShowTrimCalc(false)}
-          onUseNumbers={calcLines => {
-            setLines(calcLines.map(l => ({
-              category: l.category,
-              description: l.description,
-              quantity: String(l.quantity),
-              unit: l.unit,
-              unitCost: String(l.unitCost),
-            })));
-            setTemplateApplied(true);
-          }}
-        />
-      )}
-
-      {/* Siding calculator overlay */}
-      {showSidingCalc && (
-        <SidingCalculator
-          onClose={() => setShowSidingCalc(false)}
+      {/* Contracting calculator overlay */}
+      {showContractingCalc && (
+        <ContractingCalculator
+          onClose={() => setShowContractingCalc(false)}
           onUseNumbers={calcLines => {
             setLines(calcLines.map(l => ({
               category: l.category,
