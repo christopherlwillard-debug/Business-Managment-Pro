@@ -421,36 +421,39 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       "Leitchfield"
     ),
 
-    // Hopkins County, KY
+    // Hopkins County, KY (hopkinscountyky.com is the active public site)
     scrapeCountyGeneric(
       [
+        "https://hopkinscountyky.com/bids",
+        "https://hopkinscountyky.com",
         "https://hopkinscounty.ky.gov/bids",
         "https://hopkinscounty.ky.gov",
-        "https://hopkinscountyky.gov",
       ],
       "ky-hopkins",
       "Hopkins County Government",
       "Hopkins County"
     ),
 
-    // Union County, KY
+    // Union County, KY (morganfield.ky.gov is the reachable county seat site)
     scrapeCountyGeneric(
       [
+        "https://morganfield.ky.gov/bids",
+        "https://morganfield.ky.gov",
         "https://unioncounty.ky.gov/bids",
         "https://unioncounty.ky.gov",
-        "https://unioncountyky.gov",
       ],
       "ky-union",
       "Union County Government",
       "Union County"
     ),
 
-    // Webster County, KY
+    // Webster County, KY (dixon.ky.gov is the reachable county seat site)
     scrapeCountyGeneric(
       [
+        "https://dixon.ky.gov/bids",
+        "https://dixon.ky.gov",
         "https://webstercounty.ky.gov/bids",
         "https://webstercounty.ky.gov",
-        "https://webstercountyky.gov",
       ],
       "ky-webster",
       "Webster County Government",
@@ -462,7 +465,6 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
       [
         "https://muhlenbergcounty.ky.gov/bids",
         "https://muhlenbergcounty.ky.gov",
-        "https://muhlenbergcountyky.gov",
       ],
       "ky-muhlenberg",
       "Muhlenberg County Government",
@@ -507,10 +509,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
 
     // Indiana eProcurement (state-level)
     scrapeCountyGeneric(
-      [
-        "https://www.in.gov/idoa/procurement/",
-        "https://www.in.gov/idoa/procurement/current-solicitations/",
-      ],
+      ["https://www.in.gov/idoa/procurement/"],
       "in-eprocure",
       "Indiana eProcurement",
       "IN eProcurement"
