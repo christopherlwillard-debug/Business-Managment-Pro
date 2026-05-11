@@ -6,14 +6,14 @@ export function getPlaidClient(): PlaidApi {
   if (!_client) {
     const clientId = process.env["PLAID_CLIENT_ID"];
     const secret = process.env["PLAID_SECRET"];
-    const env = (process.env["PLAID_ENV"] ?? "sandbox") as keyof typeof PlaidEnvironments;
+    const env = (process.env["PLAID_ENV"] ?? "production") as keyof typeof PlaidEnvironments;
 
     if (!clientId || !secret) {
       throw new Error("PLAID_CLIENT_ID and PLAID_SECRET environment variables are required");
     }
 
     const configuration = new Configuration({
-      basePath: PlaidEnvironments[env] ?? PlaidEnvironments.sandbox,
+      basePath: PlaidEnvironments[env] ?? PlaidEnvironments.production,
       baseOptions: {
         headers: {
           "PLAID-CLIENT-ID": clientId,
@@ -28,7 +28,7 @@ export function getPlaidClient(): PlaidApi {
 }
 
 export function isPlaidConfigured(): boolean {
-  return !!(process.env["PLAID_CLIENT_ID"] && process.env["PLAID_SECRET"] && process.env["PLAID_ENV"]);
+  return !!(process.env["PLAID_CLIENT_ID"] && process.env["PLAID_SECRET"]);
 }
 
 export interface PlaidErrorDetail {
