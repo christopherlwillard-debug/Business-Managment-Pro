@@ -11,7 +11,7 @@ interface DraftLine {
 
 interface PlumbingCalculatorProps {
   onClose: () => void;
-  onUseNumbers: (lines: DraftLine[]) => void;
+  onUseNumbers: (lines: DraftLine[], append: boolean) => void;
 }
 
 interface AddOn {
@@ -53,6 +53,7 @@ export function PlumbingCalculator({ onClose, onUseNumbers }: PlumbingCalculator
   const [addOns, setAddOns]         = useState<AddOn[]>([]);
   const [includedOpen, setIncludedOpen] = useState(false);
   const [copied, setCopied]         = useState(false);
+  const [appendMode, setAppendMode] = useState(true);
 
   const calc = useMemo(() => {
     const extraDrops  = Math.max(0, drops - 2);
@@ -321,6 +322,25 @@ export function PlumbingCalculator({ onClose, onUseNumbers }: PlumbingCalculator
           >
             <Copy className="w-4 h-4" /> {copied ? "Copied!" : "Copy Quote"}
           </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Add to estimate:</span>
+            <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setAppendMode(true)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${appendMode ? "bg-amber-500 text-white" : "text-gray-500 hover:text-gray-700"}`}
+              >
+                Append
+              </button>
+              <button
+                type="button"
+                onClick={() => setAppendMode(false)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${!appendMode ? "bg-amber-500 text-white" : "text-gray-500 hover:text-gray-700"}`}
+              >
+                Replace
+              </button>
+            </div>
+          </div>
           <div className="flex gap-3">
             <button
               type="button"
@@ -331,10 +351,10 @@ export function PlumbingCalculator({ onClose, onUseNumbers }: PlumbingCalculator
             </button>
             <button
               type="button"
-              onClick={() => { onUseNumbers(buildLines()); onClose(); }}
+              onClick={() => { onUseNumbers(buildLines(), appendMode); onClose(); }}
               className="flex items-center gap-2 px-5 py-2 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors"
             >
-              Use These Numbers <ChevronRight className="w-4 h-4" />
+              {appendMode ? "Append to Estimate" : "Replace Lines"} <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>

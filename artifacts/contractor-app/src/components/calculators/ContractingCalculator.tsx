@@ -11,7 +11,7 @@ interface DraftLine {
 
 interface ContractingCalculatorProps {
   onClose: () => void;
-  onUseNumbers: (lines: DraftLine[]) => void;
+  onUseNumbers: (lines: DraftLine[], append: boolean) => void;
 }
 
 function fmt(n: number): string {
@@ -668,6 +668,7 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
   const [otherRows, setOtherRows]     = useState<OtherRow[]>([{ id: Date.now(), desc: "", amount: "" }]);
 
   const [copied, setCopied] = useState(false);
+  const [appendMode, setAppendMode] = useState(true);
 
   const otherTotal = otherRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
   const grandTotal = (trimOn ? trimTotal : 0) + (sidingOn ? sidingTotal : 0) + (drywallOn ? drywallTotal : 0) + (otherOn ? otherTotal : 0);
@@ -698,7 +699,7 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
         });
     }
     if (lines.length > 0) {
-      onUseNumbers(lines);
+      onUseNumbers(lines, appendMode);
       onClose();
     }
   }
@@ -822,6 +823,27 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
             <p className="text-center text-zinc-500 text-sm py-1">Toggle a section above to get started</p>
           )}
 
+          {/* Append / Replace toggle */}
+          <div className="flex items-center justify-between bg-zinc-800 rounded-xl px-3 py-2 border border-zinc-700">
+            <span className="text-xs text-zinc-400">Add to estimate</span>
+            <div className="flex gap-1 bg-zinc-900 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setAppendMode(true)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${appendMode ? "bg-amber-500 text-black" : "text-zinc-400 hover:text-white"}`}
+              >
+                Append
+              </button>
+              <button
+                type="button"
+                onClick={() => setAppendMode(false)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${!appendMode ? "bg-amber-500 text-black" : "text-zinc-400 hover:text-white"}`}
+              >
+                Replace
+              </button>
+            </div>
+          </div>
+
           {/* Action buttons */}
           <div className="flex gap-3">
             <button type="button" onClick={handleCopyQuote} disabled={activeSections === 0}
@@ -831,7 +853,7 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
             </button>
             <button type="button" onClick={handleUseNumbers} disabled={activeSections === 0}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 text-black font-bold text-sm hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              Use These Numbers →
+              {appendMode ? "Append to Estimate →" : "Replace Lines →"}
             </button>
           </div>
         </div>

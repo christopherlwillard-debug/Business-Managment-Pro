@@ -657,14 +657,15 @@ export function EstimateModal({
       {showContractingCalc && (
         <ContractingCalculator
           onClose={() => setShowContractingCalc(false)}
-          onUseNumbers={calcLines => {
-            setLines(calcLines.map(l => ({
+          onUseNumbers={(calcLines, append) => {
+            const mapped = calcLines.map(l => ({
               category: l.category,
               description: l.description,
               quantity: String(l.quantity),
               unit: l.unit,
               unitCost: String(l.unitCost),
-            })));
+            }));
+            setLines(prev => append ? [...prev, ...mapped] : mapped);
             setTemplateApplied(true);
           }}
         />
@@ -674,14 +675,15 @@ export function EstimateModal({
       {showFlooringCalc && (
         <FlooringCalculator
           onClose={() => setShowFlooringCalc(false)}
-          onUseNumbers={calcLines => {
-            setLines(calcLines.map(l => ({
+          onUseNumbers={(calcLines, append) => {
+            const mapped = calcLines.map(l => ({
               category: l.category,
               description: l.description,
               quantity: String(l.quantity),
               unit: l.unit,
               unitCost: String(l.unitCost),
-            })));
+            }));
+            setLines(prev => append ? [...prev, ...mapped] : mapped);
             setTemplateApplied(true);
           }}
         />
@@ -691,14 +693,15 @@ export function EstimateModal({
       {showPlumbingCalc && (
         <PlumbingCalculator
           onClose={() => setShowPlumbingCalc(false)}
-          onUseNumbers={calcLines => {
-            setLines(calcLines.map(l => ({
+          onUseNumbers={(calcLines, append) => {
+            const mapped = calcLines.map(l => ({
               category: l.category,
               description: l.description,
               quantity: String(l.quantity),
               unit: l.unit,
               unitCost: String(l.unitCost),
-            })));
+            }));
+            setLines(prev => append ? [...prev, ...mapped] : mapped);
             setTemplateApplied(true);
           }}
         />
@@ -740,14 +743,15 @@ export function EstimateModal({
       {showPunchListCalc && (
         <PunchListCalculator
           onClose={() => setShowPunchListCalc(false)}
-          onUseNumbers={calcLines => {
-            setLines(calcLines.map(l => ({
+          onUseNumbers={(calcLines, append) => {
+            const mapped = calcLines.map(l => ({
               category: l.category,
               description: l.description,
               quantity: String(l.quantity),
               unit: l.unit,
               unitCost: String(l.unitCost),
-            })));
+            }));
+            setLines(prev => append ? [...prev, ...mapped] : mapped);
             setTemplateApplied(true);
             setShowPunchListCalc(false);
           }}
