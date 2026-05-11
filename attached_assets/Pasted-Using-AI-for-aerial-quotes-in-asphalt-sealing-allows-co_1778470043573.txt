@@ -1,0 +1,89 @@
+Using AI for aerial quotes in asphalt sealing allows contractors to measure, estimate, and proposal jobs in minutes without visiting the site, using high-resolution aerial imagery and machine learning. Tools like QuoteIQ and AK DASH allow for rapid, accurate, and automated property assessments. [1, 2, 3]
+How AI Aerial Quoting Works
+Enter Address: Type the customer’s address into the AI platform, which pulls up high-resolution, top-down satellite or drone imagery.
+AI Mapping & Takeoff: The software automatically outlines the pavement, detects curbs, and calculates the total square footage, often distinguishing between asphalt and concrete.
+Tailored Pricing: The system applies your specific, pre-set pricing (e.g., \(\$0.20-\$0.50\) per sq ft for sealcoating) to the measured area, including options for crack filling or line striping.
+Instant Proposal: The AI generates a professional, branded proposal that can be sent to the customer immediately. [1, 2, 3, 4, 5, 6, 7]
+Top AI Tools for Asphalt Sealing
+QuoteIQ (Map Measure Pro): A comprehensive FSM (Field Service Management) app that offers, in addition to CRM features, remote measuring tools, before/after image generation, and automated bidding.
+AK DASH (AI Takeoff): Uses AI to instantly measure parking lots, including striping and ADA markings, for rapid, professional reports.
+BuildFolio: Enables AI-powered photo-to-quote, allowing for quick, detailed estimates using AI to analyze work and create bids in 60 seconds.
+PlantDemand: Good for larger-scale operations looking to connect AI estimations directly to plant scheduling. [1, 2, 3, 4, 5]
+Advantages of AI Aerial Quotes
+Drastically Faster Estimating: Eliminates manual, in-person site visits, enabling estimators to bid more jobs in less time.
+Improved Accuracy: Reduces human error in measurements and ensures consistent, data-driven pricing based on local market trends.
+Enhanced Closing Rates: Provides professional, visual proposals and before/after images that help customers visualize the final result.
+Higher Productivity: Allows for instant, 24/7 quoting, which can be connected to CRM systems, leading to faster, more efficient sales. [1, 2, 3, 4, 5, 6, 7]
+2026 Industry Pricing & Data
+Sealcoat Only: \(\$0.20–\$0.50\) per square foot.
+Seal + Crack Fill: \(\$0.60–\$0.80\) per square foot.
+Full Bundle (with line striping): \(\$0.65–\$0.90\) per square foot. [1]
+Note: While tools like Aspire/Property Intel provide high-value, high-cost options, smaller businesses may find, through platforms like Facebook, that they can initially use free GIS and Google Earth for manual, non-AI
+1. Upgrade the Imagery Source (HD Maps)
+Standard Google Maps JavaScript API imagery is too compressed for AI crack detection. You must switch to high-resolution aerial providers via tile APIs.
+Nearmap API: Offers 2.2-inch to 6-inch spatial resolution (vs. Google's 6-inch to 12-inch). It easily exposes fine asphalt cracks.
+Google Earth Engine or Google Solar/Aerial API: Request the highest-resolution orthogonal zoom levels (\(z=20\) or \(z=21\)) specifically for the target bounding box.
+Implementation: In your frontend, pass the user's address, convert it to lat/lng coordinates, and fetch the HD static bounding box image using your new API key.
+2. Integrate a Object Detection/Segmentation Model
+Instead of building a model from scratch, deploy a pre-trained model capable of Instance Segmentation (detecting and measuring the exact geometry of cracks).
+The Model: Use YOLOv8-seg or YOLOv11-seg (Segment Anything variant). They are lightning-fast, highly accurate, and open-source.
+Hosting: Host the model on Roboflow, Replicate, or Hugging Face Inference Endpoints. This keeps your Replit container lightweight.
+Inference: Your Replit backend will send the HD static image URL to the hosted model API and receive a JSON response containing the crack coordinates and total pixel area.
+3. Calculate Linear Footage and Linear Pricing
+Computers count pixels, so you must convert pixel data into real-world feet.
+Ground Sample Distance (GSD): Read the scale metadata from your imagery provider (e.g., 1 pixel = 0.1 feet).
+The Math: \(\text{Total Crack Pixels} \times \text{GSD} = \text{Total Linear Feet}\).
+Pricing Engine: Multiply the calculated linear feet by your target rate (e.g., \(\$1.50\) to \(\$2.50\) per linear foot of crack filling) and append it to your polygon base price.
+4. Update the Frontend UI
+Replace or supplement your manual drawing canvas with a loading spinner ("AI Analyzing Pavement...").
+Use an HTML5 Canvas or SVG overlay to paint the AI-detected cracks in bright red directly over the map imagery so the client sees exactly what they are paying for.
+
+💻 Sample Replit Backend Code (Python / Flask)
+Add this endpoint to your Replit main.py to handle the AI prediction using Roboflow (which hosts thousands of public, pre-trained asphalt crack datasets):
+python
+import os
+import requests
+from flask import Flask, jsonify, request
+
+app = Flask(__name__)
+
+ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
+# Pre-trained public asphalt crack model on Roboflow
+ROBOFLOW_MODEL = "asphalt-crack-detection-s9v7m/2"
+
+
+@app.route("/api/predict-cracks", methods=["POST"])
+def predict_cracks():
+    data = request.json
+    image_url = data.get("image_url")  # HD Aerial image URL from Nearmap/Google
+    gsd_factor = data.get(
+        "gsd_factor", 0.1
+    )  # Feet per pixel based on zoom level
+
+    # Call AI model endpoint
+    url = f"roboflow.com{ROBOFLOW_MODEL}?api_key={ROBOFLOW_API_KEY}&image={image_url}"
+    response = requests.post(url).json()
+
+    total_linear_feet = 0
+
+    # Loop through detected crack lines/polygons
+    for prediction in response.get("predictions", []):
+        # Calculate length using bounding box or polygon point sequences
+        pixel_length = prediction.get("length", prediction.get("width", 0))
+        total_linear_feet += pixel_length * gsd_factor
+
+    # Pricing logic
+    price_per_foot = 2.00  # $2.00 per linear foot
+    estimated_cost = round(total_linear_feet * price_per_foot, 2)
+
+    return jsonify(
+        {
+            "linear_feet": round(total_linear_feet, 2),
+            "estimated_crack_cost": estimated_cost,
+            "raw_predictions": response.get("predictions"),
+        }
+    )
+
+Use code with caution.
+
+If you'd like to dive into the code, what language (e.g., Python, Node.js) and map framework (e.g., Google Maps, Leaflet) is your Replit app currently using?
