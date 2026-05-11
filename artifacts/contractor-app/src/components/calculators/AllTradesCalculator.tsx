@@ -21,9 +21,9 @@ function fmtInt(n: number) {
   return Math.round(n).toLocaleString("en-US");
 }
 
-// ─── Shared UI primitives ──────────────────────────────────────────────────────
+// ─── Top-level trade section shell ────────────────────────────────────────────
 
-function SectionShell({
+function TradeSectionShell({
   title, subtitle, enabled, onToggle, total, children,
 }: {
   title: string; subtitle: string; enabled: boolean; onToggle: () => void; total: number; children: React.ReactNode;
@@ -48,12 +48,48 @@ function SectionShell({
           {open ? <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" /> : <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />}
         </button>
       </div>
-      <div className={`px-4 pb-4 space-y-3 border-t border-zinc-700/60 pt-3 ${(!open || !enabled) ? "hidden" : ""}`}>
+      <div className={`px-4 pb-4 border-t border-zinc-700/60 pt-3 ${(!open || !enabled) ? "hidden" : ""}`}>
         {children}
       </div>
     </div>
   );
 }
+
+// ─── Sub-section shell (used inside Contracting for Trim/Siding/Drywall/Other) ─
+
+function SubSectionShell({
+  title, subtitle, enabled, onToggle, total, children,
+}: {
+  title: string; subtitle: string; enabled: boolean; onToggle: () => void; total: number; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className={`rounded-xl border transition-colors ${enabled ? "border-amber-500/30 bg-zinc-900/70" : "border-zinc-700/50 bg-zinc-900/30"}`}>
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <button type="button" onClick={onToggle}
+          className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${enabled ? "bg-amber-500" : "bg-zinc-600"}`}>
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${enabled ? "left-4.5" : "left-0.5"}`} />
+        </button>
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="flex-1 flex items-center gap-2 min-w-0 text-left">
+          <div className="flex-1 min-w-0">
+            <p className={`text-xs font-bold leading-tight ${enabled ? "text-zinc-100" : "text-zinc-500"}`}>{title}</p>
+            <p className="text-[10px] text-zinc-600 truncate">{subtitle}</p>
+          </div>
+          {enabled && total > 0 && (
+            <span className="text-amber-400 font-mono font-bold text-xs shrink-0">${fmtInt(total)}</span>
+          )}
+          {open ? <ChevronDown className="w-3.5 h-3.5 text-zinc-600 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-zinc-600 shrink-0" />}
+        </button>
+      </div>
+      <div className={`px-3 pb-3 border-t border-zinc-700/40 pt-3 space-y-2.5 ${(!open || !enabled) ? "hidden" : ""}`}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared primitives ─────────────────────────────────────────────────────────
 
 function TierBtn({ label, range, active, onClick }: { label: string; range: string; active: boolean; onClick: () => void }) {
   return (
@@ -484,6 +520,68 @@ function OtherWorkSection({ onRowsChange }: { onRowsChange: (rows: OtherRow[]) =
   );
 }
 
+// ─── Contracting trade section (wraps Trim / Siding / Drywall / Other) ─────────
+
+function ContractingTradeSection({
+  onTotalChange,
+  onLinesChange,
+}: {
+  onTotalChange: (t: number) => void;
+  onLinesChange: (lines: DraftLine[]) => void;
+}) {
+  const [trimOn, setTrimOn]     = useState(false);
+  const [sidingOn, setSidingOn] = useState(false);
+  const [drywallOn, setDrywallOn] = useState(false);
+  const [otherOn, setOtherOn]   = useState(false);
+
+  const [trimTotal, setTrimTotal]       = useState(0);
+  const [sidingTotal, setSidingTotal]   = useState(0);
+  const [drywallTotal, setDrywallTotal] = useState(0);
+  const [otherRows, setOtherRows]       = useState<OtherRow[]>([{ id: Date.now(), desc: "", amount: "" }]);
+
+  const otherTotal = otherRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const total =
+    (trimOn ? trimTotal : 0) +
+    (sidingOn ? sidingTotal : 0) +
+    (drywallOn ? drywallTotal : 0) +
+    (otherOn ? otherTotal : 0);
+
+  const lines = useMemo((): DraftLine[] => {
+    const out: DraftLine[] = [];
+    if (trimOn && trimTotal > 0)
+      out.push({ category: "Labor", description: "Trim Work", quantity: 1, unit: "LOT", unitCost: Math.round(trimTotal) });
+    if (sidingOn && sidingTotal > 0)
+      out.push({ category: "Labor", description: "Siding", quantity: 1, unit: "LOT", unitCost: Math.round(sidingTotal) });
+    if (drywallOn && drywallTotal > 0)
+      out.push({ category: "Labor", description: "Drywall", quantity: 1, unit: "LOT", unitCost: Math.round(drywallTotal) });
+    if (otherOn)
+      otherRows.filter(r => r.desc.trim() && parseFloat(r.amount) > 0).forEach(r =>
+        out.push({ category: "Labor", description: r.desc.trim(), quantity: 1, unit: "LOT", unitCost: Math.round(parseFloat(r.amount)) })
+      );
+    return out;
+  }, [trimOn, trimTotal, sidingOn, sidingTotal, drywallOn, drywallTotal, otherOn, otherRows]);
+
+  useEffect(() => { onTotalChange(total); }, [total]);
+  useEffect(() => { onLinesChange(lines); }, [lines]);
+
+  return (
+    <div className="space-y-2">
+      <SubSectionShell title="Trim Work" subtitle="Baseboard · Crown Moulding · Door Jams · Ceiling Services" enabled={trimOn} onToggle={() => setTrimOn(o => !o)} total={trimTotal}>
+        <TrimSection onTotalChange={setTrimTotal} />
+      </SubSectionShell>
+      <SubSectionShell title="Siding" subtitle="SF-based · On-lot / Standard / Premium · Windows & Doors" enabled={sidingOn} onToggle={() => setSidingOn(o => !o)} total={sidingTotal}>
+        <SidingSection onTotalChange={setSidingTotal} />
+      </SubSectionShell>
+      <SubSectionShell title="Drywall" subtitle="Patch / Partial / Full · Texture match · Corner bead" enabled={drywallOn} onToggle={() => setDrywallOn(o => !o)} total={drywallTotal}>
+        <DrywallSection onTotalChange={setDrywallTotal} />
+      </SubSectionShell>
+      <SubSectionShell title="Other Work" subtitle="Freeform — any description + flat dollar amount" enabled={otherOn} onToggle={() => setOtherOn(o => !o)} total={otherTotal}>
+        <OtherWorkSection onRowsChange={setOtherRows} />
+      </SubSectionShell>
+    </div>
+  );
+}
+
 // ─── Flooring section ──────────────────────────────────────────────────────────
 
 type FlooringType = "Carpet" | "Laminate" | "LVP" | "Hardwood" | "Tile";
@@ -492,9 +590,9 @@ type FlooringRateTier = "low" | "mid" | "high";
 interface FlooringRoom { id: number; label: string; length: string; width: string; manualSF: string; }
 
 const FLOORING_RATES: Record<FlooringType, { full: { low: number; mid: number; high: number; range: string }; labor: { low: number; mid: number; high: number; range: string } }> = {
-  Carpet:   { full: { low: 3, mid: 5, high: 7, range: "$3–$7/SF" },    labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
-  Laminate: { full: { low: 4, mid: 6.5, high: 9, range: "$4–$9/SF" },  labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
-  LVP:      { full: { low: 4, mid: 7, high: 10, range: "$4–$10/SF" },  labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
+  Carpet:   { full: { low: 3, mid: 5, high: 7, range: "$3–$7/SF" },      labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
+  Laminate: { full: { low: 4, mid: 6.5, high: 9, range: "$4–$9/SF" },    labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
+  LVP:      { full: { low: 4, mid: 7, high: 10, range: "$4–$10/SF" },    labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
   Hardwood: { full: { low: 6, mid: 11.5, high: 25, range: "$6–$25/SF" }, labor: { low: 3, mid: 4.5, high: 6, range: "$3–$6/SF" } },
   Tile:     { full: { low: 7, mid: 13.5, high: 20, range: "$7–$20+/SF" }, labor: { low: 4, mid: 6, high: 8, range: "$4–$8+/SF" } },
 };
@@ -681,7 +779,7 @@ const PLUMBING_DROP_RATE = 125;
 interface PlumbAddOn { id: number; label: string; amount: string; }
 let plumbId = 2000;
 
-function PlumbingSection({ onTotalChange }: { onTotalChange: (t: number) => void }) {
+function PlumbingSection({ onTotalChange }: { onTotalChange: (t: number, lines: DraftLine[]) => void }) {
   const [drops, setDrops] = useState(2);
   const [addOns, setAddOns] = useState<PlumbAddOn[]>([]);
 
@@ -692,7 +790,29 @@ function PlumbingSection({ onTotalChange }: { onTotalChange: (t: number) => void
     return { extraDrops, extraAmt, addOnTotal, total: PLUMBING_BASE + extraAmt + addOnTotal };
   }, [drops, addOns]);
 
-  useEffect(() => { onTotalChange(calc.total); }, [calc.total]);
+  const lines = useMemo((): DraftLine[] => {
+    const out: DraftLine[] = [
+      { category: "Labor", description: "Plumbing – Base Charge (2 drops)", quantity: 1, unit: "LOT", unitCost: PLUMBING_BASE },
+    ];
+    if (calc.extraDrops > 0) {
+      out.push({
+        category: "Labor",
+        description: `Plumbing – Additional Drops (${calc.extraDrops} × $${PLUMBING_DROP_RATE})`,
+        quantity: calc.extraDrops,
+        unit: "EA",
+        unitCost: PLUMBING_DROP_RATE,
+      });
+    }
+    for (const addon of addOns) {
+      const amt = parseFloat(addon.amount) || 0;
+      if (amt > 0 && addon.label.trim()) {
+        out.push({ category: "Labor", description: addon.label.trim(), quantity: 1, unit: "LOT", unitCost: amt });
+      }
+    }
+    return out;
+  }, [calc.extraDrops, addOns]);
+
+  useEffect(() => { onTotalChange(calc.total, lines); }, [calc.total, lines]);
 
   function updateAddOn(id: number, field: "label" | "amount", value: string) {
     setAddOns(a => a.map(x => x.id === id ? { ...x, [field]: value } : x));
@@ -757,7 +877,7 @@ const SERVICE_OPTIONS: Record<ServiceType, { label: string; subtitle: string; ra
   "full-day":  { label: "Full-Day Service", subtitle: "Up to 8 hours", range: "$800–$1,200", default: 1000 },
 };
 
-function PunchListSection({ onTotalChange }: { onTotalChange: (t: number) => void }) {
+function PunchListSection({ onTotalChange }: { onTotalChange: (t: number, lines: DraftLine[]) => void }) {
   const [serviceType, setServiceType] = useState<ServiceType>("half-day");
   const [servicePrice, setServicePrice] = useState(500);
   const [helperCount, setHelperCount] = useState(0);
@@ -767,7 +887,29 @@ function PunchListSection({ onTotalChange }: { onTotalChange: (t: number) => voi
   function handleServiceChange(t: ServiceType) { setServiceType(t); setServicePrice(SERVICE_OPTIONS[t].default); }
 
   const total = useMemo(() => servicePrice + helperCount * helperRate, [servicePrice, helperCount, helperRate]);
-  useEffect(() => { onTotalChange(total); }, [total]);
+
+  const lines = useMemo((): DraftLine[] => {
+    const opt = SERVICE_OPTIONS[serviceType];
+    const out: DraftLine[] = [{
+      category: "Labor",
+      description: `Punch List — ${opt.label} (${opt.subtitle})${notes.trim() ? ` — ${notes.trim()}` : ""}`,
+      quantity: 1,
+      unit: "LOT",
+      unitCost: servicePrice,
+    }];
+    if (helperCount > 0) {
+      out.push({
+        category: "Labor",
+        description: `Additional Helper${helperCount > 1 ? "s" : ""} (${helperCount} × $${helperRate}/day)`,
+        quantity: helperCount,
+        unit: "DAY",
+        unitCost: helperRate,
+      });
+    }
+    return out;
+  }, [serviceType, servicePrice, helperCount, helperRate, notes]);
+
+  useEffect(() => { onTotalChange(total, lines); }, [total, lines]);
 
   return (
     <div className="space-y-3">
@@ -817,42 +959,31 @@ function PunchListSection({ onTotalChange }: { onTotalChange: (t: number) => voi
 // ─── Main AllTradesCalculator ──────────────────────────────────────────────────
 
 export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculatorProps) {
-  const [trimOn, setTrimOn]       = useState(false);
-  const [sidingOn, setSidingOn]   = useState(false);
-  const [drywallOn, setDrywallOn] = useState(false);
-  const [otherOn, setOtherOn]     = useState(false);
-  const [flooringOn, setFlooringOn] = useState(false);
-  const [plumbingOn, setPlumbingOn] = useState(false);
-  const [punchOn, setPunchOn]     = useState(false);
+  const [contractingOn, setContractingOn] = useState(false);
+  const [flooringOn, setFlooringOn]       = useState(false);
+  const [plumbingOn, setPlumbingOn]       = useState(false);
+  const [punchOn, setPunchOn]             = useState(false);
 
-  const [trimTotal, setTrimTotal]       = useState(0);
-  const [sidingTotal, setSidingTotal]   = useState(0);
-  const [drywallTotal, setDrywallTotal] = useState(0);
-  const [otherRows, setOtherRows]       = useState<OtherRow[]>([{ id: Date.now(), desc: "", amount: "" }]);
-  const [flooringTotal, setFlooringTotal] = useState(0);
-  const [flooringLines, setFlooringLines] = useState<DraftLine[]>([]);
-  const [plumbingTotal, setPlumbingTotal] = useState(0);
-  const [punchTotal, setPunchTotal]     = useState(0);
+  const [contractingTotal, setContractingTotal] = useState(0);
+  const [contractingLines, setContractingLines] = useState<DraftLine[]>([]);
+  const [flooringTotal, setFlooringTotal]       = useState(0);
+  const [flooringLines, setFlooringLines]       = useState<DraftLine[]>([]);
+  const [plumbingTotal, setPlumbingTotal]       = useState(0);
+  const [plumbingLines, setPlumbingLines]       = useState<DraftLine[]>([]);
+  const [punchTotal, setPunchTotal]             = useState(0);
+  const [punchLines, setPunchLines]             = useState<DraftLine[]>([]);
 
-  const [copied, setCopied]   = useState(false);
+  const [copied, setCopied]       = useState(false);
   const [appendMode, setAppendMode] = useState(true);
 
-  const otherTotal = otherRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-
   const grandTotal =
-    (trimOn ? trimTotal : 0) +
-    (sidingOn ? sidingTotal : 0) +
-    (drywallOn ? drywallTotal : 0) +
-    (otherOn ? otherTotal : 0) +
+    (contractingOn ? contractingTotal : 0) +
     (flooringOn ? flooringTotal : 0) +
     (plumbingOn ? plumbingTotal : 0) +
     (punchOn ? punchTotal : 0);
 
-  const activeSections = [
-    trimOn && trimTotal > 0,
-    sidingOn && sidingTotal > 0,
-    drywallOn && drywallTotal > 0,
-    otherOn && otherRows.some(r => r.desc && parseFloat(r.amount) > 0),
+  const activeTrades = [
+    contractingOn && contractingTotal > 0,
     flooringOn && flooringTotal > 0,
     plumbingOn && plumbingTotal > 0,
     punchOn && punchTotal > 0,
@@ -860,38 +991,19 @@ export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculat
 
   function handleUseNumbers() {
     const lines: DraftLine[] = [];
-    if (trimOn && trimTotal > 0)
-      lines.push({ category: "Labor", description: "Trim Work", quantity: 1, unit: "LOT", unitCost: Math.round(trimTotal) });
-    if (sidingOn && sidingTotal > 0)
-      lines.push({ category: "Labor", description: "Siding", quantity: 1, unit: "LOT", unitCost: Math.round(sidingTotal) });
-    if (drywallOn && drywallTotal > 0)
-      lines.push({ category: "Labor", description: "Drywall", quantity: 1, unit: "LOT", unitCost: Math.round(drywallTotal) });
-    if (otherOn)
-      otherRows.filter(r => r.desc.trim() && parseFloat(r.amount) > 0).forEach(r =>
-        lines.push({ category: "Labor", description: r.desc.trim(), quantity: 1, unit: "LOT", unitCost: Math.round(parseFloat(r.amount)) })
-      );
-    if (flooringOn && flooringLines.length > 0)
-      lines.push(...flooringLines);
-    if (plumbingOn && plumbingTotal > 0) {
-      const extraDrops = Math.max(0, /* drops state is inside PlumbingSection, we use total */ 0);
-      lines.push({ category: "Labor", description: "Plumbing", quantity: 1, unit: "LOT", unitCost: Math.round(plumbingTotal) });
-      void extraDrops;
-    }
-    if (punchOn && punchTotal > 0)
-      lines.push({ category: "Labor", description: "Punch List", quantity: 1, unit: "LOT", unitCost: Math.round(punchTotal) });
-
+    if (contractingOn && contractingLines.length > 0) lines.push(...contractingLines);
+    if (flooringOn && flooringLines.length > 0)       lines.push(...flooringLines);
+    if (plumbingOn && plumbingLines.length > 0)       lines.push(...plumbingLines);
+    if (punchOn && punchLines.length > 0)             lines.push(...punchLines);
     if (lines.length > 0) { onUseNumbers(lines, appendMode); onClose(); }
   }
 
   function handleCopyQuote() {
     const parts: string[] = ["All Trades Estimate — Willard's General Contracting", ""];
-    if (trimOn && trimTotal > 0)     parts.push(`Trim Work:  $${fmtInt(trimTotal)}`);
-    if (sidingOn && sidingTotal > 0) parts.push(`Siding:     $${fmtInt(sidingTotal)}`);
-    if (drywallOn && drywallTotal > 0) parts.push(`Drywall:    $${fmtInt(drywallTotal)}`);
-    if (otherOn) otherRows.filter(r => r.desc && parseFloat(r.amount) > 0).forEach(r => parts.push(`${r.desc}:  $${fmtInt(parseFloat(r.amount))}`));
-    if (flooringOn && flooringTotal > 0) parts.push(`Flooring:   $${fmtInt(flooringTotal)}`);
-    if (plumbingOn && plumbingTotal > 0) parts.push(`Plumbing:   $${fmtInt(plumbingTotal)}`);
-    if (punchOn && punchTotal > 0)   parts.push(`Punch List: $${fmtInt(punchTotal)}`);
+    if (contractingOn && contractingTotal > 0) parts.push(`Contracting:  $${fmtInt(contractingTotal)}`);
+    if (flooringOn && flooringTotal > 0)       parts.push(`Flooring:     $${fmtInt(flooringTotal)}`);
+    if (plumbingOn && plumbingTotal > 0)       parts.push(`Plumbing:     $${fmtInt(plumbingTotal)}`);
+    if (punchOn && punchTotal > 0)             parts.push(`Punch List:   $${fmtInt(punchTotal)}`);
     parts.push("─────────────────────", `TOTAL: $${fmtInt(grandTotal)}`);
     navigator.clipboard.writeText(parts.join("\n")).then(() => {
       setCopied(true); setTimeout(() => setCopied(false), 2000);
@@ -906,64 +1018,74 @@ export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculat
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
           <div>
             <h2 className="font-bold text-white text-base">All Trades Calculator</h2>
-            <p className="text-xs text-zinc-400">Toggle each trade — see everything in one total</p>
+            <p className="text-xs text-zinc-400">Toggle each trade — one grand total, one estimate</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Sections — scrollable */}
+        {/* Trade sections — scrollable */}
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
-          <SectionShell title="Trim Work" subtitle="Baseboard · Crown Moulding · Door Jams · Ceiling Services" enabled={trimOn} onToggle={() => setTrimOn(o => !o)} total={trimTotal}>
-            <TrimSection onTotalChange={setTrimTotal} />
-          </SectionShell>
+          <TradeSectionShell
+            title="Contracting"
+            subtitle="Trim Work · Siding · Drywall · Other Work"
+            enabled={contractingOn}
+            onToggle={() => setContractingOn(o => !o)}
+            total={contractingTotal}
+          >
+            <ContractingTradeSection
+              onTotalChange={setContractingTotal}
+              onLinesChange={setContractingLines}
+            />
+          </TradeSectionShell>
 
-          <SectionShell title="Siding" subtitle="SF-based · On-lot / Standard / Premium · Windows & Doors" enabled={sidingOn} onToggle={() => setSidingOn(o => !o)} total={sidingTotal}>
-            <SidingSection onTotalChange={setSidingTotal} />
-          </SectionShell>
+          <TradeSectionShell
+            title="Flooring"
+            subtitle="Carpet / Laminate / LVP / Hardwood / Tile · Rooms · Add-ons"
+            enabled={flooringOn}
+            onToggle={() => setFlooringOn(o => !o)}
+            total={flooringTotal}
+          >
+            <FlooringSection onTotalChange={(t, l) => { setFlooringTotal(t); setFlooringLines(l); }} />
+          </TradeSectionShell>
 
-          <SectionShell title="Drywall" subtitle="Patch / Partial / Full · Texture match · Corner bead" enabled={drywallOn} onToggle={() => setDrywallOn(o => !o)} total={drywallTotal}>
-            <DrywallSection onTotalChange={setDrywallTotal} />
-          </SectionShell>
+          <TradeSectionShell
+            title="Plumbing"
+            subtitle="$1,000 base · $125/drop after 2 · Custom add-ons"
+            enabled={plumbingOn}
+            onToggle={() => setPlumbingOn(o => !o)}
+            total={plumbingTotal}
+          >
+            <PlumbingSection onTotalChange={(t, l) => { setPlumbingTotal(t); setPlumbingLines(l); }} />
+          </TradeSectionShell>
 
-          <SectionShell title="Flooring" subtitle="Carpet / Laminate / LVP / Hardwood / Tile · Rooms · Add-ons" enabled={flooringOn} onToggle={() => setFlooringOn(o => !o)} total={flooringTotal}>
-            <FlooringSection onTotalChange={(t, lines) => { setFlooringTotal(t); setFlooringLines(lines); }} />
-          </SectionShell>
-
-          <SectionShell title="Plumbing" subtitle="$1,000 base · $125/drop after 2 · Custom add-ons" enabled={plumbingOn} onToggle={() => setPlumbingOn(o => !o)} total={plumbingTotal}>
-            <PlumbingSection onTotalChange={setPlumbingTotal} />
-          </SectionShell>
-
-          <SectionShell title="Punch List" subtitle="Half-day or full-day service · Additional helpers" enabled={punchOn} onToggle={() => setPunchOn(o => !o)} total={punchTotal}>
-            <PunchListSection onTotalChange={setPunchTotal} />
-          </SectionShell>
-
-          <SectionShell title="Other Work" subtitle="Freeform — any description + flat dollar amount" enabled={otherOn} onToggle={() => setOtherOn(o => !o)} total={otherTotal}>
-            <OtherWorkSection onRowsChange={setOtherRows} />
-          </SectionShell>
+          <TradeSectionShell
+            title="Punch List"
+            subtitle="Half-day or full-day service · Additional helpers"
+            enabled={punchOn}
+            onToggle={() => setPunchOn(o => !o)}
+            total={punchTotal}
+          >
+            <PunchListSection onTotalChange={(t, l) => { setPunchTotal(t); setPunchLines(l); }} />
+          </TradeSectionShell>
         </div>
 
         {/* Sticky footer */}
         <div className="border-t border-zinc-700 px-5 py-4 bg-zinc-900 rounded-b-2xl space-y-3 shrink-0">
-          {activeSections > 0 && (
+          {activeTrades > 0 && (
             <div className="space-y-1.5">
-              {trimOn && trimTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Trim Work</span><span className="font-mono text-white">${fmtInt(trimTotal)}</span></div>}
-              {sidingOn && sidingTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Siding</span><span className="font-mono text-white">${fmtInt(sidingTotal)}</span></div>}
-              {drywallOn && drywallTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Drywall</span><span className="font-mono text-white">${fmtInt(drywallTotal)}</span></div>}
+              {contractingOn && contractingTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Contracting</span><span className="font-mono text-white">${fmtInt(contractingTotal)}</span></div>}
               {flooringOn && flooringTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Flooring</span><span className="font-mono text-white">${fmtInt(flooringTotal)}</span></div>}
               {plumbingOn && plumbingTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Plumbing</span><span className="font-mono text-white">${fmtInt(plumbingTotal)}</span></div>}
               {punchOn && punchTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Punch List</span><span className="font-mono text-white">${fmtInt(punchTotal)}</span></div>}
-              {otherOn && otherRows.filter(r => r.desc && parseFloat(r.amount) > 0).map(r => (
-                <div key={r.id} className="flex justify-between text-sm"><span className="text-zinc-300 truncate max-w-[70%]">{r.desc}</span><span className="font-mono text-white">${fmtInt(parseFloat(r.amount))}</span></div>
-              ))}
               <div className="flex justify-between pt-2 border-t border-zinc-700">
                 <span className="font-bold text-white">Grand Total</span>
                 <span className="font-mono font-bold text-amber-400 text-lg">${fmtInt(grandTotal)}</span>
               </div>
             </div>
           )}
-          {activeSections === 0 && (
+          {activeTrades === 0 && (
             <p className="text-center text-zinc-500 text-sm py-1">Toggle a trade above to get started</p>
           )}
           <div className="flex items-center justify-between bg-zinc-800 rounded-xl px-3 py-2 border border-zinc-700">
@@ -976,12 +1098,12 @@ export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculat
             </div>
           </div>
           <div className="flex gap-3">
-            <button type="button" onClick={handleCopyQuote} disabled={activeSections === 0}
+            <button type="button" onClick={handleCopyQuote} disabled={activeTrades === 0}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-600 bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-700 transition-colors disabled:opacity-40">
               {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
               {copied ? "Copied!" : "Copy Quote"}
             </button>
-            <button type="button" onClick={handleUseNumbers} disabled={activeSections === 0}
+            <button type="button" onClick={handleUseNumbers} disabled={activeTrades === 0}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 text-black font-bold text-sm hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
               {appendMode ? "Append to Estimate →" : "Replace Lines →"}
             </button>
