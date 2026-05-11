@@ -41,9 +41,10 @@ const ASPHALT_SEALING_PROPOSAL = {
 type EstimateTemplate = "blank" | "asphalt_sealing_proposal";
 
 // ─── Template picker modal ────────────────────────────────────────────────────
-function TemplatePicker({ onSelect, onClose }: {
+function TemplatePicker({ onSelect, onClose, businessLine }: {
   onSelect: (template: EstimateTemplate) => void;
   onClose: () => void;
+  businessLine: string;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -72,107 +73,26 @@ function TemplatePicker({ onSelect, onClose }: {
                 <p className="text-xs text-gray-500 mt-0.5">Start from scratch with empty line items and no preset values.</p>
               </div>
             </button>
-            <button
-              onClick={() => onSelect("asphalt_sealing_proposal")}
-              className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-gray-200 hover:border-gray-700 hover:bg-gray-50 transition-all text-left group"
-            >
-              <div className="w-10 h-10 rounded-lg bg-gray-100 group-hover:bg-gray-700 flex items-center justify-center shrink-0 transition-colors">
-                <ClipboardList className="w-5 h-5 text-gray-500 group-hover:text-white" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900 text-sm">Asphalt Sealing Proposal</p>
-                <p className="text-xs text-gray-500 mt-0.5">Pre-filled with standard scope of work: surface prep, crack fill, sealer coat, edges, and cleanup. Business line set to Asphalt Sealing. Includes standard payment terms and warranty language.</p>
-              </div>
-            </button>
+            {businessLine === "asphalt_sealing" && (
+              <button
+                onClick={() => onSelect("asphalt_sealing_proposal")}
+                className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-gray-200 hover:border-gray-700 hover:bg-gray-50 transition-all text-left group"
+              >
+                <div className="w-10 h-10 rounded-lg bg-gray-100 group-hover:bg-gray-700 flex items-center justify-center shrink-0 transition-colors">
+                  <ClipboardList className="w-5 h-5 text-gray-500 group-hover:text-white" />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Asphalt Sealing Proposal</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Pre-filled with standard scope of work: surface prep, crack fill, sealer coat, edges, and cleanup. Includes standard payment terms and warranty language.</p>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-// ─── Trade templates ──────────────────────────────────────────────────────────
-const TRADE_TEMPLATES: Record<string, Array<{ category: string; description: string; quantity: number; unit: string; unitCost: number }>> = {
-  "Trim Work": [
-    { category: "Labor", description: "Trim installation labor", quantity: 100, unit: "LF", unitCost: 2.5 },
-    { category: "Material", description: "Base trim material", quantity: 100, unit: "LF", unitCost: 1.25 },
-    { category: "Material", description: "Door casing sets", quantity: 4, unit: "EA", unitCost: 18 },
-    { category: "Material", description: "Window casing sets", quantity: 4, unit: "EA", unitCost: 22 },
-    { category: "Labor", description: "Caulk & nail hole fill", quantity: 1, unit: "LOT", unitCost: 150 },
-  ],
-  "Siding": [
-    { category: "Labor", description: "Siding installation labor", quantity: 20, unit: "SQ", unitCost: 120 },
-    { category: "Material", description: "Vinyl/LP siding material", quantity: 20, unit: "SQ", unitCost: 180 },
-    { category: "Material", description: "House wrap / WRB", quantity: 20, unit: "SQ", unitCost: 25 },
-    { category: "Material", description: "J-channel & trim", quantity: 1, unit: "LOT", unitCost: 350 },
-    { category: "Labor", description: "Tearoff & disposal", quantity: 1, unit: "LOT", unitCost: 400 },
-  ],
-  "Plumbing": [
-    { category: "Labor", description: "Rough-in plumbing labor", quantity: 16, unit: "HR", unitCost: 85 },
-    { category: "Labor", description: "Finish plumbing labor", quantity: 8, unit: "HR", unitCost: 85 },
-    { category: "Material", description: "Pipe & fittings allowance", quantity: 1, unit: "LOT", unitCost: 500 },
-    { category: "Material", description: "Fixtures allowance", quantity: 1, unit: "LOT", unitCost: 800 },
-  ],
-  "Drywall": [
-    { category: "Labor", description: "Hang drywall", quantity: 50, unit: "SHT", unitCost: 12 },
-    { category: "Labor", description: "Tape, mud & sand", quantity: 1000, unit: "SF", unitCost: 0.75 },
-    { category: "Material", description: "1/2\" drywall sheets", quantity: 50, unit: "SHT", unitCost: 14 },
-    { category: "Material", description: "Joint compound & tape", quantity: 1, unit: "LOT", unitCost: 120 },
-    { category: "Labor", description: "Texture / prime coat", quantity: 1000, unit: "SF", unitCost: 0.5 },
-  ],
-  "Painting": [
-    { category: "Labor", description: "Interior painting labor", quantity: 1000, unit: "SF", unitCost: 1.5 },
-    { category: "Material", description: "Paint (walls)", quantity: 5, unit: "GAL", unitCost: 45 },
-    { category: "Material", description: "Primer", quantity: 2, unit: "GAL", unitCost: 35 },
-    { category: "Labor", description: "Trim painting", quantity: 1, unit: "LOT", unitCost: 350 },
-    { category: "Material", description: "Supplies (brushes, rollers, tape)", quantity: 1, unit: "LOT", unitCost: 80 },
-  ],
-  "Roofing": [
-    { category: "Labor", description: "Shingle installation", quantity: 25, unit: "SQ", unitCost: 80 },
-    { category: "Material", description: "Architectural shingles", quantity: 25, unit: "SQ", unitCost: 150 },
-    { category: "Material", description: "Underlayment / felt", quantity: 25, unit: "SQ", unitCost: 20 },
-    { category: "Material", description: "Ridge cap & flashing", quantity: 1, unit: "LOT", unitCost: 300 },
-    { category: "Labor", description: "Tearoff & disposal", quantity: 25, unit: "SQ", unitCost: 30 },
-  ],
-  "Concrete": [
-    { category: "Labor", description: "Form & pour labor", quantity: 200, unit: "SF", unitCost: 4.5 },
-    { category: "Material", description: "Concrete (3000 PSI)", quantity: 3, unit: "YD", unitCost: 160 },
-    { category: "Material", description: "Rebar / wire mesh", quantity: 1, unit: "LOT", unitCost: 200 },
-    { category: "Labor", description: "Finish & cure", quantity: 200, unit: "SF", unitCost: 1.5 },
-  ],
-  "Flooring": [
-    { category: "Labor", description: "Flooring installation", quantity: 500, unit: "SF", unitCost: 2.5 },
-    { category: "Material", description: "Flooring material", quantity: 550, unit: "SF", unitCost: 3.5 },
-    { category: "Material", description: "Underlayment", quantity: 550, unit: "SF", unitCost: 0.6 },
-    { category: "Labor", description: "Subfloor prep", quantity: 500, unit: "SF", unitCost: 0.75 },
-    { category: "Material", description: "Transitions & thresholds", quantity: 1, unit: "LOT", unitCost: 150 },
-  ],
-  "Electrical": [
-    { category: "Labor", description: "Rough-in wiring labor", quantity: 20, unit: "HR", unitCost: 95 },
-    { category: "Labor", description: "Finish electrical labor", quantity: 10, unit: "HR", unitCost: 95 },
-    { category: "Material", description: "Wire, boxes & breakers", quantity: 1, unit: "LOT", unitCost: 600 },
-    { category: "Material", description: "Fixtures & devices", quantity: 1, unit: "LOT", unitCost: 400 },
-  ],
-  "HVAC": [
-    { category: "Labor", description: "HVAC installation labor", quantity: 24, unit: "HR", unitCost: 110 },
-    { category: "Material", description: "Equipment / unit", quantity: 1, unit: "EA", unitCost: 3500 },
-    { category: "Material", description: "Ductwork material", quantity: 1, unit: "LOT", unitCost: 800 },
-    { category: "Labor", description: "Duct installation", quantity: 16, unit: "HR", unitCost: 85 },
-  ],
-  "Asphalt Sealing": [
-    { category: "Labor", description: "Asphalt sealing labor", quantity: 1000, unit: "SF", unitCost: 0.32 },
-    { category: "Material", description: "Sealer & supplies", quantity: 1, unit: "LOT", unitCost: 150 },
-  ],
-  "Punch List": [
-    { category: "Labor", description: "Punch list service — Half-Day", quantity: 1, unit: "LOT", unitCost: 500 },
-  ],
-  "General": [
-    { category: "Labor", description: "General labor", quantity: 8, unit: "HR", unitCost: 65 },
-    { category: "Material", description: "Materials allowance", quantity: 1, unit: "LOT", unitCost: 500 },
-  ],
-};
-
-const JOB_TYPES = Object.keys(TRADE_TEMPLATES);
 
 const STATUS_STYLES: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -207,6 +127,7 @@ export function EstimateModal({
   prelinkedJobTitle,
   prelinkedClientId,
   fromTemplate,
+  initialBusinessLine,
   onClose,
   onSave,
 }: {
@@ -215,6 +136,7 @@ export function EstimateModal({
   prelinkedJobTitle?: string;
   prelinkedClientId?: number;
   fromTemplate?: EstimateTemplate;
+  initialBusinessLine?: string;
   onClose: () => void;
   onSave: (req: CreateEstimateRequest) => void;
 }) {
@@ -227,12 +149,12 @@ export function EstimateModal({
 
   const [title, setTitle]     = useState(initial?.title ?? "");
   const [clientId, setClientId] = useState<string>(String(initial?.clientId ?? prelinkedClientId ?? ""));
-  const [jobType, setJobType] = useState(initial?.jobType ?? seedData?.jobType ?? "");
+  const [jobType] = useState(initial?.jobType ?? seedData?.jobType ?? "");
   const [notes, setNotes]     = useState(initial?.notes ?? seedData?.notes ?? "");
   const [markup, setMarkup]   = useState(String(initial?.markupPercent ?? ""));
   const [cont, setCont]       = useState(String(initial?.contingencyPercent ?? ""));
-  const [businessLine, setBusinessLine] = useState<string>(
-    initial?.businessLine ?? (fromTemplate === "asphalt_sealing_proposal" ? "asphalt_sealing" : "general_contracting")
+  const [businessLine] = useState<string>(
+    initial?.businessLine ?? (fromTemplate === "asphalt_sealing_proposal" ? "asphalt_sealing" : (initialBusinessLine ?? "general_contracting"))
   );
   const [lines, setLines]     = useState<DraftLine[]>(
     initial?.lineItems?.length
@@ -253,7 +175,6 @@ export function EstimateModal({
           }))
         : [emptyLine()]
   );
-  const [templateApplied, setTemplateApplied] = useState(fromTemplate === "asphalt_sealing_proposal");
   const [showContractingCalc, setShowContractingCalc] = useState(false);
   const [showFlooringCalc, setShowFlooringCalc] = useState(false);
   const [showPlumbingCalc, setShowPlumbingCalc] = useState(false);
@@ -270,19 +191,6 @@ export function EstimateModal({
 
   const effectiveLogoUrl: string | null =
     (businessLine === "asphalt_sealing" ? (s.dbaLogoUrl ?? s.logoUrl) : s.logoUrl) ?? null;
-
-  function applyTemplate() {
-    const tpl = TRADE_TEMPLATES[jobType];
-    if (!tpl) return;
-    setLines(tpl.map(t => ({
-      category: t.category,
-      description: t.description,
-      quantity: String(t.quantity),
-      unit: t.unit,
-      unitCost: String(t.unitCost),
-    })));
-    setTemplateApplied(true);
-  }
 
   function updateLine(i: number, field: keyof DraftLine, val: string) {
     setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: val } : l));
@@ -341,31 +249,9 @@ export function EstimateModal({
                 {prelinkedJobTitle ?? (initial as Estimate & { jobTitle?: string })?.jobTitle}
               </span>
             )}
-            {/* Business Line pill toggle */}
-            <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 rounded-lg ml-2">
-              <button
-                type="button"
-                onClick={() => setBusinessLine("general_contracting")}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                  businessLine !== "asphalt_sealing"
-                    ? "bg-white text-gray-800 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                General Contracting
-              </button>
-              <button
-                type="button"
-                onClick={() => setBusinessLine("asphalt_sealing")}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                  businessLine === "asphalt_sealing"
-                    ? "bg-amber-500 text-white shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                Asphalt Sealing
-              </button>
-            </div>
+            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ml-2 ${businessLine === "asphalt_sealing" ? "bg-gray-800 text-white" : "bg-amber-100 text-amber-800"}`}>
+              {businessLine === "asphalt_sealing" ? "Asphalt Sealing" : "Contracting"}
+            </span>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5" />
@@ -414,79 +300,47 @@ export function EstimateModal({
                 </select>
               </div>
             )}
+            {/* Trade-specific calculators */}
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Job Type / Trade</label>
-              <div className="flex gap-2">
-                <select
-                  value={jobType}
-                  onChange={e => { setJobType(e.target.value); setTemplateApplied(false); }}
-                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-                >
-                  <option value="">— Select trade —</option>
-                  {JOB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                {jobType && TRADE_TEMPLATES[jobType] && !templateApplied && (
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Calculators</label>
+              {businessLine !== "asphalt_sealing" ? (
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={applyTemplate}
-                    className="px-3 py-2 bg-amber-500 text-white rounded-xl text-xs font-semibold hover:bg-amber-600 transition-colors whitespace-nowrap"
+                    onClick={() => setShowContractingCalc(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
                   >
-                    Use Template
+                    <Calculator className="w-3.5 h-3.5" /> Contracting
                   </button>
-                )}
-                {templateApplied && (
-                  <span className="flex items-center gap-1 px-3 text-xs text-emerald-600 font-semibold whitespace-nowrap">
-                    <Check className="w-3.5 h-3.5" /> Applied
-                  </span>
-                )}
-              </div>
-              {jobType && TRADE_TEMPLATES[jobType] && !templateApplied && (
-                <p className="text-xs text-amber-600 mt-1">Tap "Use Template" to pre-fill line items for {jobType}</p>
-              )}
-              {/* Trade-specific interactive calculator buttons */}
-              {!["Asphalt Sealing", "Flooring", "Plumbing", "Punch List"].includes(jobType) && (
-                <button
-                  type="button"
-                  onClick={() => setShowContractingCalc(true)}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
-                >
-                  <Calculator className="w-3.5 h-3.5" /> Open Contracting Calculator
-                </button>
-              )}
-              {jobType === "Flooring" && (
-                <button
-                  type="button"
-                  onClick={() => setShowFlooringCalc(true)}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
-                >
-                  <Calculator className="w-3.5 h-3.5" /> Open Flooring Calculator
-                </button>
-              )}
-              {jobType === "Plumbing" && (
-                <button
-                  type="button"
-                  onClick={() => setShowPlumbingCalc(true)}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
-                >
-                  <Calculator className="w-3.5 h-3.5" /> Open Plumbing Calculator
-                </button>
-              )}
-              {jobType === "Asphalt Sealing" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFlooringCalc(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
+                  >
+                    <Calculator className="w-3.5 h-3.5" /> Flooring
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPlumbingCalc(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
+                  >
+                    <Calculator className="w-3.5 h-3.5" /> Plumbing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPunchListCalc(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors"
+                  >
+                    <Calculator className="w-3.5 h-3.5" /> Punch List
+                  </button>
+                </div>
+              ) : (
                 <button
                   type="button"
                   onClick={() => setShowAsphaltCalc(true)}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-700 text-white text-xs font-bold hover:bg-gray-800 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-700 text-white text-xs font-bold hover:bg-gray-800 transition-colors"
                 >
-                  <Calculator className="w-3.5 h-3.5" /> Open Asphalt Sealing Calculator
-                </button>
-              )}
-              {jobType === "Punch List" && (
-                <button
-                  type="button"
-                  onClick={() => setShowPunchListCalc(true)}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors"
-                >
-                  <Calculator className="w-3.5 h-3.5" /> Open Punch List Calculator
+                  <Calculator className="w-3.5 h-3.5" /> Asphalt Sealing Calculator
                 </button>
               )}
             </div>
@@ -853,6 +707,9 @@ export default function Estimates() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; title: string } | null>(null);
   const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"contracting" | "asphalt">("contracting");
+
+  const activeBusinessLine = activeTab === "asphalt" ? "asphalt_sealing" : "general_contracting";
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
 
@@ -945,17 +802,24 @@ export default function Estimates() {
     return undefined;
   }, [modal, estimates]);
 
-  const filtered = filterStatus === "all" ? estimates : estimates.filter(e => e.status === filterStatus);
+  const tabEstimates = useMemo(() =>
+    estimates.filter(e =>
+      activeTab === "asphalt"
+        ? e.businessLine === "asphalt_sealing"
+        : e.businessLine !== "asphalt_sealing"
+    ), [estimates, activeTab]);
+
+  const filtered = filterStatus === "all" ? tabEstimates : tabEstimates.filter(e => e.status === filterStatus);
 
   const totals = useMemo<Record<string, number>>(() => ({
-    all:   estimates.length,
-    draft: estimates.filter(e => e.status === "draft").length,
-    sent:  estimates.filter(e => e.status === "sent").length,
-    won:   estimates.filter(e => e.status === "won").length,
-    lost:  estimates.filter(e => e.status === "lost").length,
-  }), [estimates]);
+    all:   tabEstimates.length,
+    draft: tabEstimates.filter(e => e.status === "draft").length,
+    sent:  tabEstimates.filter(e => e.status === "sent").length,
+    won:   tabEstimates.filter(e => e.status === "won").length,
+    lost:  tabEstimates.filter(e => e.status === "lost").length,
+  }), [tabEstimates]);
 
-  const totalValue = estimates.filter(e => e.status === "won").reduce((s, e) => s + e.total, 0);
+  const totalValue = tabEstimates.filter(e => e.status === "won").reduce((s, e) => s + e.total, 0);
 
   return (
     <div className="space-y-6">
@@ -975,8 +839,24 @@ export default function Estimates() {
         )}
       </div>
 
+      {/* Business line tabs */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+        <button
+          onClick={() => { setActiveTab("contracting"); setFilterStatus("all"); }}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === "contracting" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          Contracting
+        </button>
+        <button
+          onClick={() => { setActiveTab("asphalt"); setFilterStatus("all"); }}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === "asphalt" ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          Asphalt Sealing
+        </button>
+      </div>
+
       {/* Summary bar */}
-      {estimates.length > 0 && (
+      {tabEstimates.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-card rounded-xl border border-border/50 p-4">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><Layers className="w-3 h-3" /> Total Estimates</p>
@@ -998,7 +878,7 @@ export default function Estimates() {
       )}
 
       {/* Filter tabs */}
-      {estimates.length > 0 && (
+      {tabEstimates.length > 0 && (
         <div className="flex gap-2 flex-wrap">
           {(["all", "draft", "sent", "won", "lost"] as const).map(s => (
             <button
@@ -1022,7 +902,9 @@ export default function Estimates() {
           <div className="col-span-full py-16 text-center border-2 border-dashed border-border rounded-2xl bg-card/50">
             <Calculator className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground">
-              {filterStatus === "all" ? "No estimates yet" : `No ${filterStatus} estimates`}
+              {filterStatus === "all"
+                ? `No ${activeTab === "asphalt" ? "asphalt sealing" : "contracting"} estimates yet`
+                : `No ${filterStatus} estimates`}
             </h3>
             <p className="text-muted-foreground mt-1 text-sm">
               {filterStatus === "all"
@@ -1165,6 +1047,7 @@ export default function Estimates() {
       {/* Template picker */}
       {showTemplatePicker && (
         <TemplatePicker
+          businessLine={activeBusinessLine}
           onSelect={template => {
             setActiveTemplate(template);
             setShowTemplatePicker(false);
@@ -1178,6 +1061,7 @@ export default function Estimates() {
       {modal === "create" && (
         <EstimateModal
           fromTemplate={activeTemplate ?? undefined}
+          initialBusinessLine={activeBusinessLine}
           onClose={() => { setModal(null); setActiveTemplate(null); }}
           onSave={async req => { await handleCreate(req); setActiveTemplate(null); }}
         />

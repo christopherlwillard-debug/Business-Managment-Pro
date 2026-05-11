@@ -24,7 +24,6 @@ function fmtInt(n: number): string {
 // ─── Shared UI primitives ──────────────────────────────────────────────────────
 
 function SectionShell({
-  icon,
   title,
   subtitle,
   enabled,
@@ -32,7 +31,6 @@ function SectionShell({
   total,
   children,
 }: {
-  icon: string;
   title: string;
   subtitle: string;
   enabled: boolean;
@@ -58,7 +56,6 @@ function SectionShell({
           onClick={() => setOpen(o => !o)}
           className="flex-1 flex items-center gap-2 min-w-0 text-left"
         >
-          <span className="text-base">{icon}</span>
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-bold leading-tight ${enabled ? "text-white" : "text-zinc-400"}`}>{title}</p>
             <p className="text-xs text-zinc-500 truncate">{subtitle}</p>
@@ -739,7 +736,6 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
         {/* Trade sections — scrollable middle */}
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
           <SectionShell
-            icon="🪵"
             title="Trim Work"
             subtitle="Baseboard · Crown Moulding · Door Jams · Ceiling Services"
             enabled={trimOn}
@@ -750,7 +746,6 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
           </SectionShell>
 
           <SectionShell
-            icon="🏠"
             title="Siding"
             subtitle="SF-based · On-lot / Standard / Premium tiers · Windows & Doors"
             enabled={sidingOn}
@@ -761,7 +756,6 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
           </SectionShell>
 
           <SectionShell
-            icon="🧱"
             title="Drywall"
             subtitle="Patch / Partial / Full · Texture match · Corner bead"
             enabled={drywallOn}
@@ -772,7 +766,6 @@ export function ContractingCalculator({ onClose, onUseNumbers }: ContractingCalc
           </SectionShell>
 
           <SectionShell
-            icon="🔧"
             title="Other Work"
             subtitle="Freeform — any description + flat dollar amount"
             enabled={otherOn}
