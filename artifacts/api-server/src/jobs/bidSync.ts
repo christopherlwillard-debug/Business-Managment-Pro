@@ -10,15 +10,13 @@ async function purgeNavLinkRows(): Promise<number> {
   const likeConditions = NAV_PHRASE_DENYLIST.map(
     (phrase) => sql`LOWER(title) LIKE ${"%" + phrase.toLowerCase() + "%"}`
   );
-  const lengthConditions = sql`LENGTH(title) < 10 OR LENGTH(title) > 120`;
 
   const combined = likeConditions.reduce(
-    (acc, cond) => sql`${acc} OR ${cond}`,
-    lengthConditions
+    (acc, cond) => sql`${acc} OR ${cond}`
   );
 
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities WHERE ${combined}`
+    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND (${combined})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
   if (count > 0) {
