@@ -17,6 +17,33 @@ function containsKeyword(text: string, keywords = BROAD_BID_KEYWORDS): boolean {
   return keywords.some((kw) => lower.includes(kw));
 }
 
+// Phrases that identify navigation/help/meta links rather than actual solicitations.
+// Any link whose text contains one of these (case-insensitive) is skipped.
+const NAV_PHRASE_DENYLIST = [
+  "bid list", "bid list page",
+  "bidder profile", "bidder registration", "bidder form",
+  "supplier portal", "supplier registration", "vendor registration", "vendor portal",
+  "create a ", "how to ", "how do i",
+  "anticipated bidding", "upcoming anticipated",
+  "see contracts out for bid",
+  "ewsu - bid", "ewsu–bid",
+  "requests for bids/quotes", "requests for bids / quotes",
+  "responsible bidder",
+  "employment", "job opportunities", "job postings",
+  "contact us", "about us", "home page",
+  "click here", "learn more", "view all", "see all",
+  "sign in", "log in", "login", "register",
+  "faq", "frequently asked",
+  "download ", "print ", "share ",
+  "privacy policy", "terms of use", "accessibility",
+];
+
+function isNavLink(text: string): boolean {
+  if (text.length < 10 || text.length > 120) return true;
+  const lower = text.toLowerCase();
+  return NAV_PHRASE_DENYLIST.some((phrase) => lower.includes(phrase));
+}
+
 function stableId(prefix: string, discriminator: string): string {
   return `${prefix}-${createHash("sha1").update(discriminator).digest("hex").slice(0, 12)}`;
 }
@@ -92,7 +119,7 @@ async function scrapeHancockCounty(): Promise<LocalOpportunity[]> {
 
     const results: LocalOpportunity[] = [];
     for (const { text, href, dateText } of bids) {
-      if (!containsKeyword(text)) continue;
+      if (!containsKeyword(text) || isNavLink(text)) continue;
       const postedDate = parseIsoDate(dateText);
       const responseDeadline = parseDueDateFromText(dateText);
       results.push({
@@ -168,7 +195,7 @@ async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
     const results: LocalOpportunity[] = [];
 
     for (const { title, href, fullText, dateAttr } of notices) {
-      if (!containsKeyword(`${title} ${fullText}`)) continue;
+      if (!containsKeyword(`${title} ${fullText}`) || isNavLink(title)) continue;
       const noticeId = stableId("ky-daviess", href || title);
       if (seen.has(noticeId)) continue;
       seen.add(noticeId);
@@ -226,7 +253,7 @@ async function scrapeCountyGeneric(
 
       const results: LocalOpportunity[] = [];
       for (const { text, href, contextText } of links) {
-        if (!containsKeyword(text)) continue;
+        if (!containsKeyword(text) || isNavLink(text)) continue;
         const postedDate = parseIsoDate(contextText);
         const responseDeadline = parseDueDateFromText(contextText);
         results.push({
