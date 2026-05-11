@@ -520,7 +520,6 @@ export function EstimateModal({
               unitCost: String(l.unitCost),
             }));
             setLines(prev => append ? [...prev, ...mapped] : mapped);
-            setTemplateApplied(true);
           }}
         />
       )}
@@ -538,7 +537,6 @@ export function EstimateModal({
               unitCost: String(l.unitCost),
             }));
             setLines(prev => append ? [...prev, ...mapped] : mapped);
-            setTemplateApplied(true);
           }}
         />
       )}
@@ -556,7 +554,6 @@ export function EstimateModal({
               unitCost: String(l.unitCost),
             }));
             setLines(prev => append ? [...prev, ...mapped] : mapped);
-            setTemplateApplied(true);
           }}
         />
       )}
@@ -573,7 +570,6 @@ export function EstimateModal({
               unit: l.unit,
               unitCost: String(l.unitCost),
             })));
-            setTemplateApplied(true);
           }}
           onRequestDeposit={async (totalAmount, description) => {
             try {
@@ -606,7 +602,6 @@ export function EstimateModal({
               unitCost: String(l.unitCost),
             }));
             setLines(prev => append ? [...prev, ...mapped] : mapped);
-            setTemplateApplied(true);
             setShowPunchListCalc(false);
           }}
         />
@@ -806,7 +801,7 @@ export default function Estimates() {
     estimates.filter(e =>
       activeTab === "asphalt"
         ? e.businessLine === "asphalt_sealing"
-        : e.businessLine !== "asphalt_sealing"
+        : e.businessLine === "general_contracting"
     ), [estimates, activeTab]);
 
   const filtered = filterStatus === "all" ? tabEstimates : tabEstimates.filter(e => e.status === filterStatus);
