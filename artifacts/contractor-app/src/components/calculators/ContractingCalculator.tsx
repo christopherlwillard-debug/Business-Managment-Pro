@@ -340,11 +340,11 @@ const SIDING_TIERS: Record<SidingTier, { label: string; range: string; rate: num
   "premium":  { label: "Premium",    range: "$3/SF",      rate: 3.00 },
 };
 
+type SideRow = { length: string; height: string };
+
 function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }) {
   const [sf, setSf]         = useState("");
-  const [wallW, setWallW]   = useState("");
-  const [wallL, setWallL]   = useState("");
-  const [wallH, setWallH]   = useState("");
+  const [sides, setSides]   = useState<SideRow[]>([{ length: "", height: "" }]);
   const [tier, setTier]     = useState<SidingTier>("standard");
   const [rate, setRate]     = useState(SIDING_TIERS.standard.rate);
 
@@ -357,21 +357,37 @@ function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }
   const [tearFlat, setTearFlat]   = useState("");
   const [tearSfRate, setTearSfRate] = useState(1.5);
 
-  function applyDoubleWide() {
-    setWallW("36");
-    setWallL("90");
-    setWallH("13.6");
+  function updateSide(idx: number, field: keyof SideRow, val: string) {
+    setSides(prev => prev.map((s, i) => i === idx ? { ...s, [field]: val } : s));
   }
 
-  function calcSf() {
-    const w = parseFloat(wallW) || 0;
-    const l = parseFloat(wallL) || 0;
-    const h = parseFloat(wallH) || 0;
-    if (w > 0 && l > 0 && h > 0) {
-      setSf(String(Math.round(2 * (w + l) * h)));
-      setWallW(""); setWallL(""); setWallH("");
-    }
+  function addSide() {
+    setSides(prev => [...prev, { length: "", height: "" }]);
   }
+
+  function removeSide(idx: number) {
+    setSides(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function addSidesToSf() {
+    const sideSf = sides.reduce((sum, s) => {
+      const l = parseFloat(s.length) || 0;
+      const h = parseFloat(s.height) || 0;
+      return sum + l * h;
+    }, 0);
+    if (sideSf === 0) return;
+    const existing = parseFloat(sf) || 0;
+    setSf(String(Math.round(existing + sideSf)));
+    setSides([{ length: "", height: "" }]);
+  }
+
+  const sidesSf = sides.reduce((sum, s) => {
+    const l = parseFloat(s.length) || 0;
+    const h = parseFloat(s.height) || 0;
+    return sum + l * h;
+  }, 0);
+
+  const anySideFilled = sides.some(s => s.length && s.height);
 
   function handleTier(t: SidingTier) {
     setTier(t);
@@ -393,31 +409,43 @@ function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }
 
   return (
     <div className="space-y-3">
-      {/* SF input + wall shortcut */}
+      {/* SF input + per-side shortcut */}
       <div className="space-y-2">
         <NumField label="Square Feet (SF)" value={sf} onChange={setSf} suffix="SF" />
         <div className="bg-zinc-900 rounded-xl p-3 border border-zinc-700 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-zinc-400">Or calculate from wall dimensions:</p>
-            <button type="button" onClick={applyDoubleWide}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-900/40 border border-amber-700/40 text-amber-400 text-xs font-semibold hover:bg-amber-800/40">
-              <Zap className="w-3 h-3" /> Standard Double Wide (36×90×13.6)
+          <p className="text-xs text-zinc-400">Or calculate by side (Length × Height):</p>
+          {sides.map((side, idx) => {
+            const sideSf = (parseFloat(side.length) || 0) * (parseFloat(side.height) || 0);
+            return (
+              <div key={idx} className="flex items-end gap-1">
+                <NumField label="Length ft" value={side.length} onChange={v => updateSide(idx, "length", v)} small />
+                <span className="text-zinc-500 pb-2">×</span>
+                <NumField label="Height ft" value={side.height} onChange={v => updateSide(idx, "height", v)} small />
+                {side.length && side.height && sideSf > 0 && (
+                  <span className="text-amber-400 text-xs font-mono pb-2 whitespace-nowrap">= {Math.round(sideSf)} SF</span>
+                )}
+                {sides.length > 1 && (
+                  <button type="button" onClick={() => removeSide(idx)}
+                    className="pb-2 text-zinc-500 hover:text-red-400 text-lg leading-none ml-1">×</button>
+                )}
+              </div>
+            );
+          })}
+          <div className="flex items-center gap-2 pt-1">
+            <button type="button" onClick={addSide}
+              className="text-xs text-zinc-400 hover:text-amber-400 border border-zinc-700 hover:border-amber-700 rounded-lg px-2 py-1 transition-colors">
+              + Add Side
             </button>
-          </div>
-          <div className="flex items-end gap-1 flex-wrap">
-            <NumField label="Width ft" value={wallW} onChange={setWallW} small />
-            <span className="text-zinc-500 pb-2">×</span>
-            <NumField label="Length ft" value={wallL} onChange={setWallL} small />
-            <span className="text-zinc-500 pb-2">×</span>
-            <NumField label="Height ft" value={wallH} onChange={setWallH} small />
-            <button type="button" onClick={calcSf} disabled={!wallW || !wallL || !wallH}
-              className="px-3 py-2 rounded-xl bg-amber-500 text-black text-xs font-bold disabled:opacity-40 hover:bg-amber-400 transition-colors whitespace-nowrap">
-              <Zap className="w-3.5 h-3.5 inline mr-1" />Calc SF
+            <button type="button" onClick={addSidesToSf} disabled={!anySideFilled}
+              className="px-3 py-1 rounded-xl bg-amber-500 text-black text-xs font-bold disabled:opacity-40 hover:bg-amber-400 transition-colors">
+              Add to SF
             </button>
+            {anySideFilled && sidesSf > 0 && (
+              <span className="text-xs text-zinc-500">
+                {sides.filter(s => s.length && s.height).length} side{sides.filter(s => s.length && s.height).length !== 1 ? "s" : ""} = {Math.round(sidesSf)} SF
+              </span>
+            )}
           </div>
-          {wallW && wallL && wallH && (
-            <p className="text-xs text-zinc-500">= {Math.round(2 * (parseFloat(wallW || "0") + parseFloat(wallL || "0")) * parseFloat(wallH || "0"))} SF total (perimeter × height)</p>
-          )}
         </div>
       </div>
 
