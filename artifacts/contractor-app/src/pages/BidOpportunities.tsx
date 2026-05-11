@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink, Star, EyeOff, RefreshCw, Building2,
   FileSearch, Sparkles, X, CheckCircle2, XCircle,
-  Calendar, ShieldCheck, DollarSign, Briefcase
+  Calendar, ShieldCheck, DollarSign, Briefcase, RotateCcw
 } from "lucide-react";
+import { ToastAction } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -299,8 +300,30 @@ export default function BidOpportunities() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bids"] });
+      queryClient.invalidateQueries({ queryKey: ["bids-active-count"] });
     },
   });
+
+  function dismissBid(bid: BidOpportunity) {
+    const previousStatus = bid.status;
+    updateStatus.mutate({ id: bid.id, status: "dismissed" }, {
+      onSuccess: () => {
+        toast({
+          title: "Bid hidden",
+          description: bid.title.length > 60 ? bid.title.slice(0, 60) + "…" : bid.title,
+          action: (
+            <ToastAction
+              altText="Undo"
+              onClick={() => updateStatus.mutate({ id: bid.id, status: previousStatus })}
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1 inline" />
+              Undo
+            </ToastAction>
+          ),
+        });
+      },
+    });
+  }
 
   async function openSummaryPanel(bid: BidOpportunity) {
     setPanelBid(bid);
@@ -341,17 +364,18 @@ export default function BidOpportunities() {
     }
   }
 
+  const activeBids = bids.filter((b) => b.status !== "dismissed");
   const dismissedBids = bids.filter((b) => b.status === "dismissed");
 
   const counts = {
-    all: bids.length,
+    all: activeBids.length,
     new: bids.filter((b) => b.status === "new").length,
     interested: bids.filter((b) => b.status === "interested").length,
     dismissed: dismissedBids.length,
   };
 
   const statusFiltered = filter === "dismissed" ? dismissedBids
-    : filter === "all" ? bids
+    : filter === "all" ? activeBids
     : bids.filter((b) => b.status === filter);
 
   const fitCount = statusFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true).length;
@@ -567,12 +591,12 @@ export default function BidOpportunities() {
                         )}
                         {bid.status !== "dismissed" && (
                           <button
-                            onClick={() => updateStatus.mutate({ id: bid.id, status: "dismissed" })}
+                            onClick={() => dismissBid(bid)}
                             disabled={updateStatus.isPending}
                             className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
                           >
                             <EyeOff className="w-3 h-3" />
-                            Dismiss
+                            Hide
                           </button>
                         )}
                         {bid.status === "dismissed" && (

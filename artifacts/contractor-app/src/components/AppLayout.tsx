@@ -8,6 +8,7 @@ import {
   Sun, Moon,
   type LucideIcon,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
@@ -90,10 +91,23 @@ export function AppLayout({ children }: AppLayoutProps) {
     return true;
   });
 
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const { data: activeBidCount = 0 } = useQuery<number>({
+    queryKey: ["bids-active-count"],
+    queryFn: async () => {
+      const res = await fetch(`${base}/api/bids`, { credentials: "include" });
+      if (!res.ok) return 0;
+      const data = await res.json() as Array<{ status: string }>;
+      return data.filter((b) => b.status !== "dismissed").length;
+    },
+    staleTime: 60_000,
+    enabled: isOwner,
+  });
+
   const companyName = (isOwner ? settings?.companyName : ctxCompanyName) || ctxCompanyName || "BuildPro";
   const logoUrl = (isOwner ? settings?.logoUrl : ctxLogoUrl) ?? ctxLogoUrl ?? null;
   const initials = companyName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const [logoImgError, setLogoImgError] = useState(false);
   const logoUrlRef = useRef(logoUrl);
   if (logoUrlRef.current !== logoUrl) {
@@ -171,6 +185,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       lastGroup = currentGroup;
 
       const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+      const isBids = item.href === "/bids";
       result.push(
         <Link
           key={item.name}
@@ -187,7 +202,17 @@ export function AppLayout({ children }: AppLayoutProps) {
             "w-5 h-5 mr-3 flex-shrink-0",
             isActive ? "text-accent" : "text-primary-foreground/50 group-hover:text-primary-foreground/80"
           )} />
-          {item.name}
+          <span className="flex-1">{item.name}</span>
+          {isBids && activeBidCount > 0 && (
+            <span className={cn(
+              "ml-2 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center",
+              isActive
+                ? "bg-accent/30 text-accent"
+                : "bg-primary-foreground/20 text-primary-foreground/80"
+            )}>
+              {activeBidCount}
+            </span>
+          )}
         </Link>
       );
     }
