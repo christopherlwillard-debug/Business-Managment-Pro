@@ -19,7 +19,8 @@ function containsKeyword(text: string, keywords = BROAD_BID_KEYWORDS): boolean {
 
 // Phrases that identify navigation/help/meta links rather than actual solicitations.
 // Any link whose text contains one of these (case-insensitive) is skipped.
-const NAV_PHRASE_DENYLIST = [
+// Exported so bidSync.ts can use the same list to purge stale rows from the DB.
+export const NAV_PHRASE_DENYLIST = [
   "bid list", "bid list page",
   "bidder profile", "bidder registration", "bidder form",
   "supplier portal", "supplier registration", "vendor registration", "vendor portal",

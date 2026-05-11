@@ -1,10 +1,31 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
 import { bidOpportunitiesTable, settingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { fetchSamOpportunities, SamOpportunity } from "../lib/samGov.js";
-import { fetchKyLocalBids } from "../lib/kyLocalBids.js";
+import { fetchKyLocalBids, NAV_PHRASE_DENYLIST } from "../lib/kyLocalBids.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
+
+async function purgeNavLinkRows(): Promise<number> {
+  const likeConditions = NAV_PHRASE_DENYLIST.map(
+    (phrase) => sql`LOWER(title) LIKE ${"%" + phrase.toLowerCase() + "%"}`
+  );
+  const lengthConditions = sql`LENGTH(title) < 10 OR LENGTH(title) > 120`;
+
+  const combined = likeConditions.reduce(
+    (acc, cond) => sql`${acc} OR ${cond}`,
+    lengthConditions
+  );
+
+  const result = await db.execute(
+    sql`DELETE FROM bid_opportunities WHERE ${combined}`
+  );
+  const count = (result as { rowCount?: number }).rowCount ?? 0;
+  if (count > 0) {
+    console.log(`[bid-sync] Purged ${count} stale nav-link row(s) from bid_opportunities`);
+  }
+  return count;
+}
 
 type OppWithSource = SamOpportunity & { source?: string; sourceLabel?: string };
 
@@ -45,6 +66,7 @@ async function upsertOpportunities(
 
 export async function runBidSync(): Promise<{ newFederal: number; newLocal: number; total: number }> {
   console.log("[bid-sync] Starting bid opportunity sync (federal + KY local)");
+  await purgeNavLinkRows();
 
   const [fedOpps, localOpps] = await Promise.allSettled([
     process.env["SAM_GOV_API_KEY"]
