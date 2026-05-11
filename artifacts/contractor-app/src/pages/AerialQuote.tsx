@@ -8,7 +8,7 @@ import {
   PenLine, Check, Trash2, X, Search, Layers,
   DollarSign, Ruler, Plus, Minus, ChevronDown, ChevronUp,
   Printer, FileText, AlertCircle, RotateCcw,
-  HardHat, Loader2, ArrowLeft, UserCheck,
+  HardHat, Loader2, ArrowLeft, UserCheck, ScanLine,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
@@ -180,6 +180,8 @@ export default function AerialQuote() {
   const [notes, setNotes] = useState("");
   const [pricingOpen, setPricingOpen] = useState(true);
 
+  const [detecting, setDetecting] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [savedEstimateId, setSavedEstimateId] = useState<number | null>(null);
   const [savedLinked, setSavedLinked] = useState(false);
@@ -292,6 +294,39 @@ export default function AerialQuote() {
   const handleAddPoint = useCallback((pt: LatLng) => {
     setActivePoints(prev => [...prev, pt]);
   }, []);
+
+  async function detectLot() {
+    if (!flyTo) return;
+    setDetecting(true);
+    try {
+      const [lat, lng] = flyTo;
+      const res = await fetch(`${BASE}/api/aerial/detect?lat=${lat}&lng=${lng}`);
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json() as { polygons: [number, number][][] };
+      const found = data.polygons ?? [];
+      if (found.length === 0) {
+        toast({
+          title: "Not found in map database",
+          description: "This lot isn't mapped yet — draw it manually using the tool below.",
+        });
+        return;
+      }
+      setPolygons(prev => [...prev, ...found]);
+      setSavedEstimateId(null);
+      toast({
+        title: found.length === 1 ? "Lot outline detected!" : `${found.length} areas detected!`,
+        description: "Square footage updated. Remove any areas you don't need.",
+      });
+    } catch {
+      toast({
+        title: "Detection failed",
+        description: "Couldn't reach the map service — draw the area manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setDetecting(false);
+    }
+  }
 
   function startDrawing() {
     setIsDrawing(true);
@@ -575,13 +610,33 @@ export default function AerialQuote() {
           </div>
 
           {!isDrawing ? (
-            <button
-              onClick={startDrawing}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow transition-colors"
-            >
-              <PenLine className="w-4 h-4" />
-              {polygons.length === 0 ? "Draw Area" : "Add Another Area"}
-            </button>
+            <div className="space-y-2">
+              {flyTo && (
+                <button
+                  onClick={detectLot}
+                  disabled={detecting}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow transition-colors disabled:opacity-60"
+                >
+                  {detecting
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <ScanLine className="w-4 h-4" />}
+                  {detecting ? "Detecting…" : "Detect Lot Boundary"}
+                </button>
+              )}
+              <button
+                onClick={startDrawing}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow transition-colors"
+              >
+                <PenLine className="w-4 h-4" />
+                {polygons.length === 0 ? "Draw Area Manually" : "Add Another Area"}
+              </button>
+              {flyTo && (
+                <p className="text-[10px] text-center text-muted-foreground leading-tight">
+                  Detect uses OpenStreetMap — works for most mapped lots.
+                  Draw manually if not found.
+                </p>
+              )}
+            </div>
           ) : (
             <div className="space-y-2">
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 rounded-xl px-3 py-2.5 flex items-start gap-2">
