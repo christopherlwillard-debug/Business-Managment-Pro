@@ -24,6 +24,13 @@ interface OverpassResponse {
 
 type LatLng = [number, number];
 
+function isClosedRing(pts: LatLng[]): boolean {
+  if (pts.length < 3) return false;
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  return Math.abs(first[0] - last[0]) < 0.000001 && Math.abs(first[1] - last[1]) < 0.000001;
+}
+
 function polygonAreaApprox(pts: LatLng[]): number {
   if (pts.length < 3) return 0;
   let area = 0;
@@ -101,14 +108,14 @@ out geom;
     for (const el of elements) {
       if (el.type === "way" && Array.isArray(el.geometry) && el.geometry.length >= 3) {
         const pts: LatLng[] = el.geometry.map(n => [n.lat, n.lon]);
-        if (pts.length >= 3) polygons.push(pts);
+        if (isClosedRing(pts)) polygons.push(pts);
       }
 
       if (el.type === "relation" && Array.isArray(el.members)) {
         for (const member of el.members) {
           if (member.type === "way" && Array.isArray(member.geometry) && member.geometry.length >= 3) {
             const pts: LatLng[] = member.geometry.map(n => [n.lat, n.lon]);
-            if (pts.length >= 3) polygons.push(pts);
+            if (isClosedRing(pts)) polygons.push(pts);
           }
         }
       }
