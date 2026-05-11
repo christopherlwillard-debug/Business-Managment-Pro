@@ -3,8 +3,44 @@ import { db } from "@workspace/db";
 import { bidOpportunitiesTable, settingsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { fetchSamOpportunities, SamOpportunity } from "../lib/samGov.js";
-import { fetchKyLocalBids, NAV_PHRASE_DENYLIST } from "../lib/kyLocalBids.js";
+import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS } from "../lib/kyLocalBids.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
+
+async function purgeIrrelevantLocalBids(): Promise<number> {
+  // Build a condition that is TRUE when the row matches any relevant keyword.
+  // Uses PostgreSQL case-insensitive regex (~*) with \y word boundaries so that
+  // short terms like "road" do not spuriously match "broadband", "bridge" does
+  // not match "Cambridge", etc.
+  const relevantKeywords = [...new Set([...PAVEMENT_KEYWORDS, ...BROAD_BID_KEYWORDS])];
+
+  function toWordBoundaryPattern(kw: string): string {
+    const escaped = kw
+      .split(/\s+/)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    return `\\y${escaped}\\y`;
+  }
+
+  const titleConditions = relevantKeywords.map(
+    (kw) => sql`title ~* ${toWordBoundaryPattern(kw)}`
+  );
+  const descConditions = relevantKeywords.map(
+    (kw) => sql`COALESCE(description, '') ~* ${toWordBoundaryPattern(kw)}`
+  );
+
+  const isRelevant = [...titleConditions, ...descConditions].reduce(
+    (acc, cond) => sql`${acc} OR ${cond}`
+  );
+
+  const result = await db.execute(
+    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND NOT (${isRelevant})`
+  );
+  const count = (result as { rowCount?: number }).rowCount ?? 0;
+  if (count > 0) {
+    console.log(`[bid-sync] Purged ${count} irrelevant local bid(s) (non-construction) from bid_opportunities`);
+  }
+  return count;
+}
 
 async function purgeNavLinkRows(): Promise<number> {
   const likeConditions = NAV_PHRASE_DENYLIST.map(
@@ -64,6 +100,7 @@ async function upsertOpportunities(
 
 export async function runBidSync(): Promise<{ newFederal: number; newLocal: number; total: number }> {
   console.log("[bid-sync] Starting bid opportunity sync (federal + KY local)");
+  await purgeIrrelevantLocalBids();
   await purgeNavLinkRows();
 
   const [fedOpps, localOpps] = await Promise.allSettled([

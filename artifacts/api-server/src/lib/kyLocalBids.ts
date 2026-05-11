@@ -4,17 +4,43 @@ import { SamOpportunity } from "./samGov.js";
 
 const PAGE_TIMEOUT_MS = 30000;
 
-const PAVEMENT_KEYWORDS = [
+export const PAVEMENT_KEYWORDS = [
   "asphalt", "sealcoat", "sealcoating", "pavement", "parking lot",
   "parking-lot", "striping", "crack seal", "paving", "milling",
   "resurfacing", "overlay",
 ];
 
-const BROAD_BID_KEYWORDS = [...PAVEMENT_KEYWORDS, "bid", "rfp", "rfq"];
+// Secondary tier: general construction terms that are still trade-relevant.
+// Intentionally excludes generic procurement words ("bid", "rfp", "rfq") that
+// match office-supply or IT contracts.
+export const BROAD_BID_KEYWORDS = [
+  ...PAVEMENT_KEYWORDS,
+  "construction", "road", "roadway", "highway", "bridge", "concrete",
+  "infrastructure", "grading", "drainage", "excavation", "sidewalk",
+  "curb", "gutter", "demolition", "earthwork", "culvert",
+  "water main", "storm sewer", "sanitary sewer",
+];
+
+// Pre-compile word-boundary patterns once at module load to avoid per-call overhead.
+// \b is used so "road" does not match "broadband", "bridge" does not match "Cambridge", etc.
+// Multi-word keywords (e.g. "parking lot", "crack seal") are split on spaces, so each
+// constituent word is boundary-checked — "parking lot" still matches "parking lot" in text.
+const KEYWORD_PATTERNS: Array<{ raw: string; pattern: RegExp }> = [
+  ...new Set([...PAVEMENT_KEYWORDS, ...BROAD_BID_KEYWORDS]),
+].map((kw) => ({
+  raw: kw,
+  pattern: new RegExp(
+    kw
+      .split(/\s+/)
+      .map((word) => `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
+      .join("\\s+"),
+    "i"
+  ),
+}));
 
 function containsKeyword(text: string, keywords = BROAD_BID_KEYWORDS): boolean {
-  const lower = text.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw));
+  const kwSet = new Set(keywords);
+  return KEYWORD_PATTERNS.some(({ raw, pattern }) => kwSet.has(raw) && pattern.test(text));
 }
 
 // Phrases that identify navigation/help/meta links rather than actual solicitations.
@@ -252,9 +278,24 @@ async function scrapeCountyGeneric(
         return results;
       });
 
+      // Primary tier: pavement/sealcoating-specific hits.
+      // Fallback tier: broader construction terms — only used when the page
+      // yields zero pavement-specific results so that general construction
+      // bids are surfaced rather than nothing, but non-construction RFPs
+      // (IT, furniture, staffing) are always excluded.
+      const eligible = links.filter(({ text }) => !isNavLink(text));
+      const pavementHits = eligible.filter(({ text, contextText }) =>
+        containsKeyword(`${text} ${contextText}`, PAVEMENT_KEYWORDS)
+      );
+      const hits =
+        pavementHits.length > 0
+          ? pavementHits
+          : eligible.filter(({ text, contextText }) =>
+              containsKeyword(`${text} ${contextText}`, BROAD_BID_KEYWORDS)
+            );
+
       const results: LocalOpportunity[] = [];
-      for (const { text, href, contextText } of links) {
-        if (!containsKeyword(text) || isNavLink(text)) continue;
+      for (const { text, href, contextText } of hits) {
         const postedDate = parseIsoDate(contextText);
         const responseDeadline = parseDueDateFromText(contextText);
         results.push({
@@ -271,8 +312,9 @@ async function scrapeCountyGeneric(
         });
       }
 
+      const tier = pavementHits.length > 0 ? "pavement" : "broad-construction";
       if (results.length > 0) {
-        console.log(`[ky-local] ${sourceLabel} (${base}): ${results.length} bids found`);
+        console.log(`[ky-local] ${sourceLabel} (${base}): ${results.length} bids found [${tier}]`);
         return results;
       }
     } catch (err) {
