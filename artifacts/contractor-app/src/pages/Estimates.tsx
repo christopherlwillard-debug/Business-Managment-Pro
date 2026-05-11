@@ -17,11 +17,8 @@ import {
   ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
   CreditCard, ExternalLink, Copy, CheckCircle2,
 } from "lucide-react";
-import { ContractingCalculator } from "@/components/calculators/ContractingCalculator";
-import { FlooringCalculator } from "@/components/calculators/FlooringCalculator";
-import { PlumbingCalculator } from "@/components/calculators/PlumbingCalculator";
+import { AllTradesCalculator } from "@/components/calculators/AllTradesCalculator";
 import { AsphaltCalculator } from "@/components/calculators/AsphaltCalculator";
-import { PunchListCalculator } from "@/components/calculators/PunchListCalculator";
 
 // ─── Asphalt Sealing Proposal template seed data ─────────────────────────────
 const ASPHALT_SEALING_PROPOSAL = {
@@ -175,11 +172,8 @@ export function EstimateModal({
           }))
         : [emptyLine()]
   );
-  const [showContractingCalc, setShowContractingCalc] = useState(false);
-  const [showFlooringCalc, setShowFlooringCalc] = useState(false);
-  const [showPlumbingCalc, setShowPlumbingCalc] = useState(false);
-  const [showAsphaltCalc, setShowAsphaltCalc]   = useState(false);
-  const [showPunchListCalc, setShowPunchListCalc] = useState(false);
+  const [showAllTradesCalc, setShowAllTradesCalc] = useState(false);
+  const [showAsphaltCalc, setShowAsphaltCalc]     = useState(false);
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; amount: number } | null>(null);
   const createQuickCharge = useCreateQuickCharge();
 
@@ -307,31 +301,10 @@ export function EstimateModal({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowContractingCalc(true)}
+                    onClick={() => setShowAllTradesCalc(true)}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
                   >
-                    <Calculator className="w-3.5 h-3.5" /> Contracting
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowFlooringCalc(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
-                  >
-                    <Calculator className="w-3.5 h-3.5" /> Flooring
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowPlumbingCalc(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
-                  >
-                    <Calculator className="w-3.5 h-3.5" /> Plumbing
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowPunchListCalc(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors"
-                  >
-                    <Calculator className="w-3.5 h-3.5" /> Punch List
+                    <Calculator className="w-3.5 h-3.5" /> All Trades Calculator
                   </button>
                 </div>
               ) : (
@@ -507,44 +480,10 @@ export function EstimateModal({
         </div>
       </div>
 
-      {/* Contracting calculator overlay */}
-      {showContractingCalc && (
-        <ContractingCalculator
-          onClose={() => setShowContractingCalc(false)}
-          onUseNumbers={(calcLines, append) => {
-            const mapped = calcLines.map(l => ({
-              category: l.category,
-              description: l.description,
-              quantity: String(l.quantity),
-              unit: l.unit,
-              unitCost: String(l.unitCost),
-            }));
-            setLines(prev => append ? [...prev, ...mapped] : mapped);
-          }}
-        />
-      )}
-
-      {/* Flooring calculator overlay */}
-      {showFlooringCalc && (
-        <FlooringCalculator
-          onClose={() => setShowFlooringCalc(false)}
-          onUseNumbers={(calcLines, append) => {
-            const mapped = calcLines.map(l => ({
-              category: l.category,
-              description: l.description,
-              quantity: String(l.quantity),
-              unit: l.unit,
-              unitCost: String(l.unitCost),
-            }));
-            setLines(prev => append ? [...prev, ...mapped] : mapped);
-          }}
-        />
-      )}
-
-      {/* Plumbing calculator overlay */}
-      {showPlumbingCalc && (
-        <PlumbingCalculator
-          onClose={() => setShowPlumbingCalc(false)}
+      {/* All Trades calculator overlay */}
+      {showAllTradesCalc && (
+        <AllTradesCalculator
+          onClose={() => setShowAllTradesCalc(false)}
           onUseNumbers={(calcLines, append) => {
             const mapped = calcLines.map(l => ({
               category: l.category,
@@ -585,24 +524,6 @@ export function EstimateModal({
             } catch {
               alert("Failed to create payment link. Make sure Square is configured.");
             }
-          }}
-        />
-      )}
-
-      {/* Punch List calculator overlay */}
-      {showPunchListCalc && (
-        <PunchListCalculator
-          onClose={() => setShowPunchListCalc(false)}
-          onUseNumbers={(calcLines, append) => {
-            const mapped = calcLines.map(l => ({
-              category: l.category,
-              description: l.description,
-              quantity: String(l.quantity),
-              unit: l.unit,
-              unitCost: String(l.unitCost),
-            }));
-            setLines(prev => append ? [...prev, ...mapped] : mapped);
-            setShowPunchListCalc(false);
           }}
         />
       )}
