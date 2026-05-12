@@ -1091,6 +1091,203 @@ function SquareAppIdCard() {
 }
 
 // ─── Main Settings ────────────────────────────────────────────────────────────
+// ─── Calculator Defaults Panel (collapsible trade sections) ───────────────────
+
+type CalcDefaultsState = typeof DEFAULT_CALC_DEFAULTS;
+
+function CalcTradePanel({
+  title, subtitle, open, onToggle, children,
+}: {
+  title: string; subtitle: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden">
+      <button type="button" onClick={onToggle}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-muted/30 transition-colors">
+        <div>
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+        </div>
+        <ChevronRight className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <div className="px-5 pb-5 pt-1 border-t border-border/50">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CalcDefaultsPanel({
+  calcDefaults, setCalcDefaults, inp,
+}: {
+  calcDefaults: CalcDefaultsState;
+  setCalcDefaults: React.Dispatch<React.SetStateAction<CalcDefaultsState>>;
+  inp: string;
+}) {
+  const [openPanels, setOpenPanels] = React.useState<Record<string, boolean>>({
+    plumbing: true, flooring: false, contracting: false, punchList: false,
+  });
+  function toggle(key: string) {
+    setOpenPanels(p => ({ ...p, [key]: !p[key] }));
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+        <p className="text-xs text-primary/90">
+          <strong>How it works:</strong> These rates load automatically every time Willard opens the All Trades Calculator.
+          Any rate can be overridden per-job using the Override toggle inside the calculator.
+        </p>
+      </div>
+
+      {/* Plumbing */}
+      <CalcTradePanel title="Plumbing" subtitle="Base charge + additional drop rate" open={!!openPanels.plumbing} onToggle={() => toggle("plumbing")}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Base Charge</label>
+            <p className="text-xs text-muted-foreground">Covers up to 2 drops</p>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7"} type="number" min="0" step="50" value={calcDefaults.plumbing.baseCharge}
+                onChange={e => setCalcDefaults(d => ({ ...d, plumbing: { ...d.plumbing, baseCharge: parseFloat(e.target.value) || 0 } }))} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Additional Drop Rate</label>
+            <p className="text-xs text-muted-foreground">Per drop beyond the first 2</p>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7 pr-14"} type="number" min="0" step="25" value={calcDefaults.plumbing.dropRate}
+                onChange={e => setCalcDefaults(d => ({ ...d, plumbing: { ...d.plumbing, dropRate: parseFloat(e.target.value) || 0 } }))} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">/drop</span>
+            </div>
+          </div>
+        </div>
+      </CalcTradePanel>
+
+      {/* Flooring */}
+      <CalcTradePanel title="Flooring" subtitle="Labor and full (materials + labor) rates per flooring type" open={!!openPanels.flooring} onToggle={() => toggle("flooring")}>
+        <div className="pt-4 space-y-5">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="text-left font-semibold pb-3 pr-4">Type</th>
+                  <th className="text-right font-semibold pb-3 px-3">Labor Only ($/SF)</th>
+                  <th className="text-right font-semibold pb-3 pl-3">Materials + Labor ($/SF)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {FLOORING_TYPES.map(type => (
+                  <tr key={type}>
+                    <td className="py-2 pr-4 font-medium text-foreground">{type}</td>
+                    <td className="py-2 px-3">
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                        <input type="number" min="0" step="0.25"
+                          value={calcDefaults.flooring.labor[type]}
+                          onChange={e => setCalcDefaults(d => ({ ...d, flooring: { ...d.flooring, labor: { ...d.flooring.labor, [type]: parseFloat(e.target.value) || 0 } } }))}
+                          className="w-24 pl-5 pr-2 py-1.5 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/10 outline-none text-sm text-right transition-colors" />
+                      </div>
+                    </td>
+                    <td className="py-2 pl-3">
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                        <input type="number" min="0" step="0.25"
+                          value={calcDefaults.flooring.full[type]}
+                          onChange={e => setCalcDefaults(d => ({ ...d, flooring: { ...d.flooring, full: { ...d.flooring.full, [type]: parseFloat(e.target.value) || 0 } } }))}
+                          className="w-24 pl-5 pr-2 py-1.5 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/10 outline-none text-sm text-right transition-colors" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="space-y-1.5 pt-2 border-t border-border/50">
+            <label className="text-sm font-semibold text-foreground">Minimum Charge</label>
+            <p className="text-xs text-muted-foreground">Calculator raises the total to this floor if SF × rate is lower.</p>
+            <div className="relative max-w-xs">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7"} type="number" min="0" step="50" value={calcDefaults.flooring.minimumCharge}
+                onChange={e => setCalcDefaults(d => ({ ...d, flooring: { ...d.flooring, minimumCharge: parseFloat(e.target.value) || 0 } }))} />
+            </div>
+          </div>
+        </div>
+      </CalcTradePanel>
+
+      {/* Trim / Siding / Drywall */}
+      <CalcTradePanel title="Contracting" subtitle="Labor rates for trim, siding, and drywall" open={!!openPanels.contracting} onToggle={() => toggle("contracting")}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Trim Labor Rate</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7 pr-10"} type="number" min="0" step="0.25" value={calcDefaults.trim.laborRate}
+                onChange={e => setCalcDefaults(d => ({ ...d, trim: { laborRate: parseFloat(e.target.value) || 0 } }))} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/LF</span>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Siding Labor Rate</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7 pr-9"} type="number" min="0" step="0.25" value={calcDefaults.siding.laborRate}
+                onChange={e => setCalcDefaults(d => ({ ...d, siding: { laborRate: parseFloat(e.target.value) || 0 } }))} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/SF</span>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Drywall Labor Rate</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7 pr-9"} type="number" min="0" step="0.25" value={calcDefaults.drywall.laborRate}
+                onChange={e => setCalcDefaults(d => ({ ...d, drywall: { laborRate: parseFloat(e.target.value) || 0 } }))} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/SF</span>
+            </div>
+          </div>
+        </div>
+      </CalcTradePanel>
+
+      {/* Punch List */}
+      <CalcTradePanel title="Punch List" subtitle="Half-day price, full-day price, and helper rate" open={!!openPanels.punchList} onToggle={() => toggle("punchList")}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Half-Day Price</label>
+            <p className="text-xs text-muted-foreground">Up to 4 hours</p>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7"} type="number" min="0" step="25" value={calcDefaults.punchList.halfDayPrice}
+                onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, halfDayPrice: parseFloat(e.target.value) || 0 } }))} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Full-Day Price</label>
+            <p className="text-xs text-muted-foreground">Up to 8 hours</p>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7"} type="number" min="0" step="25" value={calcDefaults.punchList.fullDayPrice}
+                onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, fullDayPrice: parseFloat(e.target.value) || 0 } }))} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-foreground">Helper Day Rate</label>
+            <p className="text-xs text-muted-foreground">Per helper per day</p>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <input className={inp + " pl-7 pr-10"} type="number" min="0" step="25" value={calcDefaults.punchList.helperDayRate}
+                onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, helperDayRate: parseFloat(e.target.value) || 0 } }))} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/day</span>
+            </div>
+          </div>
+        </div>
+      </CalcTradePanel>
+    </div>
+  );
+}
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetSettings();
@@ -2135,188 +2332,11 @@ export default function Settings() {
 
         {/* ── Calculator Defaults ── */}
         {activeTab === "calculators" && (
-          <div className="space-y-5">
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-              <p className="text-xs text-blue-800">
-                <strong>How it works:</strong> These rates auto-populate every time you open the All Trades Calculator.
-                You can still override any rate per-job using the Override toggle in the calculator — these are just your starting defaults.
-              </p>
-            </div>
-
-            {/* Plumbing */}
-            <Card className="border-border/50 shadow-md bg-card">
-              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-                <CardTitle className="font-display flex items-center gap-2 text-base">
-                  <DollarSign className="w-4 h-4 text-primary" /> Plumbing
-                </CardTitle>
-                <CardDescription>Base charge covers up to 2 drops. Additional drops charged at the drop rate.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Base Charge (2 drops)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7"} type="number" min="0" step="50" value={calcDefaults.plumbing.baseCharge}
-                        onChange={e => setCalcDefaults(d => ({ ...d, plumbing: { ...d.plumbing, baseCharge: parseFloat(e.target.value) || 0 } }))} />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Additional Drop Rate</label>
-                    <div className="relative flex items-center gap-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7 pr-14"} type="number" min="0" step="25" value={calcDefaults.plumbing.dropRate}
-                        onChange={e => setCalcDefaults(d => ({ ...d, plumbing: { ...d.plumbing, dropRate: parseFloat(e.target.value) || 0 } }))} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">/drop</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Flooring */}
-            <Card className="border-border/50 shadow-md bg-card">
-              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-                <CardTitle className="font-display flex items-center gap-2 text-base">
-                  <DollarSign className="w-4 h-4 text-primary" /> Flooring Rates
-                </CardTitle>
-                <CardDescription>Labor Only = install labor. Materials + Labor = full supply & install. Minimum charge applied if total falls below it.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6 space-y-5">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-xs text-muted-foreground uppercase tracking-wide">
-                        <th className="text-left font-semibold pb-3 pr-4">Type</th>
-                        <th className="text-right font-semibold pb-3 px-3">Labor Only ($/SF)</th>
-                        <th className="text-right font-semibold pb-3 pl-3">Materials + Labor ($/SF)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {FLOORING_TYPES.map(type => (
-                        <tr key={type}>
-                          <td className="py-2 pr-4 font-medium text-foreground">{type}</td>
-                          <td className="py-2 px-3">
-                            <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                              <input type="number" min="0" step="0.25"
-                                value={calcDefaults.flooring.labor[type]}
-                                onChange={e => setCalcDefaults(d => ({
-                                  ...d, flooring: { ...d.flooring, labor: { ...d.flooring.labor, [type]: parseFloat(e.target.value) || 0 } }
-                                }))}
-                                className="w-24 pl-5 pr-2 py-1.5 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/10 outline-none text-sm text-right transition-colors" />
-                            </div>
-                          </td>
-                          <td className="py-2 pl-3">
-                            <div className="relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                              <input type="number" min="0" step="0.25"
-                                value={calcDefaults.flooring.full[type]}
-                                onChange={e => setCalcDefaults(d => ({
-                                  ...d, flooring: { ...d.flooring, full: { ...d.flooring.full, [type]: parseFloat(e.target.value) || 0 } }
-                                }))}
-                                className="w-24 pl-5 pr-2 py-1.5 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/10 outline-none text-sm text-right transition-colors" />
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="space-y-1.5 pt-2 border-t border-border/50">
-                  <label className="text-sm font-semibold text-foreground">Minimum Charge</label>
-                  <div className="relative max-w-xs">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                    <input className={inp + " pl-7"} type="number" min="0" step="50" value={calcDefaults.flooring.minimumCharge}
-                      onChange={e => setCalcDefaults(d => ({ ...d, flooring: { ...d.flooring, minimumCharge: parseFloat(e.target.value) || 0 } }))} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">Calculator raises the total to this floor if the SF × rate is lower.</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Trim / Siding / Drywall */}
-            <Card className="border-border/50 shadow-md bg-card">
-              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-                <CardTitle className="font-display flex items-center gap-2 text-base">
-                  <DollarSign className="w-4 h-4 text-primary" /> Contracting Rates
-                </CardTitle>
-                <CardDescription>Default labor rates per SF or LF for trim, siding, and drywall work.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Trim Labor Rate</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7 pr-10"} type="number" min="0" step="0.25" value={calcDefaults.trim.laborRate}
-                        onChange={e => setCalcDefaults(d => ({ ...d, trim: { laborRate: parseFloat(e.target.value) || 0 } }))} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/LF</span>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Siding Labor Rate</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7 pr-9"} type="number" min="0" step="0.25" value={calcDefaults.siding.laborRate}
-                        onChange={e => setCalcDefaults(d => ({ ...d, siding: { laborRate: parseFloat(e.target.value) || 0 } }))} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/SF</span>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Drywall Labor Rate</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7 pr-9"} type="number" min="0" step="0.25" value={calcDefaults.drywall.laborRate}
-                        onChange={e => setCalcDefaults(d => ({ ...d, drywall: { laborRate: parseFloat(e.target.value) || 0 } }))} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/SF</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Punch List */}
-            <Card className="border-border/50 shadow-md bg-card">
-              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-                <CardTitle className="font-display flex items-center gap-2 text-base">
-                  <DollarSign className="w-4 h-4 text-primary" /> Punch List Pricing
-                </CardTitle>
-                <CardDescription>Default prices for half-day and full-day punch list service, plus helper labor rate.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Half-Day Price</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7"} type="number" min="0" step="25" value={calcDefaults.punchList.halfDayPrice}
-                        onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, halfDayPrice: parseFloat(e.target.value) || 0 } }))} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">Up to 4 hours</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Full-Day Price</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7"} type="number" min="0" step="25" value={calcDefaults.punchList.fullDayPrice}
-                        onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, fullDayPrice: parseFloat(e.target.value) || 0 } }))} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">Up to 8 hours</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-foreground">Helper Day Rate</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input className={inp + " pl-7 pr-10"} type="number" min="0" step="25" value={calcDefaults.punchList.helperDayRate}
-                        onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, helperDayRate: parseFloat(e.target.value) || 0 } }))} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/day</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <CalcDefaultsPanel
+            calcDefaults={calcDefaults}
+            setCalcDefaults={setCalcDefaults}
+            inp={inp}
+          />
         )}
 
         {/* Save bar */}
