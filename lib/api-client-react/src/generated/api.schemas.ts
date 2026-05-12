@@ -651,6 +651,7 @@ export interface AppSettings {
   invoiceReminderDay1?: number | null;
   invoiceReminderDay2?: number | null;
   taxFilingFrequency?: string | null;
+  calculatorDefaults?: Record<string, unknown> | null;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {

@@ -484,6 +484,7 @@ export function EstimateModal({
       {showAllTradesCalc && (
         <AllTradesCalculator
           onClose={() => setShowAllTradesCalc(false)}
+          calculatorDefaults={(s as any).calculatorDefaults ?? null}
           onUseNumbers={(calcLines, append) => {
             const mapped = calcLines.map(l => ({
               category: l.category,

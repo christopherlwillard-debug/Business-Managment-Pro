@@ -1,6 +1,61 @@
 import { useState, useMemo, useEffect } from "react";
 import { X, Copy, Check, ChevronDown, ChevronRight, Plus, Trash2, Zap } from "lucide-react";
 
+// ─── Defaults type ─────────────────────────────────────────────────────────────
+
+export interface CalcDefaults {
+  plumbing: { baseCharge: number; dropRate: number };
+  flooring: {
+    labor: Record<string, number>;
+    full: Record<string, number>;
+    minimumCharge: number;
+  };
+  trim: { laborRate: number };
+  siding: { laborRate: number };
+  drywall: { laborRate: number };
+  punchList: { halfDayPrice: number; fullDayPrice: number; helperDayRate: number };
+}
+
+const HARDCODED_DEFAULTS: CalcDefaults = {
+  plumbing: { baseCharge: 1000, dropRate: 125 },
+  flooring: {
+    labor: { Carpet: 4.50, Laminate: 4.50, LVP: 4.50, Hardwood: 4.50, Tile: 6.00 },
+    full:  { Carpet: 5.00, Laminate: 6.50, LVP: 7.00, Hardwood: 11.50, Tile: 13.50 },
+    minimumCharge: 500,
+  },
+  trim:  { laborRate: 5.50 },
+  siding: { laborRate: 2.00 },
+  drywall: { laborRate: 1.75 },
+  punchList: { halfDayPrice: 500, fullDayPrice: 1000, helperDayRate: 275 },
+};
+
+function mergeDefaults(incoming?: Record<string, unknown> | null): CalcDefaults {
+  if (!incoming) return HARDCODED_DEFAULTS;
+  const h = HARDCODED_DEFAULTS;
+  const p = incoming as any;
+  return {
+    plumbing: {
+      baseCharge: p?.plumbing?.baseCharge ?? h.plumbing.baseCharge,
+      dropRate:   p?.plumbing?.dropRate   ?? h.plumbing.dropRate,
+    },
+    flooring: {
+      labor: { ...h.flooring.labor, ...(p?.flooring?.labor ?? {}) },
+      full:  { ...h.flooring.full,  ...(p?.flooring?.full  ?? {}) },
+      minimumCharge: p?.flooring?.minimumCharge ?? h.flooring.minimumCharge,
+    },
+    trim:   { laborRate: p?.trim?.laborRate   ?? h.trim.laborRate },
+    siding: { laborRate: p?.siding?.laborRate ?? h.siding.laborRate },
+    drywall:{ laborRate: p?.drywall?.laborRate ?? h.drywall.laborRate },
+    punchList: {
+      halfDayPrice:  p?.punchList?.halfDayPrice  ?? h.punchList.halfDayPrice,
+      fullDayPrice:  p?.punchList?.fullDayPrice  ?? h.punchList.fullDayPrice,
+      helperDayRate: p?.punchList?.helperDayRate ?? h.punchList.helperDayRate,
+    },
+  };
+}
+
+// ─── Shared types ──────────────────────────────────────────────────────────────
+
 interface DraftLine {
   category: string;
   description: string;
@@ -12,6 +67,7 @@ interface DraftLine {
 interface AllTradesCalculatorProps {
   onClose: () => void;
   onUseNumbers: (lines: DraftLine[], append: boolean) => void;
+  calculatorDefaults?: Record<string, unknown> | null;
 }
 
 function fmt(n: number) {
@@ -55,7 +111,7 @@ function TradeSectionShell({
   );
 }
 
-// ─── Sub-section shell (used inside Contracting for Trim/Siding/Drywall/Other) ─
+// ─── Sub-section shell ─────────────────────────────────────────────────────────
 
 function SubSectionShell({
   title, subtitle, enabled, onToggle, total, children,
@@ -68,7 +124,7 @@ function SubSectionShell({
       <div className="flex items-center gap-3 px-3 py-2.5">
         <button type="button" onClick={onToggle}
           className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${enabled ? "bg-amber-500" : "bg-zinc-600"}`}>
-          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${enabled ? "left-4.5" : "left-0.5"}`} />
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${enabled ? "left-[18px]" : "left-0.5"}`} />
         </button>
         <button type="button" onClick={() => setOpen(o => !o)}
           className="flex-1 flex items-center gap-2 min-w-0 text-left">
@@ -91,16 +147,6 @@ function SubSectionShell({
 
 // ─── Shared primitives ─────────────────────────────────────────────────────────
 
-function TierBtn({ label, range, active, onClick }: { label: string; range: string; active: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`flex-1 py-2 px-1 rounded-xl border text-center transition-colors ${active ? "bg-amber-500 border-amber-500 text-black" : "bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-amber-400"}`}>
-      <div className="text-xs font-bold">{label}</div>
-      <div className={`text-[10px] mt-0.5 ${active ? "text-black/70" : "text-zinc-500"}`}>{range}</div>
-    </button>
-  );
-}
-
 function NumField({ label, value, onChange, prefix, suffix, step = "1", small = false }: {
   label?: string; value: string | number; onChange: (v: string) => void;
   prefix?: string; suffix?: string; step?: string; small?: boolean;
@@ -118,21 +164,47 @@ function NumField({ label, value, onChange, prefix, suffix, step = "1", small = 
   );
 }
 
+function OverrideRow({
+  label, settingsRate, unit, overrideRate, onOverrideRate, override, onToggle,
+}: {
+  label: string; settingsRate: number; unit: string;
+  overrideRate: number; onOverrideRate: (v: string) => void;
+  override: boolean; onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 bg-zinc-900 rounded-xl px-3 py-2.5 border border-zinc-700">
+      <div className="min-w-0">
+        <span className="text-xs text-zinc-500">{label}</span>
+        {override ? (
+          <div className="mt-1">
+            <NumField value={overrideRate} onChange={onOverrideRate} prefix="$" suffix={unit} step="0.25" small />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-sm font-bold text-amber-400">${fmt(settingsRate)}{unit}</span>
+            <span className="text-[10px] text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-700/80">from Settings</span>
+          </div>
+        )}
+      </div>
+      <button type="button" onClick={onToggle}
+        className={`shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${override ? "border-amber-500/70 text-amber-400 bg-amber-500/10" : "border-zinc-600 text-zinc-500 hover:border-zinc-400 hover:text-zinc-300"}`}>
+        {override ? "Override ✓" : "Override"}
+      </button>
+    </div>
+  );
+}
+
 // ─── Trim section ──────────────────────────────────────────────────────────────
 
-type TrimTier = "small" | "medium" | "large";
-const TRIM_TIERS: Record<TrimTier, { label: string; range: string; rate: number }> = {
-  small:  { label: "Small",  range: "< 60 LF",   rate: 7.00 },
-  medium: { label: "Medium", range: "60–120 LF",  rate: 5.50 },
-  large:  { label: "Large",  range: "120+ LF",    rate: 4.50 },
-};
-
-function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) {
+function TrimSection({ onTotalChange, defs }: { onTotalChange: (t: number) => void; defs: CalcDefaults }) {
+  const settingsRate = defs.trim.laborRate;
   const [lf, setLf] = useState("");
   const [roomL, setRoomL] = useState("");
   const [roomW, setRoomW] = useState("");
-  const [tier, setTier] = useState<TrimTier>("medium");
-  const [rate, setRate] = useState(TRIM_TIERS.medium.rate);
+  const [override, setOverride] = useState(false);
+  const [overrideRate, setOverrideRate] = useState(settingsRate);
+  const rate = override ? overrideRate : settingsRate;
+
   const [crown, setCrown] = useState(false);
   const [crownRate, setCrownRate] = useState(8);
   const [doorJamsOn, setDoorJamsOn] = useState(false);
@@ -149,17 +221,10 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
     const l = parseFloat(roomL) || 0;
     const w = parseFloat(roomW) || 0;
     if (l > 0 && w > 0) {
-      const perim = String(Math.round(2 * (l + w)));
-      setLf(perim); setRoomL(""); setRoomW("");
-      autoTier(parseFloat(perim));
+      setLf(String(Math.round(2 * (l + w))));
+      setRoomL(""); setRoomW("");
     }
   }
-  function autoTier(feet: number) {
-    if (feet < 60)        { setTier("small");  setRate(TRIM_TIERS.small.rate);  }
-    else if (feet <= 120) { setTier("medium"); setRate(TRIM_TIERS.medium.rate); }
-    else                  { setTier("large");  setRate(TRIM_TIERS.large.rate);  }
-  }
-  function handleTier(t: TrimTier) { setTier(t); setRate(TRIM_TIERS[t].rate); }
 
   const total = useMemo(() => {
     const feet = parseFloat(lf) || 0;
@@ -176,7 +241,7 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <NumField label="Linear Feet" value={lf} onChange={v => { setLf(v); autoTier(parseFloat(v) || 0); }} suffix="LF" />
+        <NumField label="Linear Feet" value={lf} onChange={setLf} suffix="LF" />
         <div className="bg-zinc-900 rounded-xl p-3 border border-zinc-700 space-y-2">
           <p className="text-xs text-zinc-400">Or enter room size to calculate LF:</p>
           <div className="flex items-end gap-2">
@@ -190,19 +255,21 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
           </div>
         </div>
       </div>
-      <div>
-        <p className="text-xs text-zinc-400 mb-1.5">Labor Tier</p>
-        <div className="flex gap-2">
-          {(Object.entries(TRIM_TIERS) as [TrimTier, typeof TRIM_TIERS[TrimTier]][]).map(([k, t]) => (
-            <TierBtn key={k} label={t.label} range={t.range} active={tier === k} onClick={() => handleTier(k)} />
-          ))}
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-xs text-zinc-400">Rate</span>
-          <NumField value={rate} onChange={v => setRate(parseFloat(v) || 0)} prefix="$" suffix="/LF" step="0.25" small />
-          {parseFloat(lf) > 0 && <span className="text-amber-400 text-xs font-mono">${fmtInt(parseFloat(lf) * rate)}</span>}
-        </div>
-      </div>
+
+      <OverrideRow
+        label="Labor Rate"
+        settingsRate={settingsRate}
+        unit="/LF"
+        overrideRate={overrideRate}
+        onOverrideRate={v => setOverrideRate(parseFloat(v) || 0)}
+        override={override}
+        onToggle={() => { if (override) setOverrideRate(settingsRate); setOverride(o => !o); }}
+      />
+
+      {parseFloat(lf) > 0 && rate > 0 && (
+        <p className="text-xs text-zinc-500 font-mono">{parseFloat(lf).toFixed(0)} LF × ${fmt(rate)} = <span className="text-amber-400">${fmtInt(parseFloat(lf) * rate)}</span></p>
+      )}
+
       <div className="flex items-center justify-between bg-zinc-900 rounded-xl px-3 py-2 border border-zinc-700">
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={vaulted} onChange={e => setVaulted(e.target.checked)} className="w-4 h-4 accent-amber-500" />
@@ -215,6 +282,7 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
           <span className="text-zinc-400 text-xs">%</span>
         </div>
       </div>
+
       <div className="space-y-2">
         <p className="text-xs text-zinc-400">Add-Ons</p>
         <div className="bg-zinc-900 rounded-xl p-3 border border-zinc-700 space-y-2">
@@ -261,19 +329,16 @@ function TrimSection({ onTotalChange }: { onTotalChange: (t: number) => void }) 
 
 // ─── Siding section ────────────────────────────────────────────────────────────
 
-type SidingTier = "on-lot" | "standard" | "premium";
-const SIDING_TIERS: Record<SidingTier, { label: string; range: string; rate: number }> = {
-  "on-lot":   { label: "On the Lot", range: "$1–2/SF",    rate: 1.50 },
-  "standard": { label: "Standard",   range: "$2–2.50/SF", rate: 2.00 },
-  "premium":  { label: "Premium",    range: "$3/SF",      rate: 3.00 },
-};
 type SideRow = { length: string; height: string };
 
-function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }) {
+function SidingSection({ onTotalChange, defs }: { onTotalChange: (t: number) => void; defs: CalcDefaults }) {
+  const settingsRate = defs.siding.laborRate;
   const [sf, setSf] = useState("");
   const [sides, setSides] = useState<SideRow[]>([{ length: "", height: "" }]);
-  const [tier, setTier] = useState<SidingTier>("standard");
-  const [rate, setRate] = useState(SIDING_TIERS.standard.rate);
+  const [override, setOverride] = useState(false);
+  const [overrideRate, setOverrideRate] = useState(settingsRate);
+  const rate = override ? overrideRate : settingsRate;
+
   const [windows, setWindows] = useState("");
   const [winRate, setWinRate] = useState(150);
   const [doors, setDoors] = useState("");
@@ -294,7 +359,6 @@ function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }
   }
   const sidesSf = sides.reduce((sum, s) => sum + (parseFloat(s.length) || 0) * (parseFloat(s.height) || 0), 0);
   const anySideFilled = sides.some(s => s.length && s.height);
-  function handleTier(t: SidingTier) { setTier(t); setRate(SIDING_TIERS[t].rate); }
 
   const total = useMemo(() => {
     const sqft = parseFloat(sf) || 0;
@@ -338,19 +402,21 @@ function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }
           </div>
         </div>
       </div>
-      <div>
-        <p className="text-xs text-zinc-400 mb-1.5">Labor Tier</p>
-        <div className="flex gap-2">
-          {(Object.entries(SIDING_TIERS) as [SidingTier, typeof SIDING_TIERS[SidingTier]][]).map(([k, t]) => (
-            <TierBtn key={k} label={t.label} range={t.range} active={tier === k} onClick={() => handleTier(k)} />
-          ))}
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-xs text-zinc-400">Rate</span>
-          <NumField value={rate} onChange={v => setRate(parseFloat(v) || 0)} prefix="$" suffix="/SF" step="0.25" small />
-          {parseFloat(sf) > 0 && <span className="text-amber-400 text-xs font-mono">${fmtInt(parseFloat(sf) * rate)}</span>}
-        </div>
-      </div>
+
+      <OverrideRow
+        label="Labor Rate"
+        settingsRate={settingsRate}
+        unit="/SF"
+        overrideRate={overrideRate}
+        onOverrideRate={v => setOverrideRate(parseFloat(v) || 0)}
+        override={override}
+        onToggle={() => { if (override) setOverrideRate(settingsRate); setOverride(o => !o); }}
+      />
+
+      {parseFloat(sf) > 0 && rate > 0 && (
+        <p className="text-xs text-zinc-500 font-mono">{parseFloat(sf).toFixed(0)} SF × ${fmt(rate)} = <span className="text-amber-400">${fmtInt(parseFloat(sf) * rate)}</span></p>
+      )}
+
       <div className="space-y-2">
         <p className="text-xs text-zinc-400">Add-Ons</p>
         <div className="bg-zinc-900 rounded-xl p-3 border border-zinc-700">
@@ -401,23 +467,16 @@ function SidingSection({ onTotalChange }: { onTotalChange: (t: number) => void }
 
 // ─── Drywall section ───────────────────────────────────────────────────────────
 
-type DrywallTier = "patch" | "partial" | "full";
-const DRYWALL_TIERS: Record<DrywallTier, { label: string; range: string; rate: number }> = {
-  patch:   { label: "Patch / Repair", range: "$2–3/SF",    rate: 2.50 },
-  partial: { label: "Partial Room",   range: "$1.50–2/SF", rate: 1.75 },
-  full:    { label: "Full / New",     range: "$1–1.50/SF", rate: 1.25 },
-};
-
-function DrywallSection({ onTotalChange }: { onTotalChange: (t: number) => void }) {
+function DrywallSection({ onTotalChange, defs }: { onTotalChange: (t: number) => void; defs: CalcDefaults }) {
+  const settingsRate = defs.drywall.laborRate;
   const [sf, setSf] = useState("");
-  const [tier, setTier] = useState<DrywallTier>("patch");
-  const [rate, setRate] = useState(DRYWALL_TIERS.patch.rate);
+  const [override, setOverride] = useState(false);
+  const [overrideRate, setOverrideRate] = useState(settingsRate);
+  const rate = override ? overrideRate : settingsRate;
   const [texture, setTexture] = useState(false);
   const [textureAmt, setTextureAmt] = useState(150);
   const [corners, setCorners] = useState("");
   const [cornerRate, setCornerRate] = useState(25);
-
-  function handleTier(t: DrywallTier) { setTier(t); setRate(DRYWALL_TIERS[t].rate); }
 
   const total = useMemo(() => {
     const sqft = parseFloat(sf) || 0;
@@ -429,19 +488,21 @@ function DrywallSection({ onTotalChange }: { onTotalChange: (t: number) => void 
   return (
     <div className="space-y-3">
       <NumField label="Square Feet (SF)" value={sf} onChange={setSf} suffix="SF" />
-      <div>
-        <p className="text-xs text-zinc-400 mb-1.5">Labor Tier</p>
-        <div className="flex gap-2">
-          {(Object.entries(DRYWALL_TIERS) as [DrywallTier, typeof DRYWALL_TIERS[DrywallTier]][]).map(([k, t]) => (
-            <TierBtn key={k} label={t.label} range={t.range} active={tier === k} onClick={() => handleTier(k)} />
-          ))}
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-xs text-zinc-400">Rate</span>
-          <NumField value={rate} onChange={v => setRate(parseFloat(v) || 0)} prefix="$" suffix="/SF" step="0.25" small />
-          {parseFloat(sf) > 0 && <span className="text-amber-400 text-xs font-mono">${fmtInt(parseFloat(sf) * rate)}</span>}
-        </div>
-      </div>
+
+      <OverrideRow
+        label="Labor Rate"
+        settingsRate={settingsRate}
+        unit="/SF"
+        overrideRate={overrideRate}
+        onOverrideRate={v => setOverrideRate(parseFloat(v) || 0)}
+        override={override}
+        onToggle={() => { if (override) setOverrideRate(settingsRate); setOverride(o => !o); }}
+      />
+
+      {parseFloat(sf) > 0 && rate > 0 && (
+        <p className="text-xs text-zinc-500 font-mono">{parseFloat(sf).toFixed(0)} SF × ${fmt(rate)} = <span className="text-amber-400">${fmtInt(parseFloat(sf) * rate)}</span></p>
+      )}
+
       <div className="space-y-2">
         <p className="text-xs text-zinc-400">Add-Ons</p>
         <div className="bg-zinc-900 rounded-xl p-3 border border-zinc-700">
@@ -523,11 +584,11 @@ function OtherWorkSection({ onRowsChange }: { onRowsChange: (rows: OtherRow[]) =
 // ─── Contracting trade section (wraps Trim / Siding / Drywall / Other) ─────────
 
 function ContractingTradeSection({
-  onTotalChange,
-  onLinesChange,
+  onTotalChange, onLinesChange, defs,
 }: {
   onTotalChange: (t: number) => void;
   onLinesChange: (lines: DraftLine[]) => void;
+  defs: CalcDefaults;
 }) {
   const [trimOn, setTrimOn]     = useState(false);
   const [sidingOn, setSidingOn] = useState(false);
@@ -567,13 +628,13 @@ function ContractingTradeSection({
   return (
     <div className="space-y-2">
       <SubSectionShell title="Trim Work" subtitle="Baseboard · Crown Moulding · Door Jams · Ceiling Services" enabled={trimOn} onToggle={() => setTrimOn(o => !o)} total={trimTotal}>
-        <TrimSection onTotalChange={setTrimTotal} />
+        <TrimSection onTotalChange={setTrimTotal} defs={defs} />
       </SubSectionShell>
-      <SubSectionShell title="Siding" subtitle="SF-based · On-lot / Standard / Premium · Windows & Doors" enabled={sidingOn} onToggle={() => setSidingOn(o => !o)} total={sidingTotal}>
-        <SidingSection onTotalChange={setSidingTotal} />
+      <SubSectionShell title="Siding" subtitle="SF-based · Windows & Doors · Tear-off" enabled={sidingOn} onToggle={() => setSidingOn(o => !o)} total={sidingTotal}>
+        <SidingSection onTotalChange={setSidingTotal} defs={defs} />
       </SubSectionShell>
-      <SubSectionShell title="Drywall" subtitle="Patch / Partial / Full · Texture match · Corner bead" enabled={drywallOn} onToggle={() => setDrywallOn(o => !o)} total={drywallTotal}>
-        <DrywallSection onTotalChange={setDrywallTotal} />
+      <SubSectionShell title="Drywall" subtitle="SF-based · Texture match · Corner bead" enabled={drywallOn} onToggle={() => setDrywallOn(o => !o)} total={drywallTotal}>
+        <DrywallSection onTotalChange={setDrywallTotal} defs={defs} />
       </SubSectionShell>
       <SubSectionShell title="Other Work" subtitle="Freeform — any description + flat dollar amount" enabled={otherOn} onToggle={() => setOtherOn(o => !o)} total={otherTotal}>
         <OtherWorkSection onRowsChange={setOtherRows} />
@@ -586,16 +647,8 @@ function ContractingTradeSection({
 
 type FlooringType = "Carpet" | "Laminate" | "LVP" | "Hardwood" | "Tile";
 type QuoteMode = "full" | "labor";
-type FlooringRateTier = "low" | "mid" | "high";
 interface FlooringRoom { id: number; label: string; length: string; width: string; manualSF: string; }
 
-const FLOORING_RATES: Record<FlooringType, { full: { low: number; mid: number; high: number; range: string }; labor: { low: number; mid: number; high: number; range: string } }> = {
-  Carpet:   { full: { low: 3, mid: 5, high: 7, range: "$3–$7/SF" },      labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
-  Laminate: { full: { low: 4, mid: 6.5, high: 9, range: "$4–$9/SF" },    labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
-  LVP:      { full: { low: 4, mid: 7, high: 10, range: "$4–$10/SF" },    labor: { low: 2, mid: 4.5, high: 6, range: "$2–$6/SF" } },
-  Hardwood: { full: { low: 6, mid: 11.5, high: 25, range: "$6–$25/SF" }, labor: { low: 3, mid: 4.5, high: 6, range: "$3–$6/SF" } },
-  Tile:     { full: { low: 7, mid: 13.5, high: 20, range: "$7–$20+/SF" }, labor: { low: 4, mid: 6, high: 8, range: "$4–$8+/SF" } },
-};
 const FLOORING_TYPES: FlooringType[] = ["Carpet", "Laminate", "LVP", "Hardwood", "Tile"];
 
 function roomSF(room: FlooringRoom): number {
@@ -609,11 +662,11 @@ function makeRoom(label?: string): FlooringRoom {
   return { id: floorRoomId++, label: label ?? "Room", length: "", width: "", manualSF: "" };
 }
 
-function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: DraftLine[]) => void }) {
+function FlooringSection({ onTotalChange, defs }: { onTotalChange: (t: number, lines: DraftLine[]) => void; defs: CalcDefaults }) {
   const [flooringType, setFlooringType] = useState<FlooringType>("LVP");
   const [mode, setMode] = useState<QuoteMode>("labor");
-  const [tier, setTier] = useState<FlooringRateTier>("mid");
-  const [rate, setRate] = useState(FLOORING_RATES["LVP"].labor.mid);
+  const [override, setOverride] = useState(false);
+  const [overrideRate, setOverrideRate] = useState(defs.flooring.labor["LVP"] ?? 4.5);
   const [rooms, setRooms] = useState<FlooringRoom[]>([makeRoom("Room 1")]);
   const [subfloorCost, setSubfloorCost] = useState("");
   const [removalSF, setRemovalSF] = useState("");
@@ -625,9 +678,18 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
   const [stairQty, setStairQty] = useState(0);
   const [stairRate, setStairRate] = useState(65);
 
-  function handleTypeChange(t: FlooringType) { setFlooringType(t); setRate(FLOORING_RATES[t][mode][tier]); }
-  function handleModeChange(m: QuoteMode) { setMode(m); setRate(FLOORING_RATES[flooringType][m][tier]); }
-  function handleTierChange(t: FlooringRateTier) { setTier(t); setRate(FLOORING_RATES[flooringType][mode][t]); }
+  const settingsRate = (defs.flooring[mode === "full" ? "full" : "labor"][flooringType] ?? 4.5);
+  const rate = override ? overrideRate : settingsRate;
+  const minCharge = defs.flooring.minimumCharge;
+
+  function handleTypeChange(t: FlooringType) {
+    setFlooringType(t);
+    if (!override) setOverrideRate(defs.flooring[mode === "full" ? "full" : "labor"][t] ?? 4.5);
+  }
+  function handleModeChange(m: QuoteMode) {
+    setMode(m);
+    if (!override) setOverrideRate(defs.flooring[m === "full" ? "full" : "labor"][flooringType] ?? 4.5);
+  }
   function updateRoom(id: number, field: keyof FlooringRoom, value: string) {
     setRooms(r => r.map(rm => rm.id === id ? { ...rm, [field]: value } : rm));
   }
@@ -642,9 +704,9 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
     const transAmt = transQty * transRate;
     const stairAmt = stairQty * stairRate;
     const subtotal = installAmt + subfloor + remAmt + underAmt + transAmt + stairAmt;
-    const final = subtotal > 0 ? Math.max(500, Math.ceil(subtotal / 50) * 50) : 0;
+    const final = subtotal > 0 ? Math.max(minCharge, Math.ceil(subtotal / 50) * 50) : 0;
     return { totalSF, installAmt, subfloor, remSF, remAmt, underAmt, transAmt, stairAmt, subtotal, final };
-  }, [rooms, rate, subfloorCost, removalSF, removalRate, underlayment, underlayRate, transQty, transRate, stairQty, stairRate]);
+  }, [rooms, rate, subfloorCost, removalSF, removalRate, underlayment, underlayRate, transQty, transRate, stairQty, stairRate, minCharge]);
 
   const lines = useMemo((): DraftLine[] => {
     const out: DraftLine[] = [];
@@ -661,8 +723,6 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
   }, [calc, flooringType, mode, rate, removalRate, underlayRate, transQty, transRate, stairQty, stairRate]);
 
   useEffect(() => { onTotalChange(calc.final, lines); }, [calc.final, lines]);
-
-  const currentRates = FLOORING_RATES[flooringType][mode];
 
   return (
     <div className="space-y-3">
@@ -684,11 +744,21 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
             <button key={m} type="button" onClick={() => handleModeChange(m)}
               className={`flex-1 py-2 rounded-xl border text-center transition-colors ${mode === m ? "bg-amber-500 border-amber-500 text-black" : "bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-amber-400"}`}>
               <div className="text-xs font-bold">{m === "full" ? "Materials + Labor" : "Labor Only"}</div>
-              <div className={`text-[10px] mt-0.5 ${mode === m ? "text-black/70" : "text-zinc-500"}`}>{currentRates.range}</div>
             </button>
           ))}
         </div>
       </div>
+
+      <OverrideRow
+        label={`${flooringType} ${mode === "full" ? "Materials + Labor" : "Labor"} Rate`}
+        settingsRate={settingsRate}
+        unit="/SF"
+        overrideRate={overrideRate}
+        onOverrideRate={v => setOverrideRate(parseFloat(v) || 0)}
+        override={override}
+        onToggle={() => { if (override) setOverrideRate(settingsRate); setOverride(o => !o); }}
+      />
+
       <div>
         <p className="text-xs text-zinc-400 mb-1.5">Rooms</p>
         <div className="space-y-2">
@@ -719,15 +789,7 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
         </button>
         {calc.totalSF > 0 && <p className="text-xs text-zinc-400 mt-1">Total: <span className="text-amber-400 font-mono">{calc.totalSF.toFixed(1)} SF</span></p>}
       </div>
-      <div>
-        <p className="text-xs text-zinc-400 mb-1.5">Rate — {currentRates.range}</p>
-        <div className="flex gap-2 mb-2">
-          {(["low", "mid", "high"] as FlooringRateTier[]).map(t => (
-            <TierBtn key={t} label={t.charAt(0).toUpperCase() + t.slice(1)} range={`$${fmt(currentRates[t])}/SF`} active={tier === t} onClick={() => handleTierChange(t)} />
-          ))}
-        </div>
-        <NumField label="$/SF (editable)" value={rate} onChange={v => setRate(parseFloat(v) || 0)} prefix="$" suffix="/SF" step="0.25" small />
-      </div>
+
       <div className="space-y-2">
         <p className="text-xs text-zinc-400">Add-Ons</p>
         <div className="bg-zinc-900 rounded-xl p-3 border border-zinc-700 space-y-2">
@@ -762,9 +824,12 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
         </div>
       </div>
       {calc.final > 0 && (
-        <div className="flex justify-between items-center px-3 py-2 bg-amber-500/10 rounded-xl border border-amber-500/30">
-          <span className="text-sm text-amber-300 font-semibold">Flooring Total</span>
-          <span className="text-amber-400 font-mono font-bold">${fmtInt(calc.final)}</span>
+        <div className="space-y-1">
+          <p className="text-xs text-zinc-600 font-mono text-right">Min charge: ${fmtInt(minCharge)} · rounded to $50</p>
+          <div className="flex justify-between items-center px-3 py-2 bg-amber-500/10 rounded-xl border border-amber-500/30">
+            <span className="text-sm text-amber-300 font-semibold">Flooring Total</span>
+            <span className="text-amber-400 font-mono font-bold">${fmtInt(calc.final)}</span>
+          </div>
         </div>
       )}
     </div>
@@ -773,34 +838,41 @@ function FlooringSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
 
 // ─── Plumbing section ──────────────────────────────────────────────────────────
 
-const PLUMBING_BASE = 1000;
-const PLUMBING_DROP_RATE = 125;
-
 interface PlumbAddOn { id: number; label: string; amount: string; }
 let plumbId = 2000;
 
-function PlumbingSection({ onTotalChange }: { onTotalChange: (t: number, lines: DraftLine[]) => void }) {
+function PlumbingSection({ onTotalChange, defs }: { onTotalChange: (t: number, lines: DraftLine[]) => void; defs: CalcDefaults }) {
+  const settingsBase = defs.plumbing.baseCharge;
+  const settingsDrop = defs.plumbing.dropRate;
+
   const [drops, setDrops] = useState(2);
+  const [overrideBase, setOverrideBase] = useState(false);
+  const [overrideBaseVal, setOverrideBaseVal] = useState(settingsBase);
+  const [overrideDrop, setOverrideDrop] = useState(false);
+  const [overrideDropVal, setOverrideDropVal] = useState(settingsDrop);
   const [addOns, setAddOns] = useState<PlumbAddOn[]>([]);
+
+  const baseCharge = overrideBase ? overrideBaseVal : settingsBase;
+  const dropRate   = overrideDrop ? overrideDropVal : settingsDrop;
 
   const calc = useMemo(() => {
     const extraDrops = Math.max(0, drops - 2);
-    const extraAmt = extraDrops * PLUMBING_DROP_RATE;
+    const extraAmt = extraDrops * dropRate;
     const addOnTotal = addOns.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
-    return { extraDrops, extraAmt, addOnTotal, total: PLUMBING_BASE + extraAmt + addOnTotal };
-  }, [drops, addOns]);
+    return { extraDrops, extraAmt, addOnTotal, total: baseCharge + extraAmt + addOnTotal };
+  }, [drops, baseCharge, dropRate, addOns]);
 
   const lines = useMemo((): DraftLine[] => {
     const out: DraftLine[] = [
-      { category: "Labor", description: "Plumbing – Base Charge (2 drops)", quantity: 1, unit: "LOT", unitCost: PLUMBING_BASE },
+      { category: "Labor", description: `Plumbing – Base Charge (2 drops)`, quantity: 1, unit: "LOT", unitCost: baseCharge },
     ];
     if (calc.extraDrops > 0) {
       out.push({
         category: "Labor",
-        description: `Plumbing – Additional Drops (${calc.extraDrops} × $${PLUMBING_DROP_RATE})`,
+        description: `Plumbing – Additional Drops (${calc.extraDrops} × $${dropRate})`,
         quantity: calc.extraDrops,
         unit: "EA",
-        unitCost: PLUMBING_DROP_RATE,
+        unitCost: dropRate,
       });
     }
     for (const addon of addOns) {
@@ -810,7 +882,7 @@ function PlumbingSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
       }
     }
     return out;
-  }, [calc.extraDrops, addOns]);
+  }, [calc.extraDrops, baseCharge, dropRate, addOns]);
 
   useEffect(() => { onTotalChange(calc.total, lines); }, [calc.total, lines]);
 
@@ -829,19 +901,45 @@ function PlumbingSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
             <p className={`text-sm font-semibold ${drops <= 2 ? "text-emerald-400" : "text-amber-400"}`}>
               {drops <= 2 ? "All drops included in base" : `${calc.extraDrops} extra drop${calc.extraDrops !== 1 ? "s" : ""} beyond 2`}
             </p>
-            <p className="text-xs text-zinc-500 font-mono mt-1">${fmtInt(PLUMBING_BASE)} + ({calc.extraDrops} × ${PLUMBING_DROP_RATE}) = <span className="text-amber-400">${fmtInt(PLUMBING_BASE + calc.extraAmt)}</span></p>
+            <p className="text-xs text-zinc-500 font-mono mt-1">${fmtInt(baseCharge)} + ({calc.extraDrops} × ${dropRate}) = <span className="text-amber-400">${fmtInt(baseCharge + calc.extraAmt)}</span></p>
           </div>
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
-          {[{ drops: 2, total: 1000 }, { drops: 4, total: 1250 }, { drops: 9, total: 1875 }, { drops: 10, total: 2000 }].map(ex => (
-            <button key={ex.drops} type="button" onClick={() => setDrops(ex.drops)}
-              className={`px-3 py-1.5 rounded-lg border text-xs text-center transition-colors ${drops === ex.drops ? "border-amber-500 bg-amber-500/10 text-amber-300" : "border-zinc-600 bg-zinc-800 text-zinc-400 hover:border-amber-600"}`}>
-              <div className="font-semibold">{ex.drops} drops</div>
-              <div>${ex.total.toLocaleString()}</div>
-            </button>
-          ))}
+          {[2, 4, 9, 10].map(d => {
+            const extraD = Math.max(0, d - 2);
+            const tot = baseCharge + extraD * dropRate;
+            return (
+              <button key={d} type="button" onClick={() => setDrops(d)}
+                className={`px-3 py-1.5 rounded-lg border text-xs text-center transition-colors ${drops === d ? "border-amber-500 bg-amber-500/10 text-amber-300" : "border-zinc-600 bg-zinc-800 text-zinc-400 hover:border-amber-600"}`}>
+                <div className="font-semibold">{d} drops</div>
+                <div>${fmtInt(tot)}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      <div className="space-y-2">
+        <OverrideRow
+          label="Base Charge (2 drops)"
+          settingsRate={settingsBase}
+          unit=""
+          overrideRate={overrideBaseVal}
+          onOverrideRate={v => setOverrideBaseVal(parseFloat(v) || 0)}
+          override={overrideBase}
+          onToggle={() => { if (overrideBase) setOverrideBaseVal(settingsBase); setOverrideBase(o => !o); }}
+        />
+        <OverrideRow
+          label="Rate per Additional Drop"
+          settingsRate={settingsDrop}
+          unit="/ea"
+          overrideRate={overrideDropVal}
+          onOverrideRate={v => setOverrideDropVal(parseFloat(v) || 0)}
+          override={overrideDrop}
+          onToggle={() => { if (overrideDrop) setOverrideDropVal(settingsDrop); setOverrideDrop(o => !o); }}
+        />
+      </div>
+
       <div className="space-y-2">
         <p className="text-xs text-zinc-400">Add-Ons (optional)</p>
         {addOns.map(addon => (
@@ -872,24 +970,35 @@ function PlumbingSection({ onTotalChange }: { onTotalChange: (t: number, lines: 
 // ─── Punch List section ────────────────────────────────────────────────────────
 
 type ServiceType = "half-day" | "full-day";
-const SERVICE_OPTIONS: Record<ServiceType, { label: string; subtitle: string; range: string; default: number }> = {
-  "half-day": { label: "Half-Day Service", subtitle: "Up to 4 hours", range: "$400–$600", default: 500 },
-  "full-day":  { label: "Full-Day Service", subtitle: "Up to 8 hours", range: "$800–$1,200", default: 1000 },
-};
 
-function PunchListSection({ onTotalChange }: { onTotalChange: (t: number, lines: DraftLine[]) => void }) {
+function PunchListSection({ onTotalChange, defs }: { onTotalChange: (t: number, lines: DraftLine[]) => void; defs: CalcDefaults }) {
   const [serviceType, setServiceType] = useState<ServiceType>("half-day");
-  const [servicePrice, setServicePrice] = useState(500);
+  const [overridePrice, setOverridePrice] = useState(false);
+  const [overridePriceVal, setOverridePriceVal] = useState(defs.punchList.halfDayPrice);
+  const [overrideHelper, setOverrideHelper] = useState(false);
+  const [overrideHelperVal, setOverrideHelperVal] = useState(defs.punchList.helperDayRate);
   const [helperCount, setHelperCount] = useState(0);
-  const [helperRate, setHelperRate] = useState(275);
   const [notes, setNotes] = useState("");
 
-  function handleServiceChange(t: ServiceType) { setServiceType(t); setServicePrice(SERVICE_OPTIONS[t].default); }
+  const settingsPrice = serviceType === "half-day" ? defs.punchList.halfDayPrice : defs.punchList.fullDayPrice;
+  const settingsHelper = defs.punchList.helperDayRate;
+  const servicePrice = overridePrice ? overridePriceVal : settingsPrice;
+  const helperRate   = overrideHelper ? overrideHelperVal : settingsHelper;
+
+  function handleServiceChange(t: ServiceType) {
+    setServiceType(t);
+    if (!overridePrice) setOverridePriceVal(t === "half-day" ? defs.punchList.halfDayPrice : defs.punchList.fullDayPrice);
+  }
 
   const total = useMemo(() => servicePrice + helperCount * helperRate, [servicePrice, helperCount, helperRate]);
 
+  const SERVICE_LABELS: Record<ServiceType, { label: string; subtitle: string }> = {
+    "half-day": { label: "Half-Day Service", subtitle: "Up to 4 hours" },
+    "full-day":  { label: "Full-Day Service", subtitle: "Up to 8 hours" },
+  };
+
   const lines = useMemo((): DraftLine[] => {
-    const opt = SERVICE_OPTIONS[serviceType];
+    const opt = SERVICE_LABELS[serviceType];
     const out: DraftLine[] = [{
       category: "Labor",
       description: `Punch List — ${opt.label} (${opt.subtitle})${notes.trim() ? ` — ${notes.trim()}` : ""}`,
@@ -916,30 +1025,49 @@ function PunchListSection({ onTotalChange }: { onTotalChange: (t: number, lines:
       <div>
         <p className="text-xs text-zinc-400 mb-1.5">Service Duration</p>
         <div className="grid grid-cols-2 gap-2">
-          {(Object.entries(SERVICE_OPTIONS) as [ServiceType, typeof SERVICE_OPTIONS[ServiceType]][]).map(([key, opt]) => (
-            <button key={key} type="button" onClick={() => handleServiceChange(key)}
-              className={`py-3 px-3 rounded-xl border-2 text-left transition-all ${serviceType === key ? "border-amber-500 bg-amber-500/10" : "border-zinc-600 bg-zinc-800 hover:border-amber-600"}`}>
-              <div className={`text-sm font-bold ${serviceType === key ? "text-amber-400" : "text-zinc-200"}`}>{opt.label}</div>
-              <div className={`text-xs mt-0.5 ${serviceType === key ? "text-amber-300" : "text-zinc-500"}`}>{opt.subtitle}</div>
-              <div className={`text-xs font-semibold mt-1 ${serviceType === key ? "text-amber-500" : "text-zinc-600"}`}>{opt.range}</div>
-            </button>
-          ))}
+          {(["half-day", "full-day"] as ServiceType[]).map(key => {
+            const opt = SERVICE_LABELS[key];
+            const settP = key === "half-day" ? defs.punchList.halfDayPrice : defs.punchList.fullDayPrice;
+            return (
+              <button key={key} type="button" onClick={() => handleServiceChange(key)}
+                className={`py-3 px-3 rounded-xl border-2 text-left transition-all ${serviceType === key ? "border-amber-500 bg-amber-500/10" : "border-zinc-600 bg-zinc-800 hover:border-amber-600"}`}>
+                <div className={`text-sm font-bold ${serviceType === key ? "text-amber-400" : "text-zinc-200"}`}>{opt.label}</div>
+                <div className={`text-xs mt-0.5 ${serviceType === key ? "text-amber-300" : "text-zinc-500"}`}>{opt.subtitle}</div>
+                <div className={`text-xs font-semibold mt-1 font-mono ${serviceType === key ? "text-amber-500" : "text-zinc-600"}`}>${fmtInt(settP)}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
-      <div>
-        <p className="text-xs text-zinc-400 mb-1.5">Service Price</p>
-        <NumField value={servicePrice} onChange={v => setServicePrice(parseFloat(v) || 0)} prefix="$" step="25" />
-        <p className="text-xs text-zinc-600 mt-1">Range: {SERVICE_OPTIONS[serviceType].range}</p>
-      </div>
+
+      <OverrideRow
+        label="Service Price"
+        settingsRate={settingsPrice}
+        unit=""
+        overrideRate={overridePriceVal}
+        onOverrideRate={v => setOverridePriceVal(parseFloat(v) || 0)}
+        override={overridePrice}
+        onToggle={() => { if (overridePrice) setOverridePriceVal(settingsPrice); setOverridePrice(o => !o); }}
+      />
+
       <div>
         <p className="text-xs text-zinc-400 mb-1.5">Additional Helpers</p>
         <div className="flex items-center gap-3 flex-wrap">
           <NumField label="Count" value={helperCount || ""} onChange={v => setHelperCount(parseInt(v) || 0)} small />
           <span className="text-zinc-500 mt-4">@</span>
-          <NumField label="$/day" value={helperRate} onChange={v => setHelperRate(parseFloat(v) || 0)} prefix="$" step="25" small />
+          <OverrideRow
+            label="Helper Day Rate"
+            settingsRate={settingsHelper}
+            unit="/day"
+            overrideRate={overrideHelperVal}
+            onOverrideRate={v => setOverrideHelperVal(parseFloat(v) || 0)}
+            override={overrideHelper}
+            onToggle={() => { if (overrideHelper) setOverrideHelperVal(settingsHelper); setOverrideHelper(o => !o); }}
+          />
           {helperCount > 0 && <span className="text-amber-400 text-xs font-mono mt-4">${fmtInt(helperCount * helperRate)}</span>}
         </div>
       </div>
+
       <div>
         <p className="text-xs text-zinc-400 mb-1">Scope Notes (optional)</p>
         <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
@@ -958,7 +1086,9 @@ function PunchListSection({ onTotalChange }: { onTotalChange: (t: number, lines:
 
 // ─── Main AllTradesCalculator ──────────────────────────────────────────────────
 
-export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculatorProps) {
+export function AllTradesCalculator({ onClose, onUseNumbers, calculatorDefaults }: AllTradesCalculatorProps) {
+  const defs = mergeDefaults(calculatorDefaults);
+
   const [contractingOn, setContractingOn] = useState(false);
   const [flooringOn, setFlooringOn]       = useState(false);
   const [plumbingOn, setPlumbingOn]       = useState(false);
@@ -981,13 +1111,6 @@ export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculat
     (flooringOn ? flooringTotal : 0) +
     (plumbingOn ? plumbingTotal : 0) +
     (punchOn ? punchTotal : 0);
-
-  const activeTrades = [
-    contractingOn && contractingTotal > 0,
-    flooringOn && flooringTotal > 0,
-    plumbingOn && plumbingTotal > 0,
-    punchOn && punchTotal > 0,
-  ].filter(Boolean).length;
 
   function handleUseNumbers() {
     const lines: DraftLine[] = [];
@@ -1018,18 +1141,20 @@ export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculat
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
           <div>
             <h2 className="font-bold text-white text-base">All Trades Calculator</h2>
-            <p className="text-xs text-zinc-400">Toggle each trade — one grand total, one estimate</p>
+            <p className="text-xs text-zinc-500 mt-0.5">Rates auto-loaded from Settings · Override per section as needed</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors">
+          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-white p-2 hover:bg-zinc-800 rounded-xl transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Trade sections — scrollable */}
-        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-4 py-4 space-y-3">
+
+          {/* Contracting */}
           <TradeSectionShell
             title="Contracting"
-            subtitle="Trim Work · Siding · Drywall · Other Work"
+            subtitle="Trim · Siding · Drywall · Other"
             enabled={contractingOn}
             onToggle={() => setContractingOn(o => !o)}
             total={contractingTotal}
@@ -1037,75 +1162,73 @@ export function AllTradesCalculator({ onClose, onUseNumbers }: AllTradesCalculat
             <ContractingTradeSection
               onTotalChange={setContractingTotal}
               onLinesChange={setContractingLines}
+              defs={defs}
             />
           </TradeSectionShell>
 
+          {/* Flooring */}
           <TradeSectionShell
             title="Flooring"
-            subtitle="Carpet / Laminate / LVP / Hardwood / Tile · Rooms · Add-ons"
+            subtitle="LVP · Carpet · Laminate · Hardwood · Tile"
             enabled={flooringOn}
             onToggle={() => setFlooringOn(o => !o)}
             total={flooringTotal}
           >
-            <FlooringSection onTotalChange={(t, l) => { setFlooringTotal(t); setFlooringLines(l); }} />
+            <FlooringSection onTotalChange={(t, l) => { setFlooringTotal(t); setFlooringLines(l); }} defs={defs} />
           </TradeSectionShell>
 
+          {/* Plumbing */}
           <TradeSectionShell
             title="Plumbing"
-            subtitle="$1,000 base · $125/drop after 2 · Custom add-ons"
+            subtitle="Drop-based · base charge + extras"
             enabled={plumbingOn}
             onToggle={() => setPlumbingOn(o => !o)}
             total={plumbingTotal}
           >
-            <PlumbingSection onTotalChange={(t, l) => { setPlumbingTotal(t); setPlumbingLines(l); }} />
+            <PlumbingSection onTotalChange={(t, l) => { setPlumbingTotal(t); setPlumbingLines(l); }} defs={defs} />
           </TradeSectionShell>
 
+          {/* Punch List */}
           <TradeSectionShell
             title="Punch List"
-            subtitle="Half-day or full-day service · Additional helpers"
+            subtitle="Half-day or full-day service"
             enabled={punchOn}
             onToggle={() => setPunchOn(o => !o)}
             total={punchTotal}
           >
-            <PunchListSection onTotalChange={(t, l) => { setPunchTotal(t); setPunchLines(l); }} />
+            <PunchListSection onTotalChange={(t, l) => { setPunchTotal(t); setPunchLines(l); }} defs={defs} />
           </TradeSectionShell>
         </div>
 
         {/* Sticky footer */}
-        <div className="border-t border-zinc-700 px-5 py-4 bg-zinc-900 rounded-b-2xl space-y-3 shrink-0">
-          {activeTrades > 0 && (
-            <div className="space-y-1.5">
-              {contractingOn && contractingTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Contracting</span><span className="font-mono text-white">${fmtInt(contractingTotal)}</span></div>}
-              {flooringOn && flooringTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Flooring</span><span className="font-mono text-white">${fmtInt(flooringTotal)}</span></div>}
-              {plumbingOn && plumbingTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Plumbing</span><span className="font-mono text-white">${fmtInt(plumbingTotal)}</span></div>}
-              {punchOn && punchTotal > 0 && <div className="flex justify-between text-sm"><span className="text-zinc-300">Punch List</span><span className="font-mono text-white">${fmtInt(punchTotal)}</span></div>}
-              <div className="flex justify-between pt-2 border-t border-zinc-700">
-                <span className="font-bold text-white">Grand Total</span>
-                <span className="font-mono font-bold text-amber-400 text-lg">${fmtInt(grandTotal)}</span>
-              </div>
-            </div>
-          )}
-          {activeTrades === 0 && (
-            <p className="text-center text-zinc-500 text-sm py-1">Toggle a trade above to get started</p>
-          )}
-          <div className="flex items-center justify-between bg-zinc-800 rounded-xl px-3 py-2 border border-zinc-700">
-            <span className="text-xs text-zinc-400">Add to estimate</span>
-            <div className="flex gap-1 bg-zinc-900 rounded-lg p-0.5">
-              <button type="button" onClick={() => setAppendMode(true)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${appendMode ? "bg-amber-500 text-black" : "text-zinc-400 hover:text-white"}`}>Append</button>
-              <button type="button" onClick={() => setAppendMode(false)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${!appendMode ? "bg-amber-500 text-black" : "text-zinc-400 hover:text-white"}`}>Replace</button>
-            </div>
+        <div className="border-t border-zinc-800 px-4 py-3 shrink-0 space-y-3">
+          {/* Grand Total */}
+          <div className="flex items-center justify-between px-4 py-3 bg-zinc-800 rounded-xl border border-zinc-700">
+            <span className="text-zinc-300 font-semibold text-sm">Grand Total</span>
+            <span className="text-2xl font-black text-amber-400 font-mono">${fmtInt(grandTotal)}</span>
           </div>
-          <div className="flex gap-3">
-            <button type="button" onClick={handleCopyQuote} disabled={activeTrades === 0}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-600 bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-700 transition-colors disabled:opacity-40">
-              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              {copied ? "Copied!" : "Copy Quote"}
+
+          {/* Append / Replace + actions */}
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-xl border border-zinc-700 overflow-hidden flex-shrink-0">
+              <button type="button" onClick={() => setAppendMode(true)}
+                className={`px-3 py-2 text-xs font-semibold transition-colors ${appendMode ? "bg-amber-500 text-black" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}>
+                Append
+              </button>
+              <button type="button" onClick={() => setAppendMode(false)}
+                className={`px-3 py-2 text-xs font-semibold transition-colors ${!appendMode ? "bg-amber-500 text-black" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}>
+                Replace
+              </button>
+            </div>
+
+            <button type="button" onClick={handleCopyQuote} disabled={grandTotal === 0}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-zinc-700 bg-zinc-800 text-zinc-300 text-xs font-semibold hover:bg-zinc-700 disabled:opacity-40 transition-colors">
+              {copied ? <><Check className="w-3.5 h-3.5 text-emerald-400" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Quote</>}
             </button>
-            <button type="button" onClick={handleUseNumbers} disabled={activeTrades === 0}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 text-black font-bold text-sm hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              {appendMode ? "Append to Estimate →" : "Replace Lines →"}
+
+            <button type="button" onClick={handleUseNumbers} disabled={grandTotal === 0}
+              className="flex-1 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-bold disabled:opacity-40 transition-colors">
+              Use Numbers
             </button>
           </div>
         </div>

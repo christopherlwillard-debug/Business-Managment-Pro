@@ -47,6 +47,8 @@ export const settingsTable = pgTable("settings", {
   invoiceReminderDay2: integer("invoice_reminder_day2").default(14),
   // Tax filing preference
   taxFilingFrequency: text("tax_filing_frequency").default("quarterly"),
+  // Calculator defaults (plumbing, flooring, trim, siding, drywall, punch list)
+  calculatorDefaults: jsonb("calculator_defaults"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

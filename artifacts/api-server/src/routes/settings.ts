@@ -244,6 +244,7 @@ function format(s: any) {
     invoiceReminderEnabled: s.invoiceReminderEnabled === 1 || s.invoiceReminderEnabled === true,
     invoiceReminderDay1: s.invoiceReminderDay1 ?? 7,
     invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
+    calculatorDefaults: s.calculatorDefaults ?? null,
   };
 }
 
@@ -346,6 +347,9 @@ router.put("/", async (req, res) => {
       taxFilingFrequency: body.taxFilingFrequency !== undefined
         ? (body.taxFilingFrequency || "quarterly")
         : (settings?.taxFilingFrequency ?? "quarterly"),
+      calculatorDefaults: body.calculatorDefaults !== undefined
+        ? body.calculatorDefaults
+        : (settings?.calculatorDefaults ?? null),
       updatedAt: new Date(),
     };
 
