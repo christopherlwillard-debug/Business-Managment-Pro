@@ -16,6 +16,15 @@ export interface CalcDefaults {
   punchList: { halfDayPrice: number; fullDayPrice: number; helperDayRate: number };
 }
 
+interface PartialCalcDefaults {
+  plumbing?: { baseCharge?: number; dropRate?: number };
+  flooring?: { labor?: Record<string, number>; full?: Record<string, number>; minimumCharge?: number };
+  trim?: { laborRate?: number };
+  siding?: { laborRate?: number };
+  drywall?: { laborRate?: number };
+  punchList?: { halfDayPrice?: number; fullDayPrice?: number; helperDayRate?: number };
+}
+
 const HARDCODED_DEFAULTS: CalcDefaults = {
   plumbing: { baseCharge: 1000, dropRate: 125 },
   flooring: {
@@ -23,33 +32,33 @@ const HARDCODED_DEFAULTS: CalcDefaults = {
     full:  { Carpet: 5.00, Laminate: 6.50, LVP: 7.00, Hardwood: 11.50, Tile: 13.50 },
     minimumCharge: 500,
   },
-  trim:  { laborRate: 5.50 },
-  siding: { laborRate: 2.00 },
-  drywall: { laborRate: 1.75 },
+  trim:    { laborRate: 5.50 },
+  siding:  { laborRate: 2.00 },
+  drywall: { laborRate: 2.50 },
   punchList: { halfDayPrice: 500, fullDayPrice: 1000, helperDayRate: 275 },
 };
 
 function mergeDefaults(incoming?: Record<string, unknown> | null): CalcDefaults {
   if (!incoming) return HARDCODED_DEFAULTS;
   const h = HARDCODED_DEFAULTS;
-  const p = incoming as any;
+  const p = incoming as PartialCalcDefaults;
   return {
     plumbing: {
-      baseCharge: p?.plumbing?.baseCharge ?? h.plumbing.baseCharge,
-      dropRate:   p?.plumbing?.dropRate   ?? h.plumbing.dropRate,
+      baseCharge: p.plumbing?.baseCharge ?? h.plumbing.baseCharge,
+      dropRate:   p.plumbing?.dropRate   ?? h.plumbing.dropRate,
     },
     flooring: {
-      labor: { ...h.flooring.labor, ...(p?.flooring?.labor ?? {}) },
-      full:  { ...h.flooring.full,  ...(p?.flooring?.full  ?? {}) },
-      minimumCharge: p?.flooring?.minimumCharge ?? h.flooring.minimumCharge,
+      labor: { ...h.flooring.labor, ...(p.flooring?.labor ?? {}) },
+      full:  { ...h.flooring.full,  ...(p.flooring?.full  ?? {}) },
+      minimumCharge: p.flooring?.minimumCharge ?? h.flooring.minimumCharge,
     },
-    trim:   { laborRate: p?.trim?.laborRate   ?? h.trim.laborRate },
-    siding: { laborRate: p?.siding?.laborRate ?? h.siding.laborRate },
-    drywall:{ laborRate: p?.drywall?.laborRate ?? h.drywall.laborRate },
+    trim:    { laborRate: p.trim?.laborRate    ?? h.trim.laborRate },
+    siding:  { laborRate: p.siding?.laborRate  ?? h.siding.laborRate },
+    drywall: { laborRate: p.drywall?.laborRate ?? h.drywall.laborRate },
     punchList: {
-      halfDayPrice:  p?.punchList?.halfDayPrice  ?? h.punchList.halfDayPrice,
-      fullDayPrice:  p?.punchList?.fullDayPrice  ?? h.punchList.fullDayPrice,
-      helperDayRate: p?.punchList?.helperDayRate ?? h.punchList.helperDayRate,
+      halfDayPrice:  p.punchList?.halfDayPrice  ?? h.punchList.halfDayPrice,
+      fullDayPrice:  p.punchList?.fullDayPrice  ?? h.punchList.fullDayPrice,
+      helperDayRate: p.punchList?.helperDayRate ?? h.punchList.helperDayRate,
     },
   };
 }

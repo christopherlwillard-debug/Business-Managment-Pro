@@ -77,6 +77,15 @@ const TABS = [
 
 const FLOORING_TYPES = ["Carpet", "Laminate", "LVP", "Hardwood", "Tile"] as const;
 
+interface PartialCalcDefaults {
+  plumbing?: { baseCharge?: number; dropRate?: number };
+  flooring?: { labor?: Record<string, number>; full?: Record<string, number>; minimumCharge?: number };
+  trim?: { laborRate?: number };
+  siding?: { laborRate?: number };
+  drywall?: { laborRate?: number };
+  punchList?: { halfDayPrice?: number; fullDayPrice?: number; helperDayRate?: number };
+}
+
 const DEFAULT_CALC_DEFAULTS = {
   plumbing: { baseCharge: 1000, dropRate: 125 },
   flooring: {
@@ -84,9 +93,9 @@ const DEFAULT_CALC_DEFAULTS = {
     full:  { Carpet: 5.00, Laminate: 6.50, LVP: 7.00, Hardwood: 11.50, Tile: 13.50 },
     minimumCharge: 500,
   },
-  trim:  { laborRate: 5.50 },
-  siding: { laborRate: 2.00 },
-  drywall: { laborRate: 1.75 },
+  trim:    { laborRate: 5.50 },
+  siding:  { laborRate: 2.00 },
+  drywall: { laborRate: 2.50 },
   punchList: { halfDayPrice: 500, fullDayPrice: 1000, helperDayRate: 275 },
 };
 
@@ -1170,26 +1179,26 @@ export default function Settings() {
       });
       setFeatures(feat);
       setBottomNavHrefs(Array.isArray(s.bottomNavItems) ? s.bottomNavItems : DEFAULT_BOTTOM_NAV_HREFS);
-      const rawCalc = (s as any).calculatorDefaults as any;
+      const rawCalc = s.calculatorDefaults as PartialCalcDefaults | null | undefined;
       if (rawCalc) {
         const d = DEFAULT_CALC_DEFAULTS;
         setCalcDefaults({
           plumbing: {
-            baseCharge: rawCalc?.plumbing?.baseCharge ?? d.plumbing.baseCharge,
-            dropRate:   rawCalc?.plumbing?.dropRate   ?? d.plumbing.dropRate,
+            baseCharge: rawCalc.plumbing?.baseCharge ?? d.plumbing.baseCharge,
+            dropRate:   rawCalc.plumbing?.dropRate   ?? d.plumbing.dropRate,
           },
           flooring: {
-            labor: { ...d.flooring.labor, ...(rawCalc?.flooring?.labor ?? {}) },
-            full:  { ...d.flooring.full,  ...(rawCalc?.flooring?.full  ?? {}) },
-            minimumCharge: rawCalc?.flooring?.minimumCharge ?? d.flooring.minimumCharge,
+            labor: { ...d.flooring.labor, ...(rawCalc.flooring?.labor ?? {}) },
+            full:  { ...d.flooring.full,  ...(rawCalc.flooring?.full  ?? {}) },
+            minimumCharge: rawCalc.flooring?.minimumCharge ?? d.flooring.minimumCharge,
           },
-          trim:    { laborRate: rawCalc?.trim?.laborRate    ?? d.trim.laborRate },
-          siding:  { laborRate: rawCalc?.siding?.laborRate  ?? d.siding.laborRate },
-          drywall: { laborRate: rawCalc?.drywall?.laborRate ?? d.drywall.laborRate },
+          trim:    { laborRate: rawCalc.trim?.laborRate    ?? d.trim.laborRate },
+          siding:  { laborRate: rawCalc.siding?.laborRate  ?? d.siding.laborRate },
+          drywall: { laborRate: rawCalc.drywall?.laborRate ?? d.drywall.laborRate },
           punchList: {
-            halfDayPrice:  rawCalc?.punchList?.halfDayPrice  ?? d.punchList.halfDayPrice,
-            fullDayPrice:  rawCalc?.punchList?.fullDayPrice  ?? d.punchList.fullDayPrice,
-            helperDayRate: rawCalc?.punchList?.helperDayRate ?? d.punchList.helperDayRate,
+            halfDayPrice:  rawCalc.punchList?.halfDayPrice  ?? d.punchList.halfDayPrice,
+            fullDayPrice:  rawCalc.punchList?.fullDayPrice  ?? d.punchList.fullDayPrice,
+            helperDayRate: rawCalc.punchList?.helperDayRate ?? d.punchList.helperDayRate,
           },
         });
       }

@@ -197,6 +197,18 @@ const DEFAULT_SETTINGS = {
   complianceNotificationEmail: null,
   complianceEmailEnabled: 1,
   taxFilingFrequency: "quarterly",
+  calculatorDefaults: {
+    plumbing: { baseCharge: 1000, dropRate: 125 },
+    flooring: {
+      labor: { Carpet: 4.50, Laminate: 4.50, LVP: 4.50, Hardwood: 4.50, Tile: 6.00 },
+      full:  { Carpet: 5.00, Laminate: 6.50, LVP: 7.00, Hardwood: 11.50, Tile: 13.50 },
+      minimumCharge: 500,
+    },
+    trim:    { laborRate: 5.50 },
+    siding:  { laborRate: 2.00 },
+    drywall: { laborRate: 2.50 },
+    punchList: { halfDayPrice: 500, fullDayPrice: 1000, helperDayRate: 275 },
+  },
 };
 
 /** Convert a raw DB path to a correct serving URL.
