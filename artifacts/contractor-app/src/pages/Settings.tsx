@@ -1126,7 +1126,7 @@ function CalcDefaultsPanel({
   setCalcDefaults: React.Dispatch<React.SetStateAction<CalcDefaultsState>>;
   inp: string;
 }) {
-  const [openPanels, setOpenPanels] = React.useState<Record<string, boolean>>({
+  const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({
     plumbing: true, flooring: false, contracting: false, punchList: false,
   });
   function toggle(key: string) {
