@@ -39,15 +39,25 @@ const INVOICE_STATUS_COLORS: Record<string, string> = {
   overdue:   "bg-red-100 text-red-700",
   draft:     "bg-gray-100 text-gray-600",
   cancelled: "bg-orange-100 text-orange-700",
+  pending:   "bg-amber-100 text-amber-700",
 };
 
 const INVOICE_STATUS_LABELS: Record<string, string> = {
   paid:      "Paid",
-  sent:      "Pending",
+  sent:      "Sent",
   draft:     "Draft",
   overdue:   "Overdue",
   cancelled: "Cancelled",
+  pending:   "Pending",
 };
+
+const INVOICE_STATUS_OPTIONS = [
+  { value: "draft",     label: "Draft" },
+  { value: "sent",      label: "Sent" },
+  { value: "paid",      label: "Paid" },
+  { value: "overdue",   label: "Overdue" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 function displayStatus(status: string): "scheduled" | "completed" {
   if (status === "completed" || status === "invoiced") return "completed";
@@ -1712,9 +1722,24 @@ function SavedInvoicesSection() {
               <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(inv.issueDate)}</td>
               <td className="px-5 py-3 text-right font-bold text-amber-600">{formatCurrency(inv.total)}</td>
               <td className="px-5 py-3 text-center">
-                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
-                  {INVOICE_STATUS_LABELS[inv.status] ?? inv.status}
-                </span>
+                {canEdit("invoices") ? (
+                  <select
+                    value={inv.status}
+                    onChange={async e => {
+                      await updateStatus.mutateAsync({ id: inv.id, data: { status: e.target.value as any } });
+                      queryClient.invalidateQueries();
+                    }}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border-0 cursor-pointer appearance-none text-center ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}
+                  >
+                    {INVOICE_STATUS_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
+                    {INVOICE_STATUS_LABELS[inv.status] ?? inv.status}
+                  </span>
+                )}
               </td>
               <td className="px-5 py-3">
                 <div className="flex items-center justify-center gap-1">
