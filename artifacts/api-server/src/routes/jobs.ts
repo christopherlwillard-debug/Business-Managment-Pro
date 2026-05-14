@@ -301,6 +301,7 @@ router.get("/:id/invoice-draft", async (req, res) => {
         const contingency = parseFloat(est.contingencyPercent ?? "0");
         const scaleFactor = (1 + markup / 100) * (1 + contingency / 100);
         for (const li of estLines) {
+          if (!String(li.description ?? "").trim()) continue;
           const rawUnit = parseFloat(String(li.unitCost ?? li.unitPrice ?? "0"));
           const qty = parseFloat(String(li.quantity ?? "1"));
           lineItems.push({
