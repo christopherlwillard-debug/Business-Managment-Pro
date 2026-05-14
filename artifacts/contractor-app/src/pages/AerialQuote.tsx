@@ -108,7 +108,19 @@ function DrawController({ isDrawing, onAddPoint }: DrawControllerProps) {
   return null;
 }
 
+function lineLengthFt(pts: LatLng[]): number {
+  if (pts.length < 2) return 0;
+  try {
+    const coords = pts.map(([lat, lng]) => [lng, lat] as [number, number]);
+    const line = turf.lineString(coords);
+    return turf.length(line, { units: "kilometers" }) * 3280.84;
+  } catch {
+    return 0;
+  }
+}
+
 const POLYGON_COLORS = ["#CC1F2B", "#1B3F8C", "#f59e0b", "#10b981", "#8b5cf6", "#06b6d4"];
+const LINE_COLORS    = ["#3b82f6", "#a855f7", "#06b6d4", "#f97316", "#ec4899", "#84cc16"];
 
 const pointIcon = L.divIcon({
   className: "",
@@ -163,6 +175,8 @@ export default function AerialQuote() {
   const [flyZoom, setFlyZoom] = useState(18);
 
   const [polygons, setPolygons] = useState<LatLng[][]>([]);
+  const [lines, setLines] = useState<LatLng[][]>([]);
+  const [drawMode, setDrawMode] = useState<"area" | "length">("area");
   const [activePoints, setActivePoints] = useState<LatLng[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [satelliteView, setSatelliteView] = useState(true);
@@ -328,7 +342,8 @@ export default function AerialQuote() {
     }
   }
 
-  function startDrawing() {
+  function startDrawing(mode: "area" | "length" = "area") {
+    setDrawMode(mode);
     setIsDrawing(true);
     setActivePoints([]);
     setSavedEstimateId(null);
@@ -342,6 +357,21 @@ export default function AerialQuote() {
     setPolygons(prev => [...prev, activePoints]);
     setActivePoints([]);
     setIsDrawing(false);
+  }
+
+  function finishLine() {
+    if (activePoints.length < 2) {
+      toast({ title: "Need at least 2 points", description: "Click more spots on the map to measure the length.", variant: "destructive" });
+      return;
+    }
+    setLines(prev => [...prev, activePoints]);
+    setActivePoints([]);
+    setIsDrawing(false);
+  }
+
+  function finishDrawing() {
+    if (drawMode === "length") finishLine();
+    else finishPolygon();
   }
 
   function cancelDrawing() {
@@ -358,8 +388,13 @@ export default function AerialQuote() {
     setSavedEstimateId(null);
   }
 
+  function deleteLine(i: number) {
+    setLines(prev => prev.filter((_, idx) => idx !== i));
+  }
+
   function clearAll() {
     setPolygons([]);
+    setLines([]);
     setActivePoints([]);
     setIsDrawing(false);
     setSavedEstimateId(null);
@@ -420,8 +455,10 @@ export default function AerialQuote() {
         ? `Asphalt Sealing — ${jobAddress}`
         : "Asphalt Sealing Quote";
 
+      const totalLineLf = lines.reduce((s, pts) => s + lineLengthFt(pts), 0);
       const notesText = [
         `Measured via aerial satellite: ${Math.round(measurements.totalSqFt).toLocaleString()} SF (${Math.round(measurements.totalPerimFt).toLocaleString()} LF perimeter)`,
+        totalLineLf > 0 ? `Linear measurements: ${Math.round(totalLineLf).toLocaleString()} LF total (${lines.length} line${lines.length !== 1 ? "s" : ""})` : "",
         jobAddress ? `Job address: ${jobAddress}` : "",
         "Measurements are estimates — final verified on-site. Satellite accuracy may vary ±5–10% due to angles or tree coverage.",
         notes,
@@ -602,7 +639,7 @@ export default function AerialQuote() {
         <div className="p-4 border-b border-border space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Drawing Tools</span>
-            {polygons.length > 0 && !isDrawing && (
+            {(polygons.length > 0 || lines.length > 0) && !isDrawing && (
               <button onClick={clearAll} className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1">
                 <RotateCcw className="w-3 h-3" /> Clear All
               </button>
@@ -624,11 +661,18 @@ export default function AerialQuote() {
                 </button>
               )}
               <button
-                onClick={startDrawing}
+                onClick={() => startDrawing("area")}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow transition-colors"
               >
                 <PenLine className="w-4 h-4" />
-                {polygons.length === 0 ? "Draw Area Manually" : "Add Another Area"}
+                {polygons.length === 0 ? "Draw Area" : "Add Another Area"}
+              </button>
+              <button
+                onClick={() => startDrawing("length")}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold shadow transition-colors"
+              >
+                <Ruler className="w-4 h-4" />
+                Measure Length
               </button>
               {flyTo && (
                 <p className="text-[10px] text-center text-muted-foreground leading-tight">
@@ -639,15 +683,24 @@ export default function AerialQuote() {
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 rounded-xl px-3 py-2.5 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className={`border rounded-xl px-3 py-2.5 flex items-start gap-2 ${drawMode === "length" ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200/60" : "bg-amber-50 dark:bg-amber-900/20 border-amber-200/60"}`}>
+                <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${drawMode === "length" ? "text-blue-600" : "text-amber-600"}`} />
                 <div>
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Drawing mode active</p>
-                  <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">
-                    Click the map to place points around the asphalt area. Place at least 3 points, then click Finish.
+                  <p className={`text-xs font-semibold ${drawMode === "length" ? "text-blue-800 dark:text-blue-300" : "text-amber-800 dark:text-amber-300"}`}>
+                    {drawMode === "length" ? "Measure Length mode" : "Draw Area mode"}
+                  </p>
+                  <p className={`text-[11px] mt-0.5 ${drawMode === "length" ? "text-blue-700/80 dark:text-blue-400/80" : "text-amber-700/80 dark:text-amber-400/80"}`}>
+                    {drawMode === "length"
+                      ? "Click points along the line you want to measure. 2+ points, then Finish."
+                      : "Click around the asphalt area. Place at least 3 points, then click Finish."}
                   </p>
                   {activePoints.length > 0 && (
-                    <p className="text-[11px] text-amber-600 font-semibold mt-1">{activePoints.length} point{activePoints.length !== 1 ? "s" : ""} placed</p>
+                    <p className={`text-[11px] font-semibold mt-1 ${drawMode === "length" ? "text-blue-600" : "text-amber-600"}`}>
+                      {activePoints.length} point{activePoints.length !== 1 ? "s" : ""} placed
+                      {drawMode === "length" && activePoints.length >= 2 && (
+                        <> &bull; {Math.round(lineLengthFt(activePoints)).toLocaleString()} LF</>
+                      )}
+                    </p>
                   )}
                 </div>
               </div>
@@ -661,8 +714,8 @@ export default function AerialQuote() {
                   </button>
                 )}
                 <button
-                  onClick={finishPolygon}
-                  disabled={activePoints.length < 3}
+                  onClick={finishDrawing}
+                  disabled={drawMode === "length" ? activePoints.length < 2 : activePoints.length < 3}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow transition-colors disabled:opacity-40"
                 >
                   <Check className="w-3.5 h-3.5" /> Finish
@@ -677,13 +730,13 @@ export default function AerialQuote() {
             </div>
           )}
 
-          {polygons.length > 0 && (
+          {(polygons.length > 0 || lines.length > 0) && (
             <div className="space-y-1.5 mt-1">
               {measurements.byPolygon.map(({ index, sqFt, perimFt }) => {
                 const color = POLYGON_COLORS[index % POLYGON_COLORS.length];
                 return (
                   <div
-                    key={index}
+                    key={`poly-${index}`}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/40 border border-border"
                   >
                     <div
@@ -705,13 +758,45 @@ export default function AerialQuote() {
                   </div>
                 );
               })}
-              <div className="px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200/40 flex justify-between text-xs">
-                <span className="font-semibold text-amber-900 dark:text-amber-300">Total</span>
-                <span className="text-amber-800 dark:text-amber-400">
-                  {Math.round(measurements.totalSqFt).toLocaleString()} SF &bull;{" "}
-                  {Math.round(measurements.totalPerimFt).toLocaleString()} LF perimeter
-                </span>
-              </div>
+              {lines.map((pts, index) => {
+                const color = LINE_COLORS[index % LINE_COLORS.length];
+                const lf = lineLengthFt(pts);
+                return (
+                  <div
+                    key={`line-${index}`}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/60 dark:bg-blue-900/20 border border-blue-200/50"
+                  >
+                    <div className="w-3 h-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-foreground">Line {index + 1}</p>
+                      <p className="text-[11px] text-muted-foreground">{Math.round(lf).toLocaleString()} LF</p>
+                    </div>
+                    <button
+                      onClick={() => deleteLine(index)}
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+              {polygons.length > 0 && (
+                <div className="px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200/40 flex justify-between text-xs">
+                  <span className="font-semibold text-amber-900 dark:text-amber-300">Area Total</span>
+                  <span className="text-amber-800 dark:text-amber-400">
+                    {Math.round(measurements.totalSqFt).toLocaleString()} SF &bull;{" "}
+                    {Math.round(measurements.totalPerimFt).toLocaleString()} LF perimeter
+                  </span>
+                </div>
+              )}
+              {lines.length > 0 && (
+                <div className="px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200/40 flex justify-between text-xs">
+                  <span className="font-semibold text-blue-900 dark:text-blue-300">Length Total</span>
+                  <span className="text-blue-800 dark:text-blue-400">
+                    {Math.round(lines.reduce((s, pts) => s + lineLengthFt(pts), 0)).toLocaleString()} LF
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -1033,6 +1118,17 @@ export default function AerialQuote() {
             );
           })}
 
+          {lines.map((pts, i) => {
+            const color = LINE_COLORS[i % LINE_COLORS.length];
+            return (
+              <Polyline
+                key={`line-${i}`}
+                positions={pts}
+                pathOptions={{ color, weight: 3 }}
+              />
+            );
+          })}
+
           {activePoints.length >= 2 && (
             <Polyline
               positions={activePoints}
@@ -1078,18 +1174,27 @@ export default function AerialQuote() {
           </button>
 
           {!isDrawing && (
-            <button
-              onClick={startDrawing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 shadow text-xs font-semibold text-white transition-colors"
-            >
-              <PenLine className="w-3.5 h-3.5" />
-              Draw Area
-            </button>
+            <>
+              <button
+                onClick={() => startDrawing("area")}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 shadow text-xs font-semibold text-white transition-colors"
+              >
+                <PenLine className="w-3.5 h-3.5" />
+                Draw Area
+              </button>
+              <button
+                onClick={() => startDrawing("length")}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 shadow text-xs font-semibold text-white transition-colors"
+              >
+                <Ruler className="w-3.5 h-3.5" />
+                Measure Length
+              </button>
+            </>
           )}
 
-          {isDrawing && activePoints.length >= 3 && (
+          {isDrawing && (drawMode === "length" ? activePoints.length >= 2 : activePoints.length >= 3) && (
             <button
-              onClick={finishPolygon}
+              onClick={finishDrawing}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 shadow text-xs font-semibold text-white transition-colors"
             >
               <Check className="w-3.5 h-3.5" />
@@ -1101,11 +1206,19 @@ export default function AerialQuote() {
         {isDrawing && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
             <div className="bg-gray-900/85 text-white text-xs rounded-xl px-4 py-2 backdrop-blur-sm shadow-lg">
-              {activePoints.length === 0
-                ? "Click on the map to start outlining the asphalt area"
-                : activePoints.length < 3
-                ? `${activePoints.length} point${activePoints.length > 1 ? "s" : ""} — keep clicking to outline the area`
-                : `${activePoints.length} points — click Finish when done`}
+              {drawMode === "length" ? (
+                activePoints.length === 0
+                  ? "Click on the map to start measuring"
+                  : activePoints.length === 1
+                  ? "1 point — click another to measure distance"
+                  : `${activePoints.length} points — ${Math.round(lineLengthFt(activePoints)).toLocaleString()} LF — click Finish when done`
+              ) : (
+                activePoints.length === 0
+                  ? "Click on the map to start outlining the asphalt area"
+                  : activePoints.length < 3
+                  ? `${activePoints.length} point${activePoints.length > 1 ? "s" : ""} — keep clicking to outline the area`
+                  : `${activePoints.length} points — click Finish when done`
+              )}
             </div>
           </div>
         )}
