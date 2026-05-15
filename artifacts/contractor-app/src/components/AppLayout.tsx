@@ -1,6 +1,5 @@
 import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, UsersRound,
@@ -115,13 +114,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (logoImgError) setLogoImgError(false);
   }
 
-  const pageTransition = {
-    initial: { opacity: 0, y: 10 },
-    animate: { opacity: 1, y: 0 },
-    exit: { opacity: 0, y: -10 },
-    transition: { duration: 0.18 },
-  };
-
   interface BottomNavItem {
     name: string;
     href: string;
@@ -223,15 +215,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Mobile sidebar backdrop */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-black/80 lg:hidden backdrop-blur-sm"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-        )}
-      </AnimatePresence>
+      <div
+        className={`fixed inset-0 z-40 bg-black/80 lg:hidden backdrop-blur-sm transition-opacity duration-200 ${mobileMenuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        onClick={() => setMobileMenuOpen(false)}
+      />
 
       {/* Sidebar — desktop always visible, mobile slides in */}
       <div className={cn(
@@ -327,11 +314,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Page content — add bottom padding on mobile for the bottom nav */}
         <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 relative">
-          <AnimatePresence mode="wait">
-            <motion.div key={location} {...pageTransition} className="max-w-7xl mx-auto">
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          <div className="max-w-7xl mx-auto">
+            {children}
+          </div>
         </main>
       </div>
 

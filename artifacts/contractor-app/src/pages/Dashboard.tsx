@@ -21,67 +21,24 @@ function getTodayStr() {
   return `${y}-${m}-${d}`;
 }
 
-function useComplianceSummary() {
-  return useQuery({
-    queryKey: ["compliance-items-summary"],
+interface DashboardToday {
+  complianceItems: Array<{ id: number; title: string; dueDate: string; computedStatus: string; daysUntilDue: number }>;
+  routeStops: Array<{ id: number; title: string | null; address: string; status: string; clientName: string | null; prospectContactName: string | null }>;
+  followUpProspects: Array<{ id: number; address: string; contactName: string | null; contactPhone: string | null; followUpDate: string | null; status: string }>;
+  overdueInvoices: Array<{ id: number; invoiceNumber: string; clientName: string | null; dueDate: string | null; total: number }>;
+}
+
+function useDashboardToday() {
+  const today = getTodayStr();
+  return useQuery<DashboardToday>({
+    queryKey: ["dashboard-today", today],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/compliance-items`);
-      if (!res.ok) throw new Error("Failed to load compliance data");
-      return res.json() as Promise<Array<{ id: number; title: string; dueDate: string; computedStatus: string; daysUntilDue: number }>>;
+      const res = await fetch(`${BASE}/api/dashboard/today`);
+      if (!res.ok) throw new Error("Failed to load dashboard data");
+      return res.json();
     },
+    staleTime: 5 * 60 * 1000,
     retry: 1,
-  });
-}
-
-function useTodayRouteStops() {
-  const today = getTodayStr();
-  return useQuery({
-    queryKey: ["route-stops-today", today],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/route-stops?date=${today}`);
-      if (!res.ok) throw new Error("Failed to load route stops");
-      return res.json() as Promise<Array<{
-        id: number; title: string | null; address: string; status: string;
-        clientName: string | null; prospectContactName: string | null;
-      }>>;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-function useFollowUpProspects() {
-  const today = getTodayStr();
-  return useQuery({
-    queryKey: ["follow-up-prospects", today],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/prospects`);
-      if (!res.ok) throw new Error("Failed to load prospects");
-      const all = await res.json() as Array<{
-        id: number; address: string; contactName: string | null;
-        contactPhone: string | null; followUpDate: string | null; status: string;
-      }>;
-      return all.filter(p =>
-        p.followUpDate &&
-        p.followUpDate <= today &&
-        p.status !== "lost"
-      );
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-function useOverdueInvoicesList() {
-  return useQuery({
-    queryKey: ["overdue-invoices-list"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/invoices?status=overdue`);
-      if (!res.ok) throw new Error("Failed to load overdue invoices");
-      return res.json() as Promise<Array<{
-        id: number; invoiceNumber: string; clientName: string | null;
-        dueDate: string | null; total: number;
-      }>>;
-    },
-    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -126,11 +83,12 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: businessLine || undefined });
-  const { data: complianceItems = [], isError: complianceError, isLoading: complianceLoading } = useComplianceSummary();
+  const { data: todayData, isLoading: todayLoading } = useDashboardToday();
+  const complianceItems = todayData?.complianceItems ?? [];
+  const todayStops = todayData?.routeStops ?? [];
+  const followUpProspects = todayData?.followUpProspects ?? [];
+  const overdueInvoices = todayData?.overdueInvoices ?? [];
   const { data: allClients = [] } = useListClients();
-  const { data: todayStops = [], isLoading: stopsLoading } = useTodayRouteStops();
-  const { data: followUpProspects = [], isLoading: followUpsLoading } = useFollowUpProspects();
-  const { data: overdueInvoices = [], isLoading: overdueLoading } = useOverdueInvoicesList();
   const { data: taxAlerts = [], isLoading: taxAlertsLoading } = useTaxAlerts();
   const { data: appSettings } = useGetSettings();
   const annualOnly = (appSettings as any)?.taxFilingFrequency === "annual";
@@ -168,7 +126,7 @@ export default function Dashboard() {
 
   const todayFormatted = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  const todayDataLoading = stopsLoading || followUpsLoading || overdueLoading || complianceLoading || taxAlertsLoading;
+  const todayDataLoading = todayLoading || taxAlertsLoading;
   const allClear =
     !todayDataLoading &&
     todayStops.length === 0 &&
@@ -708,7 +666,7 @@ export default function Dashboard() {
         onClick={() => navigate("/accounting?tab=tax-calendar")}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/accounting?tab=tax-calendar"); }}
         className={`shadow-md border-border/50 cursor-pointer transition-shadow hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-          complianceError ? "border-l-4 border-l-muted-foreground/40" :
+          todayLoading ? "border-l-4 border-l-muted-foreground/40" :
           hasComplianceIssues ? "border-l-4 border-l-amber-400" :
           "border-l-4 border-l-emerald-400"
         }`}
@@ -717,7 +675,7 @@ export default function Dashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className={`p-2.5 rounded-xl ${
-                complianceError ? "bg-muted text-muted-foreground" :
+                todayLoading ? "bg-muted text-muted-foreground" :
                 hasComplianceIssues ? "bg-amber-100 text-amber-700" :
                 "bg-emerald-100 text-emerald-700"
               }`}>
@@ -725,10 +683,8 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="font-semibold text-foreground text-sm">Compliance Status</p>
-                {complianceLoading ? (
+                {todayLoading ? (
                   <p className="text-xs text-muted-foreground mt-0.5 animate-pulse">Loading…</p>
-                ) : complianceError ? (
-                  <p className="text-xs text-muted-foreground mt-0.5">Unable to load compliance data</p>
                 ) : hasComplianceIssues ? (
                   <p className="text-xs text-muted-foreground mt-0.5">Action needed — check your compliance items</p>
                 ) : (
@@ -736,7 +692,7 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-            {!complianceLoading && !complianceError && (
+            {!todayLoading && (
               <div className="flex items-center gap-3 flex-wrap">
                 {overdueCount > 0 && (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 border border-red-200">
@@ -763,7 +719,7 @@ export default function Dashboard() {
                 </span>
               </div>
             )}
-            {(complianceLoading || complianceError) && (
+            {todayLoading && (
               <span className="flex items-center gap-1 text-xs font-semibold text-primary">
                 View All <ArrowRight className="w-3.5 h-3.5" />
               </span>

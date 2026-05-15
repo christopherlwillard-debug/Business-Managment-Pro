@@ -95,6 +95,8 @@ export default defineConfig({
         manualChunks: {
           "vendor-react": ["react", "react-dom"],
           "vendor-query": ["@tanstack/react-query"],
+          "vendor-charts": ["recharts"],
+          "vendor-maps": ["leaflet", "react-leaflet", "@turf/turf"],
         },
       },
     },

@@ -57,6 +57,7 @@ import pdfRouter from "./pdf";
 import plaidRouter from "./plaid.js";
 import bidsRouter from "./bids.js";
 import aerialRouter from "./aerial.js";
+import dashboardRouter from "./dashboard.js";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -210,5 +211,6 @@ router.use("/square/customers", requireOwner, squareCustomersRouter);
 router.use("/plaid", plaidRouter);
 router.use("/bids", requireOwner, bidsRouter);
 router.use(requireOwner, aerialRouter);
+router.use("/dashboard", requireOwner, dashboardRouter);
 
 export default router;
