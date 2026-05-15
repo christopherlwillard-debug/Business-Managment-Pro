@@ -1024,7 +1024,7 @@ function JobCard({
   hasSubExpenses?: boolean;
   onToggleSubPaid?: (job: Job, paid: boolean) => void;
   profitData?: JobProfit | null;
-  onSendPaymentLink?: (invoiceId: number, invoiceNumber: string) => void;
+  onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number) => void;
   onGoToInvoices?: () => void;
   generatingLinkId?: number | null;
 }) {
@@ -1264,7 +1264,7 @@ function JobCard({
               <Edit2 className="w-3.5 h-3.5" /> Edit
             </button>
             <button
-              onClick={() => invoiceSummary && onSendPaymentLink?.(invoiceSummary.id, invoiceSummary.invoiceNumber ?? "")}
+              onClick={() => invoiceSummary && onSendPaymentLink?.(invoiceSummary.id, invoiceSummary.invoiceNumber ?? "", invoiceSummary.total ?? 0)}
               disabled={generatingLinkId === invoiceSummary?.id}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50">
               {generatingLinkId === invoiceSummary?.id
@@ -1847,7 +1847,15 @@ export default function Jobs() {
     queryClient.invalidateQueries();
   }
 
-  async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
+  async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string, currentTotal: number = 0) {
+    if (currentTotal <= 0) {
+      toast({
+        title: "Invoice total is $0",
+        description: "Tap Edit to open the invoice and load your estimate pricing before sending a payment link.",
+        variant: "destructive",
+      });
+      return;
+    }
     setGeneratingLinkId(invoiceId);
     try {
       const result = await createPaymentLinkMutation.mutateAsync(invoiceId);
