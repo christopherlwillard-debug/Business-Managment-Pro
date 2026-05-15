@@ -14,7 +14,7 @@ import {
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
 } from "@workspace/api-client-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
