@@ -69,6 +69,18 @@ const FREQUENCY_COLORS: Record<RecurringExpenseFrequency, string> = {
   yearly:    "bg-green-100 text-green-700",
 };
 
+const MONTHLY_MULTIPLIER: Record<RecurringExpenseFrequency, number> = {
+  weekly:    52 / 12,
+  biweekly:  26 / 12,
+  monthly:   1,
+  quarterly: 1 / 3,
+  yearly:    1 / 12,
+};
+
+function toMonthlyRate(amount: number, frequency: RecurringExpenseFrequency): number {
+  return amount * (MONTHLY_MULTIPLIER[frequency] ?? 1);
+}
+
 // ─── Recurring expense hooks ───────────────────────────────────────────────────
 function useRecurringExpenses() {
   return useQuery<RecurringExpense[]>({
@@ -1017,6 +1029,9 @@ function RecurringSection({
   }
 
   const activeCount = templates.filter(t => t.active).length;
+  const activeTemplates = templates.filter(t => t.active);
+  const totalMonthly = activeTemplates.reduce((sum, t) => sum + toMonthlyRate(t.amount, t.frequency), 0);
+  const totalAnnual = totalMonthly * 12;
 
   return (
     <>
@@ -1057,6 +1072,49 @@ function RecurringSection({
 
         {!collapsed && (
           <div className="overflow-x-auto custom-scrollbar">
+            {/* Monthly overhead summary banner */}
+            {activeTemplates.length > 0 && (
+              <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/30 border-b border-indigo-100 dark:border-indigo-900/40">
+                <div className="flex flex-wrap items-start gap-4">
+                  {/* Totals */}
+                  <div className="flex gap-4 flex-shrink-0">
+                    <div className="text-center">
+                      <p className="text-[11px] font-semibold text-indigo-500 uppercase tracking-wide">Est. Monthly</p>
+                      <p className="text-2xl font-display font-bold text-indigo-700 dark:text-indigo-300 leading-tight">
+                        {formatCurrency(totalMonthly)}
+                      </p>
+                    </div>
+                    <div className="w-px bg-indigo-200 dark:bg-indigo-700 self-stretch" />
+                    <div className="text-center">
+                      <p className="text-[11px] font-semibold text-indigo-400 uppercase tracking-wide">Est. Annual</p>
+                      <p className="text-2xl font-display font-bold text-indigo-500 dark:text-indigo-400 leading-tight">
+                        {formatCurrency(totalAnnual)}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Per-expense breakdown */}
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {activeTemplates.map(t => {
+                      const mo = toMonthlyRate(t.amount, t.frequency);
+                      return (
+                        <span
+                          key={t.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white/70 dark:bg-white/10 border border-indigo-100 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200 shadow-sm"
+                        >
+                          {t.description}
+                          <span className="text-indigo-400 dark:text-indigo-500">·</span>
+                          <span className="font-semibold">{formatCurrency(mo)}/mo</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+                <p className="text-[10px] text-indigo-400 mt-2 leading-tight">
+                  All frequencies normalized to monthly equivalent &bull; Active templates only
+                </p>
+              </div>
+            )}
+
             {isLoading ? (
               <div className="px-6 py-8 text-center text-muted-foreground animate-pulse text-sm">Loading…</div>
             ) : templates.length === 0 ? (
