@@ -57,13 +57,36 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Invalid frequency" });
     }
 
-    const nextDueDate = startDate;
+    const today = localDateStr();
+    let nextDueDate = startDate;
 
     const [template] = await db.insert(recurringExpensesTable).values({
       description, amount: amount.toString(), category,
       vendor: vendor || null, jobId: jobId || null, notes: notes || null,
       frequency, startDate, endDate: endDate || null, nextDueDate, active: true,
     }).returning();
+
+    // If the start date is today or in the past, immediately generate the
+    // first expense so it appears right away (don't wait for the cron job).
+    if (startDate <= today) {
+      await db.insert(expensesTable).values({
+        description: template.description,
+        amount: template.amount,
+        category: template.category,
+        vendor: template.vendor,
+        jobId: template.jobId,
+        notes: template.notes,
+        date: template.nextDueDate,
+        recurringExpenseId: template.id,
+      });
+      const nextNext = advanceDate(template.nextDueDate, template.frequency);
+      const shouldDeactivate = template.endDate && nextNext > template.endDate;
+      await db
+        .update(recurringExpensesTable)
+        .set(shouldDeactivate ? { active: false } : { nextDueDate: nextNext })
+        .where(eq(recurringExpensesTable.id, template.id));
+      nextDueDate = nextNext;
+    }
 
     const [row] = await db
       .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })

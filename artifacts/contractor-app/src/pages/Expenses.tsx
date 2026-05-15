@@ -94,7 +94,10 @@ function useCreateRecurring() {
       if (!res.ok) throw new Error("Failed to create recurring expense");
       return res.json() as Promise<RecurringExpense>;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring-expenses"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["recurring-expenses"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+    },
   });
 }
 
