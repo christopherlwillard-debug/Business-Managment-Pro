@@ -1024,7 +1024,7 @@ function JobCard({
   hasSubExpenses?: boolean;
   onToggleSubPaid?: (job: Job, paid: boolean) => void;
   profitData?: JobProfit | null;
-  onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number) => void;
+  onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number, jobId: number) => void;
   onGoToInvoices?: () => void;
   generatingLinkId?: number | null;
 }) {
@@ -1264,7 +1264,7 @@ function JobCard({
               <Edit2 className="w-3.5 h-3.5" /> Edit
             </button>
             <button
-              onClick={() => invoiceSummary && onSendPaymentLink?.(invoiceSummary.id, invoiceSummary.invoiceNumber ?? "", invoiceSummary.total ?? 0)}
+              onClick={() => invoiceSummary && onSendPaymentLink?.(invoiceSummary.id, invoiceSummary.invoiceNumber ?? "", invoiceSummary.total ?? 0, invoiceSummary.jobId ?? 0)}
               disabled={generatingLinkId === invoiceSummary?.id}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50">
               {generatingLinkId === invoiceSummary?.id
@@ -1847,17 +1847,56 @@ export default function Jobs() {
     queryClient.invalidateQueries();
   }
 
-  async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string, currentTotal: number = 0) {
-    if (currentTotal <= 0) {
-      toast({
-        title: "Invoice total is $0",
-        description: "Tap Edit to open the invoice and load your estimate pricing before sending a payment link.",
-        variant: "destructive",
-      });
-      return;
-    }
+  async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string, currentTotal: number = 0, jobId: number = 0) {
     setGeneratingLinkId(invoiceId);
     try {
+      // If the invoice total is $0, auto-sync estimate lines before creating the link.
+      // This handles the case where placeholder $0 lines were created before the estimate
+      // was built, or where existing lines have $0 prices matching estimate descriptions.
+      if (currentTotal <= 0 && jobId > 0) {
+        const [invRes, jobDraft] = await Promise.all([
+          fetch(`${BASE}/api/invoices/${invoiceId}`),
+          getJobInvoiceDraft(jobId).catch(() => null),
+        ]);
+
+        if (invRes.ok && jobDraft?.lineItems?.length) {
+          const inv: Invoice = await invRes.json();
+          const currentLines: Array<{ id: number; description: string; quantity: number; unitPrice: number; total: number }> =
+            Array.isArray(inv.lineItems) ? inv.lineItems : [];
+          const estimateLines = jobDraft.lineItems.filter(li => li.description !== "Materials");
+
+          // Update existing $0 lines that match an estimate line, and add any missing ones
+          let nextId = currentLines.length > 0 ? Math.max(...currentLines.map(l => l.id)) + 1 : 1;
+          const mergedLines = currentLines.map(li => {
+            if (li.unitPrice !== 0) return li;
+            const estMatch = estimateLines.find(e => e.description === li.description);
+            if (!estMatch) return li;
+            return { ...li, quantity: estMatch.quantity, unitPrice: estMatch.unitPrice, total: parseFloat((estMatch.quantity * estMatch.unitPrice).toFixed(2)) };
+          });
+          const existingDescriptions = new Set(mergedLines.map(l => l.description));
+          const missingLines = estimateLines
+            .filter(li => !existingDescriptions.has(li.description))
+            .map(li => ({ id: nextId++, description: li.description, quantity: li.quantity, unitPrice: li.unitPrice, total: parseFloat((li.quantity * li.unitPrice).toFixed(2)) }));
+          const updatedLines = [...mergedLines.filter(l => l.description === "Materials" || l.unitPrice !== 0), ...missingLines.length ? missingLines : []];
+          // Only PUT if something actually changed
+          const newSubtotal = updatedLines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
+          if (newSubtotal > 0) {
+            const putRes = await fetch(`${BASE}/api/invoices/${invoiceId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...inv, lineItems: updatedLines }),
+            });
+            if (!putRes.ok) {
+              throw new Error("Failed to sync estimate pricing into invoice");
+            }
+            // The server recomputes total — proceed now
+          } else {
+            toast({ title: "No pricing found", description: "Your estimate has no line item pricing yet. Add prices to the estimate first, then try again.", variant: "destructive" });
+            return;
+          }
+        }
+      }
+
       const result = await createPaymentLinkMutation.mutateAsync(invoiceId);
       setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber, invoiceId });
       queryClient.invalidateQueries();
