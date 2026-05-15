@@ -568,6 +568,116 @@ async function scrapeBidNetDirectKY(): Promise<LocalOpportunity[]> {
   return [];
 }
 
+async function scrapeBidNetDirectIN(): Promise<LocalOpportunity[]> {
+  const searchUrls = [
+    "https://www.bidnetdirect.com/indiana",
+    "https://bidnetdirect.com/indiana",
+    "https://www.bidnetdirect.com/co/indiana",
+  ];
+
+  for (const base of searchUrls) {
+    const browser = await launchBrowser();
+    try {
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
+      );
+      await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
+
+      const rows = await page.evaluate(() => {
+        const results: Array<{
+          title: string;
+          href: string;
+          agency: string;
+          dueDate: string;
+          fullText: string;
+        }> = [];
+
+        const rowEls = document.querySelectorAll<HTMLElement>(
+          "tr, .bid-listing, .solicitation-item, .bids-list li, " +
+          "[class*='bid-row'], [class*='opportunity-item'], article, .card"
+        );
+
+        rowEls.forEach((row) => {
+          const link = row.querySelector<HTMLAnchorElement>("a[href]");
+          if (!link) return;
+          const title = link.textContent?.trim() ?? "";
+          const href = link.href ?? "";
+          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
+
+          const agencyEl = row.querySelector<HTMLElement>(
+            "[class*='agency'], [class*='entity'], [class*='org'], " +
+            "td:nth-child(2), [class*='buyer']"
+          );
+          const agency = agencyEl?.textContent?.trim() ?? "";
+
+          const dateEl = row.querySelector<HTMLElement>(
+            "[class*='due'], [class*='close'], [class*='deadline'], " +
+            "time, td:last-child, [class*='date']"
+          );
+          const dueDate = dateEl?.getAttribute("datetime") ?? dateEl?.textContent?.trim() ?? "";
+
+          if (title.length > 4) {
+            results.push({ title, href, agency, dueDate, fullText });
+          }
+        });
+
+        if (results.length === 0) {
+          document.querySelectorAll<HTMLAnchorElement>("main a[href], .content a[href]").forEach((a) => {
+            const text = a.textContent?.trim() ?? "";
+            const parent = a.closest("li, tr, div") as HTMLElement | null;
+            const fullText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
+            if (text.length > 4) {
+              results.push({ title: text, href: a.href, agency: "", dueDate: "", fullText });
+            }
+          });
+        }
+
+        return results;
+      });
+
+      const results: LocalOpportunity[] = [];
+      const seen = new Set<string>();
+
+      for (const { title, href, agency, dueDate, fullText } of rows) {
+        if (!containsKeyword(`${title} ${fullText}`)) continue;
+        if (!isLikelyKyInAgency(agency) && !isLikelyKyInAgency(fullText)) continue;
+        const noticeId = stableId("bidnet-in", href || title);
+        if (seen.has(noticeId)) continue;
+        seen.add(noticeId);
+
+        const responseDeadline = parseIsoDate(dueDate) ?? parseDueDateFromText(fullText);
+        const postedDate = parseIsoDate(fullText);
+
+        results.push({
+          noticeId,
+          title,
+          agency: agency || "Indiana Government (BidNet Direct)",
+          naicsCode: null,
+          description: fullText.slice(0, 500) || null,
+          postedDate,
+          responseDeadline,
+          url: href,
+          source: "state-local",
+          sourceLabel: "BidNet Direct IN",
+        });
+      }
+
+      if (results.length > 0 || rows.length > 0) {
+        console.log(`[ky-local] BidNet Direct IN (${base}): ${results.length} matching bids`);
+        return results;
+      }
+    } catch (err) {
+      console.warn(`[ky-local] BidNet Direct IN (${base}) failed:`, (err as Error).message);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  console.log("[ky-local] BidNet Direct IN: unreachable or no matching bids");
+  return [];
+}
+
 async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
   const KY_NAICS = "237310";
   const CONSTRUCTION_KEYWORDS = ["asphalt", "sealcoat", "pavement", "road", "parking"];
@@ -667,11 +777,14 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
   // Hartford (Ohio County seat) has no separate city bid portal; covered by Ohio County below.
 
   const results = await Promise.allSettled([
-    // Shared procurement platforms — cover all participating KY counties at once.
+    // Shared procurement platforms — cover all participating KY/IN counties at once.
     // Hopkins, Union, Webster, and Muhlenberg counties (and many others) post on
     // DemandStar and/or BidNet Direct instead of maintaining their own bid portals.
+    // BidNet IN covers southwestern Indiana counties (Vanderburgh, Warrick, Gibson,
+    // Posey, etc.) that use BidNet Direct as their procurement platform.
     scrapeDemandStarKY(),
     scrapeBidNetDirectKY(),
+    scrapeBidNetDirectIN(),
 
     // Core KY counties (original)
     scrapeHancockCounty(),
