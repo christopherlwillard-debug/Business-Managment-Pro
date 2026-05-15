@@ -96,7 +96,7 @@ function useCreateRecurring() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recurring-expenses"] });
-      qc.invalidateQueries({ queryKey: ["expenses"] });
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
     },
   });
 }
