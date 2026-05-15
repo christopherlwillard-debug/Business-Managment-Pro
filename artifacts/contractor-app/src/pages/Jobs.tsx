@@ -3,17 +3,18 @@ import { useSearchParams, useLocation } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
-  useListClients, useListSubcontractors, useListInvoices,
-  useUpdateInvoiceStatus, useDeleteInvoice, getJobInvoiceDraft,
+  useListClients, useListSubcontractors, getJobInvoiceDraft,
   useListDailyLogs, useCreateDailyLog, useDeleteDailyLog,
   useGetSettings,
   useListMaterials, useListMaterialLists, useCreateMaterialList,
   useDeleteMaterialList,
   useListEstimates, useCreateEstimate, useUpdateEstimate, useDeleteEstimate,
+  useCreateInvoicePaymentLink,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
 } from "@workspace/api-client-react";
+import { useToast } from "@/components/ui/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
@@ -21,43 +22,17 @@ import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
 import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
-import { InvoiceViewModal } from "@/components/InvoiceViewModal";
 import {
   Briefcase, MapPin, Calendar, HardHat, Users,
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
+  CreditCard, Copy, ExternalLink, Bell, ArrowRight,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// ─── Status helpers ────────────────────────────────────────────────────────────
-const INVOICE_STATUS_COLORS: Record<string, string> = {
-  paid:      "bg-emerald-100 text-emerald-700",
-  sent:      "bg-blue-100 text-blue-700",
-  overdue:   "bg-red-100 text-red-700",
-  draft:     "bg-gray-100 text-gray-600",
-  cancelled: "bg-orange-100 text-orange-700",
-  pending:   "bg-amber-100 text-amber-700",
-};
-
-const INVOICE_STATUS_LABELS: Record<string, string> = {
-  paid:      "Paid",
-  sent:      "Sent",
-  draft:     "Draft",
-  overdue:   "Overdue",
-  cancelled: "Cancelled",
-  pending:   "Pending",
-};
-
-const INVOICE_STATUS_OPTIONS = [
-  { value: "draft",     label: "Draft" },
-  { value: "sent",      label: "Sent" },
-  { value: "paid",      label: "Paid" },
-  { value: "overdue",   label: "Overdue" },
-  { value: "cancelled", label: "Cancelled" },
-];
 
 function displayStatus(status: string): "scheduled" | "completed" {
   if (status === "completed" || status === "invoiced") return "completed";
@@ -1031,6 +1006,7 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, onToggleSubPaid, profitData,
+  onSendPaymentLink, onGoToInvoices, generatingLinkId,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -1048,6 +1024,9 @@ function JobCard({
   hasSubExpenses?: boolean;
   onToggleSubPaid?: (job: Job, paid: boolean) => void;
   profitData?: JobProfit | null;
+  onSendPaymentLink?: (invoiceId: number, invoiceNumber: string) => void;
+  onGoToInvoices?: () => void;
+  generatingLinkId?: number | null;
 }) {
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
@@ -1267,7 +1246,7 @@ function JobCard({
           )}
         </button>
 
-        {/* Create Invoice quick action — shown when no invoice exists */}
+        {/* Create Invoice — no invoice exists yet */}
         {!invoiceSummary && canEdit("invoices") && onCreateInvoice && (
           <button
             onClick={onCreateInvoice}
@@ -1276,22 +1255,41 @@ function JobCard({
           </button>
         )}
 
-        {isCompleted ? (
-          canEdit("invoices") && invoiceSummary && (
+        {/* Draft invoice — edit + send payment link */}
+        {invoiceSummary && invoiceSummary.status === "draft" && canEdit("invoices") && (
+          <div className="mt-1 flex gap-1.5">
             <button
               onClick={() => onReviewInvoice(job)}
-              className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
-              <FileText className="w-3.5 h-3.5" /> Review Invoice
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-muted text-foreground border border-border text-xs font-bold hover:bg-muted/80 transition-colors">
+              <Edit2 className="w-3.5 h-3.5" /> Edit
             </button>
-          )
-        ) : (
-          canEdit("jobs") && (
             <button
-              onClick={() => onMarkCompleted(job)}
-              className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
-              <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
+              onClick={() => invoiceSummary && onSendPaymentLink?.(invoiceSummary.id, invoiceSummary.invoiceNumber ?? "")}
+              disabled={generatingLinkId === invoiceSummary?.id}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50">
+              {generatingLinkId === invoiceSummary?.id
+                ? <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
+                : <><CreditCard className="w-3.5 h-3.5" /> Send + Pay Link</>}
             </button>
-          )
+          </div>
+        )}
+
+        {/* Sent/overdue invoice — go manage it on Invoices page */}
+        {invoiceSummary && (invoiceSummary.status === "sent" || invoiceSummary.status === "overdue") && (
+          <button
+            onClick={onGoToInvoices}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-colors">
+            <FileText className="w-3.5 h-3.5" /> Manage Invoice <ArrowRight className="w-3 h-3 ml-auto" />
+          </button>
+        )}
+
+        {/* Mark Completed — for scheduled jobs with no invoice yet */}
+        {!isCompleted && canEdit("jobs") && (
+          <button
+            onClick={() => onMarkCompleted(job)}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
+            <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
+          </button>
         )}
         {/* Sub Paid toggle — only visible when job has sub expenses */}
         {hasSubExpenses && onToggleSubPaid && canEdit("jobs") && (
@@ -1650,219 +1648,9 @@ function DeleteConfirm({
   );
 }
 
-// ─── Saved Invoices Section ────────────────────────────────────────────────────
-const UNPAID_STATUSES = new Set(["draft", "pending", "sent", "overdue"]);
-
-function SavedInvoicesSection() {
-  const { canEdit } = useUserPermissions();
-  const { data: invoices = [], isLoading } = useListInvoices();
-  const { data: settings }  = useGetSettings();
-  const updateStatus  = useUpdateInvoiceStatus();
-  const deleteInvoice = useDeleteInvoice();
-  const queryClient   = useQueryClient();
-
-  const [collapsed, setCollapsed]       = useState(false);
-  const [activeTab, setActiveTab]       = useState<"unpaid" | "paid">("unpaid");
-  const [editInvoice, setEditInvoice]   = useState<Invoice | null>(null);
-  const [viewInvoice, setViewInvoice]   = useState<Invoice | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null);
-  const [deleting, setDeleting]         = useState(false);
-
-  const jobInvoices = invoices.filter(inv => inv.jobId != null);
-  const unpaidInvoices = jobInvoices.filter(inv => UNPAID_STATUSES.has(inv.status));
-  const paidInvoices   = jobInvoices.filter(inv => inv.status === "paid");
-  const tabInvoices    = activeTab === "unpaid" ? unpaidInvoices : paidInvoices;
-
-  async function handleMarkPaid(inv: Invoice) {
-    await updateStatus.mutateAsync({ id: inv.id, data: { status: "paid" } });
-    queryClient.invalidateQueries();
-  }
-
-  async function handleDeleteConfirmed() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await deleteInvoice.mutateAsync({ id: deleteTarget.id });
-      queryClient.invalidateQueries();
-      if (viewInvoice?.id === deleteTarget.id) setViewInvoice(null);
-    } finally {
-      setDeleting(false);
-      setDeleteTarget(null);
-    }
-  }
-
-  function renderTable(rows: Invoice[]) {
-    if (rows.length === 0) {
-      return (
-        <div className="py-10 text-center space-y-2 text-muted-foreground px-6">
-          <FileText className="w-8 h-8 mx-auto text-muted-foreground/30" />
-          {activeTab === "unpaid"
-            ? <p className="text-sm">No outstanding invoices. Mark a job Completed and click "Review Invoice" to create one.</p>
-            : <p className="text-sm">No paid invoices yet.</p>}
-        </div>
-      );
-    }
-    return (
-      <table className="w-full text-sm">
-        <thead className="bg-muted/30 border-b border-border/50">
-          <tr>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Invoice #</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Client</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Total</th>
-            <th className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
-            <th className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border/50">
-          {rows.map((inv: Invoice) => (
-            <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
-              <td className="px-5 py-3 font-mono text-xs font-semibold text-foreground">{inv.invoiceNumber}</td>
-              <td className="px-5 py-3 text-sm text-foreground">{inv.clientName ?? <span className="text-muted-foreground italic">No client</span>}</td>
-              <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(inv.issueDate)}</td>
-              <td className="px-5 py-3 text-right font-bold text-amber-600">{formatCurrency(inv.total)}</td>
-              <td className="px-5 py-3 text-center">
-                {canEdit("invoices") ? (
-                  <select
-                    value={inv.status}
-                    onChange={async e => {
-                      await updateStatus.mutateAsync({ id: inv.id, data: { status: e.target.value as any } });
-                      queryClient.invalidateQueries();
-                    }}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border-0 cursor-pointer appearance-none text-center ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}
-                  >
-                    {INVOICE_STATUS_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${INVOICE_STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}>
-                    {INVOICE_STATUS_LABELS[inv.status] ?? inv.status}
-                  </span>
-                )}
-              </td>
-              <td className="px-5 py-3">
-                <div className="flex items-center justify-center gap-1">
-                  <button onClick={() => setViewInvoice(inv)}
-                    title="View / Print"
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors">
-                    <Eye className="w-3 h-3" /> View
-                  </button>
-                  {canEdit("invoices") && (
-                    <>
-                      <button onClick={() => setEditInvoice(inv)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-foreground hover:bg-muted/50 transition-colors">
-                        <Edit2 className="w-3 h-3" /> Edit
-                      </button>
-                      {inv.status !== "paid" && (
-                        <button onClick={() => handleMarkPaid(inv)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors">
-                          <Check className="w-3 h-3" /> Paid
-                        </button>
-                      )}
-                      <button onClick={() => setDeleteTarget(inv)}
-                        className="p-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  }
-
-  return (
-    <>
-      <Card className="overflow-hidden">
-        <div
-          className="flex items-center justify-between px-5 py-4 border-b border-border/50 cursor-pointer hover:bg-muted/20 transition-colors"
-          onClick={() => setCollapsed(c => !c)}>
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-amber-500" />
-            <span className="font-semibold text-foreground">Invoices</span>
-            {unpaidInvoices.length > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
-                {unpaidInvoices.length} unpaid
-              </span>
-            )}
-          </div>
-          {collapsed ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronUp className="w-4 h-4 text-muted-foreground" />}
-        </div>
-
-        {!collapsed && (
-          <>
-            {/* Tabs */}
-            <div className="flex border-b border-border/50 bg-muted/10">
-              <button
-                onClick={() => setActiveTab("unpaid")}
-                className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 ${activeTab === "unpaid" ? "border-amber-500 text-amber-600" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-                Unpaid
-                {unpaidInvoices.length > 0 && (
-                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">
-                    {unpaidInvoices.length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab("paid")}
-                className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 ${activeTab === "paid" ? "border-emerald-500 text-emerald-600" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-                Paid
-                {paidInvoices.length > 0 && (
-                  <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
-                    {paidInvoices.length}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-10">
-                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : renderTable(tabInvoices)}
-            </div>
-          </>
-        )}
-      </Card>
-
-      {editInvoice && (
-        <InvoiceEditorDialog
-          open={Boolean(editInvoice)}
-          onOpenChange={open => { if (!open) setEditInvoice(null); }}
-          existingInvoice={editInvoice}
-          onSaved={() => { setEditInvoice(null); queryClient.invalidateQueries(); }}
-        />
-      )}
-
-      {viewInvoice && (
-        <InvoiceViewModal
-          invoice={viewInvoice}
-          settings={settings}
-          onClose={() => setViewInvoice(null)}
-          onDelete={() => { setDeleteTarget(viewInvoice); setViewInvoice(null); }}
-        />
-      )}
-
-      {deleteTarget && (
-        <DeleteConfirm
-          label={`Invoice ${deleteTarget.invoiceNumber}`}
-          onConfirm={handleDeleteConfirmed}
-          onCancel={() => setDeleteTarget(null)}
-          deleting={deleting}
-        />
-      )}
-    </>
-  );
-}
-
 // ─── Main Jobs Page ────────────────────────────────────────────────────────────
 export default function Jobs() {
-  const { canEdit, canView } = useUserPermissions();
+  const { canEdit } = useUserPermissions();
   const canEditJobs = canEdit("jobs");
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
@@ -1927,6 +1715,12 @@ export default function Jobs() {
   const [invoiceDraftData, setInvoiceDraftData]         = useState<InvoiceDraft | null>(null);
   const [selectedExistingInvoice, setSelectedExistingInvoice] = useState<Invoice | null>(null);
   const [invoiceFetching, setInvoiceFetching]           = useState(false);
+
+  const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number } | null>(null);
+  const [generatingLinkId, setGeneratingLinkId]   = useState<number | null>(null);
+  const [sendingReminderId, setSendingReminderId] = useState<number | null>(null);
+  const createPaymentLinkMutation = useCreateInvoicePaymentLink();
+  const { toast } = useToast();
 
   type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
   const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
@@ -2051,6 +1845,41 @@ export default function Jobs() {
       return;
     }
     queryClient.invalidateQueries();
+  }
+
+  async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
+    setGeneratingLinkId(invoiceId);
+    try {
+      const result = await createPaymentLinkMutation.mutateAsync(invoiceId);
+      setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber, invoiceId });
+      queryClient.invalidateQueries();
+      if (result.emailWarning) {
+        toast({ title: "Payment link created", description: result.emailWarning, variant: "destructive" });
+      } else {
+        toast({ title: "Payment link created & emailed", description: `Email sent to client for invoice ${invoiceNumber}.` });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to create payment link";
+      toast({ title: "Error creating payment link", description: msg, variant: "destructive" });
+    } finally {
+      setGeneratingLinkId(null);
+    }
+  }
+
+  async function handleSendReminder(invoiceId: number, invoiceNumber: string) {
+    setSendingReminderId(invoiceId);
+    try {
+      const res = await fetch(`${BASE}/api/invoices/${invoiceId}/send-reminder`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send reminder");
+      toast({ title: "Reminder sent!", description: `Reminder email sent for invoice ${invoiceNumber}.` });
+      queryClient.invalidateQueries();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send reminder";
+      toast({ title: "Reminder failed", description: msg, variant: "destructive" });
+    } finally {
+      setSendingReminderId(null);
+    }
   }
 
   async function handleReviewInvoice(job: Job) {
@@ -2292,7 +2121,10 @@ export default function Jobs() {
                       onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                       hasSubExpenses={jobsWithSubExpenses.has(job.id)}
                       onToggleSubPaid={handleToggleSubPaid}
-                      profitData={profitMap.get(job.id) ?? null} />
+                      profitData={profitMap.get(job.id) ?? null}
+                      onSendPaymentLink={handleGetPaymentLink}
+                      onGoToInvoices={() => navigate("/invoices")}
+                      generatingLinkId={generatingLinkId} />
                   );
                 })}
               </div>
@@ -2331,7 +2163,10 @@ export default function Jobs() {
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                         hasSubExpenses={jobsWithSubExpenses.has(job.id)}
                         onToggleSubPaid={handleToggleSubPaid}
-                        profitData={profitMap.get(job.id) ?? null} />
+                        profitData={profitMap.get(job.id) ?? null}
+                        onSendPaymentLink={handleGetPaymentLink}
+                        onGoToInvoices={() => navigate("/invoices")}
+                        generatingLinkId={generatingLinkId} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -2355,9 +2190,6 @@ export default function Jobs() {
           )}
         </>
       )}
-
-      {/* Saved Invoices section — only shown when user has invoices view access */}
-      {canView("invoices") && <SavedInvoicesSection />}
 
       {/* Dialogs */}
       {jobFormOpen && (
@@ -2397,6 +2229,64 @@ export default function Jobs() {
           <div className="bg-white rounded-2xl p-6 flex items-center gap-3 shadow-xl">
             <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
             <span className="text-sm font-medium text-gray-700">Loading invoice data…</span>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Link Modal */}
+      {paymentLinkResult && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-emerald-500 to-emerald-400" />
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">Payment Link Ready</h3>
+                  <p className="text-sm text-gray-500">Invoice {paymentLinkResult.invoiceNumber}</p>
+                </div>
+                <button onClick={() => setPaymentLinkResult(null)}
+                  className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                <p className="text-xs text-gray-500 mb-1 font-medium">Square Payment Link</p>
+                <p className="text-sm text-gray-800 break-all font-mono">{paymentLinkResult.url}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigator.clipboard.writeText(paymentLinkResult.url)}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 transition-colors">
+                  <Copy className="w-4 h-4" /> Copy Link
+                </button>
+                <a href={paymentLinkResult.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors">
+                  <ExternalLink className="w-4 h-4" /> Open
+                </a>
+              </div>
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                <button
+                  onClick={() => handleSendReminder(paymentLinkResult.invoiceId, paymentLinkResult.invoiceNumber)}
+                  disabled={sendingReminderId === paymentLinkResult.invoiceId}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl font-semibold text-sm hover:bg-blue-100 transition-colors disabled:opacity-50">
+                  <Bell className="w-4 h-4" />
+                  {sendingReminderId === paymentLinkResult.invoiceId ? "Sending…" : "Send Reminder Now"}
+                </button>
+              </div>
+              <div className="border-t border-gray-100 pt-3">
+                <button
+                  onClick={() => { setPaymentLinkResult(null); navigate("/invoices"); }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 rounded-xl font-medium text-sm hover:bg-gray-100 transition-colors">
+                  <ArrowRight className="w-4 h-4" /> Go to Invoices
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 text-center">
+                Share this link with your client. Square will process the payment and send them a receipt.
+              </p>
+            </div>
           </div>
         </div>
       )}
