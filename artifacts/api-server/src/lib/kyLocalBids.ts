@@ -458,6 +458,114 @@ async function scrapeDemandStarKY(): Promise<LocalOpportunity[]> {
   return [];
 }
 
+async function scrapeDemandStarIN(): Promise<LocalOpportunity[]> {
+  const searchUrls = [
+    "https://network.demandstar.com/solicitations?stateCode=IN",
+    "https://network.demandstar.com/solicitations?state=IN",
+  ];
+
+  for (const base of searchUrls) {
+    const browser = await launchBrowser();
+    try {
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
+      );
+      await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
+
+      const rows = await page.evaluate(() => {
+        const results: Array<{
+          title: string;
+          href: string;
+          agency: string;
+          dueDate: string;
+          fullText: string;
+        }> = [];
+
+        const rowEls = document.querySelectorAll<HTMLElement>(
+          "[class*='solicitation-row'], [class*='SolicitationRow'], [class*='bid-row'], " +
+          "[class*='result-row'], [class*='opportunity'], tr[data-id], " +
+          ".ds-solicitation, article, .card, li[class*='item']"
+        );
+
+        rowEls.forEach((row) => {
+          const link = row.querySelector<HTMLAnchorElement>("a[href]");
+          if (!link) return;
+          const title = link.textContent?.trim() ?? "";
+          const href = link.href ?? "";
+          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
+
+          const agencyEl = row.querySelector<HTMLElement>(
+            "[class*='agency'], [class*='entity'], [class*='org'], td:nth-child(2)"
+          );
+          const agency = agencyEl?.textContent?.trim() ?? "";
+
+          const dateEl = row.querySelector<HTMLElement>(
+            "[class*='due'], [class*='deadline'], [class*='close'], time, td:last-child"
+          );
+          const dueDate = dateEl?.getAttribute("datetime") ?? dateEl?.textContent?.trim() ?? "";
+
+          if (title.length > 4) {
+            results.push({ title, href, agency, dueDate, fullText });
+          }
+        });
+
+        if (results.length === 0) {
+          document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
+            const text = a.textContent?.trim() ?? "";
+            const parent = a.closest("li, tr, div[class], article") as HTMLElement | null;
+            const fullText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
+            if (text.length > 4) {
+              results.push({ title: text, href: a.href, agency: "", dueDate: "", fullText });
+            }
+          });
+        }
+
+        return results;
+      });
+
+      const results: LocalOpportunity[] = [];
+      const seen = new Set<string>();
+
+      for (const { title, href, agency, dueDate, fullText } of rows) {
+        if (!containsKeyword(`${title} ${fullText}`)) continue;
+        if (!isLikelyKyInAgency(agency) && !isLikelyKyInAgency(fullText)) continue;
+        const noticeId = stableId("demandstar-in", href || title);
+        if (seen.has(noticeId)) continue;
+        seen.add(noticeId);
+
+        const responseDeadline = parseIsoDate(dueDate) ?? parseDueDateFromText(fullText);
+        const postedDate = parseIsoDate(fullText);
+
+        results.push({
+          noticeId,
+          title,
+          agency: agency || "Indiana Government (DemandStar)",
+          naicsCode: null,
+          description: fullText.slice(0, 500) || null,
+          postedDate,
+          responseDeadline,
+          url: href,
+          source: "state-local",
+          sourceLabel: "DemandStar IN",
+        });
+      }
+
+      if (results.length > 0 || rows.length > 0) {
+        console.log(`[ky-local] DemandStar IN (${base}): ${results.length} matching bids`);
+        return results;
+      }
+    } catch (err) {
+      console.warn(`[ky-local] DemandStar IN (${base}) failed:`, (err as Error).message);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  console.log("[ky-local] DemandStar IN: unreachable or no matching bids");
+  return [];
+}
+
 async function scrapeBidNetDirectKY(): Promise<LocalOpportunity[]> {
   const searchUrls = [
     "https://www.bidnetdirect.com/kentucky",
@@ -783,6 +891,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
     // BidNet IN covers southwestern Indiana counties (Vanderburgh, Warrick, Gibson,
     // Posey, etc.) that use BidNet Direct as their procurement platform.
     scrapeDemandStarKY(),
+    scrapeDemandStarIN(),
     scrapeBidNetDirectKY(),
     scrapeBidNetDirectIN(),
 
