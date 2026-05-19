@@ -291,8 +291,13 @@ router.get("/compliance", sectionGuard("compliance"), async (_req, res) => {
 router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
   try {
     const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
+    const blFilter = (req.query.businessLine as string | undefined) || null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
+
+    // Optional DB-level business-line filter — accepts any slug, no hardcoded allowlist
+    const blWhere = (col: Parameters<typeof eq>[0]) =>
+      blFilter ? eq(col, blFilter) : undefined;
 
     const [invoices, expenses, mileageLogs, subs, settings, otherIncomeRows] = await Promise.all([
       db.select({
@@ -313,12 +318,12 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
         .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
-        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine))),
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
-      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
     ]);
 
     const rate = parseFloat(settings[0]?.mileageRate ?? "0.725");

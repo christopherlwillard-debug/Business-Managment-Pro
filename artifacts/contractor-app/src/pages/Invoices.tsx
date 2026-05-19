@@ -106,18 +106,19 @@ function InvoiceBuilder({
   const s = settings ?? {};
   const baseCompanyName = s.companyName || "";
   const selectedBiz = businesses.find(b => b.slug === form.businessLine);
-  const companyName = activeBusiness
-    ? (activeBusiness.name || baseCompanyName)
-    : (selectedBiz?.name ?? (form.businessLine === "asphalt_sealing"
-        ? `${baseCompanyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
-        : baseCompanyName));
-  const companyEmail   = s.companyEmail   || "";
-  const companyPhone   = s.companyPhone   || "";
-  const companyAddress = s.companyAddress || "";
-  const companyCity    = s.companyCity    || "";
-  const companyState   = s.companyState   || "";
-  const companyZip     = s.companyZip     || "";
-  const logoUrl: string | null  = (form.businessLine === "asphalt_sealing" ? (s.dbaLogoUrl ?? s.logoUrl) : s.logoUrl) ?? null;
+  // When a specific business is active, use its profile fields as the source of truth;
+  // fall back to per-invoice selectedBiz (all-businesses mode), then global settings.
+  const bizSource = activeBusiness ?? selectedBiz ?? null;
+  const companyName = bizSource
+    ? (bizSource.name || baseCompanyName)
+    : baseCompanyName;
+  const companyEmail   = bizSource?.email   || s.companyEmail   || "";
+  const companyPhone   = bizSource?.phone   || s.companyPhone   || "";
+  const companyAddress = bizSource?.address || s.companyAddress || "";
+  const companyCity    = bizSource?.city    || s.companyCity    || "";
+  const companyState   = bizSource?.state   || s.companyState   || "";
+  const companyZip     = bizSource?.zip     || s.companyZip     || "";
+  const logoUrl: string | null  = bizSource?.logoUrl ?? (form.businessLine === "asphalt_sealing" ? (s.dbaLogoUrl ?? s.logoUrl) : s.logoUrl) ?? null;
   const logoSize: string        = s.invoiceLogoSize     ?? "medium";
   const logoPos: string         = s.invoiceLogoPosition ?? "top-left";
   const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;
