@@ -171,6 +171,7 @@ export interface BuildInvoiceEmailHtmlOpts {
   city?: string | null;
   state?: string | null;
   businessLine?: string | null;
+  dbaName?: string | null;
   lineItems: { description: string; quantity: number; unitPrice: number }[];
   subtotal: number;
   taxRate?: number | null;
@@ -185,7 +186,7 @@ export interface BuildInvoiceEmailHtmlOpts {
 export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
   const cityLine = [opts.companyCity, opts.companyState, opts.companyZip].filter(Boolean).join(", ");
 
-  const displayCompanyName = (opts as any).dbaName
+  const displayCompanyName = opts.dbaName
     ?? (opts.businessLine === "asphalt_sealing"
       ? `${opts.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
       : (opts.companyName || ""));

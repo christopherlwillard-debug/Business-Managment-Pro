@@ -7,8 +7,6 @@ const router = Router();
 
 const VALID_PAYMENT_METHODS = ["cash", "check", "bank_transfer", "other"] as const;
 type PaymentMethod = typeof VALID_PAYMENT_METHODS[number];
-const VALID_BUSINESS_LINES = ["general_contracting", "asphalt_sealing"] as const;
-
 function parseBody(body: any): { clientId?: number | null; amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null; businessLine?: string | null } | null {
   const { clientId, amount, date, description, source, paymentMethod, city, state, notes, businessLine } = body ?? {};
   if (!amount || isNaN(parseFloat(String(amount)))) return null;
@@ -26,21 +24,23 @@ function parseBody(body: any): { clientId?: number | null; amount: string; date:
     city: city ? String(city).trim() || null : null,
     state: state ? String(state).trim() || null : null,
     notes: notes ? String(notes).trim() || null : null,
-    businessLine: VALID_BUSINESS_LINES.includes(businessLine) ? businessLine : null,
+    businessLine: businessLine && typeof businessLine === "string" ? businessLine.trim() || null : null,
   };
 }
 
 router.get("/", async (req, res) => {
   try {
-    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
-    let rows;
+    const { startDate, endDate, businessLine } = req.query as { startDate?: string; endDate?: string; businessLine?: string };
+    const conditions = [];
     if (startDate && endDate) {
-      rows = await db.select().from(otherIncomeTable)
-        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate)))
-        .orderBy(desc(otherIncomeTable.date));
-    } else {
-      rows = await db.select().from(otherIncomeTable).orderBy(desc(otherIncomeTable.date));
+      conditions.push(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate));
     }
+    if (businessLine) {
+      conditions.push(eq(otherIncomeTable.businessLine, businessLine));
+    }
+    const rows = await db.select().from(otherIncomeTable)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(otherIncomeTable.date));
     res.json(rows);
   } catch (err) {
     console.error(err);

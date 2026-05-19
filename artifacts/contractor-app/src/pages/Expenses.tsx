@@ -1256,7 +1256,7 @@ function RecurringSection({
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Expenses() {
   const { canEdit } = useUserPermissions();
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const { toast } = useToast();
   const { isConfigured: googleConfigured, isConnected: googleConnected, signIn: googleSignIn, getToken } = useGoogleAuth();
   const [drivePickingNew, setDrivePickingNew] = useState(false);
@@ -1314,11 +1314,11 @@ export default function Expenses() {
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
   const [excludeFromNetProfit, setExcludeFromNetProfit] = useState(false);
-  const [businessLine, setBusinessLine]               = useState<"general_contracting" | "asphalt_sealing" | "">(
-    (activeBusiness?.slug ?? "") as "general_contracting" | "asphalt_sealing" | ""
+  const [businessLine, setBusinessLine]               = useState<string | undefined>(
+    activeBusiness?.slug ?? undefined
   );
   useEffect(() => {
-    setBusinessLine((activeBusiness?.slug ?? "") as "general_contracting" | "asphalt_sealing" | "");
+    setBusinessLine(activeBusiness?.slug ?? undefined);
   }, [activeBusiness?.slug]);
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
   const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; businessLine: string} | null>(null);
@@ -1416,8 +1416,10 @@ export default function Expenses() {
   }, [expenses, currentYear]);
 
   const yearExpenses = useMemo(
-    () => (expenses ?? []).filter(e => (e.date ?? "").startsWith(selectedYear)),
-    [expenses, selectedYear]
+    () => (expenses ?? [])
+      .filter(e => (e.date ?? "").startsWith(selectedYear))
+      .filter(e => !activeBusiness || (e as any).businessLine === activeBusiness.slug),
+    [expenses, selectedYear, activeBusiness]
   );
 
   const filteredYearExpenses = useMemo(() => {
@@ -1475,7 +1477,7 @@ export default function Expenses() {
     setCategory(CATEGORIES[0]);
     setSubcontractorId("");
     setExcludeFromNetProfit(false);
-    setBusinessLine(undefined);
+    setBusinessLine(activeBusiness?.slug ?? undefined);
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1512,7 +1514,7 @@ export default function Expenses() {
       setVendor("");
       setSubcontractorId("");
       setExcludeFromNetProfit(false);
-      setBusinessLine(undefined);
+      setBusinessLine(activeBusiness?.slug ?? undefined);
       refetch();
     } catch {
       setUploadError("Failed to save expense. Please try again.");
@@ -2110,7 +2112,7 @@ export default function Expenses() {
             {!activeBusiness && (
             <div>
               <label className="block text-sm font-medium mb-1.5">Business Line <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
-              <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
+              <div className="flex flex-wrap items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
                 <button
                   type="button"
                   onClick={() => setBusinessLine(undefined)}
@@ -2122,28 +2124,20 @@ export default function Expenses() {
                 >
                   Untagged
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setBusinessLine("general_contracting")}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                    businessLine === "general_contracting"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  General Contracting
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBusinessLine("asphalt_sealing")}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                    businessLine === "asphalt_sealing"
-                      ? "bg-amber-500 text-white shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Asphalt Sealing
-                </button>
+                {businesses.map(b => (
+                  <button
+                    key={b.slug}
+                    type="button"
+                    onClick={() => setBusinessLine(b.slug)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                      businessLine === b.slug
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {b.name}
+                  </button>
+                ))}
               </div>
             </div>
             )}

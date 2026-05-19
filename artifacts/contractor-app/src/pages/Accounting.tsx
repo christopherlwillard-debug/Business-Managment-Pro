@@ -51,11 +51,13 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: "Cash", check: "Check", bank_transfer: "Bank Transfer", other: "Other",
 };
 
-function useOtherIncome(year: number) {
+function useOtherIncome(year: number, businessLine?: string) {
   return useQuery<any[]>({
-    queryKey: ["other-income", year],
+    queryKey: ["other-income", year, businessLine ?? "all"],
     queryFn: async () => {
-      const res = await fetch(`${OTHER_INCOME_API}?startDate=${year}-01-01&endDate=${year}-12-31`);
+      const params = new URLSearchParams({ startDate: `${year}-01-01`, endDate: `${year}-12-31` });
+      if (businessLine) params.set("businessLine", businessLine);
+      const res = await fetch(`${OTHER_INCOME_API}?${params}`);
       if (!res.ok) throw new Error("Failed to load other income");
       return res.json();
     },
@@ -195,8 +197,10 @@ function useDeleteTaxPayment(year: number) {
   });
 }
 
-async function fetchAccounting(year: number) {
-  const res = await fetch(`${BASE}/api/reports/accounting?year=${year}`);
+async function fetchAccounting(year: number, businessLine?: string) {
+  const params = new URLSearchParams({ year: String(year) });
+  if (businessLine) params.set("businessLine", businessLine);
+  const res = await fetch(`${BASE}/api/reports/accounting?${params}`);
   if (!res.ok) throw new Error("Failed to load accounting data");
   return res.json();
 }
@@ -743,7 +747,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   const netProfit = s.netProfit ?? 0;
   const otherIncomeTotal: number = s.otherIncomeTotal ?? 0;
 
-  const { data: otherIncomeRows = [], isLoading: oiLoading } = useOtherIncome(year);
+  const { data: otherIncomeRows = [], isLoading: oiLoading } = useOtherIncome(year, activeBusiness?.slug);
   const createOI = useCreateOtherIncome(year);
   const updateOI = useUpdateOtherIncome(year);
   const deleteOI = useDeleteOtherIncome(year);
@@ -4479,10 +4483,12 @@ export default function Accounting() {
   const defaultYears = Array.from({ length: 5 }, (_, i) => currentYear - i);
   const years = defaultYears.includes(year) ? defaultYears : [year, ...defaultYears].sort((a, b) => b - a);
   const { isOwner } = useUserPermissions();
+  const { activeBusiness } = useBusiness();
+  const bizSlug = activeBusiness?.slug;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["accounting", year],
-    queryFn: () => fetchAccounting(year),
+    queryKey: ["accounting", year, bizSlug ?? "all"],
+    queryFn: () => fetchAccounting(year, bizSlug),
     staleTime: 1000 * 60 * 2,
   });
 

@@ -40,9 +40,14 @@ function BusinessCardStats({ business }: { business: Business }) {
         <Briefcase className="w-3 h-3" />
         {stats.activeJobs} active job{stats.activeJobs !== 1 ? "s" : ""}
       </span>
+      {stats.pendingInvoices > 0 && (
+        <span className="flex items-center gap-1">
+          <FileText className="w-3 h-3" />
+          {stats.pendingInvoices} open invoice{stats.pendingInvoices !== 1 ? "s" : ""}
+        </span>
+      )}
       {stats.overdueInvoices > 0 && (
         <span className="flex items-center gap-1 text-red-600">
-          <FileText className="w-3 h-3" />
           {stats.overdueInvoices} overdue
         </span>
       )}
