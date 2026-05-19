@@ -713,7 +713,7 @@ export default function BidOpportunities() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, businessId }),
       });
       if (!res.ok) throw new Error("Failed to update bid");
       return res.json();
@@ -767,7 +767,9 @@ export default function BidOpportunities() {
     try {
       const res = await fetch(`${BASE_URL}/api/bids/${bid.id}/summarize`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ businessId }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };

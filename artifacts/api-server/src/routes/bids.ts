@@ -117,6 +117,13 @@ router.patch("/:id", async (req, res) => {
     return;
   }
 
+  const rawBizId = req.body?.businessId ?? req.query.businessId;
+  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
+  if (isNaN(bizId)) {
+    res.status(400).json({ error: "businessId is required" });
+    return;
+  }
+
   const { status } = req.body as { status?: string };
   const allowed = ["new", "interested", "dismissed"];
   if (!status || !allowed.includes(status)) {
@@ -128,7 +135,10 @@ router.patch("/:id", async (req, res) => {
     const [updated] = await db
       .update(bidOpportunitiesTable)
       .set({ status })
-      .where(eq(bidOpportunitiesTable.id, id))
+      .where(and(
+        eq(bidOpportunitiesTable.id, id),
+        eq(bidOpportunitiesTable.businessId, bizId),
+      ))
       .returning();
 
     if (!updated) {
@@ -150,11 +160,21 @@ router.post("/:id/summarize", async (req, res) => {
     return;
   }
 
+  const rawBizId = req.body?.businessId ?? req.query.businessId;
+  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
+  if (isNaN(bizId)) {
+    res.status(400).json({ error: "businessId is required" });
+    return;
+  }
+
   try {
     const [bid] = await db
       .select()
       .from(bidOpportunitiesTable)
-      .where(eq(bidOpportunitiesTable.id, id))
+      .where(and(
+        eq(bidOpportunitiesTable.id, id),
+        eq(bidOpportunitiesTable.businessId, bizId),
+      ))
       .limit(1);
 
     if (!bid) {
