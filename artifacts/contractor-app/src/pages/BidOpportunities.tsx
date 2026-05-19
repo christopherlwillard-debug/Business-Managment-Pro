@@ -695,12 +695,12 @@ export default function BidOpportunities() {
 
   const { data: bids = [], isLoading } = useQuery<BidOpportunity[]>({
     queryKey: ["bids", filter, businessId],
+    enabled: businessId !== null,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filter !== "all") params.set("status", filter);
-      if (businessId !== null) params.set("businessId", String(businessId));
-      const qs = params.toString();
-      const url = qs ? `${BASE_URL}/api/bids?${qs}` : `${BASE_URL}/api/bids`;
+      params.set("businessId", String(businessId));
+      const url = `${BASE_URL}/api/bids?${params.toString()}`;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load bids");
       return res.json();

@@ -24,7 +24,7 @@ const BUSINESS_PROFILES: Record<string, BizProfile> = {
   },
   general_contracting: {
     samKeywords: GENERAL_CONTRACTING_SAM_KEYWORDS,
-    samNaicsCodes: ["236220", "236210", "238110", "238990"],
+    samNaicsCodes: ["236220", "236210", "238110", "238910"],
     localKeywords: BROAD_BID_KEYWORDS,
     label: "General Contracting",
   },
@@ -161,6 +161,17 @@ export async function runBidSync(
 
   const profile = getProfile(business.type);
   console.log(`[bid-sync] Starting sync for "${business.name}" (${business.type}) — profile: ${profile.label}`);
+
+  // One-time backfill: attribute legacy rows (business_id IS NULL) to this business.
+  // Old rows were inserted before business-scoping existed and belong to whichever
+  // business type first syncs them. Only the first sync per business touches these.
+  const backfillResult = await db.execute(
+    sql`UPDATE bid_opportunities SET business_id = ${businessId} WHERE business_id IS NULL`
+  );
+  const backfillCount = (backfillResult as { rowCount?: number }).rowCount ?? 0;
+  if (backfillCount > 0) {
+    console.log(`[bid-sync] Backfilled ${backfillCount} legacy bid(s) to business ${businessId} (${business.name})`);
+  }
 
   await purgeIrrelevantLocalBids(businessId, profile.localKeywords);
   await purgeNavLinkRows(businessId);

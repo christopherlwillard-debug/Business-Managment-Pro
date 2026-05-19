@@ -79,39 +79,29 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const { status, businessId } = req.query;
-    const bizId = businessId ? parseInt(businessId as string, 10) : null;
+    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
+
+    if (isNaN(bizId)) {
+      res.status(400).json({ error: "businessId query param is required" });
+      return;
+    }
 
     let rows;
-    if (bizId && !isNaN(bizId)) {
-      if (status && typeof status === "string") {
-        rows = await db
-          .select()
-          .from(bidOpportunitiesTable)
-          .where(and(
-            eq(bidOpportunitiesTable.businessId, bizId),
-            eq(bidOpportunitiesTable.status, status)
-          ))
-          .orderBy(desc(bidOpportunitiesTable.createdAt));
-      } else {
-        rows = await db
-          .select()
-          .from(bidOpportunitiesTable)
-          .where(eq(bidOpportunitiesTable.businessId, bizId))
-          .orderBy(desc(bidOpportunitiesTable.createdAt));
-      }
+    if (status && typeof status === "string") {
+      rows = await db
+        .select()
+        .from(bidOpportunitiesTable)
+        .where(and(
+          eq(bidOpportunitiesTable.businessId, bizId),
+          eq(bidOpportunitiesTable.status, status)
+        ))
+        .orderBy(desc(bidOpportunitiesTable.createdAt));
     } else {
-      if (status && typeof status === "string") {
-        rows = await db
-          .select()
-          .from(bidOpportunitiesTable)
-          .where(eq(bidOpportunitiesTable.status, status))
-          .orderBy(desc(bidOpportunitiesTable.createdAt));
-      } else {
-        rows = await db
-          .select()
-          .from(bidOpportunitiesTable)
-          .orderBy(desc(bidOpportunitiesTable.createdAt));
-      }
+      rows = await db
+        .select()
+        .from(bidOpportunitiesTable)
+        .where(eq(bidOpportunitiesTable.businessId, bizId))
+        .orderBy(desc(bidOpportunitiesTable.createdAt));
     }
     res.json(rows);
   } catch (err) {
