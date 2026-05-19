@@ -93,20 +93,34 @@ function DeadlineBadge({ deadline }: { deadline: string | null }) {
 
 function CopyButton({ value, label }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
   function handleCopy() {
+    if (!navigator.clipboard) {
+      setFailed(true);
+      setTimeout(() => setFailed(false), 2000);
+      return;
+    }
     navigator.clipboard.writeText(value).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
+    }).catch(() => {
+      setFailed(true);
+      setTimeout(() => setFailed(false), 2000);
     });
   }
   return (
     <button
       type="button"
       onClick={handleCopy}
-      title={`Copy ${label ?? "to clipboard"}`}
-      className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+      title={failed ? "Copy not available — select and copy manually" : `Copy ${label ?? "to clipboard"}`}
+      className={`p-1 rounded transition-colors ${failed ? "text-destructive" : "hover:bg-muted text-muted-foreground hover:text-foreground"}`}
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied
+        ? <Check className="w-3.5 h-3.5 text-green-500" />
+        : failed
+        ? <XCircle className="w-3.5 h-3.5" />
+        : <Copy className="w-3.5 h-3.5" />
+      }
     </button>
   );
 }

@@ -304,11 +304,23 @@ router.put("/", async (req, res) => {
             typeof item.url !== "string" || !item.url.trim()) {
           return res.status(400).json({ error: "Each quick link must have id, label, and url strings." });
         }
+        if (!/^https?:\/\//i.test(item.url.trim())) {
+          return res.status(400).json({ error: "Quick link URLs must start with http:// or https://." });
+        }
+        if (item.label.trim().length > 200) {
+          return res.status(400).json({ error: "Quick link label must be 200 characters or fewer." });
+        }
         if (item.username !== undefined && typeof item.username !== "string") {
           return res.status(400).json({ error: "quick link username must be a string." });
         }
+        if (item.username !== undefined && item.username.length > 500) {
+          return res.status(400).json({ error: "Quick link username must be 500 characters or fewer." });
+        }
         if (item.password !== undefined && typeof item.password !== "string") {
           return res.status(400).json({ error: "quick link password must be a string." });
+        }
+        if (item.password !== undefined && item.password.length > 500) {
+          return res.status(400).json({ error: "Quick link password must be 500 characters or fewer." });
         }
       }
     }
