@@ -185,9 +185,10 @@ export interface BuildInvoiceEmailHtmlOpts {
 export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
   const cityLine = [opts.companyCity, opts.companyState, opts.companyZip].filter(Boolean).join(", ");
 
-  const displayCompanyName = opts.businessLine === "asphalt_sealing"
-    ? `${opts.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
-    : (opts.companyName || "");
+  const displayCompanyName = (opts as any).dbaName
+    ?? (opts.businessLine === "asphalt_sealing"
+      ? `${opts.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
+      : (opts.companyName || ""));
 
   const contactLines: string[] = [];
   if (opts.logoSrc) {

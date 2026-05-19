@@ -1356,7 +1356,7 @@ function JobFormDialog({
         startDate: editJob.startDate ?? "",
         endDate: editJob.endDate ?? "",
         notes: editJob.notes ?? "",
-        businessLine: (editJob.businessLine as "" | "general_contracting" | "asphalt_sealing") ?? "",
+        businessLine: editJob.businessLine ?? "",
         sqFt: editJob.sqFt != null ? String(editJob.sqFt) : "",
         coats: editJob.coats != null ? String(editJob.coats) : "1",
       };
@@ -1365,7 +1365,7 @@ function JobFormDialog({
       title: "", clientId: "", status: "scheduled",
       locationName: "", city: "", state: "KY",
       startDate: "", endDate: "", notes: "",
-      businessLine: (activeBusiness?.slug ?? "") as "" | "general_contracting" | "asphalt_sealing",
+      businessLine: activeBusiness?.slug ?? "",
       sqFt: "",
       coats: "1",
     };

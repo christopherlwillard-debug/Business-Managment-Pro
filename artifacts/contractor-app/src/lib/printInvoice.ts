@@ -35,6 +35,8 @@ export interface PrintableSettings {
   logoAbsoluteUrl?: string | null;
   logoSize?: string | null;
   logoPosition?: string | null;
+  /** Override display name for this business (e.g. DBA name). When set, used instead of companyName + businessLine logic. */
+  dbaName?: string | null;
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -69,9 +71,10 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
   const logoPx = settings.logoSize === "small" ? 64 : settings.logoSize === "large" ? 160 : 100;
   const logoPos = settings.logoPosition ?? "top-left";
 
-  const displayCompanyName = inv.businessLine === "asphalt_sealing"
-    ? `${settings.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
-    : (settings.companyName ?? null);
+  const displayCompanyName = settings.dbaName
+    ?? (inv.businessLine === "asphalt_sealing"
+      ? `${settings.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
+      : (settings.companyName ?? null));
 
   const hasContact = !!(displayCompanyName || settings.companyAddress || settings.companyCity ||
     settings.companyState || settings.companyZip || settings.companyPhone || settings.companyEmail);

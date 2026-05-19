@@ -928,8 +928,7 @@ export const GetDashboardStatsPeriod = {
   year: "year",
 } as const;
 
-export type GetDashboardStatsBusinessLine =
-  (typeof GetDashboardStatsBusinessLine)[keyof typeof GetDashboardStatsBusinessLine];
+export type GetDashboardStatsBusinessLine = string;
 
 export const GetDashboardStatsBusinessLine = {
   asphalt_sealing: "asphalt_sealing",

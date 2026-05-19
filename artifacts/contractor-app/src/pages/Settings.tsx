@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useGetSettings, useUpdateSettings, useSquareStatus, type AppSettings } from "@workspace/api-client-react";
 import { RegisteredAgentSection } from "@/components/RegisteredAgentSection";
 import { useQueryClient } from "@tanstack/react-query";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -1288,6 +1289,115 @@ function CalcDefaultsPanel({
   );
 }
 
+function BusinessProfileCard() {
+  const { activeBusiness, refresh } = useBusiness();
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", state: "", zip: "", licenseNumber: "", taxId: "" });
+  const [seeded, setSeeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const inp = "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
+  useEffect(() => {
+    if (activeBusiness && !seeded) {
+      setForm({
+        name: activeBusiness.name ?? "",
+        phone: activeBusiness.phone ?? "",
+        email: activeBusiness.email ?? "",
+        address: activeBusiness.address ?? "",
+        city: activeBusiness.city ?? "",
+        state: activeBusiness.state ?? "",
+        zip: activeBusiness.zip ?? "",
+        licenseNumber: activeBusiness.licenseNumber ?? "",
+        taxId: activeBusiness.taxId ?? "",
+      });
+      setSeeded(true);
+    }
+  }, [activeBusiness, seeded]);
+
+  if (!activeBusiness) return null;
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await fetch(`${BASE}/api/businesses/${activeBusiness!.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      refresh();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const setF = (k: string, v: string) => { setForm(f => ({ ...f, [k]: v })); setSaved(false); };
+
+  return (
+    <Card className="border-blue-200 shadow-md bg-blue-50/30">
+      <CardHeader className="border-b border-blue-200/60 bg-blue-50/50 pb-4">
+        <CardTitle className="font-display flex items-center gap-2 text-blue-800">
+          <Building2 className="w-5 h-5" /> Active Business — {activeBusiness.name}
+        </CardTitle>
+        <CardDescription className="text-blue-700/70">Profile for the currently selected business. Saved independently per business.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-6">
+        <form onSubmit={handleSave} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Business Name</label>
+              <input className={inp} value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Willard's Asphalt Sealing" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Phone</label>
+              <input className={inp} value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="(270) 555-0123" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Email</label>
+              <input className={inp} type="email" value={form.email} onChange={e => setF("email", e.target.value)} placeholder="contact@business.com" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Address</label>
+              <input className={inp} value={form.address} onChange={e => setF("address", e.target.value)} placeholder="123 Main St" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">City</label>
+              <input className={inp} value={form.city} onChange={e => setF("city", e.target.value)} placeholder="Bowling Green" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">State</label>
+              <input className={inp} value={form.state} onChange={e => setF("state", e.target.value)} placeholder="KY" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">ZIP</label>
+              <input className={inp} value={form.zip} onChange={e => setF("zip", e.target.value)} placeholder="42101" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">License Number</label>
+              <input className={inp} value={form.licenseNumber} onChange={e => setF("licenseNumber", e.target.value)} placeholder="KY-2024-XXXXX" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Tax ID / EIN</label>
+              <input className={inp} value={form.taxId} onChange={e => setF("taxId", e.target.value)} placeholder="XX-XXXXXXX" />
+            </div>
+          </div>
+          <div className="pt-2 flex items-center gap-3">
+            <button type="submit" disabled={saving}
+              className="px-5 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60">
+              {saving ? "Saving…" : "Save Business Profile"}
+            </button>
+            {saved && <span className="text-sm text-emerald-600 font-medium flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetSettings();
@@ -1676,6 +1786,9 @@ export default function Settings() {
                 <RegisteredAgentSection className="space-y-4" />
               </CardContent>
             </Card>
+
+            {/* Active Business Profile Card */}
+            <BusinessProfileCard />
           </>
         )}
 

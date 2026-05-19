@@ -14,12 +14,16 @@ import { Link, useLocation } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+const CARD_COLORS: Record<string, { border: string; header: string; text: string }> = {
+  general_contracting: { border: "border-blue-200",    header: "bg-blue-50",    text: "text-blue-700"    },
+  asphalt_sealing:     { border: "border-amber-200",   header: "bg-amber-50",   text: "text-amber-700"   },
+  real_estate:         { border: "border-emerald-200", header: "bg-emerald-50", text: "text-emerald-700" },
+};
+const DEFAULT_CARD_COLORS = { border: "border-gray-200", header: "bg-gray-50", text: "text-gray-700" };
+
 function BusinessStatsCard({ business, period }: { business: Business; period: "week"|"month"|"quarter"|"year" }) {
-  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: business.slug as "general_contracting" | "asphalt_sealing" });
-  const isAsphalt = business.slug === "asphalt_sealing";
-  const colors = isAsphalt
-    ? { border: "border-amber-200", header: "bg-amber-50", text: "text-amber-700" }
-    : { border: "border-blue-200", header: "bg-blue-50", text: "text-blue-700" };
+  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: business.slug });
+  const colors = CARD_COLORS[business.type] ?? CARD_COLORS[business.slug] ?? DEFAULT_CARD_COLORS;
   if (isLoading) return <div className={`rounded-xl border ${colors.border} overflow-hidden animate-pulse h-40`} />;
   if (!stats) return null;
   const net = (stats as any).operationalNetProfit ?? (stats.totalRevenue - stats.totalExpenses);

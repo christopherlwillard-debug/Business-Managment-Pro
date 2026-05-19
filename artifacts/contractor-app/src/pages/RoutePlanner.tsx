@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -326,12 +327,13 @@ export default function RoutePlanner() {
   }
 
   const { data: allJobs = [] } = useListJobs();
+  const { activeBusiness } = useBusiness();
 
   const asphaltJobs = useMemo(() =>
     allJobs.filter(j =>
-      j.businessLine === "asphalt_sealing" &&
+      (activeBusiness ? j.businessLine === activeBusiness.slug : j.businessLine === "asphalt_sealing") &&
       (j.status === "scheduled" || j.status === "in_progress")
-    ), [allJobs]);
+    ), [allJobs, activeBusiness]);
 
   const asphaltJobsByClientId = useMemo(() => {
     const map = new Map<number, typeof asphaltJobs>();

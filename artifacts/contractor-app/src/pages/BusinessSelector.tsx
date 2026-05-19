@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Building2, Plus, ChevronRight, HardHat, Home, Layers } from "lucide-react";
+import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText } from "lucide-react";
 import { useBusiness, type Business } from "@/contexts/BusinessContext";
+import { useGetDashboardStats } from "@workspace/api-client-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -29,10 +30,32 @@ function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
+function BusinessCardStats({ business }: { business: Business }) {
+  const { data: stats, isLoading } = useGetDashboardStats({ period: "month", businessLine: business.slug });
+  if (isLoading) return <div className="flex gap-3 mt-1.5"><div className="h-3.5 w-16 bg-current opacity-10 rounded animate-pulse" /><div className="h-3.5 w-20 bg-current opacity-10 rounded animate-pulse" /></div>;
+  if (!stats) return null;
+  return (
+    <div className="flex items-center gap-3 mt-1 text-xs opacity-75">
+      <span className="flex items-center gap-1">
+        <Briefcase className="w-3 h-3" />
+        {stats.activeJobs} active job{stats.activeJobs !== 1 ? "s" : ""}
+      </span>
+      {stats.overdueInvoices > 0 && (
+        <span className="flex items-center gap-1 text-red-600">
+          <FileText className="w-3 h-3" />
+          {stats.overdueInvoices} overdue
+        </span>
+      )}
+    </div>
+  );
+}
+
+const EMPTY_FORM = { name: "", type: "other", address: "", city: "", state: "", zip: "", phone: "", email: "", licenseNumber: "", taxId: "" };
+
 export default function BusinessSelector({ onSelect }: { onSelect: (b: Business | null) => void }) {
   const { businesses, setActiveBusiness, refresh } = useBusiness();
   const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState({ name: "", type: "other" });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,18 +74,33 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name.trim(), slug: slugify(form.name.trim()), type: form.type }),
+        body: JSON.stringify({
+          name: form.name.trim(),
+          slug: slugify(form.name.trim()),
+          type: form.type,
+          address: form.address || null,
+          city: form.city || null,
+          state: form.state || null,
+          zip: form.zip || null,
+          phone: form.phone || null,
+          email: form.email || null,
+          licenseNumber: form.licenseNumber || null,
+          taxId: form.taxId || null,
+        }),
       });
       if (!res.ok) { const d = await res.json(); setError(d.error || "Failed to create business"); return; }
       await refresh();
       setShowAddForm(false);
-      setForm({ name: "", type: "other" });
+      setForm(EMPTY_FORM);
     } catch {
       setError("Failed to create business");
     } finally {
       setSaving(false);
     }
   }
+
+  const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const inp = "w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20";
 
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center py-10 px-4">
@@ -107,6 +145,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                 <div className="flex-1 min-w-0">
                   <p className={`font-bold text-base ${colors.text}`}>{b.name}</p>
                   <p className="text-sm text-muted-foreground">{BUSINESS_TYPE_LABELS[b.type] ?? b.type}</p>
+                  <BusinessCardStats business={b} />
                 </div>
                 <ChevronRight className={`w-5 h-5 ${colors.text} opacity-40 group-hover:opacity-100 transition-opacity`} />
               </button>
@@ -128,34 +167,60 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
               </div>
             </button>
           ) : (
-            <form onSubmit={handleAddBusiness} className="p-5 rounded-2xl border-2 border-primary/30 bg-card space-y-4">
+            <form onSubmit={handleAddBusiness} className="p-5 rounded-2xl border-2 border-primary/30 bg-card space-y-3">
               <h3 className="font-bold text-foreground">New Business</h3>
               {error && <p className="text-sm text-destructive">{error}</p>}
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Name</label>
-                <input
-                  type="text" required autoFocus
-                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  placeholder="e.g. Willard's Real Estate LLC"
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Business Name *</label>
+                  <input type="text" required autoFocus className={inp} placeholder="e.g. Willard's Real Estate LLC" value={form.name} onChange={e => setF("name", e.target.value)} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Type</label>
+                  <select className={inp} value={form.type} onChange={e => setF("type", e.target.value)}>
+                    <option value="general_contracting">General Contracting</option>
+                    <option value="asphalt_sealing">Asphalt Sealing</option>
+                    <option value="real_estate">Real Estate</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Phone</label>
+                  <input className={inp} placeholder="(270) 555-0123" value={form.phone} onChange={e => setF("phone", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Email</label>
+                  <input type="email" className={inp} placeholder="contact@business.com" value={form.email} onChange={e => setF("email", e.target.value)} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Address</label>
+                  <input className={inp} placeholder="123 Main St" value={form.address} onChange={e => setF("address", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">City</label>
+                  <input className={inp} placeholder="Bowling Green" value={form.city} onChange={e => setF("city", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">State</label>
+                  <input className={inp} placeholder="KY" value={form.state} onChange={e => setF("state", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">ZIP</label>
+                  <input className={inp} placeholder="42101" value={form.zip} onChange={e => setF("zip", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">License Number</label>
+                  <input className={inp} placeholder="KY-2024-XXXXX" value={form.licenseNumber} onChange={e => setF("licenseNumber", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Tax ID / EIN</label>
+                  <input className={inp} placeholder="XX-XXXXXXX" value={form.taxId} onChange={e => setF("taxId", e.target.value)} />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Type</label>
-                <select
-                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  value={form.type}
-                  onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                >
-                  <option value="general_contracting">General Contracting</option>
-                  <option value="asphalt_sealing">Asphalt Sealing</option>
-                  <option value="real_estate">Real Estate</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
+
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => { setShowAddForm(false); setError(""); }}
+                <button type="button" onClick={() => { setShowAddForm(false); setError(""); setForm(EMPTY_FORM); }}
                   className="flex-1 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors">
                   Cancel
                 </button>

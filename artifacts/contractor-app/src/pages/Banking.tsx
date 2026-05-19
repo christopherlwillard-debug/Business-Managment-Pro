@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { usePlaidLink } from "react-plaid-link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -123,6 +124,7 @@ function formatCurrency(amount: number | string | null | undefined, currency = "
 }
 
 export default function Banking() {
+  const { activeBusiness, businesses } = useBusiness();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -259,7 +261,7 @@ export default function Banking() {
       vendor: "",
       category: "Materials",
       jobId: "",
-      businessLine: "",
+      businessLine: activeBusiness?.slug ?? "",
       notes: "",
     });
   }
@@ -615,13 +617,13 @@ export default function Banking() {
               </select>
             </div>
 
+            {!activeBusiness && (
             <div className="space-y-1.5">
               <Label>Business Line</Label>
               <div className="flex gap-2">
                 {[
                   { val: "", label: "Untagged" },
-                  { val: "general_contracting", label: "General Contracting" },
-                  { val: "asphalt_sealing", label: "Asphalt Sealing" },
+                  ...businesses.map(b => ({ val: b.slug, label: b.name })),
                 ].map(({ val, label }) => (
                   <button
                     key={val}
@@ -631,7 +633,7 @@ export default function Banking() {
                       form.businessLine === val
                         ? val === "asphalt_sealing"
                           ? "bg-amber-500 text-white border-amber-500"
-                          : val === "general_contracting"
+                          : val
                           ? "bg-blue-600 text-white border-blue-600"
                           : "bg-muted text-foreground border-input"
                         : "bg-background text-muted-foreground border-input hover:bg-muted/50"
@@ -642,6 +644,7 @@ export default function Banking() {
                 ))}
               </div>
             </div>
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="fe-job">Job (optional)</Label>
