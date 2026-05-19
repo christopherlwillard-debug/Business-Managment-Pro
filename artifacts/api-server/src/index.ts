@@ -7,6 +7,8 @@ import { startRecurringExpensesJob } from "./jobs/recurringExpenses.js";
 import { startInvoiceReminderJob } from "./jobs/invoiceReminders.js";
 import { startPlaidSyncJob } from "./jobs/plaidSync.js";
 import { startBidSyncJob } from "./jobs/bidSync.js";
+import { db } from "@workspace/db";
+import { businessesTable } from "@workspace/db/schema";
 
 const rawPort = process.env["PORT"];
 
@@ -55,8 +57,24 @@ async function ensureChrome(): Promise<void> {
   console.log("Chrome download complete.");
 }
 
+async function seedDefaultBusinesses(): Promise<void> {
+  try {
+    const existing = await db.select({ id: businessesTable.id }).from(businessesTable).limit(1);
+    if (existing.length === 0) {
+      await db.insert(businessesTable).values([
+        { name: "General Contracting", slug: "general_contracting", type: "general_contracting" },
+        { name: "Asphalt Sealing",     slug: "asphalt_sealing",     type: "asphalt_sealing"     },
+      ]);
+      console.log("Seeded default businesses.");
+    }
+  } catch (err) {
+    console.error("Business seed failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureChrome();
+  await seedDefaultBusinesses();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     startRecurringExpensesJob();

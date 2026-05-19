@@ -7,6 +7,24 @@ import { ObjectStorageService } from "../lib/objectStorage";
 
 const objectStorage = new ObjectStorageService();
 
+// Allowed business type values — validated at route level
+export const BUSINESS_TYPES = [
+  "general_contracting",
+  "asphalt_sealing",
+  "landscaping",
+  "electrical",
+  "plumbing",
+  "hvac",
+  "painting",
+  "roofing",
+  "other",
+] as const;
+export type BusinessType = (typeof BUSINESS_TYPES)[number];
+
+function isValidBusinessType(t: unknown): t is BusinessType {
+  return typeof t === "string" && (BUSINESS_TYPES as readonly string[]).includes(t);
+}
+
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -25,19 +43,8 @@ function toServingUrl(raw: string | null | undefined): string | null {
 
 const router = Router();
 
-async function ensureDefaults() {
-  const existing = await db.select({ id: businessesTable.id }).from(businessesTable).limit(1);
-  if (existing.length === 0) {
-    await db.insert(businessesTable).values([
-      { name: "General Contracting", slug: "general_contracting", type: "general_contracting" },
-      { name: "Asphalt Sealing", slug: "asphalt_sealing", type: "asphalt_sealing" },
-    ]);
-  }
-}
-
 router.get("/", async (req, res) => {
   try {
-    await ensureDefaults();
     const businesses = await db.select().from(businessesTable).orderBy(businessesTable.id);
     res.json(businesses);
   } catch (err) {
@@ -50,8 +57,12 @@ router.post("/", async (req, res) => {
   try {
     const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId } = req.body;
     if (!name || !slug) return res.status(400).json({ error: "name and slug are required" });
+    const resolvedType = type || "other";
+    if (!isValidBusinessType(resolvedType)) {
+      return res.status(400).json({ error: `Invalid type. Must be one of: ${BUSINESS_TYPES.join(", ")}` });
+    }
     const [business] = await db.insert(businessesTable).values({
-      name, slug, type: type || "other", logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId,
+      name, slug, type: resolvedType, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId,
     }).returning();
     res.status(201).json(business);
   } catch (err) {
@@ -67,7 +78,12 @@ router.put("/:id", async (req, res) => {
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (slug !== undefined) updates.slug = slug;
-    if (type !== undefined) updates.type = type;
+    if (type !== undefined) {
+      if (!isValidBusinessType(type)) {
+        return res.status(400).json({ error: `Invalid type. Must be one of: ${BUSINESS_TYPES.join(", ")}` });
+      }
+      updates.type = type;
+    }
     if (logoUrl !== undefined) updates.logoUrl = logoUrl;
     if (address !== undefined) updates.address = address;
     if (city !== undefined) updates.city = city;
