@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { useSearchParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -196,6 +197,7 @@ function prospectToForm(p: Prospect, defaultLine: BusinessLine): ProspectForm {
 type RouteStop = { id: number; address: string; scheduledDate: string | null; status: string };
 
 export default function PeopleAndProperties() {
+  const { activeBusiness } = useBusiness();
   const { canEdit, canView, isOwner } = useUserPermissions();
   const [, navigate] = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -205,7 +207,9 @@ export default function PeopleAndProperties() {
 
   const rawTab = (searchParams.get("tab") ?? (isOwner ? "prospects" : "clients")) as TabKey;
   const activeTab = (!isOwner && rawTab === "prospects") ? "clients" : rawTab;
-  const activeLine = (searchParams.get("line") ?? "") as BusinessLine;
+  const activeLine = activeBusiness
+    ? (activeBusiness.slug as BusinessLine)
+    : (searchParams.get("line") ?? "") as BusinessLine;
   const [searchQuery, setSearchQuery] = useState("");
 
   function setTab(tab: TabKey) {

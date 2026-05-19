@@ -20,7 +20,9 @@ export interface Business {
 interface BusinessContextValue {
   businesses: Business[];
   activeBusiness: Business | null;
+  hasSelection: boolean;
   setActiveBusiness: (b: Business | null) => void;
+  clearSelection: () => void;
   isLoading: boolean;
   refresh: () => void;
 }
@@ -28,16 +30,19 @@ interface BusinessContextValue {
 const BusinessContext = createContext<BusinessContextValue>({
   businesses: [],
   activeBusiness: null,
+  hasSelection: false,
   setActiveBusiness: () => {},
+  clearSelection: () => {},
   isLoading: true,
   refresh: () => {},
 });
 
-const STORAGE_KEY = "buildpro_active_business_id";
+const STORAGE_KEY_MODE = "buildpro_selection_mode";
 
 export function BusinessProvider({ children }: { children: ReactNode }) {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeBusiness, setActiveBusinessState] = useState<Business | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
@@ -47,10 +52,18 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       .then(res => (res.ok ? res.json() : []))
       .then((data: Business[]) => {
         setBusinesses(data);
-        const savedId = localStorage.getItem(STORAGE_KEY);
-        if (savedId) {
-          const saved = data.find(b => b.id === parseInt(savedId, 10));
-          if (saved) setActiveBusinessState(saved);
+        const savedMode = localStorage.getItem(STORAGE_KEY_MODE) ?? "unset";
+        if (savedMode === "unset") {
+          setHasSelection(false);
+          setActiveBusinessState(null);
+        } else if (savedMode === "all") {
+          setHasSelection(true);
+          setActiveBusinessState(null);
+        } else {
+          const id = parseInt(savedMode, 10);
+          const saved = !isNaN(id) ? data.find(b => b.id === id) ?? null : null;
+          setHasSelection(true);
+          setActiveBusinessState(saved);
         }
         setIsLoading(false);
       })
@@ -59,17 +72,24 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
   function setActiveBusiness(b: Business | null) {
     setActiveBusinessState(b);
+    setHasSelection(true);
     if (b) {
-      localStorage.setItem(STORAGE_KEY, String(b.id));
+      localStorage.setItem(STORAGE_KEY_MODE, String(b.id));
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY_MODE, "all");
     }
+  }
+
+  function clearSelection() {
+    setActiveBusinessState(null);
+    setHasSelection(false);
+    localStorage.setItem(STORAGE_KEY_MODE, "unset");
   }
 
   const refresh = () => setTick(t => t + 1);
 
   return (
-    <BusinessContext.Provider value={{ businesses, activeBusiness, setActiveBusiness, isLoading, refresh }}>
+    <BusinessContext.Provider value={{ businesses, activeBusiness, hasSelection, setActiveBusiness, clearSelection, isLoading, refresh }}>
       {children}
     </BusinessContext.Provider>
   );

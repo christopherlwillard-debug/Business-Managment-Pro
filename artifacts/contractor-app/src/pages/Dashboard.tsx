@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useGetDashboardStats, useListClients, useGetSettings } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useBusiness } from "@/contexts/BusinessContext";
+import { useBusiness, type Business } from "@/contexts/BusinessContext";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -13,6 +13,30 @@ import {
 import { Link, useLocation } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function BusinessStatsCard({ business, period }: { business: Business; period: "week"|"month"|"quarter"|"year" }) {
+  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: business.slug as "general_contracting" | "asphalt_sealing" });
+  const isAsphalt = business.slug === "asphalt_sealing";
+  const colors = isAsphalt
+    ? { border: "border-amber-200", header: "bg-amber-50", text: "text-amber-700" }
+    : { border: "border-blue-200", header: "bg-blue-50", text: "text-blue-700" };
+  if (isLoading) return <div className={`rounded-xl border ${colors.border} overflow-hidden animate-pulse h-40`} />;
+  if (!stats) return null;
+  const net = (stats as any).operationalNetProfit ?? (stats.totalRevenue - stats.totalExpenses);
+  return (
+    <div className={`rounded-xl border ${colors.border} overflow-hidden`}>
+      <div className={`px-4 py-2.5 ${colors.header}`}>
+        <p className={`font-semibold text-sm ${colors.text}`}>{business.name}</p>
+      </div>
+      <div className="p-4 grid grid-cols-2 gap-3">
+        <div><p className="text-xs text-muted-foreground mb-0.5">Revenue</p><p className="font-bold text-foreground text-sm">{formatCurrency(stats.totalRevenue)}</p></div>
+        <div><p className="text-xs text-muted-foreground mb-0.5">Expenses</p><p className="font-bold text-foreground text-sm">{formatCurrency(stats.totalExpenses)}</p></div>
+        <div><p className="text-xs text-muted-foreground mb-0.5">Active Jobs</p><p className="font-bold text-foreground text-sm">{stats.activeJobs}</p></div>
+        <div><p className="text-xs text-muted-foreground mb-0.5">Net Profit</p><p className={`font-bold text-sm ${net >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(net)}</p></div>
+      </div>
+    </div>
+  );
+}
 
 function getTodayStr() {
   const now = new Date();
@@ -79,7 +103,7 @@ function useTaxAlerts() {
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, hasSelection, businesses } = useBusiness();
   const [localBLFilter, setLocalBLFilter] = useState<"" | "asphalt_sealing" | "general_contracting">("");
   const businessLine = activeBusiness
     ? (activeBusiness.slug as "" | "asphalt_sealing" | "general_contracting")
@@ -487,6 +511,18 @@ export default function Dashboard() {
           <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} href="/accounting" />
         </div>
       </div>
+
+      {/* Business comparison grid — visible only in All Businesses mode */}
+      {hasSelection && !activeBusiness && businesses.length > 0 && (
+        <div>
+          <h2 className="text-base font-display font-bold text-foreground mb-3">By Business</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {businesses.map(b => (
+              <BusinessStatsCard key={b.id} business={b} period={period} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Operational Net Profit card */}
       {stats.operationalNetProfit !== undefined && (

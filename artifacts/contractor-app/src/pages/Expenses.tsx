@@ -2106,6 +2106,8 @@ export default function Expenses() {
               />
             </div>
 
+            {/* Business line toggle — hidden when a specific business is active (auto-assigned) */}
+            {!activeBusiness && (
             <div>
               <label className="block text-sm font-medium mb-1.5">Business Line <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
               <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
@@ -2144,6 +2146,7 @@ export default function Expenses() {
                 </button>
               </div>
             </div>
+            )}
 
             {category === "Owner Draw" ? (
               <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50/60">

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
@@ -736,6 +737,7 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
 function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; setActiveTab: (tab: AccountingTab) => void }) {
+  const { activeBusiness } = useBusiness();
   const [, navigate] = useLocation();
   const s = data?.summary ?? {};
   const netProfit = s.netProfit ?? 0;
@@ -796,14 +798,14 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
       window.history.replaceState({}, "", url.toString());
     };
     if (canEdit("invoices")) {
-      setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: pendingNewEntry.clientId });
+      setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: activeBusiness?.slug ?? "", clientId: pendingNewEntry.clientId });
     }
     setPendingNewEntry(null);
     clearParams();
   }, [pendingNewEntry, canEdit]);
 
   function openAddOI() {
-    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: "", clientId: null });
+    setOiForm({ amount: "", date: new Date().toISOString().split("T")[0], description: "", source: "", paymentMethod: "cash", city: "", state: "", notes: "", businessLine: activeBusiness?.slug ?? "", clientId: null });
   }
   function openEditOI(row: any) {
     setOiForm({ id: row.id, amount: String(row.amount), date: row.date, description: row.description, source: row.source ?? "", paymentMethod: row.paymentMethod ?? "cash", city: row.city ?? "", state: row.state ?? "", notes: row.notes ?? "", businessLine: row.businessLine ?? "", clientId: row.clientId ?? null });

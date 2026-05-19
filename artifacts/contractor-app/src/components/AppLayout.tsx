@@ -105,7 +105,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     enabled: isOwner,
   });
 
-  const { activeBusiness, setActiveBusiness } = useBusiness();
+  const { activeBusiness, clearSelection } = useBusiness();
 
   const companyName = (isOwner ? settings?.companyName : ctxCompanyName) || ctxCompanyName || "BuildPro";
   const logoUrl = (isOwner ? settings?.logoUrl : ctxLogoUrl) ?? ctxLogoUrl ?? null;
@@ -253,7 +253,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {isOwner && (
           <div className="px-3 py-2 border-b border-primary-foreground/10">
             <button
-              onClick={() => { setActiveBusiness(null); setLocation("/"); setMobileMenuOpen(false); }}
+              onClick={() => { clearSelection(); setLocation("/"); setMobileMenuOpen(false); }}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/80 hover:bg-primary-foreground/10 hover:text-white transition-colors"
             >
               <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-primary-foreground/50" />

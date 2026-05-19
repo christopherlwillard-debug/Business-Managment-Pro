@@ -67,6 +67,7 @@ function InvoiceBuilder({
   onPendingMaterialListChange: (list: MaterialList | null) => void;
 })
  {
+  const { activeBusiness } = useBusiness();
   const [showClientDrop, setShowClientDrop] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showNewListDialog, setShowNewListDialog] = useState(false);
@@ -155,7 +156,8 @@ function InvoiceBuilder({
       <div className="flex items-center justify-between px-6 pt-4 pb-3 border-b border-gray-100 bg-white flex-shrink-0">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-bold text-gray-900">New Invoice</h2>
-          {/* Business Line pill toggle */}
+          {/* Business Line pill toggle — hidden when a specific business is active (auto-assigned) */}
+          {!activeBusiness && (
           <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-lg">
             <button
               type="button"
@@ -180,6 +182,7 @@ function InvoiceBuilder({
               Asphalt Sealing
             </button>
           </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={onCancel}

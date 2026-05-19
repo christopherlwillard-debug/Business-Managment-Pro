@@ -152,7 +152,7 @@ function TabRedirect({ tab }: { tab: string }) {
 
 function HomeRoute() {
   const { isOwner, permissions } = useUserPermissions();
-  const { activeBusiness, isLoading: bizLoading } = useBusiness();
+  const { activeBusiness, hasSelection, isLoading: bizLoading } = useBusiness();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -170,7 +170,7 @@ function HomeRoute() {
     );
   }
 
-  if (isOwner && activeBusiness === null) {
+  if (isOwner && !hasSelection) {
     return (
       <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
         <BusinessSelector onSelect={() => {}} />
