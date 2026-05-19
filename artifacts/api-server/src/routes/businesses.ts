@@ -2,6 +2,26 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { businessesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import multer from "multer";
+import { ObjectStorageService } from "../lib/objectStorage";
+
+const objectStorage = new ObjectStorageService();
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|gif|webp|svg\+xml)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
+
+function toServingUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return `/api/storage/objects/${raw.slice("/objects/".length)}`;
+  if (raw.startsWith("/uploads/")) return `/api${raw}`;
+  return raw;
+}
 
 const router = Router();
 
@@ -74,6 +94,46 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete business" });
+  }
+});
+
+router.post("/:id/logo", logoUpload.single("logo"), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const objectPath = await objectStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      "uploads/logos",
+      req.file.originalname
+    );
+    const servingUrl = toServingUrl(objectPath)!;
+    const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, id)).limit(1);
+    if (!biz) return res.status(404).json({ error: "Business not found" });
+    if (biz.logoUrl && biz.logoUrl.startsWith("/objects/")) {
+      try { await objectStorage.deleteObject(biz.logoUrl); } catch { /* ignore */ }
+    }
+    await db.update(businessesTable).set({ logoUrl: objectPath }).where(eq(businessesTable.id, id));
+    res.json({ logoUrl: servingUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to upload logo" });
+  }
+});
+
+router.delete("/:id/logo", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, id)).limit(1);
+    if (!biz) return res.status(404).json({ error: "Business not found" });
+    if (biz.logoUrl && biz.logoUrl.startsWith("/objects/")) {
+      try { await objectStorage.deleteObject(biz.logoUrl); } catch { /* ignore */ }
+    }
+    await db.update(businessesTable).set({ logoUrl: null }).where(eq(businessesTable.id, id));
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete logo" });
   }
 });
 

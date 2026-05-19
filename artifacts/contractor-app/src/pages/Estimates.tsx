@@ -625,19 +625,20 @@ export default function Estimates() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; title: string } | null>(null);
   const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
 
-  const [activeTab, setActiveTab] = useState<"contracting" | "asphalt">(
-    activeBusiness?.slug === "asphalt_sealing" ? "asphalt" : "contracting"
-  );
+  const defaultTab = activeBusiness?.slug ?? businesses[0]?.slug ?? "";
+  const [activeTab, setActiveTab] = useState<string>(defaultTab);
 
   useEffect(() => {
     if (activeBusiness) {
-      setActiveTab(activeBusiness.slug === "asphalt_sealing" ? "asphalt" : "contracting");
+      setActiveTab(activeBusiness.slug);
+    } else if (businesses.length > 0 && !businesses.find(b => b.slug === activeTab)) {
+      setActiveTab(businesses[0].slug);
     }
-  }, [activeBusiness]);
+  }, [activeBusiness, businesses]);
 
-  const activeBusinessLine = activeTab === "asphalt" ? "asphalt_sealing" : "general_contracting";
+  const activeBusinessLine = activeTab;
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
 
@@ -731,11 +732,8 @@ export default function Estimates() {
   }, [modal, estimates]);
 
   const tabEstimates = useMemo(() =>
-    estimates.filter(e =>
-      activeTab === "asphalt"
-        ? e.businessLine === "asphalt_sealing"
-        : e.businessLine === "general_contracting"
-    ), [estimates, activeTab]);
+    estimates.filter(e => e.businessLine === activeBusinessLine),
+    [estimates, activeBusinessLine]);
 
   const filtered = filterStatus === "all" ? tabEstimates : tabEstimates.filter(e => e.status === filterStatus);
 
@@ -770,18 +768,15 @@ export default function Estimates() {
       {/* Business line tabs — only shown in All Businesses mode */}
       {activeBusiness === null && (
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-        <button
-          onClick={() => { setActiveTab("contracting"); setFilterStatus("all"); }}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === "contracting" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-        >
-          Contracting
-        </button>
-        <button
-          onClick={() => { setActiveTab("asphalt"); setFilterStatus("all"); }}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === "asphalt" ? "bg-gray-800 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-        >
-          Asphalt Sealing
-        </button>
+        {businesses.map(b => (
+          <button
+            key={b.slug}
+            onClick={() => { setActiveTab(b.slug); setFilterStatus("all"); }}
+            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === b.slug ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            {b.name}
+          </button>
+        ))}
       </div>
       )}
 
@@ -833,7 +828,7 @@ export default function Estimates() {
             <Calculator className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground">
               {filterStatus === "all"
-                ? `No ${activeTab === "asphalt" ? "asphalt sealing" : "contracting"} estimates yet`
+                ? `No ${businesses.find(b => b.slug === activeTab)?.name ?? activeTab} estimates yet`
                 : `No ${filterStatus} estimates`}
             </h3>
             <p className="text-muted-foreground mt-1 text-sm">

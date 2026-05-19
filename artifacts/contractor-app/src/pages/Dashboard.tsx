@@ -108,10 +108,8 @@ function useTaxAlerts() {
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
   const { activeBusiness, hasSelection, businesses } = useBusiness();
-  const [localBLFilter, setLocalBLFilter] = useState<"" | "asphalt_sealing" | "general_contracting">("");
-  const businessLine = activeBusiness
-    ? (activeBusiness.slug as "" | "asphalt_sealing" | "general_contracting")
-    : localBLFilter;
+  const [localBLFilter, setLocalBLFilter] = useState<string>("");
+  const businessLine = activeBusiness ? activeBusiness.slug : localBLFilter;
   const [drawDialogOpen, setDrawDialogOpen] = useState(false);
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -477,21 +475,13 @@ export default function Dashboard() {
           {activeBusiness === null && (
           <div className="flex items-center gap-3">
             <div className="flex gap-2">
-              {([
-                { value: "", label: "All Businesses" },
-                { value: "asphalt_sealing", label: "Asphalt" },
-                { value: "general_contracting", label: "Contracting" },
-              ] as const).map(opt => (
+              {([{ value: "", label: "All" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))]).map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => setLocalBLFilter(opt.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                     businessLine === opt.value
-                      ? opt.value === "asphalt_sealing"
-                        ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                        : opt.value === "general_contracting"
-                          ? "bg-primary border-primary text-primary-foreground shadow-sm"
-                          : "bg-foreground border-foreground text-background shadow-sm"
+                      ? "bg-primary border-primary text-primary-foreground shadow-sm"
                       : "bg-background border-border text-muted-foreground hover:border-primary/40"
                   }`}
                 >

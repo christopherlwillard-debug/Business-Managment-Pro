@@ -1292,14 +1292,15 @@ function CalcDefaultsPanel({
 function BusinessProfileCard() {
   const { activeBusiness, refresh } = useBusiness();
   const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", state: "", zip: "", licenseNumber: "", taxId: "" });
-  const [seeded, setSeeded] = useState(false);
+  const [seededId, setSeededId] = useState<number | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
   const inp = "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
   useEffect(() => {
-    if (activeBusiness && !seeded) {
+    if (activeBusiness && activeBusiness.id !== seededId) {
       setForm({
         name: activeBusiness.name ?? "",
         phone: activeBusiness.phone ?? "",
@@ -1311,9 +1312,11 @@ function BusinessProfileCard() {
         licenseNumber: activeBusiness.licenseNumber ?? "",
         taxId: activeBusiness.taxId ?? "",
       });
-      setSeeded(true);
+      setLogoUrl(activeBusiness.logoUrl ?? null);
+      setSeededId(activeBusiness.id);
+      setSaved(false);
     }
-  }, [activeBusiness, seeded]);
+  }, [activeBusiness, seededId]);
 
   if (!activeBusiness) return null;
 
@@ -1321,13 +1324,14 @@ function BusinessProfileCard() {
     e.preventDefault();
     setSaving(true);
     try {
-      await fetch(`${BASE}/api/businesses/${activeBusiness!.id}`, {
+      const res = await fetch(`${BASE}/api/businesses/${activeBusiness!.id}`, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      refresh();
+      if (!res.ok) throw new Error("Failed to save");
+      await refresh();
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } finally {
@@ -1345,7 +1349,18 @@ function BusinessProfileCard() {
         </CardTitle>
         <CardDescription className="text-blue-700/70">Profile for the currently selected business. Saved independently per business.</CardDescription>
       </CardHeader>
-      <CardContent className="p-6">
+      <CardContent className="p-6 space-y-5">
+        {/* Logo upload */}
+        <div>
+          <label className="block text-xs font-semibold text-muted-foreground mb-2">Business Logo</label>
+          <LogoUpload
+            logoUrl={logoUrl}
+            uploadPath={`/api/businesses/${activeBusiness.id}/logo`}
+            deletePath={`/api/businesses/${activeBusiness.id}/logo`}
+            onUploaded={url => { setLogoUrl(url); refresh(); }}
+            onRemoved={() => { setLogoUrl(null); refresh(); }}
+          />
+        </div>
         <form onSubmit={handleSave} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">

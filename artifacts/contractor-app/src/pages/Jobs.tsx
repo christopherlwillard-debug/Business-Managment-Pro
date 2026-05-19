@@ -1449,24 +1449,16 @@ function JobFormDialog({
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Business</label>
-            <div className="flex gap-2">
-              {([
-                { value: "", label: "Unassigned" },
-                { value: "general_contracting", label: "General Contracting" },
-                { value: "asphalt_sealing", label: "Asphalt Sealing" },
-              ] as const).map(opt => (
-                <label key={opt.value} className="flex-1">
+            <div className="flex flex-wrap gap-2">
+              {[{ value: "", label: "Unassigned" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))].map(opt => (
+                <label key={opt.value} className="flex-1 min-w-[100px]">
                   <input type="radio" name="businessLine" value={opt.value}
                     checked={form.businessLine === opt.value}
                     onChange={() => setField("businessLine", opt.value)}
                     className="sr-only" />
                   <span className={`flex items-center justify-center px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
                     form.businessLine === opt.value
-                      ? opt.value === "asphalt_sealing"
-                        ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                        : opt.value === "general_contracting"
-                          ? "bg-primary border-primary text-primary-foreground shadow-sm"
-                          : "bg-muted border-muted-foreground/30 text-foreground shadow-sm"
+                      ? "bg-primary border-primary text-primary-foreground shadow-sm"
                       : "bg-background border-border text-muted-foreground hover:border-primary/30"
                   }`}>
                     {opt.label}
@@ -1703,12 +1695,10 @@ export default function Jobs() {
 
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const [jobSearch, setJobSearch]       = useState("");
-  const [localBLFilter, setLocalBLFilter] = useState<"" | "asphalt_sealing" | "general_contracting">("");
-  const jobBLFilter = activeBusiness
-    ? (activeBusiness.slug as "" | "asphalt_sealing" | "general_contracting")
-    : localBLFilter;
+  const [localBLFilter, setLocalBLFilter] = useState<string>("");
+  const jobBLFilter = activeBusiness ? activeBusiness.slug : localBLFilter;
   const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [jobFormOpen, setJobFormOpen]   = useState(false);
