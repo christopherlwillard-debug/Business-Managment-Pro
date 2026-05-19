@@ -49,6 +49,8 @@ export const settingsTable = pgTable("settings", {
   taxFilingFrequency: text("tax_filing_frequency").default("quarterly"),
   // Calculator defaults (plumbing, flooring, trim, siding, drywall, punch list)
   calculatorDefaults: jsonb("calculator_defaults"),
+  // Contractor portal quick links (label, url, optional username/password)
+  quickLinks: jsonb("quick_links"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -257,6 +257,7 @@ function format(s: any) {
     invoiceReminderDay1: s.invoiceReminderDay1 ?? 7,
     invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
     calculatorDefaults: s.calculatorDefaults ?? null,
+    quickLinks: Array.isArray(s.quickLinks) ? s.quickLinks : [],
   };
 }
 
@@ -362,6 +363,9 @@ router.put("/", async (req, res) => {
       calculatorDefaults: body.calculatorDefaults !== undefined
         ? body.calculatorDefaults
         : (settings?.calculatorDefaults ?? null),
+      quickLinks: body.quickLinks !== undefined
+        ? (Array.isArray(body.quickLinks) ? body.quickLinks : null)
+        : (settings?.quickLinks ?? null),
       updatedAt: new Date(),
     };
 
