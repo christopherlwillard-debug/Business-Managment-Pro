@@ -331,7 +331,7 @@ export default function RoutePlanner() {
 
   const asphaltJobs = useMemo(() =>
     allJobs.filter(j =>
-      (activeBusiness ? j.businessLine === activeBusiness.slug : j.businessLine === "asphalt_sealing") &&
+      (!activeBusiness || j.businessLine === activeBusiness.slug) &&
       (j.status === "scheduled" || j.status === "in_progress")
     ), [allJobs, activeBusiness]);
 

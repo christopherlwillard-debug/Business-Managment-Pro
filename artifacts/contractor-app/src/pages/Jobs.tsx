@@ -2069,11 +2069,7 @@ export default function Jobs() {
       {/* Business-line filter tabs — only in All Businesses mode */}
       {!isLoading && jobs.length > 0 && activeBusiness === null && (
         <div className="flex gap-2 flex-wrap">
-          {([
-            { value: "", label: "All Jobs" },
-            { value: "asphalt_sealing", label: "Asphalt Sealing" },
-            { value: "general_contracting", label: "General Contracting" },
-          ] as const).map(opt => {
+          {[{ value: "", label: "All Jobs" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))].map((opt, idx) => {
             const count = opt.value === ""
               ? jobs.length
               : jobs.filter(j => j.businessLine === opt.value).length;
@@ -2083,11 +2079,9 @@ export default function Jobs() {
                 onClick={() => setLocalBLFilter(opt.value)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${
                   localBLFilter === opt.value
-                    ? opt.value === "asphalt_sealing"
-                      ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                      : opt.value === "general_contracting"
-                        ? "bg-primary border-primary text-primary-foreground shadow-sm"
-                        : "bg-foreground border-foreground text-background shadow-sm"
+                    ? idx === 0
+                      ? "bg-foreground border-foreground text-background shadow-sm"
+                      : "bg-primary border-primary text-primary-foreground shadow-sm"
                     : "bg-background border-border text-muted-foreground hover:border-primary/40"
                 }`}
               >

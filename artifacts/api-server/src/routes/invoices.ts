@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { launchBrowser } from "../lib/launchBrowser.js";
-import { sendInvoiceEmail } from "../lib/invoiceEmail";
+import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
 import { db } from "@workspace/db";
-import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
+import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 
@@ -323,10 +323,28 @@ router.post("/:id/send", async (req, res) => {
     ]);
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
 
-    const companyName = settings?.companyName ?? "BuildPro";
+    // Resolve business profile by the invoice's businessLine slug (if any)
+    const bizRows: Business[] = inv.businessLine
+      ? await db.select().from(businessesTable).where(eq(businessesTable.slug, inv.businessLine as string)).limit(1)
+      : [];
+    const biz = bizRows[0];
+    const mergedSettings: InvoiceEmailSettings = {
+      ...(settings ?? {}),
+      ...(biz ? {
+        companyName: biz.name || settings?.companyName,
+        companyAddress: biz.address || settings?.companyAddress,
+        companyCity: biz.city || settings?.companyCity,
+        companyState: biz.state || settings?.companyState,
+        companyZip: biz.zip || settings?.companyZip,
+        companyPhone: biz.phone || settings?.companyPhone,
+        companyEmail: biz.email || settings?.companyEmail,
+      } : {}),
+    };
+
+    const companyName = mergedSettings.companyName ?? "BuildPro";
     const subjectLine = subject || `Invoice ${inv.invoiceNumber} from ${companyName}`;
 
-    await sendInvoiceEmail(fmt(inv), settings ?? {}, to, subjectLine, message);
+    await sendInvoiceEmail(fmt(inv), mergedSettings, to, subjectLine, message);
 
     await db.update(invoicesTable).set({ status: "sent" }).where(eq(invoicesTable.id, id));
 
@@ -355,14 +373,32 @@ router.post("/:id/send-reminder", async (req, res) => {
     const paymentLink = inv.squarePaymentLinkUrl;
     if (!paymentLink) return res.status(400).json({ error: "Invoice has no Square payment link. Generate one first." });
 
-    const clientEmail = inv.clientEmail;
+    const clientEmail = inv.clientEmail as string | null;
     if (!clientEmail) return res.status(400).json({ error: "Client has no email address on file." });
 
-    const companyName = settings?.companyName ?? "BuildPro";
+    // Resolve business profile by the invoice's businessLine slug (if any)
+    const bizRows2: Business[] = inv.businessLine
+      ? await db.select().from(businessesTable).where(eq(businessesTable.slug, inv.businessLine as string)).limit(1)
+      : [];
+    const biz2 = bizRows2[0];
+    const mergedSettings: InvoiceEmailSettings = {
+      ...(settings ?? {}),
+      ...(biz2 ? {
+        companyName: biz2.name || settings?.companyName,
+        companyAddress: biz2.address || settings?.companyAddress,
+        companyCity: biz2.city || settings?.companyCity,
+        companyState: biz2.state || settings?.companyState,
+        companyZip: biz2.zip || settings?.companyZip,
+        companyPhone: biz2.phone || settings?.companyPhone,
+        companyEmail: biz2.email || settings?.companyEmail,
+      } : {}),
+    };
+
+    const companyName = mergedSettings.companyName ?? "BuildPro";
     const subject = `Reminder: Invoice ${inv.invoiceNumber} — Payment Due (${companyName})`;
     const message = `Hi ${inv.clientName || "there"},\n\nThis is a friendly reminder that invoice ${inv.invoiceNumber} is still outstanding. Please use the button below to pay securely online.\n\nThank you for your business!`;
 
-    await sendInvoiceEmail(fmt(inv), settings ?? {}, clientEmail, subject, message);
+    await sendInvoiceEmail(fmt(inv), mergedSettings, clientEmail, subject, message);
 
     const now = new Date().toISOString();
     const current = Array.isArray(inv.remindersSentAt) ? (inv.remindersSentAt as string[]) : [];
