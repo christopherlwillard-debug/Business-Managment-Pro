@@ -286,6 +286,33 @@ router.put("/", async (req, res) => {
   try {
     const body = req.body;
 
+    // quickLinks mutations are owner-only — enforce server-side
+    if (body.quickLinks !== undefined) {
+      const [s] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
+      const userId = (req.user as { id?: string } | undefined)?.id;
+      if (s?.ownerUserId && s.ownerUserId !== userId) {
+        return res.status(403).json({ error: "Only the owner can modify portal links." });
+      }
+      // Validate payload shape: must be an array of objects with id, label, url strings
+      if (!Array.isArray(body.quickLinks)) {
+        return res.status(400).json({ error: "quickLinks must be an array." });
+      }
+      for (const item of body.quickLinks) {
+        if (typeof item !== "object" || item === null ||
+            typeof item.id !== "string" || !item.id ||
+            typeof item.label !== "string" || !item.label.trim() ||
+            typeof item.url !== "string" || !item.url.trim()) {
+          return res.status(400).json({ error: "Each quick link must have id, label, and url strings." });
+        }
+        if (item.username !== undefined && typeof item.username !== "string") {
+          return res.status(400).json({ error: "quick link username must be a string." });
+        }
+        if (item.password !== undefined && typeof item.password !== "string") {
+          return res.status(400).json({ error: "quick link password must be a string." });
+        }
+      }
+    }
+
     if (body.complianceNotificationEmail) {
       const email = body.complianceNotificationEmail.toString().trim();
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
