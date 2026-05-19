@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText, Pencil } from "lucide-react";
+import { useState, useRef } from "react";
+import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText, Pencil, Upload, X } from "lucide-react";
 import { useBusiness, type Business } from "@/contexts/BusinessContext";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 
@@ -68,6 +68,18 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState("");
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const logoBlobRef = useRef<string | null>(null);
+
+  function revokeBlobPreview() {
+    if (logoBlobRef.current) {
+      URL.revokeObjectURL(logoBlobRef.current);
+      logoBlobRef.current = null;
+    }
+  }
 
   function handleSelect(b: Business | null) {
     setActiveBusiness(b);
@@ -125,6 +137,72 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
       taxId: b.taxId ?? "",
     });
     setEditError("");
+    revokeBlobPreview();
+    setLogoPreview(null);
+    setLogoError("");
+  }
+
+  async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!editingBusiness) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoError("");
+    revokeBlobPreview();
+    const localPreview = URL.createObjectURL(file);
+    logoBlobRef.current = localPreview;
+    setLogoPreview(localPreview);
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("logo", file);
+      const res = await fetch(`${BASE}/api/businesses/${editingBusiness.id}/logo`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setLogoError(d.error || "Failed to upload logo");
+        revokeBlobPreview();
+        setLogoPreview(null);
+        return;
+      }
+      const { logoUrl } = await res.json();
+      revokeBlobPreview();
+      setLogoPreview(`${BASE}${logoUrl}`);
+      await refresh();
+    } catch {
+      setLogoError("Failed to upload logo");
+      revokeBlobPreview();
+      setLogoPreview(null);
+    } finally {
+      setLogoUploading(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
+  }
+
+  async function handleRemoveLogo() {
+    if (!editingBusiness) return;
+    setLogoError("");
+    setLogoUploading(true);
+    try {
+      const res = await fetch(`${BASE}/api/businesses/${editingBusiness.id}/logo`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setLogoError(d.error || "Failed to remove logo");
+        return;
+      }
+      revokeBlobPreview();
+      setLogoPreview(null);
+      await refresh();
+    } catch {
+      setLogoError("Failed to remove logo");
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   async function handleEditBusiness(e: React.FormEvent) {
@@ -232,6 +310,52 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                   <form onSubmit={handleEditBusiness} className={`p-5 rounded-2xl rounded-t-none border-2 border-t-0 ${colors.border} bg-card space-y-3`}>
                     <h3 className="font-bold text-foreground text-sm">Edit Business</h3>
                     {editError && <p className="text-sm text-destructive">{editError}</p>}
+
+                    {/* Logo upload section */}
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-2">Logo</label>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-14 h-14 rounded-xl ${colors.iconBg} flex items-center justify-center flex-shrink-0 overflow-hidden`}>
+                          {logoPreview ? (
+                            <img src={logoPreview} alt="logo preview" className="w-12 h-12 object-contain rounded-lg" />
+                          ) : b.logoUrl ? (
+                            <img src={`${BASE}${b.logoUrl}`} alt={b.name} className="w-12 h-12 object-contain rounded-lg" />
+                          ) : (
+                            <BusinessIcon type={b.type} className={`w-6 h-6 ${colors.text}`} />
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            type="button"
+                            disabled={logoUploading}
+                            onClick={() => logoInputRef.current?.click()}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted transition-colors disabled:opacity-60"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            {logoUploading ? "Uploading…" : (b.logoUrl || logoPreview) ? "Change Logo" : "Upload Logo"}
+                          </button>
+                          {(b.logoUrl || logoPreview) && !logoUploading && (
+                            <button
+                              type="button"
+                              onClick={handleRemoveLogo}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-destructive hover:bg-destructive/10 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              Remove Logo
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          ref={logoInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                          className="hidden"
+                          onChange={handleLogoChange}
+                        />
+                      </div>
+                      {logoError && <p className="text-xs text-destructive mt-1">{logoError}</p>}
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-semibold text-muted-foreground mb-1">Business Name *</label>
@@ -290,9 +414,9 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                         className="flex-1 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors">
                         Cancel
                       </button>
-                      <button type="submit" disabled={editSaving}
+                      <button type="submit" disabled={editSaving || logoUploading}
                         className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60">
-                        {editSaving ? "Saving…" : "Save Changes"}
+                        {editSaving ? "Saving…" : logoUploading ? "Uploading logo…" : "Save Changes"}
                       </button>
                     </div>
                   </form>
