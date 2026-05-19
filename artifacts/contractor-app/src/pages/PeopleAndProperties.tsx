@@ -30,7 +30,7 @@ import {
   Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
   BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2,
   ListPlus, Search, Users, Mail, ChevronRight, Calendar, AlertTriangle,
-  HardHat, Layers, Upload, LayoutList, LayoutGrid,
+  Layers, Upload, LayoutList, LayoutGrid,
   CheckSquare2, Square, Send, Tag, CalendarPlus, CheckCheck,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,27 +42,34 @@ import { sendViaGmail } from "@/lib/gmailSend";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-type BusinessLine = "asphalt" | "contracting" | "";
+type BusinessLine = string;
 type TabKey = "prospects" | "clients";
 
-const BUSINESS_LINES: { value: BusinessLine; label: string; shortLabel: string; color: string; badge: string }[] = [
-  { value: "asphalt",     label: "Willard's Asphalt",     shortLabel: "Asphalt",     color: "bg-blue-600 text-white border-blue-600",   badge: "bg-blue-100 text-blue-700 border-blue-200" },
-  { value: "contracting", label: "Willard's Contracting",  shortLabel: "Contracting", color: "bg-amber-600 text-white border-amber-600", badge: "bg-amber-100 text-amber-700 border-amber-200" },
-];
+// Legacy slug migration: old data used short values before slugs were introduced
+const LEGACY_BL_MAP: Record<string, string> = {
+  asphalt: "asphalt_sealing",
+  contracting: "general_contracting",
+};
+function normalizeBL(bl: string | null | undefined): string {
+  if (!bl) return "";
+  return LEGACY_BL_MAP[bl] ?? bl;
+}
 
-function BusinessLineBadge({ line }: { line: string | null | undefined }) {
-  const def = BUSINESS_LINES.find(b => b.value === line);
-  if (def) {
+function BusinessLineBadge({ line, businesses }: { line: string | null | undefined; businesses: { slug: string; name: string }[] }) {
+  const normalized = normalizeBL(line);
+  const biz = businesses.find(b => b.slug === normalized);
+  if (biz) {
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${def.badge}`}>
-        {line === "asphalt" ? <HardHat className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-        {def.shortLabel}
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-primary/10 text-primary border-primary/20">
+        <Layers className="w-3 h-3" />
+        {biz.name}
       </span>
     );
   }
+  if (!line) return null;
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-gray-100 text-gray-500 border-gray-200">
-      Untagged
+      {line}
     </span>
   );
 }
@@ -197,7 +204,7 @@ function prospectToForm(p: Prospect, defaultLine: BusinessLine): ProspectForm {
 type RouteStop = { id: number; address: string; scheduledDate: string | null; status: string };
 
 export default function PeopleAndProperties() {
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const { canEdit, canView, isOwner } = useUserPermissions();
   const [, navigate] = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -207,9 +214,9 @@ export default function PeopleAndProperties() {
 
   const rawTab = (searchParams.get("tab") ?? (isOwner ? "prospects" : "clients")) as TabKey;
   const activeTab = (!isOwner && rawTab === "prospects") ? "clients" : rawTab;
-  const activeLine = activeBusiness
-    ? (activeBusiness.slug as BusinessLine)
-    : (searchParams.get("line") ?? "") as BusinessLine;
+  const activeLine: string = activeBusiness
+    ? activeBusiness.slug
+    : (searchParams.get("line") ?? "");
   const [searchQuery, setSearchQuery] = useState("");
 
   function setTab(tab: TabKey) {
@@ -221,7 +228,7 @@ export default function PeopleAndProperties() {
     }, { replace: true });
   }
 
-  function setLine(line: BusinessLine) {
+  function setLine(line: string) {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       if (line) next.set("line", line); else next.delete("line");
@@ -353,7 +360,7 @@ export default function PeopleAndProperties() {
   const filteredProspects = useMemo(() => {
     let list = prospects.filter(p => {
       if (activeLine) {
-        if (p.businessLine !== activeLine) return false;
+        if (normalizeBL(p.businessLine) !== activeLine) return false;
       } else {
         if (p.businessLine) return false;
       }
@@ -372,7 +379,7 @@ export default function PeopleAndProperties() {
   const filteredClients = useMemo(() => {
     let list = (clients ?? []).filter((c: Client) => {
       if (activeLine) {
-        if (c.businessLine !== activeLine) return false;
+        if (normalizeBL(c.businessLine) !== activeLine) return false;
       } else {
         if (c.businessLine) return false;
       }
@@ -539,7 +546,7 @@ export default function PeopleAndProperties() {
   const [clientDialogKey, setClientDialogKey] = useState(0);
   const [deleteClientTarget, setDeleteClientTarget] = useState<Client | null>(null);
   const [isDeletingClient, setIsDeletingClient] = useState(false);
-  const [clientFormLine, setClientFormLine] = useState<BusinessLine>("");
+  const [clientFormLine, setClientFormLine] = useState<string>("");
   const [clientFormLineError, setClientFormLineError] = useState(false);
 
   async function handleSyncClient(clientId: number, e: React.MouseEvent) {
@@ -605,7 +612,7 @@ export default function PeopleAndProperties() {
     e?.stopPropagation();
     setEditingClient(c);
     setClientPrefillAddress("");
-    setClientFormLine((c.businessLine as BusinessLine) ?? "");
+    setClientFormLine(normalizeBL(c.businessLine) ?? "");
     setClientFormLineError(false);
     setClientDialogKey(k => k + 1);
     setClientDialogOpen(true);
@@ -664,7 +671,7 @@ export default function PeopleAndProperties() {
     }
   }
 
-  async function handleQuickAssignLine(clientId: number, line: BusinessLine) {
+  async function handleQuickAssignLine(clientId: number, line: string) {
     setAssigningLineId(clientId);
     setOpenLineDropdown(null);
     try {
@@ -675,8 +682,8 @@ export default function PeopleAndProperties() {
         body: JSON.stringify({ businessLine: line }),
       });
       if (!res.ok) throw new Error("Failed");
-      const bl = BUSINESS_LINES.find(b => b.value === line);
-      toast({ title: `Assigned to ${bl?.shortLabel ?? line}` });
+      const bizLabel = businesses.find(b => b.slug === line)?.name ?? line;
+      toast({ title: `Assigned to ${bizLabel}` });
       refetchClients();
     } catch {
       toast({ title: "Couldn't assign business line", variant: "destructive" });
@@ -690,7 +697,7 @@ export default function PeopleAndProperties() {
     [prospects, selectedProspectIds]
   );
 
-  async function handleBulkAssignLine(line: BusinessLine) {
+  async function handleBulkAssignLine(line: string) {
     if (selectedProspectIds.size === 0) return;
     setIsBulkWorking(true);
     setBulkSubAction(null);
@@ -704,9 +711,9 @@ export default function PeopleAndProperties() {
       ));
       const succeeded = results.filter(Boolean).length;
       const failed = results.length - succeeded;
-      const bl = BUSINESS_LINES.find(b => b.value === line);
+      const bizLabel = businesses.find(b => b.slug === line)?.name ?? line;
       if (failed === 0) {
-        toast({ title: `${succeeded} prospect${succeeded !== 1 ? "s" : ""} assigned to ${bl?.shortLabel ?? line}` });
+        toast({ title: `${succeeded} prospect${succeeded !== 1 ? "s" : ""} assigned to ${bizLabel}` });
       } else {
         toast({ title: `${succeeded} assigned, ${failed} failed`, variant: failed === results.length ? "destructive" : "default" });
       }
@@ -904,7 +911,8 @@ export default function PeopleAndProperties() {
         </div>
       </div>
 
-      {/* Business Line Toggle */}
+      {/* Business Line Toggle — only shown when in All Businesses mode */}
+      {!activeBusiness && (
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setLine("")}
@@ -914,21 +922,24 @@ export default function PeopleAndProperties() {
               : "bg-card text-muted-foreground border-border hover:bg-muted"
           }`}
         >
-          Unassigned
+          All
         </button>
-        {BUSINESS_LINES.map(bl => (
+        {businesses.map(biz => (
           <button
-            key={bl.value}
-            onClick={() => setLine(bl.value)}
+            key={biz.slug}
+            onClick={() => setLine(biz.slug)}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              activeLine === bl.value ? bl.color : "bg-card text-muted-foreground border-border hover:bg-muted"
+              activeLine === biz.slug
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:bg-muted"
             }`}
           >
-            {bl.value === "asphalt" ? <HardHat className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
-            {bl.label}
+            <Layers className="w-3.5 h-3.5" />
+            {biz.name}
           </button>
         ))}
       </div>
+      )}
 
       {/* Search Bar */}
       <div className="relative">
@@ -1132,7 +1143,7 @@ export default function PeopleAndProperties() {
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${propColor}`}>
                           <Building2 className="w-3 h-3" />{p.propertyType}
                         </span>
-                        <BusinessLineBadge line={p.businessLine} />
+                        <BusinessLineBadge line={p.businessLine} businesses={businesses} />
                         {scheduledDate && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-green-100 text-green-700 border-green-200">
                             <Route className="w-3 h-3" />On Route {formatShortDate(scheduledDate)}
@@ -1244,8 +1255,8 @@ export default function PeopleAndProperties() {
 
           {(() => {
             const activeLineLabel = activeLine
-              ? (BUSINESS_LINES.find(b => b.value === activeLine)?.shortLabel ?? activeLine)
-              : "Unassigned";
+              ? (businesses.find(b => b.slug === activeLine)?.name ?? activeLine)
+              : "All";
             const emptyLabel = searchHasText
               ? `No clients match "${searchQuery}"`
               : `No ${activeLineLabel.toLowerCase()} clients`;
@@ -1311,22 +1322,22 @@ export default function PeopleAndProperties() {
                               title="Assign business line"
                               className="group"
                             >
-                              <BusinessLineBadge line={client.businessLine} />
+                              <BusinessLineBadge line={client.businessLine} businesses={businesses} />
                             </button>
                           )}
                           {openLineDropdown === client.id && (
                             <div className="absolute z-50 left-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden min-w-[130px]">
-                              {BUSINESS_LINES.map(bl => (
+                              {businesses.map(biz => (
                                 <button
-                                  key={bl.value}
-                                  onClick={e => { e.stopPropagation(); handleQuickAssignLine(client.id, bl.value); }}
+                                  key={biz.slug}
+                                  onClick={e => { e.stopPropagation(); handleQuickAssignLine(client.id, biz.slug); }}
                                   className={cn(
                                     "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-muted transition-colors",
-                                    client.businessLine === bl.value && "bg-muted/60"
+                                    normalizeBL(client.businessLine) === biz.slug && "bg-muted/60"
                                   )}
                                 >
-                                  {bl.value === "asphalt" ? <HardHat className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-                                  {bl.shortLabel}
+                                  <Layers className="w-3 h-3" />
+                                  {biz.name}
                                 </button>
                               ))}
                             </div>
@@ -1444,22 +1455,22 @@ export default function PeopleAndProperties() {
                                 onClick={e => { e.stopPropagation(); setOpenLineDropdown(openLineDropdown === client.id ? null : client.id); }}
                                 title="Assign business line"
                               >
-                                <BusinessLineBadge line={client.businessLine} />
+                                <BusinessLineBadge line={client.businessLine} businesses={businesses} />
                               </button>
                             )}
                             {openLineDropdown === client.id && (
                               <div className="absolute z-50 left-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-lg overflow-hidden min-w-[140px]">
-                                {BUSINESS_LINES.map(bl => (
+                                {businesses.map(biz => (
                                   <button
-                                    key={bl.value}
-                                    onClick={e => { e.stopPropagation(); handleQuickAssignLine(client.id, bl.value); }}
+                                    key={biz.slug}
+                                    onClick={e => { e.stopPropagation(); handleQuickAssignLine(client.id, biz.slug); }}
                                     className={cn(
                                       "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-muted transition-colors",
-                                      client.businessLine === bl.value && "bg-muted/60"
+                                      normalizeBL(client.businessLine) === biz.slug && "bg-muted/60"
                                     )}
                                   >
-                                    {bl.value === "asphalt" ? <HardHat className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
-                                    {bl.shortLabel}
+                                    <Layers className="w-3 h-3" />
+                                    {biz.name}
                                   </button>
                                 ))}
                               </div>
@@ -1506,11 +1517,11 @@ export default function PeopleAndProperties() {
               <div className="px-4 pt-4 pb-3 border-b border-white/10">
                 <p className="text-xs text-white/60 mb-2 font-medium">Assign to business line:</p>
                 <div className="flex gap-2">
-                  {BUSINESS_LINES.map(bl => (
-                    <button key={bl.value} onClick={() => handleBulkAssignLine(bl.value)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${bl.color}`}>
-                      {bl.value === "asphalt" ? <HardHat className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
-                      {bl.shortLabel}
+                  {businesses.map(biz => (
+                    <button key={biz.slug} onClick={() => handleBulkAssignLine(biz.slug)}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors bg-primary text-primary-foreground border-primary hover:bg-primary/90">
+                      <Layers className="w-3.5 h-3.5" />
+                      {biz.name}
                     </button>
                   ))}
                 </div>
@@ -1717,17 +1728,19 @@ export default function PeopleAndProperties() {
                 Business Line <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
-                {BUSINESS_LINES.map(bl => (
+                {businesses.map(biz => (
                   <button
-                    key={bl.value}
+                    key={biz.slug}
                     type="button"
-                    onClick={() => { setProspectForm(f => ({ ...f, businessLine: bl.value })); setProspectFormLineError(false); }}
+                    onClick={() => { setProspectForm(f => ({ ...f, businessLine: biz.slug })); setProspectFormLineError(false); }}
                     className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                      prospectForm.businessLine === bl.value ? bl.color : "bg-card text-muted-foreground border-border hover:bg-muted"
+                      prospectForm.businessLine === biz.slug
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-card text-muted-foreground border-border hover:bg-muted"
                     }`}
                   >
-                    {bl.value === "asphalt" ? <HardHat className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
-                    {bl.shortLabel}
+                    <Layers className="w-3.5 h-3.5" />
+                    {biz.name}
                   </button>
                 ))}
               </div>
@@ -1831,11 +1844,15 @@ export default function PeopleAndProperties() {
                 Business Line <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
-                {BUSINESS_LINES.map(bl => (
-                  <button key={bl.value} type="button" onClick={() => { setClientFormLine(bl.value); setClientFormLineError(false); }}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${clientFormLine === bl.value ? bl.color : "bg-card text-muted-foreground border-border hover:bg-muted"}`}>
-                    {bl.value === "asphalt" ? <HardHat className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
-                    {bl.shortLabel}
+                {businesses.map(biz => (
+                  <button key={biz.slug} type="button" onClick={() => { setClientFormLine(biz.slug); setClientFormLineError(false); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      clientFormLine === biz.slug
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-card text-muted-foreground border-border hover:bg-muted"
+                    }`}>
+                    <Layers className="w-3.5 h-3.5" />
+                    {biz.name}
                   </button>
                 ))}
               </div>
