@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText, Pencil, Upload, X } from "lucide-react";
+import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText, Pencil, Upload, X, ChevronUp, ChevronDown } from "lucide-react";
 import { useBusiness, type Business } from "@/contexts/BusinessContext";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 
@@ -60,6 +60,7 @@ const EMPTY_FORM = { name: "", type: "other", address: "", city: "", state: "", 
 export default function BusinessSelector({ onSelect }: { onSelect: (b: Business | null) => void }) {
   const { businesses, setActiveBusiness, refresh } = useBusiness();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -84,6 +85,33 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
   function handleSelect(b: Business | null) {
     setActiveBusiness(b);
     onSelect(b);
+  }
+
+  async function handleMove(index: number, direction: "up" | "down") {
+    if (reordering) return;
+    const newList = [...businesses];
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= newList.length) return;
+    [newList[index], newList[swapIndex]] = [newList[swapIndex], newList[index]];
+    setReordering(true);
+    try {
+      const res = await fetch(`${BASE}/api/businesses/reorder`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds: newList.map(b => b.id) }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        console.error("Failed to reorder businesses:", d.error ?? res.statusText);
+      }
+      await refresh();
+    } catch (err) {
+      console.error("Failed to reorder businesses:", err);
+      await refresh();
+    } finally {
+      setReordering(false);
+    }
   }
 
   async function handleAddBusiness(e: React.FormEvent) {
@@ -268,7 +296,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
           </button>
 
           {/* Individual business cards */}
-          {businesses.map(b => {
+          {businesses.map((b, index) => {
             const colors = BUSINESS_COLORS[b.type] ?? BUSINESS_COLORS.other;
             const isEditing = editingBusiness?.id === b.id;
             return (
@@ -277,6 +305,28 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                   role="group"
                   className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 ${colors.border} ${colors.bg} hover:shadow-md transition-all ${isEditing ? "rounded-b-none border-b-0" : ""}`}
                 >
+                  {businesses.length > 1 && (
+                    <div className="flex flex-col gap-0.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        disabled={index === 0 || reordering}
+                        onClick={(e) => { e.stopPropagation(); handleMove(index, "up"); }}
+                        className={`p-1 rounded transition-colors ${index === 0 ? "opacity-20 cursor-not-allowed" : `${colors.text} opacity-40 hover:opacity-100 hover:bg-black/10`}`}
+                        title="Move up"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === businesses.length - 1 || reordering}
+                        onClick={(e) => { e.stopPropagation(); handleMove(index, "down"); }}
+                        className={`p-1 rounded transition-colors ${index === businesses.length - 1 ? "opacity-20 cursor-not-allowed" : `${colors.text} opacity-40 hover:opacity-100 hover:bg-black/10`}`}
+                        title="Move down"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleSelect(b)}

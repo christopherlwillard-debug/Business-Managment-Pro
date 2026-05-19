@@ -14,6 +14,7 @@ export interface Business {
   email: string | null;
   licenseNumber: string | null;
   taxId: string | null;
+  sortOrder: number;
   createdAt: string;
 }
 

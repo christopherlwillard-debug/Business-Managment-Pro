@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { businessesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
 
@@ -46,11 +46,38 @@ const router = Router();
 
 router.get("/", async (req, res) => {
   try {
-    const businesses = await db.select().from(businessesTable).orderBy(businessesTable.id);
+    const businesses = await db.select().from(businessesTable).orderBy(asc(businessesTable.sortOrder), asc(businessesTable.id));
     res.json(businesses);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch businesses" });
+  }
+});
+
+router.patch("/reorder", async (req, res) => {
+  try {
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds) || orderedIds.some(id => typeof id !== "number")) {
+      return res.status(400).json({ error: "orderedIds must be an array of numbers" });
+    }
+    const existing = await db.select({ id: businessesTable.id }).from(businessesTable);
+    const existingIds = new Set(existing.map(b => b.id));
+    if (
+      orderedIds.length !== existingIds.size ||
+      new Set(orderedIds).size !== orderedIds.length ||
+      orderedIds.some(id => !existingIds.has(id))
+    ) {
+      return res.status(400).json({ error: "orderedIds must contain every business ID exactly once" });
+    }
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.update(businessesTable).set({ sortOrder: i }).where(eq(businessesTable.id, orderedIds[i]));
+      }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reorder businesses" });
   }
 });
 
