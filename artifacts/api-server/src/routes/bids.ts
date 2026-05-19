@@ -219,12 +219,26 @@ router.post("/:id/summarize", async (req, res) => {
 
 router.post("/sync", async (req, res) => {
   try {
-    const { businessId } = req.body as { businessId?: number };
-    if (!businessId || isNaN(Number(businessId))) {
+    const rawId = req.body?.businessId ?? req.query.businessId;
+    const bizId = rawId ? parseInt(String(rawId), 10) : NaN;
+    if (isNaN(bizId)) {
       res.status(400).json({ error: "businessId is required" });
       return;
     }
-    const result = await runBidSync(Number(businessId));
+
+    // Validate the business exists before syncing
+    const [biz] = await db
+      .select({ id: businessesTable.id })
+      .from(businessesTable)
+      .where(eq(businessesTable.id, bizId))
+      .limit(1);
+
+    if (!biz) {
+      res.status(404).json({ error: "Business not found" });
+      return;
+    }
+
+    const result = await runBidSync(bizId);
     res.json({
       ok: true,
       newFederal: result.newFederal,

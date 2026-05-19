@@ -162,15 +162,17 @@ export async function runBidSync(
   const profile = getProfile(business.type);
   console.log(`[bid-sync] Starting sync for "${business.name}" (${business.type}) — profile: ${profile.label}`);
 
-  // One-time backfill: attribute legacy rows (business_id IS NULL) to this business.
-  // Old rows were inserted before business-scoping existed and belong to whichever
-  // business type first syncs them. Only the first sync per business touches these.
-  const backfillResult = await db.execute(
-    sql`UPDATE bid_opportunities SET business_id = ${businessId} WHERE business_id IS NULL`
-  );
-  const backfillCount = (backfillResult as { rowCount?: number }).rowCount ?? 0;
-  if (backfillCount > 0) {
-    console.log(`[bid-sync] Backfilled ${backfillCount} legacy bid(s) to business ${businessId} (${business.name})`);
+  // One-time backfill: attribute legacy rows (business_id IS NULL) only to the
+  // asphalt_sealing business, because all pre-scoping bids were fetched with pavement
+  // keywords and belong there. Other business types do not claim these rows.
+  if (business.type === "asphalt_sealing") {
+    const backfillResult = await db.execute(
+      sql`UPDATE bid_opportunities SET business_id = ${businessId} WHERE business_id IS NULL`
+    );
+    const backfillCount = (backfillResult as { rowCount?: number }).rowCount ?? 0;
+    if (backfillCount > 0) {
+      console.log(`[bid-sync] Backfilled ${backfillCount} legacy pavement bid(s) to "${business.name}"`);
+    }
   }
 
   await purgeIrrelevantLocalBids(businessId, profile.localKeywords);
