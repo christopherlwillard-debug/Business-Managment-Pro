@@ -11,6 +11,7 @@ const objectStorage = new ObjectStorageService();
 export const BUSINESS_TYPES = [
   "general_contracting",
   "asphalt_sealing",
+  "real_estate",
   "landscaping",
   "electrical",
   "plumbing",

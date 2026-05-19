@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText } from "lucide-react";
+import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText, Pencil } from "lucide-react";
 import { useBusiness, type Business } from "@/contexts/BusinessContext";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 
@@ -64,6 +64,11 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+
   function handleSelect(b: Business | null) {
     setActiveBusiness(b);
     onSelect(b);
@@ -104,7 +109,60 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
     }
   }
 
+  function openEdit(b: Business, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingBusiness(b);
+    setEditForm({
+      name: b.name,
+      type: b.type,
+      address: b.address ?? "",
+      city: b.city ?? "",
+      state: b.state ?? "",
+      zip: b.zip ?? "",
+      phone: b.phone ?? "",
+      email: b.email ?? "",
+      licenseNumber: b.licenseNumber ?? "",
+      taxId: b.taxId ?? "",
+    });
+    setEditError("");
+  }
+
+  async function handleEditBusiness(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingBusiness) return;
+    if (!editForm.name.trim()) { setEditError("Business name is required"); return; }
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const res = await fetch(`${BASE}/api/businesses/${editingBusiness.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          type: editForm.type,
+          address: editForm.address || null,
+          city: editForm.city || null,
+          state: editForm.state || null,
+          zip: editForm.zip || null,
+          phone: editForm.phone || null,
+          email: editForm.email || null,
+          licenseNumber: editForm.licenseNumber || null,
+          taxId: editForm.taxId || null,
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); setEditError(d.error || "Failed to update business"); return; }
+      await refresh();
+      setEditingBusiness(null);
+    } catch {
+      setEditError("Failed to update business");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const setEF = (k: string, v: string) => setEditForm(f => ({ ...f, [k]: v }));
   const inp = "w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20";
 
   return (
@@ -134,26 +192,112 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
           {/* Individual business cards */}
           {businesses.map(b => {
             const colors = BUSINESS_COLORS[b.type] ?? BUSINESS_COLORS.other;
+            const isEditing = editingBusiness?.id === b.id;
             return (
-              <button
-                key={b.id}
-                onClick={() => handleSelect(b)}
-                className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 ${colors.border} ${colors.bg} hover:shadow-md transition-all text-left group`}
-              >
-                <div className={`w-12 h-12 rounded-xl ${colors.iconBg} flex items-center justify-center flex-shrink-0`}>
-                  {b.logoUrl ? (
-                    <img src={`${BASE}${b.logoUrl}`} alt={b.name} className="w-10 h-10 rounded-lg object-contain" />
-                  ) : (
-                    <BusinessIcon type={b.type} className={`w-6 h-6 ${colors.text}`} />
-                  )}
+              <div key={b.id} className="space-y-0">
+                <div
+                  role="group"
+                  className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 ${colors.border} ${colors.bg} hover:shadow-md transition-all ${isEditing ? "rounded-b-none border-b-0" : ""}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(b)}
+                    className="flex items-center gap-4 flex-1 min-w-0 text-left"
+                  >
+                    <div className={`w-12 h-12 rounded-xl ${colors.iconBg} flex items-center justify-center flex-shrink-0`}>
+                      {b.logoUrl ? (
+                        <img src={`${BASE}${b.logoUrl}`} alt={b.name} className="w-10 h-10 rounded-lg object-contain" />
+                      ) : (
+                        <BusinessIcon type={b.type} className={`w-6 h-6 ${colors.text}`} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-bold text-base ${colors.text}`}>{b.name}</p>
+                      <p className="text-sm text-muted-foreground">{BUSINESS_TYPE_LABELS[b.type] ?? b.type}</p>
+                      <BusinessCardStats business={b} />
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => isEditing ? (e.stopPropagation(), setEditingBusiness(null)) : openEdit(b, e)}
+                    className={`p-2 rounded-lg transition-colors flex-shrink-0 ${isEditing ? `${colors.text} opacity-100 bg-black/10` : `${colors.text} opacity-30 hover:opacity-100 hover:bg-black/10`}`}
+                    title={isEditing ? "Close editor" : "Edit business"}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <ChevronRight className={`w-5 h-5 ${colors.text} opacity-40 flex-shrink-0`} />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`font-bold text-base ${colors.text}`}>{b.name}</p>
-                  <p className="text-sm text-muted-foreground">{BUSINESS_TYPE_LABELS[b.type] ?? b.type}</p>
-                  <BusinessCardStats business={b} />
-                </div>
-                <ChevronRight className={`w-5 h-5 ${colors.text} opacity-40 group-hover:opacity-100 transition-opacity`} />
-              </button>
+
+                {isEditing && (
+                  <form onSubmit={handleEditBusiness} className={`p-5 rounded-2xl rounded-t-none border-2 border-t-0 ${colors.border} bg-card space-y-3`}>
+                    <h3 className="font-bold text-foreground text-sm">Edit Business</h3>
+                    {editError && <p className="text-sm text-destructive">{editError}</p>}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Business Name *</label>
+                        <input type="text" required autoFocus className={inp} value={editForm.name} onChange={e => setEF("name", e.target.value)} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Type</label>
+                        <select className={inp} value={editForm.type} onChange={e => setEF("type", e.target.value)}>
+                          <option value="general_contracting">General Contracting</option>
+                          <option value="asphalt_sealing">Asphalt Sealing</option>
+                          <option value="real_estate">Real Estate</option>
+                          <option value="landscaping">Landscaping</option>
+                          <option value="electrical">Electrical</option>
+                          <option value="plumbing">Plumbing</option>
+                          <option value="hvac">HVAC</option>
+                          <option value="painting">Painting</option>
+                          <option value="roofing">Roofing</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Phone</label>
+                        <input className={inp} placeholder="(270) 555-0123" value={editForm.phone} onChange={e => setEF("phone", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Email</label>
+                        <input type="email" className={inp} placeholder="contact@business.com" value={editForm.email} onChange={e => setEF("email", e.target.value)} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Address</label>
+                        <input className={inp} placeholder="123 Main St" value={editForm.address} onChange={e => setEF("address", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">City</label>
+                        <input className={inp} placeholder="Bowling Green" value={editForm.city} onChange={e => setEF("city", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">State</label>
+                        <input className={inp} placeholder="KY" value={editForm.state} onChange={e => setEF("state", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">ZIP</label>
+                        <input className={inp} placeholder="42101" value={editForm.zip} onChange={e => setEF("zip", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">License Number</label>
+                        <input className={inp} placeholder="KY-2024-XXXXX" value={editForm.licenseNumber} onChange={e => setEF("licenseNumber", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">Tax ID / EIN</label>
+                        <input className={inp} placeholder="XX-XXXXXXX" value={editForm.taxId} onChange={e => setEF("taxId", e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button type="button" onClick={() => { setEditingBusiness(null); setEditError(""); }}
+                        className="flex-1 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors">
+                        Cancel
+                      </button>
+                      <button type="submit" disabled={editSaving}
+                        className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60">
+                        {editSaving ? "Saving…" : "Save Changes"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             );
           })}
 
@@ -187,6 +331,12 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                     <option value="general_contracting">General Contracting</option>
                     <option value="asphalt_sealing">Asphalt Sealing</option>
                     <option value="real_estate">Real Estate</option>
+                    <option value="landscaping">Landscaping</option>
+                    <option value="electrical">Electrical</option>
+                    <option value="plumbing">Plumbing</option>
+                    <option value="hvac">HVAC</option>
+                    <option value="painting">Painting</option>
+                    <option value="roofing">Roofing</option>
                     <option value="other">Other</option>
                   </select>
                 </div>
