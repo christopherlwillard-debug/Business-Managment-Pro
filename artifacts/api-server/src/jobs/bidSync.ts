@@ -187,7 +187,7 @@ export async function runBidSync(
 
   const federal: OppWithSource[] =
     fedOpps.status === "fulfilled" ? fedOpps.value : [];
-  const local: OppWithSource[] =
+  const allLocal: OppWithSource[] =
     localOpps.status === "fulfilled" ? localOpps.value : [];
 
   if (fedOpps.status === "rejected") {
@@ -199,6 +199,21 @@ export async function runBidSync(
 
   if (!process.env["SAM_GOV_API_KEY"]) {
     console.log("[bid-sync] SAM_GOV_API_KEY not set, skipping federal sync");
+  }
+
+  // Filter local bids at ingestion time so only on-profile opportunities are stored.
+  // This prevents cross-business contamination regardless of purge order.
+  const kwSet = profile.localKeywords.map((k) => k.toLowerCase());
+  const local = allLocal.filter((o) => {
+    const haystack = `${o.title} ${o.description ?? ""}`.toLowerCase();
+    return kwSet.some((kw) => haystack.includes(kw));
+  });
+
+  if (allLocal.length !== local.length) {
+    console.log(
+      `[bid-sync] "${business.name}": filtered local bids ` +
+      `${allLocal.length} → ${local.length} (kept on-profile only)`
+    );
   }
 
   const [newFederal, newLocal] = await Promise.all([
