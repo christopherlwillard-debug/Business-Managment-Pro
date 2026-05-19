@@ -1342,7 +1342,7 @@ function JobFormDialog({
 }) {
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
 
   function makeForm() {
     if (editJob) {
@@ -1447,6 +1447,7 @@ function JobFormDialog({
               value={form.title} onChange={e => setField("title", e.target.value)} />
           </div>
 
+          {!activeBusiness && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Business</label>
             <div className="flex flex-wrap gap-2">
@@ -1467,6 +1468,7 @@ function JobFormDialog({
               ))}
             </div>
           </div>
+          )}
 
           {form.businessLine === "asphalt_sealing" && (
             <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">

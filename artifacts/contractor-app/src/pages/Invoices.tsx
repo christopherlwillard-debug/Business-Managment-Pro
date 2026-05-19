@@ -702,7 +702,7 @@ const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 // ─── Main Invoices page ────────────────────────────────────────────────────────
 export default function Invoices() {
   const queryClient = useQueryClient();
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
   const [filterStatus, setFilterStatus] = useState<"active" | "all" | "draft" | "sent" | "overdue" | "paid">("active");
   const [searchQuery, setSearchQuery] = useState("");

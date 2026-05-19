@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, sum, ne, inArray } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
@@ -8,11 +8,6 @@ import { getIrsMileageRate } from "../lib/irs-rates.js";
 
 const router = Router();
 
-const KNOWN_BL = ["general_contracting", "asphalt_sealing"] as const;
-const BL_LABELS: Record<string, string> = {
-  general_contracting: "General Contracting",
-  asphalt_sealing: "Asphalt Sealing",
-};
 
 router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   try {
@@ -41,8 +36,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // For the YTD ("year") period, query expenses across the full calendar year
     const expenseEndDate = period === "year" ? `${now.getFullYear()}-12-31` : endDate;
 
-    // Validate blFilter — only allow known values
-    const validBl = blFilter && (KNOWN_BL as readonly string[]).includes(blFilter) ? blFilter : null;
+    // Accept any non-empty business slug — no hardcoded allowlist
+    const validBl = blFilter || null;
 
     // Build optional DB-level business-line WHERE condition (returns undefined when no filter = AND ignores it)
     const blWhere = (col: Parameters<typeof eq>[0]) =>
@@ -133,7 +128,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const ownerProfit = operationalNetProfit - subContractorRemaining;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
-    const byBusinessLine = KNOWN_BL.map(bl => {
+    const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
+    const byBusinessLine = allBusinesses.map(biz => {
+      const bl = biz.slug;
       const blInvoices = rawInvoices.filter(i => i.businessLine === bl);
       const blOther = rawOtherIncome.filter(o => o.businessLine === bl);
       const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage");
@@ -144,7 +141,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const blExcluded = blExpenses.filter(e => e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       return {
         businessLine: bl,
-        label: BL_LABELS[bl] ?? bl,
+        label: biz.name,
         totalRevenue: blRevenue,
         totalExpenses: blExpenseTotal,
         operationalNetProfit: blRevenue - (blExpenseTotal - blExcluded),
@@ -152,11 +149,11 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
-    // Unattributed: revenue/expenses not tagged to any known business line
-    const knownBls = KNOWN_BL as readonly string[];
-    const unattribExpenses = rawExpenses.filter(e => (!e.businessLine || !knownBls.includes(e.businessLine)) && e.category !== "mileage");
-    const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.includes(i.businessLine));
-    const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.includes(o.businessLine));
+    // Unattributed: revenue/expenses not tagged to any registered business slug
+    const knownBls = new Set(allBusinesses.map(b => b.slug));
+    const unattribExpenses = rawExpenses.filter(e => (!e.businessLine || !knownBls.has(e.businessLine)) && e.category !== "mileage");
+    const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.has(i.businessLine));
+    const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.has(o.businessLine));
     const unattribRevenue = unattribInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
       + unattribOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const unattribExpenseTotal = unattribExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -483,31 +480,21 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       w9OnFile: s.w9OnFile,
     }));
 
-    const BL_LABELS: Record<string, string> = {
-      general_contracting: "General Contracting",
-      asphalt_sealing: "Asphalt Sealing (DBA)",
-      untagged: "Untagged",
-    };
-    const KNOWN_BL = ["general_contracting", "asphalt_sealing"];
-    const blKeys = ["general_contracting", "asphalt_sealing", "untagged"] as const;
-    const byBusinessLine = blKeys.map(bl => {
-      let blInvoices, blOther, blExpenses;
-      if (bl === "untagged") {
-        blInvoices = invoices.filter(i => !i.businessLine || !KNOWN_BL.includes(i.businessLine));
-        blOther = otherIncomeRows.filter(o => !o.businessLine || !KNOWN_BL.includes(o.businessLine));
-        blExpenses = nonMileageExpenses.filter(e => !e.businessLine || !KNOWN_BL.includes(e.businessLine));
-      } else {
-        blInvoices = invoices.filter(i => i.businessLine === bl);
-        blOther = otherIncomeRows.filter(o => o.businessLine === bl);
-        blExpenses = nonMileageExpenses.filter(e => e.businessLine === bl);
-      }
+    const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
+    const knownBlSlugs = new Set(allBusinesses.map(b => b.slug));
+    const byBusinessLine: { businessLine: string; label: string; invoiceCount: number; invoiceGross: number; invoicePaid: number; otherIncome: number; totalRevenue: number; collectedRevenue: number; expenses: number; netProfit: number }[] = [];
+    for (const biz of allBusinesses) {
+      const bl = biz.slug;
+      const blInvoices = invoices.filter(i => i.businessLine === bl);
+      const blOther = otherIncomeRows.filter(o => o.businessLine === bl);
+      const blExpenses = nonMileageExpenses.filter(e => e.businessLine === bl);
       const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-      return {
+      byBusinessLine.push({
         businessLine: bl,
-        label: BL_LABELS[bl] ?? bl,
+        label: biz.name,
         invoiceCount: blInvoices.length,
         invoiceGross,
         invoicePaid,
@@ -516,8 +503,30 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         collectedRevenue: invoicePaid + otherSum,
         expenses: expSum,
         netProfit: (invoicePaid + otherSum) - expSum,
-      };
-    });
+      });
+    }
+    // Untagged: items not assigned to any registered business slug
+    {
+      const blInvoices = invoices.filter(i => !i.businessLine || !knownBlSlugs.has(i.businessLine));
+      const blOther = otherIncomeRows.filter(o => !o.businessLine || !knownBlSlugs.has(o.businessLine));
+      const blExpenses = nonMileageExpenses.filter(e => !e.businessLine || !knownBlSlugs.has(e.businessLine));
+      const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      byBusinessLine.push({
+        businessLine: "untagged",
+        label: "Untagged",
+        invoiceCount: blInvoices.length,
+        invoiceGross,
+        invoicePaid,
+        otherIncome: otherSum,
+        totalRevenue: invoiceGross + otherSum,
+        collectedRevenue: invoicePaid + otherSum,
+        expenses: expSum,
+        netProfit: (invoicePaid + otherSum) - expSum,
+      });
+    }
 
     const ownerDrawRows = nonMileageExpenses
       .filter(e => e.category === "Owner Draw")
