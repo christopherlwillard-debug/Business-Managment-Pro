@@ -11,6 +11,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -621,6 +622,8 @@ export default function BidOpportunities() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { isOwner } = useUserPermissions();
+  const { activeBusiness } = useBusiness();
+  const businessId = activeBusiness?.id ?? null;
   const [filter, setFilter] = useState<"all" | "new" | "interested" | "dismissed">("all");
   const [fitOnly, setFitOnly] = useState(false);
   const [panelBid, setPanelBid] = useState<BidOpportunity | null>(null);
@@ -665,9 +668,12 @@ export default function BidOpportunities() {
 
   const syncBids = useMutation({
     mutationFn: async () => {
+      if (!businessId) throw new Error("No business selected");
       const res = await fetch(`${BASE_URL}/api/bids/sync`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ businessId }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -688,11 +694,13 @@ export default function BidOpportunities() {
   });
 
   const { data: bids = [], isLoading } = useQuery<BidOpportunity[]>({
-    queryKey: ["bids", filter],
+    queryKey: ["bids", filter, businessId],
     queryFn: async () => {
-      const url = filter === "all"
-        ? `${BASE_URL}/api/bids`
-        : `${BASE_URL}/api/bids?status=${filter}`;
+      const params = new URLSearchParams();
+      if (filter !== "all") params.set("status", filter);
+      if (businessId !== null) params.set("businessId", String(businessId));
+      const qs = params.toString();
+      const url = qs ? `${BASE_URL}/api/bids?${qs}` : `${BASE_URL}/api/bids`;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load bids");
       return res.json();
@@ -811,11 +819,19 @@ export default function BidOpportunities() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Bid Opportunities</h1>
-          <p className="text-muted-foreground mt-1">Federal &amp; Kentucky local contracts — asphalt, sealcoating &amp; pavement work</p>
+          {activeBusiness ? (
+            <p className="text-muted-foreground mt-1">
+              Federal &amp; Kentucky local contracts for{" "}
+              <span className="font-medium text-foreground">{activeBusiness.name}</span>
+            </p>
+          ) : (
+            <p className="text-muted-foreground mt-1">Select a business to see its bid feed</p>
+          )}
         </div>
         <button
           onClick={() => syncBids.mutate()}
-          disabled={syncBids.isPending}
+          disabled={syncBids.isPending || !businessId}
+          title={!businessId ? "Select a business first" : undefined}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex-shrink-0"
         >
           <RefreshCw className={cn("w-4 h-4", syncBids.isPending && "animate-spin")} />

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { bidOpportunitiesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { bidOpportunitiesTable, businessesTable } from "@workspace/db";
+import { eq, desc, and } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
 import { runBidSync } from "../jobs/bidSync.js";
@@ -48,23 +48,70 @@ function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
   };
 }
 
+function buildSummarizePrompt(doc: { text: string }, businessType: string): string {
+  const isAsphalt = businessType === "asphalt_sealing";
+  const contractorDesc = isAsphalt
+    ? "an asphalt and sealcoating contractor (NAICS 237310 — highway/street/pavement work)"
+    : "a general contractor (commercial/institutional building construction, renovation, site work, tenant improvement)";
+  const fitHint = isAsphalt
+    ? "NAICS 237310 asphalt/sealcoating/pavement work"
+    : "general contracting: commercial building, renovation, remodeling, site preparation, or tenant improvement work";
+
+  return `You are analyzing a government bid solicitation for ${contractorDesc}. Extract key information and return ONLY valid JSON (no markdown, no code fences).
+
+Solicitation content:
+${doc.text}
+
+Return JSON with exactly these fields:
+{
+  "description": "Plain-English description of the work (1-2 sentences)",
+  "estimatedValue": "Dollar amount if listed, or null",
+  "requirements": ["array of key requirements: bonding, insurance, certifications, prevailing wage, etc."],
+  "veteranPreference": true or false (is SDVOSB or veteran-owned preference mentioned?),
+  "importantDates": [{"label": "Event name", "date": "Date or deadline"}],
+  "isFit": true or false (is this a good fit based on the scope: ${fitHint}?),
+  "fitReason": "Brief explanation of why it is or isn't a fit for this contractor"
+}`;
+}
+
 const router = Router();
 
 router.get("/", async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, businessId } = req.query;
+    const bizId = businessId ? parseInt(businessId as string, 10) : null;
+
     let rows;
-    if (status && typeof status === "string") {
-      rows = await db
-        .select()
-        .from(bidOpportunitiesTable)
-        .where(eq(bidOpportunitiesTable.status, status))
-        .orderBy(desc(bidOpportunitiesTable.createdAt));
+    if (bizId && !isNaN(bizId)) {
+      if (status && typeof status === "string") {
+        rows = await db
+          .select()
+          .from(bidOpportunitiesTable)
+          .where(and(
+            eq(bidOpportunitiesTable.businessId, bizId),
+            eq(bidOpportunitiesTable.status, status)
+          ))
+          .orderBy(desc(bidOpportunitiesTable.createdAt));
+      } else {
+        rows = await db
+          .select()
+          .from(bidOpportunitiesTable)
+          .where(eq(bidOpportunitiesTable.businessId, bizId))
+          .orderBy(desc(bidOpportunitiesTable.createdAt));
+      }
     } else {
-      rows = await db
-        .select()
-        .from(bidOpportunitiesTable)
-        .orderBy(desc(bidOpportunitiesTable.createdAt));
+      if (status && typeof status === "string") {
+        rows = await db
+          .select()
+          .from(bidOpportunitiesTable)
+          .where(eq(bidOpportunitiesTable.status, status))
+          .orderBy(desc(bidOpportunitiesTable.createdAt));
+      } else {
+        rows = await db
+          .select()
+          .from(bidOpportunitiesTable)
+          .orderBy(desc(bidOpportunitiesTable.createdAt));
+      }
     }
     res.json(rows);
   } catch (err) {
@@ -130,6 +177,17 @@ router.post("/:id/summarize", async (req, res) => {
       return;
     }
 
+    // Look up the business type to customize the AI prompt
+    let businessType = "general_contracting";
+    if (bid.businessId) {
+      const [biz] = await db
+        .select({ type: businessesTable.type })
+        .from(businessesTable)
+        .where(eq(businessesTable.id, bid.businessId))
+        .limit(1);
+      if (biz) businessType = biz.type;
+    }
+
     const doc = await fetchBidDocument({
       noticeId: bid.noticeId,
       url: bid.url,
@@ -137,21 +195,7 @@ router.post("/:id/summarize", async (req, res) => {
       description: bid.description,
     });
 
-    const prompt = `You are analyzing a government bid solicitation for an asphalt and sealcoating contractor. Extract key information and return ONLY valid JSON (no markdown, no code fences).
-
-Solicitation content:
-${doc.text}
-
-Return JSON with exactly these fields:
-{
-  "description": "Plain-English description of the work (1-2 sentences)",
-  "estimatedValue": "Dollar amount if listed, or null",
-  "requirements": ["array of key requirements: bonding, insurance, certifications, prevailing wage, etc."],
-  "veteranPreference": true or false (is SDVOSB or veteran-owned preference mentioned?),
-  "importantDates": [{"label": "Event name", "date": "Date or deadline"}],
-  "isFit": true or false (is NAICS 237310 asphalt/sealcoating work a good fit based on the scope?),
-  "fitReason": "Brief explanation of why it is or isn't a fit for an asphalt/sealcoating contractor"
-}`;
+    const prompt = buildSummarizePrompt(doc, businessType);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -183,9 +227,14 @@ Return JSON with exactly these fields:
   }
 });
 
-router.post("/sync", async (_req, res) => {
+router.post("/sync", async (req, res) => {
   try {
-    const result = await runBidSync();
+    const { businessId } = req.body as { businessId?: number };
+    if (!businessId || isNaN(Number(businessId))) {
+      res.status(400).json({ error: "businessId is required" });
+      return;
+    }
+    const result = await runBidSync(Number(businessId));
     res.json({
       ok: true,
       newFederal: result.newFederal,
