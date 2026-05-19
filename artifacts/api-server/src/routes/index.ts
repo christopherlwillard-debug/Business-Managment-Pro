@@ -58,6 +58,7 @@ import plaidRouter from "./plaid.js";
 import bidsRouter from "./bids.js";
 import aerialRouter from "./aerial.js";
 import dashboardRouter from "./dashboard.js";
+import businessesRouter from "./businesses";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -212,5 +213,6 @@ router.use("/plaid", plaidRouter);
 router.use("/bids", requireOwner, bidsRouter);
 router.use(requireOwner, aerialRouter);
 router.use("/dashboard", requireOwner, dashboardRouter);
+router.use("/businesses", requireOwner, businessesRouter);
 
 export default router;

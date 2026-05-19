@@ -1,6 +1,7 @@
 import { useState, useRef, ReactNode, useEffect, useMemo } from "react";
 import { useSearchParams, useLocation } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useBusiness } from "@/contexts/BusinessContext";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, getJobInvoiceDraft,
@@ -1341,6 +1342,7 @@ function JobFormDialog({
 }) {
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
+  const { activeBusiness } = useBusiness();
 
   function makeForm() {
     if (editJob) {
@@ -1363,7 +1365,7 @@ function JobFormDialog({
       title: "", clientId: "", status: "scheduled",
       locationName: "", city: "", state: "KY",
       startDate: "", endDate: "", notes: "",
-      businessLine: "" as "" | "general_contracting" | "asphalt_sealing",
+      businessLine: (activeBusiness?.slug ?? "") as "" | "general_contracting" | "asphalt_sealing",
       sqFt: "",
       coats: "1",
     };
@@ -1701,8 +1703,12 @@ export default function Jobs() {
 
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
+  const { activeBusiness } = useBusiness();
   const [jobSearch, setJobSearch]       = useState("");
-  const [jobBLFilter, setJobBLFilter]   = useState<"" | "asphalt_sealing" | "general_contracting">("");
+  const [localBLFilter, setLocalBLFilter] = useState<"" | "asphalt_sealing" | "general_contracting">("");
+  const jobBLFilter = activeBusiness
+    ? (activeBusiness.slug as "" | "asphalt_sealing" | "general_contracting")
+    : localBLFilter;
   const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [jobFormOpen, setJobFormOpen]   = useState(false);
@@ -2068,8 +2074,8 @@ export default function Jobs() {
         </Card>
       )}
 
-      {/* Business-line filter tabs */}
-      {!isLoading && jobs.length > 0 && (
+      {/* Business-line filter tabs — only in All Businesses mode */}
+      {!isLoading && jobs.length > 0 && activeBusiness === null && (
         <div className="flex gap-2 flex-wrap">
           {([
             { value: "", label: "All Jobs" },
@@ -2082,9 +2088,9 @@ export default function Jobs() {
             return (
               <button
                 key={opt.value}
-                onClick={() => setJobBLFilter(opt.value)}
+                onClick={() => setLocalBLFilter(opt.value)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${
-                  jobBLFilter === opt.value
+                  localBLFilter === opt.value
                     ? opt.value === "asphalt_sealing"
                       ? "bg-amber-500 border-amber-500 text-white shadow-sm"
                       : opt.value === "general_contracting"
@@ -2095,7 +2101,7 @@ export default function Jobs() {
               >
                 {opt.label}
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                  jobBLFilter === opt.value ? "bg-white/20" : "bg-muted"
+                  localBLFilter === opt.value ? "bg-white/20" : "bg-muted"
                 }`}>{count}</span>
               </button>
             );

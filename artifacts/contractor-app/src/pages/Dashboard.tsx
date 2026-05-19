@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useGetDashboardStats, useListClients, useGetSettings } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -78,7 +79,11 @@ function useTaxAlerts() {
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
-  const [businessLine, setBusinessLine] = useState<"" | "asphalt_sealing" | "general_contracting">("");
+  const { activeBusiness } = useBusiness();
+  const [localBLFilter, setLocalBLFilter] = useState<"" | "asphalt_sealing" | "general_contracting">("");
+  const businessLine = activeBusiness
+    ? (activeBusiness.slug as "" | "asphalt_sealing" | "general_contracting")
+    : localBLFilter;
   const [drawDialogOpen, setDrawDialogOpen] = useState(false);
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -440,7 +445,8 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-          {/* Business-line filter */}
+          {/* Business-line filter — only shown in All Businesses mode */}
+          {activeBusiness === null && (
           <div className="flex items-center gap-3">
             <div className="flex gap-2">
               {([
@@ -450,7 +456,7 @@ export default function Dashboard() {
               ] as const).map(opt => (
                 <button
                   key={opt.value}
-                  onClick={() => setBusinessLine(opt.value)}
+                  onClick={() => setLocalBLFilter(opt.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                     businessLine === opt.value
                       ? opt.value === "asphalt_sealing"
@@ -471,6 +477,7 @@ export default function Dashboard() {
               {period === "week" ? "This Week" : period === "month" ? "This Month" : period === "quarter" ? "This Quarter" : "This Year"}
             </span>
           </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

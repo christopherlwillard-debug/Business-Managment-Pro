@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
@@ -624,7 +625,17 @@ export default function Estimates() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; title: string } | null>(null);
   const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"contracting" | "asphalt">("contracting");
+  const { activeBusiness } = useBusiness();
+
+  const [activeTab, setActiveTab] = useState<"contracting" | "asphalt">(
+    activeBusiness?.slug === "asphalt_sealing" ? "asphalt" : "contracting"
+  );
+
+  useEffect(() => {
+    if (activeBusiness) {
+      setActiveTab(activeBusiness.slug === "asphalt_sealing" ? "asphalt" : "contracting");
+    }
+  }, [activeBusiness]);
 
   const activeBusinessLine = activeTab === "asphalt" ? "asphalt_sealing" : "general_contracting";
 
@@ -756,7 +767,8 @@ export default function Estimates() {
         )}
       </div>
 
-      {/* Business line tabs */}
+      {/* Business line tabs — only shown in All Businesses mode */}
+      {activeBusiness === null && (
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
         <button
           onClick={() => { setActiveTab("contracting"); setFilterStatus("all"); }}
@@ -771,6 +783,7 @@ export default function Estimates() {
           Asphalt Sealing
         </button>
       </div>
+      )}
 
       {/* Summary bar */}
       {tabEstimates.length > 0 && (

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { useSearchParams } from "wouter";
 import {
   useListInvoices,
@@ -703,6 +704,7 @@ const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 // ─── Main Invoices page ────────────────────────────────────────────────────────
 export default function Invoices() {
   const queryClient = useQueryClient();
+  const { activeBusiness } = useBusiness();
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
   const [filterStatus, setFilterStatus] = useState<"active" | "all" | "draft" | "sent" | "overdue" | "paid">("active");
   const [searchQuery, setSearchQuery] = useState("");
@@ -795,7 +797,7 @@ export default function Invoices() {
     city: "", state: "KY", locationName: "", notes: "", terms: "Net 30",
     clientEmail: "", clientPhone: "", clientAddress: "", 
     clientCity: "", clientState: "", clientZip: "", clientNotes: "",
-    businessLine: "general_contracting",
+    businessLine: activeBusiness?.slug ?? "general_contracting",
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyLine()]);
   const [invoiceAttachments, setInvoiceAttachments] = useState<InvoiceAttachment[]>([]);
@@ -871,6 +873,9 @@ export default function Invoices() {
 
   const filteredInvoices = useMemo(() => {
     let list = allInvoices;
+    if (activeBusiness) {
+      list = list.filter((inv: any) => inv.businessLine === activeBusiness.slug);
+    }
     if (filterStatus === "active") {
       list = list.filter((inv: any) => ACTIVE_STATUSES.has(inv.status));
     } else if (filterStatus !== "all") {
@@ -884,7 +889,7 @@ export default function Invoices() {
       );
     }
     return list;
-  }, [allInvoices, filterStatus, searchQuery]);
+  }, [allInvoices, filterStatus, searchQuery, activeBusiness]);
 
   const s = settings as any;
   const prefix        = s?.invoicePrefix     ?? "INV-2026-";

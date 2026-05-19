@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useBusiness } from "@/contexts/BusinessContext";
 import {
   useListExpenses, useCreateExpense, useUploadExpenseReceipt, useListJobs, useListSubcontractors,
 } from "@workspace/api-client-react";
@@ -1255,6 +1256,7 @@ function RecurringSection({
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function Expenses() {
   const { canEdit } = useUserPermissions();
+  const { activeBusiness } = useBusiness();
   const { toast } = useToast();
   const { isConfigured: googleConfigured, isConnected: googleConnected, signIn: googleSignIn, getToken } = useGoogleAuth();
   const [drivePickingNew, setDrivePickingNew] = useState(false);
@@ -1312,7 +1314,12 @@ export default function Expenses() {
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
   const [excludeFromNetProfit, setExcludeFromNetProfit] = useState(false);
-  const [businessLine, setBusinessLine]               = useState<"general_contracting" | "asphalt_sealing" | "">();
+  const [businessLine, setBusinessLine]               = useState<"general_contracting" | "asphalt_sealing" | "">(
+    (activeBusiness?.slug ?? "") as "general_contracting" | "asphalt_sealing" | ""
+  );
+  useEffect(() => {
+    setBusinessLine((activeBusiness?.slug ?? "") as "general_contracting" | "asphalt_sealing" | "");
+  }, [activeBusiness?.slug]);
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
   const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; businessLine: string} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);

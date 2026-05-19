@@ -7,6 +7,7 @@ import { useAuth } from "@workspace/replit-auth-web";
 import { UserPermissionsProvider, useUserPermissions, type SectionKey } from "@/contexts/UserPermissions";
 import { GoogleAuthProvider } from "@/contexts/GoogleAuth";
 import { PermissionGuard } from "./components/PermissionGuard";
+import { BusinessProvider, useBusiness } from "@/contexts/BusinessContext";
 
 import { AppLayout } from "./components/AppLayout";
 
@@ -32,6 +33,7 @@ const QuickCharge = lazy(() => import("./pages/QuickCharge"));
 const SquareTransactions = lazy(() => import("./pages/SquareTransactions"));
 const Banking = lazy(() => import("./pages/Banking"));
 const BidOpportunities = lazy(() => import("./pages/BidOpportunities"));
+const BusinessSelector = lazy(() => import("./pages/BusinessSelector"));
 const NotFound = lazy(() => import("./pages/not-found"));
 
 const queryClient = new QueryClient({
@@ -150,6 +152,7 @@ function TabRedirect({ tab }: { tab: string }) {
 
 function HomeRoute() {
   const { isOwner, permissions } = useUserPermissions();
+  const { activeBusiness, isLoading: bizLoading } = useBusiness();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -158,6 +161,22 @@ function HomeRoute() {
       if (first) setLocation(first.href);
     }
   }, [isOwner, permissions, setLocation]);
+
+  if (isOwner && bizLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (isOwner && activeBusiness === null) {
+    return (
+      <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+        <BusinessSelector onSelect={() => {}} />
+      </Suspense>
+    );
+  }
 
   if (isOwner) return <Dashboard />;
 
@@ -218,6 +237,7 @@ function AdminApp() {
   if (accessStatus === "rejected") return <AccessRejectedScreen />;
 
   return (
+    <BusinessProvider>
     <AppLayout>
       <Suspense fallback={<PageLoader />}>
         <Switch>
@@ -283,6 +303,7 @@ function AdminApp() {
         </Switch>
       </Suspense>
     </AppLayout>
+    </BusinessProvider>
   );
 }
 
