@@ -23,6 +23,11 @@ export async function launchBrowser(): Promise<Browser> {
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--no-zygote",
+      "--single-process",
+      "--no-first-run",
+      "--disable-extensions",
+      "--disable-features=VizDisplayCompositor",
     ],
   });
 }
