@@ -572,3 +572,29 @@ pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS ai_summary js
   .then(() => { console.log('bid_opportunities ai_summary columns ensured'); pool.end(); })
   .catch(e => { console.error('bid_opportunities ai_summary migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #557: create contacts table (address book, idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS contacts (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    company TEXT,
+    type TEXT,
+    title TEXT,
+    phone TEXT,
+    fax TEXT,
+    email TEXT,
+    address TEXT,
+    city TEXT,
+    state TEXT,
+    zip TEXT,
+    notes TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )
+\`).then(() => { console.log('contacts table ensured'); pool.end(); })
+  .catch(e => { console.error('contacts migration error:', e.message); pool.end(); process.exit(1); });
+")
