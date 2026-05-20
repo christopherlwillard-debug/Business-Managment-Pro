@@ -1,5 +1,5 @@
 import { integer, pgTable, serial, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
-import { businessesTable } from "./businesses.js";
+import { businessesTable } from "./businesses";
 
 export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   id: serial("id").primaryKey(),
