@@ -2,7 +2,14 @@ import cron from "node-cron";
 import { db } from "@workspace/db";
 import { bidOpportunitiesTable, settingsTable, businessesTable } from "@workspace/db";
 import { eq, sql, and, isNull } from "drizzle-orm";
-import { fetchSamOpportunities, SamOpportunity, ASPHALT_SAM_KEYWORDS, GENERAL_CONTRACTING_SAM_KEYWORDS } from "../lib/samGov.js";
+import {
+  fetchSamOpportunities,
+  SamOpportunity,
+  ASPHALT_SAM_KEYWORDS,
+  GENERAL_CONTRACTING_SAM_KEYWORDS,
+  ASPHALT_PSC_CODES,
+  GENERAL_CONTRACTING_PSC_CODES,
+} from "../lib/samGov.js";
 import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS } from "../lib/kyLocalBids.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 
@@ -11,6 +18,7 @@ import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 interface BizProfile {
   samKeywords: string[];
   samNaicsCodes: string[];
+  samPscCodes: string[];
   localKeywords: string[];
   label: string;
 }
@@ -19,12 +27,38 @@ const BUSINESS_PROFILES: Record<string, BizProfile> = {
   asphalt_sealing: {
     samKeywords: ASPHALT_SAM_KEYWORDS,
     samNaicsCodes: ["237310"],
+    samPscCodes: ASPHALT_PSC_CODES,
     localKeywords: PAVEMENT_KEYWORDS,
     label: "Asphalt Sealing",
   },
   general_contracting: {
     samKeywords: GENERAL_CONTRACTING_SAM_KEYWORDS,
-    samNaicsCodes: ["236220", "236210", "238110", "238910"],
+    samNaicsCodes: [
+      // General building
+      "236220", // Commercial & institutional building
+      "236210", // Industrial building
+      "236115", // New single-family home construction
+      "236116", // Remodeling of single-family homes
+      "236118", // Residential remodelers
+      // Specialty trades
+      "238110", // Foundation, structure & exterior
+      "238140", // Masonry
+      "238150", // Glass & glazing
+      "238160", // Roofing
+      "238170", // Siding
+      "238190", // Other structural
+      "238210", // Electrical
+      "238220", // Plumbing, heating & A/C
+      "238310", // Drywall & insulation
+      "238320", // Painting & wall covering
+      "238330", // Flooring
+      "238340", // Tile & terrazzo
+      "238350", // Finish carpentry
+      "238390", // Other finish trade
+      "238910", // Site preparation
+      "238990", // Other specialty trade
+    ],
+    samPscCodes: GENERAL_CONTRACTING_PSC_CODES,
     localKeywords: BROAD_BID_KEYWORDS,
     label: "General Contracting",
   },
@@ -33,6 +67,7 @@ const BUSINESS_PROFILES: Record<string, BizProfile> = {
 const DEFAULT_PROFILE: BizProfile = {
   samKeywords: GENERAL_CONTRACTING_SAM_KEYWORDS,
   samNaicsCodes: ["236220", "236210"],
+  samPscCodes: [],
   localKeywords: BROAD_BID_KEYWORDS,
   label: "General",
 };
@@ -180,7 +215,7 @@ export async function runBidSync(
 
   const [fedOpps, localOpps] = await Promise.allSettled([
     process.env["SAM_GOV_API_KEY"]
-      ? fetchSamOpportunities({ keywords: profile.samKeywords, naicsCodes: profile.samNaicsCodes })
+      ? fetchSamOpportunities({ keywords: profile.samKeywords, naicsCodes: profile.samNaicsCodes, pscCodes: profile.samPscCodes })
       : Promise.resolve([] as SamOpportunity[]),
     fetchKyLocalBids(),
   ]);
