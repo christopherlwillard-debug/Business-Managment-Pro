@@ -1703,6 +1703,7 @@ export default function Jobs() {
   const jobBLFilter = activeBusiness ? activeBusiness.slug : localBLFilter;
   const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [paidExpanded, setPaidExpanded] = useState(false);
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
@@ -1736,17 +1737,28 @@ export default function Jobs() {
   };
   const jobMatchesBL = (j: Job) => !jobBLFilter || j.businessLine === jobBLFilter;
   const jobMatchesPayout = (j: Job) => !needsPayoutFilter || (jobsWithSubExpenses.has(j.id) && !j.subPaid);
-  const totalCompletedCount = jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesBL(j) && jobMatchesPayout(j)).length;
   const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j));
+
+  // All completed jobs matching BL/payout — kept for invoice-summary fetching and section counts
+  const allCompletedBase = jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesBL(j) && jobMatchesPayout(j));
+
+  // Split by invoice payment status once summaries arrive
+  const completedUnpaidBase = allCompletedBase.filter(j => invoiceSummaryMap.get(j.id)?.status !== "paid");
+  const paidBase            = allCompletedBase.filter(j => invoiceSummaryMap.get(j.id)?.status === "paid");
+
+  // Apply search only when expanded (same pattern as before)
   const completedJobs = (completedExpanded || needsPayoutFilter)
-    ? jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j))
+    ? completedUnpaidBase.filter(j => jobMatchesSearch(j))
+    : [];
+  const paidJobs = paidExpanded
+    ? paidBase.filter(j => jobMatchesSearch(j))
     : [];
 
-  // Fetch invoice summaries for all visible jobs in a single batch request
+  // Fetch invoice summaries for scheduled + ALL completed jobs so split counts stay accurate
   const visibleJobIds = useMemo(
-    () => [...scheduledJobs, ...completedJobs].map(j => j.id),
+    () => [...scheduledJobs, ...allCompletedBase].map(j => j.id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scheduledJobs.map(j => j.id).join(","), completedJobs.map(j => j.id).join(",")]
+    [scheduledJobs.map(j => j.id).join(","), allCompletedBase.map(j => j.id).join(",")]
   );
 
   useEffect(() => {
@@ -2170,7 +2182,7 @@ export default function Jobs() {
             </div>
           )}
 
-          {totalCompletedCount > 0 && (
+          {completedUnpaidBase.length > 0 && (
             <div>
               <button
                 type="button"
@@ -2179,7 +2191,7 @@ export default function Jobs() {
               >
                 <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                 <h2 className="font-semibold text-foreground">Completed</h2>
-                <span className="text-sm text-muted-foreground">({totalCompletedCount})</span>
+                <span className="text-sm text-muted-foreground">({completedUnpaidBase.length})</span>
                 <span className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors">
                   {completedExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </span>
@@ -2217,12 +2229,59 @@ export default function Jobs() {
             </div>
           )}
 
-          {scheduledJobs.length === 0 && !searchLower && totalCompletedCount === 0 && (
+          {paidBase.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setPaidExpanded(v => !v)}
+                className="flex items-center gap-2 w-full text-left group mb-3"
+              >
+                <DollarSign className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                <h2 className="font-semibold text-foreground">Paid</h2>
+                <span className="text-sm text-muted-foreground">({paidBase.length})</span>
+                <span className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors">
+                  {paidExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </span>
+              </button>
+              {paidExpanded && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paidJobs.length > 0 ? paidJobs.map(job => {
+                    const jobLogs = logsByJob[job.id] ?? [];
+                    const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
+                    return (
+                      <JobCard key={job.id} job={job} onEdit={openEditJob}
+                        onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
+                        onMarkCompleted={handleMarkCompleted}
+                        logCount={jobLogs.length} lastLogDate={lastLog?.date}
+                        materialListCount={materialListCountByJob[job.id] ?? 0}
+                        estimateTotal={estimateTotalByJob[job.id]}
+                        onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
+                        invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+                        onCreateInvoice={() => handleReviewInvoice(job)}
+                        onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
+                        hasSubExpenses={jobsWithSubExpenses.has(job.id)}
+                        onToggleSubPaid={handleToggleSubPaid}
+                        profitData={profitMap.get(job.id) ?? null}
+                        onSendPaymentLink={handleGetPaymentLink}
+                        onGoToInvoices={() => navigate("/invoices")}
+                        generatingLinkId={generatingLinkId} />
+                    );
+                  }) : (
+                    <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
+                      No paid jobs match "{jobSearch}".
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {scheduledJobs.length === 0 && !searchLower && allCompletedBase.length === 0 && (
             <div className="py-10 text-center text-muted-foreground">
               <p>No jobs found.</p>
             </div>
           )}
-          {scheduledJobs.length === 0 && searchLower && completedJobs.length === 0 && (
+          {scheduledJobs.length === 0 && searchLower && completedJobs.length === 0 && paidJobs.length === 0 && (
             <div className="py-10 text-center text-muted-foreground">
               <p>No jobs match "{jobSearch}".</p>
             </div>
