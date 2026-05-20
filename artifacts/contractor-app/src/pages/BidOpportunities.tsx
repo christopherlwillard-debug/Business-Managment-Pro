@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink, Star, EyeOff, RefreshCw, Building2,
-  FileSearch, Sparkles, X, CheckCircle2, XCircle,
-  RotateCcw, Eye, Check,
+  FileSearch, Sparkles, XCircle, CheckCircle2,
+  RotateCcw,
 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,8 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import QuickLinksPanel from "./bids/QuickLinksPanel";
 import SummaryPanel from "./bids/SummaryPanel";
+import BidFilterBar from "./bids/BidFilterBar";
+import type { BidFilter } from "./bids/BidFilterBar";
 import type { QuickLink, AiSummary, BidOpportunity } from "./bids/types";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -60,7 +62,7 @@ export default function BidOpportunities() {
   const { isOwner } = useUserPermissions();
   const { activeBusiness } = useBusiness();
   const businessId = activeBusiness?.id ?? null;
-  const [filter, setFilter] = useState<"all" | "new" | "interested" | "dismissed">("all");
+  const [filter, setFilter] = useState<BidFilter>("all");
   const [fitOnly, setFitOnly] = useState(false);
   const [panelBid, setPanelBid] = useState<BidOpportunity | null>(null);
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
@@ -288,48 +290,14 @@ export default function BidOpportunities() {
         isOwner={isOwner}
       />
 
-      <div className="flex flex-wrap gap-2">
-        {(["all", "new", "interested", "dismissed"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
-              filter === f
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
-            )}
-          >
-            {f === "all" ? "All" : STATUS_LABELS[f]}
-            <span className={cn(
-              "ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
-              filter === f ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
-            )}>
-              {counts[f]}
-            </span>
-          </button>
-        ))}
-        <button
-          onClick={() => setFitOnly((v) => !v)}
-          className={cn(
-            "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
-            fitOnly
-              ? "bg-green-600 text-white border-green-600"
-              : "bg-card text-muted-foreground border-border hover:border-green-500/50 hover:text-foreground"
-          )}
-        >
-          <span className="flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Fit
-          </span>
-          <span className={cn(
-            "ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
-            fitOnly ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
-          )}>
-            {fitCount}
-          </span>
-        </button>
-      </div>
+      <BidFilterBar
+        filter={filter}
+        setFilter={setFilter}
+        fitOnly={fitOnly}
+        setFitOnly={setFitOnly}
+        counts={counts}
+        fitCount={fitCount}
+      />
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
