@@ -6,3 +6,4 @@ export * from "./hooks/useMaterialLists";
 export * from "./hooks/useProspects";
 export * from "./hooks/useSquare";
 export * from "./hooks/useClients";
+export * from "./hooks/useContacts";

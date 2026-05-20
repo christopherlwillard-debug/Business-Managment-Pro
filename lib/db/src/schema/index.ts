@@ -34,3 +34,4 @@ export * from "./square-payments";
 export * from "./plaid-connections";
 export * from "./bid-opportunities";
 export * from "./businesses";
+export * from "./contacts";

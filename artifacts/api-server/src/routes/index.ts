@@ -59,6 +59,7 @@ import bidsRouter from "./bids.js";
 import aerialRouter from "./aerial.js";
 import dashboardRouter from "./dashboard.js";
 import businessesRouter from "./businesses";
+import contactsRouter from "./contacts";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -214,5 +215,6 @@ router.use("/bids", requireOwner, bidsRouter);
 router.use(requireOwner, aerialRouter);
 router.use("/dashboard", requireOwner, dashboardRouter);
 router.use("/businesses", requireOwner, businessesRouter);
+router.use("/contacts", requireOwner, contactsRouter);
 
 export default router;

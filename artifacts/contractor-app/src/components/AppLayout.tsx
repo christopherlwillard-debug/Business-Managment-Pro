@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   HardHat, UsersRound,
-  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText,
+  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText, BookMarked,
   Sun, Moon, Building2, ChevronDown,
   type LucideIcon,
 } from "lucide-react";
@@ -66,6 +66,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses", group: "operations" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage", group: "operations" },
     { name: "People", href: "/people", icon: UsersRound, feature: null, section: "clients", ownerOnly: false, group: "operations" },
+    { name: "Address Book", href: "/address-book", icon: BookMarked, feature: null, section: null, ownerOnly: true, group: "operations" },
     { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors", group: "operations" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
