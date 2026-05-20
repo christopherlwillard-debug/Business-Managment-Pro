@@ -6,12 +6,19 @@ function resolveChromiumPath(): string {
   const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH;
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
 
+  // Prefer the bundled Chromium that ships with the `puppeteer` package — it is
+  // version-matched and known to launch correctly in containerised environments.
+  // The Nix system binary (found via `which chromium`) passes the existence check
+  // but cannot start its DevTools WebSocket in the production container.
+  const bundled = puppeteer.executablePath();
+  if (bundled && existsSync(bundled)) return bundled;
+
   try {
     const nixChrome = execSync("which chromium", { encoding: "utf8" }).trim();
     if (nixChrome && existsSync(nixChrome)) return nixChrome;
   } catch {}
 
-  return puppeteer.executablePath();
+  return bundled; // last resort — let puppeteer surface the error itself
 }
 
 export async function launchBrowser(): Promise<Browser> {

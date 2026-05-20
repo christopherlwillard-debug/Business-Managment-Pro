@@ -26,8 +26,17 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function ensureChrome(): Promise<void> {
-  // Prefer system chromium installed via Nix — runs natively on NixOS without
-  // library path issues that affect the puppeteer-downloaded binary.
+  // Prefer the bundled Chromium that ships with the `puppeteer` package — it is
+  // version-matched and reliably launches in containerised production environments.
+  // The Nix system binary passes an existence check but cannot start its DevTools
+  // WebSocket in the production container, causing a 30 s timeout on every launch.
+  const bundledPath = puppeteer.executablePath();
+  if (bundledPath && existsSync(bundledPath)) {
+    console.log(`Chrome (bundled) ready at ${bundledPath}`);
+    return;
+  }
+
+  // Fall back to system chromium (works in the Nix dev environment).
   try {
     const nixChrome = execSync("which chromium", { encoding: "utf8" }).trim();
     if (nixChrome && existsSync(nixChrome)) {
@@ -36,12 +45,6 @@ async function ensureChrome(): Promise<void> {
     }
   } catch {}
 
-  // Fall back to puppeteer's downloaded Chrome (works on standard Linux).
-  const execPath = puppeteer.executablePath();
-  if (existsSync(execPath)) {
-    console.log(`Chrome ready at ${execPath}`);
-    return;
-  }
 
   console.log(`Chrome not found — downloading now (this may take a minute)...`);
   const candidates = [
