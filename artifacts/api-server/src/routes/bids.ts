@@ -258,13 +258,14 @@ router.post("/sync", async (req, res) => {
       return;
     }
 
-    const result = await runBidSync(bizId);
-    res.json({
-      ok: true,
-      newFederal: result.newFederal,
-      newLocal: result.newLocal,
-      total: result.total,
-    });
+    // Respond immediately — scraping county sites takes 1-3 minutes and
+    // would cause the browser to drop the connection before results arrive.
+    // The frontend re-fetches bids at 15 s, 60 s, and 120 s to pick them up.
+    res.json({ ok: true, syncing: true });
+
+    runBidSync(bizId)
+      .then((r) => console.log(`[bids] Sync complete for business ${bizId}: ${JSON.stringify(r)}`))
+      .catch((err) => console.error(`[bids] Background sync error for business ${bizId}:`, err));
   } catch (err) {
     console.error("[bids] POST /bids/sync error:", err);
     res.status(500).json({ error: "Bid sync failed" });

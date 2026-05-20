@@ -115,14 +115,17 @@ export default function BidOpportunities() {
         const body = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error ?? "Sync failed");
       }
-      return res.json() as Promise<{ total: number; newFederal: number; newLocal: number }>;
+      return res.json() as Promise<{ ok: boolean; syncing?: boolean }>;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["bids"] });
-      const msg = data.total === 0
-        ? "No new bids found — you're up to date."
-        : `Found ${data.total} new bid${data.total !== 1 ? "s" : ""} (${data.newFederal} federal, ${data.newLocal} local).`;
-      toast({ title: "Bids refreshed", description: msg });
+    onSuccess: () => {
+      toast({
+        title: "Syncing bids…",
+        description: "Checking federal and local sources. New bids will appear shortly.",
+      });
+      // Re-fetch at 15 s, 60 s, and 120 s to pick up results as they arrive
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 15_000);
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 60_000);
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 120_000);
     },
     onError: (err: Error) => {
       toast({ title: "Refresh failed", description: err.message, variant: "destructive" });

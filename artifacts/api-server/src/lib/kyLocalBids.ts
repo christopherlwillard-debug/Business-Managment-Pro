@@ -19,6 +19,12 @@ export const BROAD_BID_KEYWORDS = [
   "infrastructure", "grading", "drainage", "excavation", "sidewalk",
   "curb", "gutter", "demolition", "earthwork", "culvert",
   "water main", "storm sewer", "sanitary sewer",
+  // General contracting / building renovation terms
+  "renovation", "remodel", "building renovation", "facility renovation",
+  "commercial building", "tenant improvement", "site work", "site preparation",
+  "flooring", "roofing", "drywall", "masonry", "carpentry",
+  "general contractor", "general contracting", "building construction",
+  "interior renovation", "exterior renovation", "facility improvement",
 ];
 
 // Pre-compile word-boundary patterns once at module load to avoid per-call overhead.
@@ -278,28 +284,25 @@ async function scrapeCountyGeneric(
         return results;
       });
 
-      // Primary tier: pavement/sealcoating-specific hits.
-      // Fallback tier: broader construction terms — only used when the page
-      // yields zero pavement-specific results so that general construction
-      // bids are surfaced rather than nothing, but non-construction RFPs
-      // (IT, furniture, staffing) are always excluded.
+      // Return ALL matching bids (pavement + broad construction combined) so each
+      // business profile can filter by its own keyword set downstream in bidSync.ts.
+      // Returning both tiers prevents GC construction bids from being suppressed
+      // when a page also has pavement hits.
       const eligible = links.filter(({ text }) => !isNavLink(text));
-      const pavementHits = eligible.filter(({ text, contextText }) =>
-        containsKeyword(`${text} ${contextText}`, PAVEMENT_KEYWORDS)
+      const broadHits = eligible.filter(({ text, contextText }) =>
+        containsKeyword(`${text} ${contextText}`, BROAD_BID_KEYWORDS)
       );
-      const hits =
-        pavementHits.length > 0
-          ? pavementHits
-          : eligible.filter(({ text, contextText }) =>
-              containsKeyword(`${text} ${contextText}`, BROAD_BID_KEYWORDS)
-            );
 
       const results: LocalOpportunity[] = [];
-      for (const { text, href, contextText } of hits) {
+      const seen = new Set<string>();
+      for (const { text, href, contextText } of broadHits) {
+        const key = href || text;
+        if (seen.has(key)) continue;
+        seen.add(key);
         const postedDate = parseIsoDate(contextText);
         const responseDeadline = parseDueDateFromText(contextText);
         results.push({
-          noticeId: stableId(prefix, href || text),
+          noticeId: stableId(prefix, key),
           title: text,
           agency,
           naicsCode: null,
@@ -312,9 +315,8 @@ async function scrapeCountyGeneric(
         });
       }
 
-      const tier = pavementHits.length > 0 ? "pavement" : "broad-construction";
       if (results.length > 0) {
-        console.log(`[ky-local] ${sourceLabel} (${base}): ${results.length} bids found [${tier}]`);
+        console.log(`[ky-local] ${sourceLabel} (${base}): ${results.length} bids found`);
         return results;
       }
     } catch (err) {
