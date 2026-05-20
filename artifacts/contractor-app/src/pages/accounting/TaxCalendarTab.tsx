@@ -1602,3 +1602,5 @@ function TaxCalendarTab({ year }: { year: number }) {
   );
 }
 
+
+export default TaxCalendarTab;

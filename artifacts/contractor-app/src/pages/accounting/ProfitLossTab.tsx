@@ -170,3 +170,5 @@ function ProfitLossTab({ year }: { year: number }) {
   );
 }
 
+
+export default ProfitLossTab;

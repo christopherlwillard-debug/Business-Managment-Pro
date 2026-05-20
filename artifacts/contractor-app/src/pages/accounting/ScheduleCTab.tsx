@@ -337,3 +337,5 @@ function ScheduleCTab({ year }: { year: number }) {
   );
 }
 
+
+export default ScheduleCTab;

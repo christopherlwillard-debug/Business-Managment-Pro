@@ -827,3 +827,5 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   );
 }
 
+
+export default OverviewTab;
