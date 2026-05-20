@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { launchBrowser } from "./launchBrowser.js";
+import * as cheerio from "cheerio";
 import { SamOpportunity } from "./samGov.js";
 
-const PAGE_TIMEOUT_MS = 30000;
+const PAGE_TIMEOUT_MS = 15_000;
+const USER_AGENT = "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)";
 
 export const PAVEMENT_KEYWORDS = [
   "asphalt", "sealcoat", "sealcoating", "pavement", "parking lot",
@@ -28,9 +29,6 @@ export const BROAD_BID_KEYWORDS = [
 ];
 
 // Pre-compile word-boundary patterns once at module load to avoid per-call overhead.
-// \b is used so "road" does not match "broadband", "bridge" does not match "Cambridge", etc.
-// Multi-word keywords (e.g. "parking lot", "crack seal") are split on spaces, so each
-// constituent word is boundary-checked — "parking lot" still matches "parking lot" in text.
 const KEYWORD_PATTERNS: Array<{ raw: string; pattern: RegExp }> = [
   ...new Set([...PAVEMENT_KEYWORDS, ...BROAD_BID_KEYWORDS]),
 ].map((kw) => ({
@@ -50,8 +48,6 @@ function containsKeyword(text: string, keywords = BROAD_BID_KEYWORDS): boolean {
 }
 
 // Phrases that identify navigation/help/meta links rather than actual solicitations.
-// Any link whose text contains one of these (case-insensitive) is skipped.
-// Exported so bidSync.ts can use the same list to purge stale rows from the DB.
 export const NAV_PHRASE_DENYLIST = [
   "bid list", "bid list page",
   "bidder profile", "bidder registration", "bidder form",
@@ -121,38 +117,51 @@ export type LocalOpportunity = SamOpportunity & {
   sourceLabel: string;
 };
 
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
+
+async function fetchHtml(url: string): Promise<string> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+function resolveUrl(base: string, href: string): string {
+  if (!href || href.startsWith("javascript:") || href.startsWith("mailto:")) return "";
+  try { return new URL(href, base).href; } catch { return href; }
+}
+
+// ── Individual scrapers ───────────────────────────────────────────────────────
+
 async function scrapeHancockCounty(): Promise<LocalOpportunity[]> {
   const url = "https://hancockky.us/resources/bids/";
-  const browser = await launchBrowser();
   try {
-    const page = await browser.newPage();
-    await page.setUserAgent(
-      "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-    );
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_TIMEOUT_MS });
-
-    const bids = await page.evaluate((pageUrl: string) => {
-      const results: Array<{ text: string; href: string; dateText: string }> = [];
-      const contentAreas = document.querySelectorAll(
-        ".entry-content a, .page-content a, article a, main a"
-      );
-      contentAreas.forEach((el) => {
-        const a = el as HTMLAnchorElement;
-        const text = a.textContent?.trim() ?? "";
-        const href = a.href ?? "";
-        if (text.length < 4 || !href || href.includes("facebook.com")) return;
-        if (href === pageUrl) return;
-
-        const container = a.closest("li, p, div, article") as HTMLElement | null;
-        const dateText = container?.textContent?.trim() ?? "";
-        results.push({ text, href, dateText });
-      });
-      return results;
-    }, url);
-
+    const html = await fetchHtml(url);
+    const $ = cheerio.load(html);
     const results: LocalOpportunity[] = [];
-    for (const { text, href, dateText } of bids) {
-      if (!containsKeyword(text) || isNavLink(text)) continue;
+
+    $(".entry-content a, .page-content a, article a, main a").each((_, el) => {
+      const text = $(el).text().trim();
+      const href = resolveUrl(url, $(el).attr("href") || "");
+      if (!text || text.length < 4 || !href || href.includes("facebook.com")) return;
+
+      const container = $(el).closest("li, p, div, article");
+      const dateText = container.text().trim();
+
+      if (!containsKeyword(text) || isNavLink(text)) return;
       const postedDate = parseIsoDate(dateText);
       const responseDeadline = parseDueDateFromText(dateText);
       results.push({
@@ -167,71 +176,42 @@ async function scrapeHancockCounty(): Promise<LocalOpportunity[]> {
         source: "state-local",
         sourceLabel: "Hancock County",
       });
-    }
+    });
+
     console.log(`[ky-local] Hancock County: ${results.length} bids found`);
     return results;
   } catch (err) {
     console.warn("[ky-local] Hancock County scrape failed:", (err as Error).message);
     return [];
-  } finally {
-    await browser.close();
   }
 }
 
 async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
   const url = "https://www.daviessky.org/notices/";
-  const browser = await launchBrowser();
   try {
-    const page = await browser.newPage();
-    await page.setUserAgent(
-      "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-    );
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: PAGE_TIMEOUT_MS });
-
-    const notices = await page.evaluate(() => {
-      const results: Array<{
-        title: string;
-        href: string;
-        fullText: string;
-        dateAttr: string;
-      }> = [];
-
-      const cards = document.querySelectorAll<HTMLElement>(
-        "article, .entry, .notice-item, .post, .wp-block-post"
-      );
-
-      cards.forEach((card) => {
-        const headingEl = card.querySelector<HTMLElement>("h1,h2,h3,h4,h5");
-        const linkEl = card.querySelector<HTMLAnchorElement>("a[href]");
-        const title = (headingEl?.textContent ?? linkEl?.textContent ?? "").trim();
-        const href = linkEl?.href ?? "";
-        const fullText = (card.textContent ?? "").replace(/\s+/g, " ").trim();
-        const timeEl = card.querySelector<HTMLElement>("time");
-        const dateAttr = timeEl?.getAttribute("datetime") ?? timeEl?.textContent?.trim() ?? "";
-        if (title.length > 5) results.push({ title, href, fullText, dateAttr });
-      });
-
-      if (results.length === 0) {
-        document.querySelectorAll<HTMLAnchorElement>("main a, .content a").forEach((a) => {
-          const text = a.textContent?.trim() ?? "";
-          const parent = a.closest("p, li, div") as HTMLElement | null;
-          const fullText = parent?.textContent?.trim() ?? text;
-          if (text.length > 5) {
-            results.push({ title: text, href: a.href, fullText, dateAttr: "" });
-          }
-        });
-      }
-      return results;
-    });
-
+    const html = await fetchHtml(url);
+    const $ = cheerio.load(html);
     const seen = new Set<string>();
     const results: LocalOpportunity[] = [];
 
-    for (const { title, href, fullText, dateAttr } of notices) {
-      if (!containsKeyword(`${title} ${fullText}`) || isNavLink(title)) continue;
+    const processCard = (el: cheerio.AnyNode) => {
+      const $el = $(el);
+      const headingEl = $el.find("h1,h2,h3,h4,h5").first();
+      const linkEl = $el.find("a[href]").first();
+      const title = (headingEl.text() || linkEl.text() || "").trim();
+      const rawHref = linkEl.attr("href") || "";
+      const href = resolveUrl(url, rawHref);
+      const fullText = $el.text().replace(/\s+/g, " ").trim();
+      const timeEl = $el.find("time").first();
+      const dateAttr = timeEl.attr("datetime") || timeEl.text().trim() || "";
+
+      if (!title || title.length <= 5) return;
+      if (!containsKeyword(`${title} ${fullText}`) || isNavLink(title)) return;
+
       const noticeId = stableId("ky-daviess", href || title);
-      if (seen.has(noticeId)) continue;
+      if (seen.has(noticeId)) return;
       seen.add(noticeId);
+
       const postedDate = parseIsoDate(dateAttr) ?? parseIsoDate(fullText);
       const responseDeadline = parseDueDateFromText(fullText);
       results.push({
@@ -246,14 +226,44 @@ async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
         source: "state-local",
         sourceLabel: "Daviess County",
       });
+    };
+
+    const cards = $("article, .entry, .notice-item, .post, .wp-block-post");
+    if (cards.length > 0) {
+      cards.each((_, el) => processCard(el));
+    } else {
+      // Fallback: scan all content links
+      $("main a, .content a").each((_, el) => {
+        const text = $(el).text().trim();
+        const rawHref = $(el).attr("href") || "";
+        const href = resolveUrl(url, rawHref);
+        const parent = $(el).closest("p, li, div");
+        const fullText = parent.text().replace(/\s+/g, " ").trim() || text;
+        if (text.length <= 5) return;
+        if (!containsKeyword(`${text} ${fullText}`) || isNavLink(text)) return;
+        const noticeId = stableId("ky-daviess", href || text);
+        if (seen.has(noticeId)) return;
+        seen.add(noticeId);
+        results.push({
+          noticeId,
+          title: text,
+          agency: "Daviess County Government",
+          naicsCode: null,
+          description: fullText.slice(0, 500) || null,
+          postedDate: parseIsoDate(fullText),
+          responseDeadline: parseDueDateFromText(fullText),
+          url: href || url,
+          source: "state-local",
+          sourceLabel: "Daviess County",
+        });
+      });
     }
+
     console.log(`[ky-local] Daviess County: ${results.length} bids found`);
     return results;
   } catch (err) {
     console.warn("[ky-local] Daviess County scrape failed:", (err as Error).message);
     return [];
-  } finally {
-    await browser.close();
   }
 }
 
@@ -264,41 +274,29 @@ async function scrapeCountyGeneric(
   sourceLabel: string
 ): Promise<LocalOpportunity[]> {
   for (const base of urls) {
-    const browser = await launchBrowser();
     try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-      );
-      await page.goto(base, { waitUntil: "domcontentloaded", timeout: PAGE_TIMEOUT_MS });
-
-      const links = await page.evaluate(() => {
-        const results: Array<{ text: string; href: string; contextText: string }> = [];
-        document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
-          const text = a.textContent?.trim() ?? "";
-          if (text.length < 4) return;
-          const container = a.closest("li, p, tr, div, article") as HTMLElement | null;
-          const contextText = container?.textContent?.replace(/\s+/g, " ").trim() ?? text;
-          results.push({ text, href: a.href, contextText });
-        });
-        return results;
-      });
-
-      // Return ALL matching bids (pavement + broad construction combined) so each
-      // business profile can filter by its own keyword set downstream in bidSync.ts.
-      // Returning both tiers prevents GC construction bids from being suppressed
-      // when a page also has pavement hits.
-      const eligible = links.filter(({ text }) => !isNavLink(text));
-      const broadHits = eligible.filter(({ text, contextText }) =>
-        containsKeyword(`${text} ${contextText}`, BROAD_BID_KEYWORDS)
-      );
-
-      const results: LocalOpportunity[] = [];
+      const html = await fetchHtml(base);
+      const $ = cheerio.load(html);
       const seen = new Set<string>();
-      for (const { text, href, contextText } of broadHits) {
+      const results: LocalOpportunity[] = [];
+
+      $("a[href]").each((_, el) => {
+        const text = $(el).text().trim();
+        if (text.length < 4 || isNavLink(text)) return;
+
+        const rawHref = $(el).attr("href") || "";
+        const href = resolveUrl(base, rawHref);
+        if (!href) return;
+
+        const container = $(el).closest("li, p, tr, div, article");
+        const contextText = container.text().replace(/\s+/g, " ").trim() || text;
+
+        if (!containsKeyword(`${text} ${contextText}`, BROAD_BID_KEYWORDS)) return;
+
         const key = href || text;
-        if (seen.has(key)) continue;
+        if (seen.has(key)) return;
         seen.add(key);
+
         const postedDate = parseIsoDate(contextText);
         const responseDeadline = parseDueDateFromText(contextText);
         results.push({
@@ -313,7 +311,7 @@ async function scrapeCountyGeneric(
           source: "state-local",
           sourceLabel,
         });
-      }
+      });
 
       if (results.length > 0) {
         console.log(`[ky-local] ${sourceLabel} (${base}): ${results.length} bids found`);
@@ -321,8 +319,6 @@ async function scrapeCountyGeneric(
       }
     } catch (err) {
       console.warn(`[ky-local] ${sourceLabel} (${base}) failed:`, (err as Error).message);
-    } finally {
-      await browser.close();
     }
   }
   console.log(`[ky-local] ${sourceLabel}: site unreachable or no matching bids`);
@@ -332,12 +328,7 @@ async function scrapeCountyGeneric(
 // Research note (May 2026):
 // Hopkins, Union, Webster, and Muhlenberg counties all lack functioning standalone
 // bid portals (403 / DNS failures). DemandStar and BidNet Direct are the two primary
-// shared procurement platforms used by small KY counties. Confirmed through:
-//   - DemandStar agency directory: lists KY counties including Hopkins, Webster
-//   - BidNet Direct Kentucky portal (bidnetdirect.com/kentucky): lists member agencies
-//     in western KY including Union, Muhlenberg, and surrounding counties
-// These platform scrapers cover all participating counties at once and automatically
-// include any additional KY/IN counties within the ~50-mile radius that join later.
+// shared procurement platforms used by small KY counties.
 
 const KY_IN_AGENCY_TERMS = [
   "kentucky", " ky ", ", ky", " in ", ", in", "indiana",
@@ -352,516 +343,284 @@ function isLikelyKyInAgency(agencyText: string): boolean {
   return KY_IN_AGENCY_TERMS.some((term) => lower.includes(term));
 }
 
+// DemandStar and BidNet are JS-rendered SPAs. We attempt fetch+cheerio as a
+// best-effort — server-side rendered content (if any) will be parsed. Full SPA
+// rendering is no longer used due to production Chrome incompatibility.
+
 async function scrapeDemandStarKY(): Promise<LocalOpportunity[]> {
-  const searchUrls = [
+  const urls = [
     "https://network.demandstar.com/solicitations?stateCode=KY",
     "https://network.demandstar.com/solicitations?state=KY",
   ];
-
-  for (const base of searchUrls) {
-    const browser = await launchBrowser();
+  for (const base of urls) {
     try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-      );
-      await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
-
-      const rows = await page.evaluate(() => {
-        const results: Array<{
-          title: string;
-          href: string;
-          agency: string;
-          dueDate: string;
-          fullText: string;
-        }> = [];
-
-        const rowEls = document.querySelectorAll<HTMLElement>(
-          "[class*='solicitation-row'], [class*='SolicitationRow'], [class*='bid-row'], " +
-          "[class*='result-row'], [class*='opportunity'], tr[data-id], " +
-          ".ds-solicitation, article, .card, li[class*='item']"
-        );
-
-        rowEls.forEach((row) => {
-          const link = row.querySelector<HTMLAnchorElement>("a[href]");
-          if (!link) return;
-          const title = link.textContent?.trim() ?? "";
-          const href = link.href ?? "";
-          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
-
-          const agencyEl = row.querySelector<HTMLElement>(
-            "[class*='agency'], [class*='entity'], [class*='org'], td:nth-child(2)"
-          );
-          const agency = agencyEl?.textContent?.trim() ?? "";
-
-          const dateEl = row.querySelector<HTMLElement>(
-            "[class*='due'], [class*='deadline'], [class*='close'], time, td:last-child"
-          );
-          const dueDate = dateEl?.getAttribute("datetime") ?? dateEl?.textContent?.trim() ?? "";
-
-          if (title.length > 4) {
-            results.push({ title, href, agency, dueDate, fullText });
-          }
-        });
-
-        if (results.length === 0) {
-          document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
-            const text = a.textContent?.trim() ?? "";
-            const parent = a.closest("li, tr, div[class], article") as HTMLElement | null;
-            const fullText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
-            if (text.length > 4) {
-              results.push({ title: text, href: a.href, agency: "", dueDate: "", fullText });
-            }
-          });
-        }
-
-        return results;
-      });
-
-      const results: LocalOpportunity[] = [];
+      const html = await fetchHtml(base);
+      const $ = cheerio.load(html);
       const seen = new Set<string>();
+      const results: LocalOpportunity[] = [];
 
-      for (const { title, href, agency, dueDate, fullText } of rows) {
-        if (!containsKeyword(`${title} ${fullText}`)) continue;
-        if (!isLikelyKyInAgency(agency) && !isLikelyKyInAgency(fullText)) continue;
-        const noticeId = stableId("demandstar-ky", href || title);
-        if (seen.has(noticeId)) continue;
+      $("a[href]").each((_, el) => {
+        const text = $(el).text().trim();
+        if (text.length <= 4 || isNavLink(text)) return;
+        const rawHref = $(el).attr("href") || "";
+        const href = resolveUrl(base, rawHref);
+        if (!href) return;
+        const parent = $(el).closest("li, tr, div[class], article");
+        const fullText = parent.text().replace(/\s+/g, " ").trim() || text;
+        if (!containsKeyword(`${text} ${fullText}`)) return;
+        if (!isLikelyKyInAgency(fullText)) return;
+        const noticeId = stableId("demandstar-ky", href || text);
+        if (seen.has(noticeId)) return;
         seen.add(noticeId);
-
-        const responseDeadline = parseIsoDate(dueDate) ?? parseDueDateFromText(fullText);
-        const postedDate = parseIsoDate(fullText);
-
         results.push({
           noticeId,
-          title,
-          agency: agency || "Kentucky Government (DemandStar)",
+          title: text,
+          agency: "Kentucky Government (DemandStar)",
           naicsCode: null,
           description: fullText.slice(0, 500) || null,
-          postedDate,
-          responseDeadline,
+          postedDate: parseIsoDate(fullText),
+          responseDeadline: parseDueDateFromText(fullText),
           url: href,
           source: "state-local",
           sourceLabel: "DemandStar KY",
         });
-      }
+      });
 
-      if (results.length > 0 || rows.length > 0) {
+      if (results.length > 0 || html.length > 1000) {
         console.log(`[ky-local] DemandStar KY (${base}): ${results.length} matching bids`);
         return results;
       }
     } catch (err) {
       console.warn(`[ky-local] DemandStar KY (${base}) failed:`, (err as Error).message);
-    } finally {
-      await browser.close();
     }
   }
-
   console.log("[ky-local] DemandStar KY: unreachable or no matching bids");
   return [];
 }
 
 async function scrapeDemandStarIN(): Promise<LocalOpportunity[]> {
-  const searchUrls = [
+  const urls = [
     "https://network.demandstar.com/solicitations?stateCode=IN",
     "https://network.demandstar.com/solicitations?state=IN",
   ];
-
-  for (const base of searchUrls) {
-    const browser = await launchBrowser();
+  for (const base of urls) {
     try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-      );
-      await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
-
-      const rows = await page.evaluate(() => {
-        const results: Array<{
-          title: string;
-          href: string;
-          agency: string;
-          dueDate: string;
-          fullText: string;
-        }> = [];
-
-        const rowEls = document.querySelectorAll<HTMLElement>(
-          "[class*='solicitation-row'], [class*='SolicitationRow'], [class*='bid-row'], " +
-          "[class*='result-row'], [class*='opportunity'], tr[data-id], " +
-          ".ds-solicitation, article, .card, li[class*='item']"
-        );
-
-        rowEls.forEach((row) => {
-          const link = row.querySelector<HTMLAnchorElement>("a[href]");
-          if (!link) return;
-          const title = link.textContent?.trim() ?? "";
-          const href = link.href ?? "";
-          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
-
-          const agencyEl = row.querySelector<HTMLElement>(
-            "[class*='agency'], [class*='entity'], [class*='org'], td:nth-child(2)"
-          );
-          const agency = agencyEl?.textContent?.trim() ?? "";
-
-          const dateEl = row.querySelector<HTMLElement>(
-            "[class*='due'], [class*='deadline'], [class*='close'], time, td:last-child"
-          );
-          const dueDate = dateEl?.getAttribute("datetime") ?? dateEl?.textContent?.trim() ?? "";
-
-          if (title.length > 4) {
-            results.push({ title, href, agency, dueDate, fullText });
-          }
-        });
-
-        if (results.length === 0) {
-          document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
-            const text = a.textContent?.trim() ?? "";
-            const parent = a.closest("li, tr, div[class], article") as HTMLElement | null;
-            const fullText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
-            if (text.length > 4) {
-              results.push({ title: text, href: a.href, agency: "", dueDate: "", fullText });
-            }
-          });
-        }
-
-        return results;
-      });
-
-      const results: LocalOpportunity[] = [];
+      const html = await fetchHtml(base);
+      const $ = cheerio.load(html);
       const seen = new Set<string>();
+      const results: LocalOpportunity[] = [];
 
-      for (const { title, href, agency, dueDate, fullText } of rows) {
-        if (!containsKeyword(`${title} ${fullText}`)) continue;
-        if (!isLikelyKyInAgency(agency) && !isLikelyKyInAgency(fullText)) continue;
-        const noticeId = stableId("demandstar-in", href || title);
-        if (seen.has(noticeId)) continue;
+      $("a[href]").each((_, el) => {
+        const text = $(el).text().trim();
+        if (text.length <= 4 || isNavLink(text)) return;
+        const rawHref = $(el).attr("href") || "";
+        const href = resolveUrl(base, rawHref);
+        if (!href) return;
+        const parent = $(el).closest("li, tr, div[class], article");
+        const fullText = parent.text().replace(/\s+/g, " ").trim() || text;
+        if (!containsKeyword(`${text} ${fullText}`)) return;
+        if (!isLikelyKyInAgency(fullText)) return;
+        const noticeId = stableId("demandstar-in", href || text);
+        if (seen.has(noticeId)) return;
         seen.add(noticeId);
-
-        const responseDeadline = parseIsoDate(dueDate) ?? parseDueDateFromText(fullText);
-        const postedDate = parseIsoDate(fullText);
-
         results.push({
           noticeId,
-          title,
-          agency: agency || "Indiana Government (DemandStar)",
+          title: text,
+          agency: "Indiana Government (DemandStar)",
           naicsCode: null,
           description: fullText.slice(0, 500) || null,
-          postedDate,
-          responseDeadline,
+          postedDate: parseIsoDate(fullText),
+          responseDeadline: parseDueDateFromText(fullText),
           url: href,
           source: "state-local",
           sourceLabel: "DemandStar IN",
         });
-      }
+      });
 
-      if (results.length > 0 || rows.length > 0) {
+      if (results.length > 0 || html.length > 1000) {
         console.log(`[ky-local] DemandStar IN (${base}): ${results.length} matching bids`);
         return results;
       }
     } catch (err) {
       console.warn(`[ky-local] DemandStar IN (${base}) failed:`, (err as Error).message);
-    } finally {
-      await browser.close();
     }
   }
-
   console.log("[ky-local] DemandStar IN: unreachable or no matching bids");
   return [];
 }
 
 async function scrapeBidNetDirectKY(): Promise<LocalOpportunity[]> {
-  const searchUrls = [
+  const urls = [
     "https://www.bidnetdirect.com/kentucky",
     "https://bidnetdirect.com/kentucky",
-    "https://www.bidnetdirect.com/co/kentucky",
   ];
-
-  for (const base of searchUrls) {
-    const browser = await launchBrowser();
+  for (const base of urls) {
     try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-      );
-      await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
-
-      const rows = await page.evaluate(() => {
-        const results: Array<{
-          title: string;
-          href: string;
-          agency: string;
-          dueDate: string;
-          fullText: string;
-        }> = [];
-
-        const rowEls = document.querySelectorAll<HTMLElement>(
-          "tr, .bid-listing, .solicitation-item, .bids-list li, " +
-          "[class*='bid-row'], [class*='opportunity-item'], article, .card"
-        );
-
-        rowEls.forEach((row) => {
-          const link = row.querySelector<HTMLAnchorElement>("a[href]");
-          if (!link) return;
-          const title = link.textContent?.trim() ?? "";
-          const href = link.href ?? "";
-          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
-
-          const agencyEl = row.querySelector<HTMLElement>(
-            "[class*='agency'], [class*='entity'], [class*='org'], " +
-            "td:nth-child(2), [class*='buyer']"
-          );
-          const agency = agencyEl?.textContent?.trim() ?? "";
-
-          const dateEl = row.querySelector<HTMLElement>(
-            "[class*='due'], [class*='close'], [class*='deadline'], " +
-            "time, td:last-child, [class*='date']"
-          );
-          const dueDate = dateEl?.getAttribute("datetime") ?? dateEl?.textContent?.trim() ?? "";
-
-          if (title.length > 4) {
-            results.push({ title, href, agency, dueDate, fullText });
-          }
-        });
-
-        if (results.length === 0) {
-          document.querySelectorAll<HTMLAnchorElement>("main a[href], .content a[href]").forEach((a) => {
-            const text = a.textContent?.trim() ?? "";
-            const parent = a.closest("li, tr, div") as HTMLElement | null;
-            const fullText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
-            if (text.length > 4) {
-              results.push({ title: text, href: a.href, agency: "", dueDate: "", fullText });
-            }
-          });
-        }
-
-        return results;
-      });
-
-      const results: LocalOpportunity[] = [];
+      const html = await fetchHtml(base);
+      const $ = cheerio.load(html);
       const seen = new Set<string>();
+      const results: LocalOpportunity[] = [];
 
-      for (const { title, href, agency, dueDate, fullText } of rows) {
-        if (!containsKeyword(`${title} ${fullText}`)) continue;
-        if (!isLikelyKyInAgency(agency) && !isLikelyKyInAgency(fullText)) continue;
-        const noticeId = stableId("bidnet-ky", href || title);
-        if (seen.has(noticeId)) continue;
+      $("a[href]").each((_, el) => {
+        const text = $(el).text().trim();
+        if (text.length <= 4 || isNavLink(text)) return;
+        const rawHref = $(el).attr("href") || "";
+        const href = resolveUrl(base, rawHref);
+        if (!href) return;
+        const parent = $(el).closest("li, tr, div[class], article");
+        const fullText = parent.text().replace(/\s+/g, " ").trim() || text;
+        if (!containsKeyword(`${text} ${fullText}`)) return;
+        if (!isLikelyKyInAgency(fullText)) return;
+        const noticeId = stableId("bidnet-ky", href || text);
+        if (seen.has(noticeId)) return;
         seen.add(noticeId);
-
-        const responseDeadline = parseIsoDate(dueDate) ?? parseDueDateFromText(fullText);
-        const postedDate = parseIsoDate(fullText);
-
         results.push({
           noticeId,
-          title,
-          agency: agency || "Kentucky Government (BidNet Direct)",
+          title: text,
+          agency: "Kentucky Government (BidNet Direct)",
           naicsCode: null,
           description: fullText.slice(0, 500) || null,
-          postedDate,
-          responseDeadline,
+          postedDate: parseIsoDate(fullText),
+          responseDeadline: parseDueDateFromText(fullText),
           url: href,
           source: "state-local",
           sourceLabel: "BidNet Direct KY",
         });
-      }
+      });
 
-      if (results.length > 0 || rows.length > 0) {
+      if (results.length > 0 || html.length > 1000) {
         console.log(`[ky-local] BidNet Direct KY (${base}): ${results.length} matching bids`);
         return results;
       }
     } catch (err) {
       console.warn(`[ky-local] BidNet Direct KY (${base}) failed:`, (err as Error).message);
-    } finally {
-      await browser.close();
     }
   }
-
   console.log("[ky-local] BidNet Direct KY: unreachable or no matching bids");
   return [];
 }
 
 async function scrapeBidNetDirectIN(): Promise<LocalOpportunity[]> {
-  const searchUrls = [
+  const urls = [
     "https://www.bidnetdirect.com/indiana",
     "https://bidnetdirect.com/indiana",
-    "https://www.bidnetdirect.com/co/indiana",
   ];
-
-  for (const base of searchUrls) {
-    const browser = await launchBrowser();
+  for (const base of urls) {
     try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-      );
-      await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
-
-      const rows = await page.evaluate(() => {
-        const results: Array<{
-          title: string;
-          href: string;
-          agency: string;
-          dueDate: string;
-          fullText: string;
-        }> = [];
-
-        const rowEls = document.querySelectorAll<HTMLElement>(
-          "tr, .bid-listing, .solicitation-item, .bids-list li, " +
-          "[class*='bid-row'], [class*='opportunity-item'], article, .card"
-        );
-
-        rowEls.forEach((row) => {
-          const link = row.querySelector<HTMLAnchorElement>("a[href]");
-          if (!link) return;
-          const title = link.textContent?.trim() ?? "";
-          const href = link.href ?? "";
-          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
-
-          const agencyEl = row.querySelector<HTMLElement>(
-            "[class*='agency'], [class*='entity'], [class*='org'], " +
-            "td:nth-child(2), [class*='buyer']"
-          );
-          const agency = agencyEl?.textContent?.trim() ?? "";
-
-          const dateEl = row.querySelector<HTMLElement>(
-            "[class*='due'], [class*='close'], [class*='deadline'], " +
-            "time, td:last-child, [class*='date']"
-          );
-          const dueDate = dateEl?.getAttribute("datetime") ?? dateEl?.textContent?.trim() ?? "";
-
-          if (title.length > 4) {
-            results.push({ title, href, agency, dueDate, fullText });
-          }
-        });
-
-        if (results.length === 0) {
-          document.querySelectorAll<HTMLAnchorElement>("main a[href], .content a[href]").forEach((a) => {
-            const text = a.textContent?.trim() ?? "";
-            const parent = a.closest("li, tr, div") as HTMLElement | null;
-            const fullText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
-            if (text.length > 4) {
-              results.push({ title: text, href: a.href, agency: "", dueDate: "", fullText });
-            }
-          });
-        }
-
-        return results;
-      });
-
-      const results: LocalOpportunity[] = [];
+      const html = await fetchHtml(base);
+      const $ = cheerio.load(html);
       const seen = new Set<string>();
+      const results: LocalOpportunity[] = [];
 
-      for (const { title, href, agency, dueDate, fullText } of rows) {
-        if (!containsKeyword(`${title} ${fullText}`)) continue;
-        if (!isLikelyKyInAgency(agency) && !isLikelyKyInAgency(fullText)) continue;
-        const noticeId = stableId("bidnet-in", href || title);
-        if (seen.has(noticeId)) continue;
+      $("a[href]").each((_, el) => {
+        const text = $(el).text().trim();
+        if (text.length <= 4 || isNavLink(text)) return;
+        const rawHref = $(el).attr("href") || "";
+        const href = resolveUrl(base, rawHref);
+        if (!href) return;
+        const parent = $(el).closest("li, tr, div[class], article");
+        const fullText = parent.text().replace(/\s+/g, " ").trim() || text;
+        if (!containsKeyword(`${text} ${fullText}`)) return;
+        if (!isLikelyKyInAgency(fullText)) return;
+        const noticeId = stableId("bidnet-in", href || text);
+        if (seen.has(noticeId)) return;
         seen.add(noticeId);
-
-        const responseDeadline = parseIsoDate(dueDate) ?? parseDueDateFromText(fullText);
-        const postedDate = parseIsoDate(fullText);
-
         results.push({
           noticeId,
-          title,
-          agency: agency || "Indiana Government (BidNet Direct)",
+          title: text,
+          agency: "Indiana Government (BidNet Direct)",
           naicsCode: null,
           description: fullText.slice(0, 500) || null,
-          postedDate,
-          responseDeadline,
+          postedDate: parseIsoDate(fullText),
+          responseDeadline: parseDueDateFromText(fullText),
           url: href,
           source: "state-local",
           sourceLabel: "BidNet Direct IN",
         });
-      }
+      });
 
-      if (results.length > 0 || rows.length > 0) {
+      if (results.length > 0 || html.length > 1000) {
         console.log(`[ky-local] BidNet Direct IN (${base}): ${results.length} matching bids`);
         return results;
       }
     } catch (err) {
       console.warn(`[ky-local] BidNet Direct IN (${base}) failed:`, (err as Error).message);
-    } finally {
-      await browser.close();
     }
   }
-
   console.log("[ky-local] BidNet Direct IN: unreachable or no matching bids");
   return [];
 }
 
 async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
   const KY_NAICS = "237310";
-  const CONSTRUCTION_KEYWORDS = ["asphalt", "sealcoat", "pavement", "road", "parking"];
+  const CONSTRUCTION_KEYWORDS = ["asphalt", "sealcoat", "pavement", "road", "parking",
+    "construction", "renovation", "grading", "excavation", "concrete"];
 
   const searchUrls = [
-    `https://procurement.ky.gov/Pages/BidOpportunities.aspx?Category=Construction`,
+    "https://procurement.ky.gov/Pages/BidOpportunities.aspx?Category=Construction",
     `https://procurement.ky.gov/Pages/BidOpportunities.aspx?NAICS=${KY_NAICS}`,
-    `https://finance.ky.gov/services/procurement/Pages/BidOpportunities.aspx`,
-    `https://emars.ky.gov`,
-    `https://procurement.ky.gov`,
+    "https://finance.ky.gov/services/procurement/Pages/BidOpportunities.aspx",
+    "https://procurement.ky.gov",
   ];
 
   for (const base of searchUrls) {
-    const browser = await launchBrowser();
     try {
-      const page = await browser.newPage();
-      await page.setUserAgent(
-        "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)"
-      );
-      await page.goto(base, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
-
-      const rows = await page.evaluate(() => {
-        const results: Array<{
-          text: string;
-          href: string;
-          contextText: string;
-          dateText: string;
-        }> = [];
-
-        const rowEls = document.querySelectorAll<HTMLElement>(
-          "tr, .bid-item, .opportunity-row, .result-item, li"
-        );
-        rowEls.forEach((row) => {
-          const link = row.querySelector<HTMLAnchorElement>("a[href]");
-          if (!link) return;
-          const text = link.textContent?.trim() ?? "";
-          const href = link.href ?? "";
-          const fullText = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
-          const timeEl = row.querySelector<HTMLElement>("time");
-          const dateText = timeEl?.getAttribute("datetime") ?? timeEl?.textContent?.trim() ?? fullText;
-          if (text.length > 4) results.push({ text, href, contextText: fullText, dateText });
-        });
-
-        if (results.length === 0) {
-          document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => {
-            const text = a.textContent?.trim() ?? "";
-            const parent = a.closest("li, p, div") as HTMLElement | null;
-            const contextText = parent?.textContent?.replace(/\s+/g, " ").trim() ?? text;
-            if (text.length > 4) {
-              results.push({ text, href: a.href, contextText, dateText: "" });
-            }
-          });
-        }
-
-        return results;
-      });
-
+      const html = await fetchHtml(base);
+      const $ = cheerio.load(html);
       const results: LocalOpportunity[] = [];
-      for (const { text, href, contextText, dateText } of rows) {
-        const combined = `${text} ${contextText}`;
-        if (!CONSTRUCTION_KEYWORDS.some((kw) => combined.toLowerCase().includes(kw))) continue;
-        const postedDate = parseIsoDate(dateText) ?? parseIsoDate(contextText);
-        const responseDeadline = parseDueDateFromText(contextText);
+
+      // Try structured rows first (table / list)
+      $("tr, .bid-item, .opportunity-row, .result-item, li").each((_, el) => {
+        const link = $(el).find("a[href]").first();
+        if (!link.length) return;
+        const text = link.text().trim();
+        const rawHref = link.attr("href") || "";
+        const href = resolveUrl(base, rawHref);
+        const fullText = $(el).text().replace(/\s+/g, " ").trim();
+        const timeEl = $(el).find("time").first();
+        const dateText = timeEl.attr("datetime") || timeEl.text().trim() || fullText;
+        if (text.length <= 4) return;
+        const combined = `${text} ${fullText}`;
+        if (!CONSTRUCTION_KEYWORDS.some((kw) => combined.toLowerCase().includes(kw))) return;
+        const postedDate = parseIsoDate(dateText) ?? parseIsoDate(fullText);
+        const responseDeadline = parseDueDateFromText(fullText);
         results.push({
           noticeId: stableId("ky-eprocure", href || text),
           title: text,
           agency: "Kentucky eProcurement",
           naicsCode: KY_NAICS,
-          description: contextText.slice(0, 500) || null,
+          description: fullText.slice(0, 500) || null,
           postedDate,
           responseDeadline,
           url: href,
           source: "state-local",
           sourceLabel: "KY eProcurement",
+        });
+      });
+
+      // Fallback: scan all links
+      if (results.length === 0) {
+        $("a[href]").each((_, el) => {
+          const text = $(el).text().trim();
+          const rawHref = $(el).attr("href") || "";
+          const href = resolveUrl(base, rawHref);
+          const parent = $(el).closest("li, p, div");
+          const contextText = parent.text().replace(/\s+/g, " ").trim() || text;
+          if (text.length <= 4) return;
+          const combined = `${text} ${contextText}`;
+          if (!CONSTRUCTION_KEYWORDS.some((kw) => combined.toLowerCase().includes(kw))) return;
+          results.push({
+            noticeId: stableId("ky-eprocure", href || text),
+            title: text,
+            agency: "Kentucky eProcurement",
+            naicsCode: KY_NAICS,
+            description: contextText.slice(0, 500) || null,
+            postedDate: parseIsoDate(contextText),
+            responseDeadline: parseDueDateFromText(contextText),
+            url: href,
+            source: "state-local",
+            sourceLabel: "KY eProcurement",
+          });
         });
       }
 
@@ -871,8 +630,6 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
       }
     } catch (err) {
       console.warn(`[ky-local] KY eProcurement (${base}) failed:`, (err as Error).message);
-    } finally {
-      await browser.close();
     }
   }
 
@@ -883,43 +640,30 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
 export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
   console.log("[ky-local] Starting local bid scrape (KY + IN 50-mile radius)");
 
-  // Hawesville (Hancock County seat) is covered by scrapeHancockCounty().
-  // Hartford (Ohio County seat) has no separate city bid portal; covered by Ohio County below.
-
   const results = await Promise.allSettled([
-    // Shared procurement platforms — cover all participating KY/IN counties at once.
-    // Hopkins, Union, Webster, and Muhlenberg counties (and many others) post on
-    // DemandStar and/or BidNet Direct instead of maintaining their own bid portals.
-    // BidNet IN covers southwestern Indiana counties (Vanderburgh, Warrick, Gibson,
-    // Posey, etc.) that use BidNet Direct as their procurement platform.
+    // Shared procurement platforms
     scrapeDemandStarKY(),
     scrapeDemandStarIN(),
     scrapeBidNetDirectKY(),
     scrapeBidNetDirectIN(),
 
-    // Core KY counties (original)
+    // Core KY counties
     scrapeHancockCounty(),
     scrapeDaviessCounty(),
     scrapeCountyGeneric(
       ["https://www.ohiocounty.ky.gov", "https://ohiocountyky.gov"],
-      "ky-ohio",
-      "Ohio County Government",
-      "Ohio County"
+      "ky-ohio", "Ohio County Government", "Ohio County"
     ),
     scrapeCountyGeneric(
       ["https://www.mcleancounty.ky.gov", "https://mcleancountyky.gov"],
-      "ky-mclean",
-      "McLean County Government",
-      "McLean County"
+      "ky-mclean", "McLean County Government", "McLean County"
     ),
     scrapeKyEProcurement(),
 
-    // Owensboro, KY (city)
+    // Owensboro, KY
     scrapeCountyGeneric(
       ["https://owensboro.org/purchasing", "https://owensboro.org/bids"],
-      "ky-owensboro",
-      "City of Owensboro",
-      "Owensboro"
+      "ky-owensboro", "City of Owensboro", "Owensboro"
     ),
 
     // Henderson, KY (city)
@@ -929,9 +673,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://hendersonky.gov/135/Purchasing",
         "https://hendersonky.gov/bids",
       ],
-      "ky-henderson-city",
-      "City of Henderson",
-      "Henderson City"
+      "ky-henderson-city", "City of Henderson", "Henderson City"
     ),
 
     // Henderson County, KY
@@ -941,28 +683,22 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://hendersoncountyky.gov/bids",
         "https://hendersoncountyky.gov",
       ],
-      "ky-henderson-county",
-      "Henderson County Government",
-      "Henderson County"
+      "ky-henderson-county", "Henderson County Government", "Henderson County"
     ),
 
     // Grayson County, KY
     scrapeCountyGeneric(
       ["https://graysoncountyky.gov/bids", "https://graysoncountyky.gov"],
-      "ky-grayson",
-      "Grayson County Government",
-      "Grayson County"
+      "ky-grayson", "Grayson County Government", "Grayson County"
     ),
 
-    // Leitchfield, KY (city — separate portal from Grayson County)
+    // Leitchfield, KY
     scrapeCountyGeneric(
       ["https://leitchfield.ky.gov/bids", "https://leitchfield.ky.gov"],
-      "ky-leitchfield",
-      "City of Leitchfield",
-      "Leitchfield"
+      "ky-leitchfield", "City of Leitchfield", "Leitchfield"
     ),
 
-    // Hopkins County, KY (hopkinscountyky.com is the active public site)
+    // Hopkins County, KY
     scrapeCountyGeneric(
       [
         "https://hopkinscountyky.com/bids",
@@ -970,12 +706,10 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://hopkinscounty.ky.gov/bids",
         "https://hopkinscounty.ky.gov",
       ],
-      "ky-hopkins",
-      "Hopkins County Government",
-      "Hopkins County"
+      "ky-hopkins", "Hopkins County Government", "Hopkins County"
     ),
 
-    // Union County, KY (morganfield.ky.gov is the reachable county seat site)
+    // Union County, KY
     scrapeCountyGeneric(
       [
         "https://morganfield.ky.gov/bids",
@@ -983,12 +717,10 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://unioncounty.ky.gov/bids",
         "https://unioncounty.ky.gov",
       ],
-      "ky-union",
-      "Union County Government",
-      "Union County"
+      "ky-union", "Union County Government", "Union County"
     ),
 
-    // Webster County, KY (dixon.ky.gov is the reachable county seat site)
+    // Webster County, KY
     scrapeCountyGeneric(
       [
         "https://dixon.ky.gov/bids",
@@ -996,9 +728,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://webstercounty.ky.gov/bids",
         "https://webstercounty.ky.gov",
       ],
-      "ky-webster",
-      "Webster County Government",
-      "Webster County"
+      "ky-webster", "Webster County Government", "Webster County"
     ),
 
     // Muhlenberg County, KY
@@ -1007,9 +737,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://muhlenbergcounty.ky.gov/bids",
         "https://muhlenbergcounty.ky.gov",
       ],
-      "ky-muhlenberg",
-      "Muhlenberg County Government",
-      "Muhlenberg County"
+      "ky-muhlenberg", "Muhlenberg County Government", "Muhlenberg County"
     ),
 
     // City of Evansville, IN
@@ -1019,9 +747,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://evansvillegov.org/purchasing",
         "https://evansvillegov.org/bids",
       ],
-      "in-evansville",
-      "City of Evansville",
-      "Evansville IN"
+      "in-evansville", "City of Evansville", "Evansville IN"
     ),
 
     // Vanderburgh County, IN
@@ -1031,9 +757,7 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://www.vanderburghcounty.com/bids",
         "https://vanderburghcounty.com/government/purchasing",
       ],
-      "in-vanderburgh",
-      "Vanderburgh County Government",
-      "Vanderburgh County IN"
+      "in-vanderburgh", "Vanderburgh County Government", "Vanderburgh County IN"
     ),
 
     // Warrick County, IN
@@ -1043,17 +767,13 @@ export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
         "https://warrickcounty.gov/bids",
         "https://www.warrickcounty.gov/bids",
       ],
-      "in-warrick",
-      "Warrick County Government",
-      "Warrick County IN"
+      "in-warrick", "Warrick County Government", "Warrick County IN"
     ),
 
-    // Indiana eProcurement (state-level)
+    // Indiana eProcurement
     scrapeCountyGeneric(
       ["https://www.in.gov/idoa/procurement/"],
-      "in-eprocure",
-      "Indiana eProcurement",
-      "IN eProcurement"
+      "in-eprocure", "Indiana eProcurement", "IN eProcurement"
     ),
   ]);
 
