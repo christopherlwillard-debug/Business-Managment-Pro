@@ -1579,10 +1579,16 @@ function JobFormDialog({
 
   if (!open) return null;
 
+  const isCreate = !editJob;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
-      <div className="relative w-full sm:max-w-lg bg-card border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90dvh] sm:max-h-[90vh]">
+      <div className={`relative w-full bg-card border border-border shadow-2xl flex flex-col ${
+        isCreate
+          ? "rounded-t-2xl sm:rounded-2xl sm:max-w-sm"
+          : "rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90dvh] sm:max-h-[90vh]"
+      }`}>
         <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0 rounded-t-2xl" />
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between px-6 pt-5 pb-4 flex-shrink-0">
@@ -1593,7 +1599,7 @@ function JobFormDialog({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-6 space-y-4 pb-2">
+          <div className={`${isCreate ? "" : "flex-1 overflow-y-auto"} px-6 space-y-4 pb-2`}>
 
           {error && (
             <div className="px-4 py-2.5 bg-destructive/10 border border-destructive/20 rounded-xl text-sm text-destructive flex items-center gap-2">
@@ -1603,13 +1609,23 @@ function JobFormDialog({
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Job Title *</label>
-            <input type="text" required
+            <input type="text" required autoFocus={isCreate}
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-              placeholder="e.g. Kitchen Renovation"
+              placeholder="e.g. Farm House Renovation"
               value={form.title} onChange={e => setField("title", e.target.value)} />
           </div>
 
-          {!activeBusiness && (
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Client <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
+            <select
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={form.clientId} onChange={e => setField("clientId", e.target.value)}>
+              <option value="">No client</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          {editJob && !activeBusiness && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Business</label>
             <div className="flex flex-wrap gap-2">
@@ -1632,7 +1648,7 @@ function JobFormDialog({
           </div>
           )}
 
-          {form.businessLine === "asphalt_sealing" && (
+          {editJob && form.businessLine === "asphalt_sealing" && (
             <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
               <div>
                 <label className="block text-xs font-semibold text-amber-800 mb-1">Sq Ft</label>
@@ -1663,7 +1679,7 @@ function JobFormDialog({
             </div>
           )}
 
-          {form.businessLine !== "asphalt_sealing" && (
+          {editJob && form.businessLine !== "asphalt_sealing" && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               <Briefcase className="w-3 h-3 inline mr-1 text-amber-500" />Job Type
@@ -1686,6 +1702,7 @@ function JobFormDialog({
           </div>
           )}
 
+          {editJob && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Status</label>
             <div className="flex gap-3">
@@ -1707,17 +1724,9 @@ function JobFormDialog({
               ))}
             </div>
           </div>
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Client</label>
-            <select
-              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-              value={form.clientId} onChange={e => setField("clientId", e.target.value)}>
-              <option value="">No client</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-
+          {editJob && (
           <div className="space-y-2">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">
@@ -1750,14 +1759,18 @@ function JobFormDialog({
               </div>
             </div>
           </div>
+          )}
 
+          {editJob && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
             </label>
             <SubcontractorPicker subcontractors={subcontractors} selected={subIds} onChange={setSubIds} />
           </div>
+          )}
 
+          {editJob && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Start Date</label>
@@ -1774,13 +1787,16 @@ function JobFormDialog({
                 value={form.endDate} onChange={e => setField("endDate", e.target.value)} />
             </div>
           </div>
+          )}
 
+          {editJob && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Notes</label>
             <textarea rows={2}
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
               value={form.notes} onChange={e => setField("notes", e.target.value)} />
           </div>
+          )}
 
           </div>
 
