@@ -29,8 +29,9 @@ import {
   Edit2, CheckCircle, Clock, ClipboardList, Upload,
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
-  CreditCard, Copy, ExternalLink, Bell, ArrowRight,
+  CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
 } from "lucide-react";
+import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1007,7 +1008,7 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, onToggleSubPaid, profitData,
-  onSendPaymentLink, onGoToInvoices, generatingLinkId,
+  onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -1028,6 +1029,7 @@ function JobCard({
   onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number, jobId: number) => void;
   onGoToInvoices?: () => void;
   generatingLinkId?: number | null;
+  onSmartEstimate?: (job: Job) => void;
 }) {
   const { canEdit } = useUserPermissions();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
@@ -1229,6 +1231,17 @@ function JobCard({
           <span className="flex-1 text-left">Estimates</span>
           <span className="text-[10px] text-muted-foreground">View / Build</span>
         </button>
+
+        {/* Smart Estimate Wizard — GC only */}
+        {job.businessLine === "general_contracting" && onSmartEstimate && canEdit("estimates") && (
+          <button
+            onClick={() => onSmartEstimate(job)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-xs font-bold text-amber-700 w-full">
+            <Wand2 className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+            <span className="flex-1 text-left">Smart Estimate Wizard</span>
+            <span className="text-[10px] text-amber-500 font-semibold">KY Rates</span>
+          </button>
+        )}
 
         {/* P&L button */}
         <button
@@ -1715,6 +1728,8 @@ export default function Jobs() {
   const [selectedExistingInvoice, setSelectedExistingInvoice] = useState<Invoice | null>(null);
   const [invoiceFetching, setInvoiceFetching]           = useState(false);
 
+  const [gcWizardJob, setGcWizardJob] = useState<Job | null>(null);
+
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number } | null>(null);
   const [generatingLinkId, setGeneratingLinkId]   = useState<number | null>(null);
   const [sendingReminderId, setSendingReminderId] = useState<number | null>(null);
@@ -2175,7 +2190,8 @@ export default function Jobs() {
                       profitData={profitMap.get(job.id) ?? null}
                       onSendPaymentLink={handleGetPaymentLink}
                       onGoToInvoices={() => navigate("/invoices")}
-                      generatingLinkId={generatingLinkId} />
+                      generatingLinkId={generatingLinkId}
+                      onSmartEstimate={j => setGcWizardJob(j)} />
                   );
                 })}
               </div>
@@ -2217,7 +2233,8 @@ export default function Jobs() {
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => navigate("/invoices")}
-                        generatingLinkId={generatingLinkId} />
+                        generatingLinkId={generatingLinkId}
+                        onSmartEstimate={j => setGcWizardJob(j)} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -2264,7 +2281,8 @@ export default function Jobs() {
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => navigate("/invoices")}
-                        generatingLinkId={generatingLinkId} />
+                        generatingLinkId={generatingLinkId}
+                        onSmartEstimate={j => setGcWizardJob(j)} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -2422,6 +2440,17 @@ export default function Jobs() {
           onAddToRoute={(id) => {
             setProfileClientId(null);
             navigate(`${BASE}/route-planner?clientId=${id}`);
+          }}
+        />
+      )}
+
+      {gcWizardJob && (
+        <GCEstimateWizard
+          job={gcWizardJob}
+          onClose={() => setGcWizardJob(null)}
+          onCreated={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
+            setGcWizardJob(null);
           }}
         />
       )}
