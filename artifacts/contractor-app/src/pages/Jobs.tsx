@@ -1004,6 +1004,114 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   );
 }
 
+// ─── Job Phase Panel ──────────────────────────────────────────────────────────
+
+type Phase = { name: string; completed: boolean };
+
+function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
+  const updateJob = useUpdateJob();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [updating, setUpdating] = useState<number | null>(null);
+
+  const phases: Phase[] = Array.isArray(job.phases) ? (job.phases as Phase[]) : [];
+  const completedCount = phases.filter(p => p.completed).length;
+
+  async function togglePhase(index: number) {
+    if (updating !== null) return;
+    const updated = phases.map((p, i) => i === index ? { ...p, completed: !p.completed } : p);
+    setUpdating(index);
+    try {
+      await updateJob.mutateAsync({ id: job.id, data: { phases: updated } });
+      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+    } catch {
+      toast({ title: "Error", description: "Failed to update phase.", variant: "destructive" });
+    } finally {
+      setUpdating(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border shadow-2xl flex flex-col">
+        <div className="h-1 bg-gradient-to-r from-blue-500 to-blue-400 flex-shrink-0" />
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <ListChecks className="w-4 h-4 text-blue-500" />
+            <div>
+              <h2 className="font-bold text-foreground text-sm">Project Phases</h2>
+              <p className="text-xs text-muted-foreground truncate max-w-[180px]">{job.title}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {phases.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center gap-3">
+              <ListChecks className="w-10 h-10 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground font-medium">No phases yet</p>
+              <p className="text-xs text-muted-foreground/70">Use the GC Smart Estimate Wizard to generate a phase checklist for this job.</p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground">Progress</span>
+                  <span className="text-xs font-bold text-blue-600">{completedCount}/{phases.length} complete</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                    style={{ width: phases.length > 0 ? `${(completedCount / phases.length) * 100}%` : "0%" }}
+                  />
+                </div>
+                {completedCount === phases.length && phases.length > 0 && (
+                  <p className="text-xs text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" /> All phases complete!
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {phases.map((phase, i) => (
+                  <button
+                    key={i}
+                    onClick={() => togglePhase(i)}
+                    disabled={updating !== null}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border text-left transition-all ${
+                      phase.completed
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                        : "bg-white border-border hover:bg-muted/30 text-foreground"
+                    } disabled:opacity-60`}
+                  >
+                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                      phase.completed
+                        ? "bg-emerald-500 border-emerald-500"
+                        : "border-muted-foreground/30"
+                    }`}>
+                      {updating === i
+                        ? <span className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />
+                        : phase.completed && <Check className="w-3 h-3 text-white" />}
+                    </span>
+                    <span className={`text-sm font-medium flex-1 ${phase.completed ? "line-through opacity-60" : ""}`}>
+                      {phase.name}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground flex-shrink-0">{i + 1}/{phases.length}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
@@ -1036,6 +1144,7 @@ function JobCard({
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const [profitPanelOpen, setProfitPanelOpen] = useState(false);
+  const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
@@ -1243,6 +1352,23 @@ function JobCard({
           </button>
         )}
 
+        {/* Phases — GC only */}
+        {job.businessLine === "general_contracting" && (
+          <button
+            onClick={() => setPhasesPanelOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+            <ListChecks className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+            <span className="flex-1 text-left">Phases</span>
+            {Array.isArray(job.phases) && job.phases.length > 0 ? (
+              <span className="text-[10px] font-bold text-blue-600">
+                {(job.phases as Phase[]).filter(p => p.completed).length}/{job.phases.length}
+              </span>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">Run wizard</span>
+            )}
+          </button>
+        )}
+
         {/* P&L button */}
         <button
           onClick={() => setProfitPanelOpen(true)}
@@ -1337,6 +1463,9 @@ function JobCard({
       )}
       {profitPanelOpen && (
         <JobProfitPanel job={job} onClose={() => setProfitPanelOpen(false)} />
+      )}
+      {phasesPanelOpen && (
+        <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
       )}
     </>
   );

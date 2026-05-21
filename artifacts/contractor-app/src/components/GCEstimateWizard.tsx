@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import {
-  useCreateEstimate,
+  useCreateEstimate, useUpdateJob,
   Job, CreateEstimateRequest,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import {
   X, ChevronLeft, ChevronRight, Wand2, AlertTriangle, Info,
-  ChevronDown, ChevronUp, Check, Plus, Minus,
+  ChevronDown, ChevronUp, Check, Plus, Minus, GripVertical,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -216,7 +216,6 @@ function computeTrades(jobType: string, answers: Answers): TradeItem[] {
     const fixtures = Math.max(n(answers, "fixtures", 3), 1);
     const isRoughIn = answers.scope === "rough_in";
     const isRelocate = answers.scope === "relocate";
-    const hrLo = isRelocate ? 70 : 60, hrMid = isRelocate ? 85 : 75, hrHi = isRelocate ? 100 : 95;
     add({ trade: "Plumbing Labor", description: isRoughIn ? "Plumbing rough-in per fixture" : "Fixture connection & hookup", qty: fixtures, unit: "EACH", lowCost: isRoughIn ? 400 : 150, midCost: isRoughIn ? 600 : 250, highCost: isRoughIn ? 900 : 400, category: "Subcontractor", tips: ["Get permit for rough-in work", "Confirm inspection fee included", "Ask about pressure test before drywall close-in"], riskNote: isRoughIn ? "Permit required for new rough-in in KY — factor into timeline" : undefined });
     if (isRelocate || isRoughIn) add({ trade: "Materials", description: "PEX/PVC supply & drain materials", qty: fixtures, unit: "EACH", lowCost: 100, midCost: 175, highCost: 300, category: "Material", tips: ["PEX is standard in KY new construction", "Confirm all fittings/valves included"] });
     if (answers.trench) {
@@ -245,59 +244,61 @@ function computeTrades(jobType: string, answers: Answers): TradeItem[] {
   else if (jobType === "windows_doors") {
     const wins = n(answers, "windows", 0);
     const doors = n(answers, "doors", 0);
-    if (wins > 0) add({ trade: "Windows", description: "Window remove & replace — supply & install", qty: wins, unit: "EACH", lowCost: 325, midCost: 475, highCost: 700, category: "Subcontractor", tips: ["Double-pane Low-E is KY energy code standard", "Confirm exterior caulk & flashing tape included", "Measure rough opening — don't just order existing size", "Lead paint: pre-1978 homes require RRP certified contractor"], riskNote: wins > 0 ? "Pre-1978 homes may have lead paint at window frames — EPA RRP rules apply" : undefined });
-    if (doors > 0) add({ trade: "Doors", description: "Door remove & replace — pre-hung install", qty: doors, unit: "EACH", lowCost: 300, midCost: 450, highCost: 700, category: "Labor", tips: ["Pre-hung units are faster and recommended", "Confirm door swing direction with client", "Exterior: weatherstrip + threshold included?"] });
-    if (answers.headers) add({ trade: "Headers", description: "New structural header framing", qty: wins + doors, unit: "EACH", lowCost: 350, midCost: 600, highCost: 950, category: "Labor", tips: ["Verify load path — may need engineer in KY for load-bearing", "LVL headers are stronger than dimensional lumber", "Temporary support required during header work"], riskNote: "Structural header work on load-bearing walls may require engineered drawings in KY" });
-    if (answers.int_trim) add({ trade: "Interior Trim", description: "Casing, stool, apron — supply & install", qty: (wins * 14) + (doors * 10), unit: "LF", lowCost: 4.50, midCost: 7, highCost: 10, category: "Labor", tips: ["Match existing trim profile (colonial, craftsman, etc.)", "Confirm stain vs. paint grade wood"] });
-    add({ trade: "Caulk & Paint", description: "Caulk, touch-up paint — exterior & interior", qty: wins + doors, unit: "EACH", lowCost: 30, midCost: 60, highCost: 100, category: "Labor", tips: [] });
+    if (wins > 0) add({ trade: "Window Install", description: "Window remove & replace", qty: wins, unit: "EACH", lowCost: 250, midCost: 425, highCost: 650, category: "Labor", tips: ["Confirm unit price includes labor only (client-supplied) or supply+install", "Flash all windows before reinstalling trim", "Ask about low-E coating spec"], riskNote: wins > 0 ? "Pre-1978 homes: EPA RRP lead paint rules apply to window work" : undefined });
+    if (doors > 0) add({ trade: "Door Install", description: "Door remove & replace (per door)", qty: doors, unit: "EACH", lowCost: 150, midCost: 275, highCost: 450, category: "Labor", tips: ["Pre-hung vs. slab — pre-hung adds $80-150 labor", "Confirm hardware in scope", "Weatherstripping on exterior doors"] });
+    if (answers.headers) add({ trade: "Structural Headers", description: "Header install / structural framing", qty: Math.max(wins + doors, 1), unit: "EACH", lowCost: 350, midCost: 600, highCost: 950, category: "Labor", tips: ["Engineered LVL beam is KY standard for load-bearing openings", "Confirm with structural engineer if removing load-bearing wall", "Permit required for structural work in most KY jurisdictions"], riskNote: "Structural header work requires building permit in most KY counties" });
+    if (answers.int_trim) add({ trade: "Interior Trim", description: "Casing, sill, apron install", qty: wins + doors, unit: "EACH", lowCost: 75, midCost: 125, highCost: 200, category: "Labor", tips: ["Match existing profile if possible", "Paint-grade MDF casing is standard in KY spec homes", "Ask if caulk + paint included"] });
+    add({ trade: "Caulk & Seal", description: "Interior/exterior caulk & seal", qty: 1, unit: "LOT", lowCost: 150, midCost: 250, highCost: 400, category: "Labor", tips: ["Use paintable silicone for exterior", "Backer rod for gaps > 1/2\""] });
   }
 
   else if (jobType === "full_remodel") {
     const sf = Math.max(n(answers, "sqft", 1000), 1);
-    const wetRooms = n(answers, "wet_rooms", 2);
+    const wetRooms = n(answers, "wet_rooms", 0);
     const isGut = answers.scope === "full_gut";
-    add({ trade: "Demo", description: `${isGut ? "Full gut — all rooms to studs" : "Selective demo — targeted areas"}`, qty: sf, unit: "SF", lowCost: isGut ? 2.50 : 1.25, midCost: isGut ? 3.75 : 2, highCost: isGut ? 5 : 3, category: "Labor", tips: ["Hazmat survey first if pre-1980", "Dumpster size: 20-30 yard for full gut"], riskNote: isGut ? "Full gut — test for asbestos and lead paint before demo if home is pre-1980" : undefined });
-    if (answers.structural) add({ trade: "Structural / Framing", description: "Structural changes — remove walls, new openings", qty: 1, unit: "LOT", lowCost: 2500, midCost: 5000, highCost: 10000, category: "Subcontractor", tips: ["Engineering drawings required in KY for load-bearing work", "Confirm temporary shoring plan"], riskNote: "Structural changes require permit + engineered drawings in most KY jurisdictions" });
-    add({ trade: "Plumbing", description: `Plumbing rough-in — ${wetRooms} wet room${wetRooms !== 1 ? "s" : ""}`, qty: wetRooms, unit: "LOT", lowCost: 1500, midCost: 2800, highCost: 5000, category: "Subcontractor", tips: ["Permit required for new rough-in", "Confirm all fixture rough-in heights are set before drywall"] });
-    add({ trade: "Electrical", description: "Electrical rough-in & panel work", qty: sf, unit: "SF", lowCost: 3, midCost: 4.50, highCost: 7, category: "Subcontractor", tips: ["Permit required", "Confirm panel capacity — older homes often need upgrade", "AFCI breakers required for bedrooms in KY"] });
-    add({ trade: "Insulation", description: "Batt insulation — walls & ceiling", qty: sf, unit: "SF", lowCost: 1.25, midCost: 1.75, highCost: 2.50, category: "Labor", tips: ["R-15 for walls, R-38 for ceilings in KY climate", "Vapor barrier on cold side in KY is debated — confirm with inspector"] });
-    add({ trade: "Drywall", description: "Hang & finish drywall", qty: sf * 2, unit: "SF", lowCost: 2.50, midCost: 3.50, highCost: 4.50, category: "Labor", tips: ["Level-4 finish for painted walls", "Moisture-resistant in all wet areas"] });
-    const flooring = String(answers.flooring ?? "lvp");
-    const flLo = flooring === "tile" ? 7 : flooring === "carpet" ? 2.50 : 3;
-    const flMid = flooring === "tile" ? 11 : flooring === "carpet" ? 3.75 : 4.50;
-    const flHi = flooring === "tile" ? 16 : flooring === "carpet" ? 5.50 : 6;
-    add({ trade: "Flooring", description: `Flooring — ${flooring === "lvp" ? "LVP throughout" : flooring === "carpet" ? "carpet + LVP mix" : "tile"}`, qty: sf, unit: "SF", lowCost: flLo, midCost: flMid, highCost: flHi, category: "Subcontractor", tips: ["Subfloor must be flat to 3/16\" in 10 ft for LVP", "Include transitions and stair nose in quote"] });
-    add({ trade: "Paint", description: "Interior paint — all rooms", qty: sf * 1.75, unit: "SF", lowCost: 1.25, midCost: 1.80, highCost: 2.50, category: "Labor", tips: ["Two coats finish + primer on new drywall", "Confirm color selection before scheduling"] });
-    add({ trade: "Trim & Doors", description: "Interior doors, baseboard, casing", qty: sf * 0.5, unit: "LF", lowCost: 5, midCost: 8, highCost: 12, category: "Labor", tips: ["Pre-hung doors save time", "MDF baseboard is cost-effective in KY market"] });
-    add({ trade: "Cleanup", description: "Final punch, clean & haul", qty: 1, unit: "LOT", lowCost: 500, midCost: 900, highCost: 1500, category: "Labor", tips: [] });
+    add({ trade: "Demo", description: isGut ? "Full interior demo — gut to studs" : "Selective demo — cabinets, flooring, fixtures", qty: sf, unit: "SF", lowCost: isGut ? 3 : 1.50, midCost: isGut ? 4.50 : 2.50, highCost: isGut ? 7 : 4, category: "Labor", tips: ["Asbestos / lead-based paint test recommended on pre-1978 homes", "Confirm haul-away included in price", "Stage dumpster close to access point"], riskNote: isGut ? "Full gut on older homes — asbestos & lead testing strongly recommended" : undefined });
+    if (wetRooms > 0) add({ trade: "Rough Plumbing", description: "Plumbing rough-in for wet rooms", qty: wetRooms, unit: "ROOM", lowCost: 2500, midCost: 4000, highCost: 7500, category: "Subcontractor", tips: ["Permit required — factor 2–4 weeks for KY inspection", "Confirm PEX or copper spec", "Rough-in inspection before drywall close-in"] });
+    add({ trade: "Rough Electrical", description: "New electrical rough-in", qty: sf, unit: "SF", lowCost: 4, midCost: 6.50, highCost: 10, category: "Subcontractor", tips: ["KY requires permit for new circuits", "Arc-fault breakers required in all habitable rooms (2023 NEC)", "Plan panel capacity before starting"] });
+    if (answers.structural) add({ trade: "Structural", description: "Wall removal / structural modifications", qty: 1, unit: "LOT", lowCost: 3500, midCost: 7000, highCost: 15000, category: "Labor", tips: ["Engineering stamp required for beam sizing in KY", "Permit required — allow 2–6 weeks", "Temporary shoring critical during header install"], riskNote: "Structural work requires permit and engineer sign-off in Kentucky" });
+    add({ trade: "Insulation", description: "Wall & ceiling insulation", qty: sf, unit: "SF", lowCost: 1.50, midCost: 2.50, highCost: 4, category: "Labor", tips: ["R-15 walls / R-38 ceiling is KY energy code minimum", "Spray foam at rim joists adds ~$500-800", "Confirm vapor barrier in crawl space"] });
+    add({ trade: "Drywall", description: "Hang, tape, finish drywall", qty: sf * 2.8, unit: "SF", lowCost: 2.50, midCost: 3.75, highCost: 5, category: "Labor", tips: ["Level-4 finish for smooth walls (painted)", "Double-layer 5/8\" on shared walls for fire rating", "Ask about texture matching in partial renovations"] });
+    const flType = answers.flooring;
+    const flLo = flType === "tile" ? 7 : flType === "carpet" ? 2.50 : 3;
+    const flMid = flType === "tile" ? 11 : flType === "carpet" ? 4 : 4.50;
+    const flHi = flType === "tile" ? 16 : flType === "carpet" ? 6 : 6.50;
+    add({ trade: "Flooring", description: `Flooring — ${flType === "lvp" ? "LVP throughout" : flType === "carpet" ? "Carpet + LVP" : "Tile"}`, qty: sf, unit: "SF", lowCost: flLo, midCost: flMid, highCost: flHi, category: "Subcontractor", tips: ["Confirm subfloor prep in scope", "Add 10% waste allowance to SF order", "Transitions at doorways — confirm included"] });
+    add({ trade: "Paint", description: "Interior paint — all rooms", qty: sf * 1.8, unit: "SF", lowCost: 1.25, midCost: 1.80, highCost: 2.50, category: "Labor", tips: ["2 coats + primer on new drywall", "Cabinet paint is separate — confirm scope", "Caulk all trim/casings before final coat"] });
+    add({ trade: "Trim & Doors", description: "Base, casing, interior doors", qty: sf, unit: "SF", lowCost: 2, midCost: 3.25, highCost: 5, category: "Labor", tips: ["Pre-hung hollow core is KY standard residential", "Paint-grade MDF casing is most economical", "Confirm door hardware allowance with client"] });
+    add({ trade: "Cleanup", description: "Final punch & haul-off", qty: 1, unit: "LOT", lowCost: 500, midCost: 900, highCost: 1500, category: "Labor", tips: [] });
   }
 
   else if (jobType === "addition") {
     const sf = Math.max(n(answers, "sqft", 400), 1);
-    const wetRooms = n(answers, "wet_rooms", 1);
     const foundation = String(answers.foundation ?? "slab");
-    const fndLo = foundation === "basement" ? 25 : foundation === "crawl" ? 10 : 6;
-    const fndMid = foundation === "basement" ? 40 : foundation === "crawl" ? 16 : 10;
-    const fndHi = foundation === "basement" ? 60 : foundation === "crawl" ? 25 : 15;
-    add({ trade: "Foundation", description: `${foundation === "slab" ? "Concrete slab" : foundation === "crawl" ? "Crawl space foundation" : "Basement foundation"}`, qty: sf, unit: "SF", lowCost: fndLo, midCost: fndMid, highCost: fndHi, category: "Subcontractor", tips: ["Permit and inspection required", "Soil bearing test may be needed on soft ground", "Confirm waterproofing on basement or crawl walls"], riskNote: "Foundation work requires permit and typically two inspections in KY" });
-    add({ trade: "Framing", description: "Wood framing — walls, floor, ceiling", qty: sf, unit: "SF", lowCost: 20, midCost: 30, highCost: 45, category: "Labor", tips: ["Header sizing for openings must meet KY code span tables", "Confirm shear wall requirements with engineer for 2-story"] });
-    add({ trade: "Roofing", description: "Roof framing, sheathing, shingles", qty: sf * 1.15, unit: "SF", lowCost: 4, midCost: 6, highCost: 9, category: "Subcontractor", tips: ["Match existing roof pitch and shingle", "Ice-and-water shield required first 3 ft in KY", "30-yr architectural shingle is standard"] });
-    add({ trade: "Windows & Doors", description: "Exterior windows & doors — supply & install", qty: Math.ceil(sf / 80), unit: "EACH", lowCost: 450, midCost: 650, highCost: 950, category: "Subcontractor", tips: ["Double-pane Low-E required for KY energy code", "Match existing exterior style/color"] });
-    if (answers.mechanical) {
-      add({ trade: "Electrical", description: "Electrical rough-in & panel extension", qty: sf, unit: "SF", lowCost: 4, midCost: 6, highCost: 9, category: "Subcontractor", tips: ["Confirm panel has capacity for addition", "Smoke & CO detector in new space required"] });
-      if (wetRooms > 0) add({ trade: "Plumbing", description: `Plumbing rough-in — ${wetRooms} wet room${wetRooms !== 1 ? "s" : ""}`, qty: wetRooms, unit: "LOT", lowCost: 2000, midCost: 3500, highCost: 6000, category: "Subcontractor", tips: ["Confirm tie-in point to existing main line", "Permit required for new plumbing in KY"] });
+    const wetRooms = n(answers, "wet_rooms", 0);
+    const hasMech = answers.mechanical === true;
+    add({ trade: "Permit & Engineering", description: "Building permit + architectural/structural drawings", qty: 1, unit: "LOT", lowCost: 2500, midCost: 5000, highCost: 10000, category: "Subcontractor", tips: ["Budget 8–16 weeks for KY permit approval on additions", "Stamped structural drawings required", "Survey may be required to confirm setbacks"], riskNote: "Addition requires building permit in every KY jurisdiction — start permit process before breaking ground" });
+    const fndLo = foundation === "basement" ? 35 : foundation === "crawl" ? 15 : 8;
+    const fndMid = foundation === "basement" ? 55 : foundation === "crawl" ? 25 : 14;
+    const fndHi = foundation === "basement" ? 80 : foundation === "crawl" ? 38 : 22;
+    add({ trade: "Foundation", description: `${foundation === "slab" ? "Concrete slab" : foundation === "crawl" ? "Crawl space foundation" : "Basement excavation & walls"}`, qty: sf, unit: "SF", lowCost: fndLo, midCost: fndMid, highCost: fndHi, category: "Subcontractor", tips: ["KY frost line: 12–18\" — footings must go below", "Vapor barrier on slab critical in KY climate", foundation === "basement" ? "Waterproofing membrane required on below-grade walls" : ""] });
+    add({ trade: "Framing", description: "Wall, floor, roof framing", qty: sf, unit: "SF", lowCost: 18, midCost: 28, highCost: 42, category: "Labor", tips: ["Engineered lumber (LVL/TJI) for long spans", "Tie into existing structure at proper shear points", "Inspect existing rim joist before tying in floor"] });
+    add({ trade: "Roofing", description: "Roof framing, sheathing, shingles", qty: sf * 1.15, unit: "SF", lowCost: 5, midCost: 8, highCost: 13, category: "Subcontractor", tips: ["Match pitch to existing roof", "30-year architectural shingle is KY standard", "Flash at all wall/roof intersections"] });
+    add({ trade: "Exterior Skin", description: "Windows, exterior doors, siding/wrap", qty: sf, unit: "SF", lowCost: 12, midCost: 20, highCost: 32, category: "Subcontractor", tips: ["Match siding to existing structure", "Window U-factor 0.30 or less for KY energy code", "Flash all windows per manufacturer spec"] });
+    if (hasMech) {
+      add({ trade: "HVAC", description: "HVAC ductwork extension or mini-split", qty: sf, unit: "SF", lowCost: 12, midCost: 20, highCost: 32, category: "Subcontractor", tips: ["Load calc required to size properly (Manual J)", "Mini-split easiest for additions", "KY requires HVAC permit"] });
+      if (wetRooms > 0) add({ trade: "Plumbing", description: "Plumbing rough-in for addition wet rooms", qty: wetRooms, unit: "ROOM", lowCost: 3000, midCost: 5500, highCost: 10000, category: "Subcontractor", tips: ["Drain tie-in location is the most complex part", "May need to break slab for drain — budget extra", "Permit required"] });
+      add({ trade: "Electrical", description: "Panel circuit additions + rough-in", qty: sf, unit: "SF", lowCost: 6, midCost: 10, highCost: 16, category: "Subcontractor", tips: ["Check panel capacity before starting", "AFCI/GFCI per 2023 NEC", "Permit required"] });
     }
-    add({ trade: "Insulation", description: "Insulation — walls, floor, ceiling", qty: sf, unit: "SF", lowCost: 1.50, midCost: 2, highCost: 3, category: "Labor", tips: ["R-15 walls, R-38 ceiling minimum in KY climate zone 4"] });
-    add({ trade: "Drywall", description: "Hang & finish drywall", qty: sf * 2, unit: "SF", lowCost: 2.50, midCost: 3.50, highCost: 4.50, category: "Labor", tips: ["Level-4 finish for painted walls"] });
-    add({ trade: "Flooring", description: "Flooring — supply & install", qty: sf, unit: "SF", lowCost: 3.50, midCost: 5.50, highCost: 8, category: "Subcontractor", tips: ["Confirm transition to existing floor in adjacent rooms"] });
-    add({ trade: "Paint & Trim", description: "Interior paint, baseboard, trim", qty: sf * 2, unit: "SF", lowCost: 1.50, midCost: 2.25, highCost: 3.25, category: "Labor", tips: [] });
+    add({ trade: "Insulation + Drywall", description: "Insulation, drywall hang & finish", qty: sf * 2.5, unit: "SF", lowCost: 4, midCost: 6, highCost: 9, category: "Labor", tips: ["R-20 walls / R-49 ceiling for KY energy compliance", "Blower door test may be required", "Level-4 drywall finish for painted walls"] });
+    add({ trade: "Flooring + Trim", description: "Flooring, base, doors, paint", qty: sf, unit: "SF", lowCost: 12, midCost: 20, highCost: 32, category: "Labor", tips: ["Match to existing home finishes unless full refresh", "Confirm transitions at doorways", "Final inspection before flooring"] });
   }
 
-  else {
-    const hrs = Math.max(n(answers, "labor_hours", 40), 0);
-    const mat = n(answers, "materials", 2000);
-    if (hrs > 0) add({ trade: "Labor", description: "General construction labor", qty: hrs, unit: "HR", lowCost: 28, midCost: 42, highCost: 60, category: "Labor", tips: ["Confirm scope in writing before work begins", "Ask about overtime rates for evenings/weekends"] });
-    if (mat > 0) add({ trade: "Materials", description: "Materials — allowance", qty: 1, unit: "LOT", lowCost: mat * 0.8, midCost: mat, highCost: mat * 1.3, category: "Material", tips: ["Track receipts — owner may want cost-plus billing"] });
+  else if (jobType === "other") {
+    const hours = Math.max(n(answers, "labor_hours", 40), 1);
+    const matBudget = n(answers, "materials", 2000);
+    add({ trade: "Labor", description: "General labor — custom scope", qty: hours, unit: "HRS", lowCost: 45, midCost: 65, highCost: 90, category: "Labor", tips: ["Break scope into tasks for cleaner billing", "Document daily progress photos", "Get signed change orders for any scope creep"] });
+    if (matBudget > 0) add({ trade: "Materials", description: "Materials / supply procurement", qty: 1, unit: "LOT", lowCost: matBudget * 0.85, midCost: matBudget, highCost: matBudget * 1.30, category: "Material", tips: ["Add 10–15% waste factor", "Confirm client approval before ordering special-order items", "Keep all receipts for T&M billing"] });
+    add({ trade: "Cleanup", description: "Final cleanup & debris removal", qty: 1, unit: "LOT", lowCost: 150, midCost: 300, highCost: 500, category: "Labor", tips: [] });
   }
 
   return items;
@@ -307,26 +308,30 @@ function computeTrades(jobType: string, answers: Answers): TradeItem[] {
 
 function getRiskFlags(jobType: string, answers: Answers): RiskFlag[] {
   const flags: RiskFlag[] = [];
-  const sq = n(answers, "sqft", 0);
-  if ((jobType === "kitchen" || jobType === "bathroom" || jobType === "full_remodel") && answers.scope === "full_gut") flags.push({ level: "warn", message: "Full gut: schedule asbestos & lead test on pre-1980 homes before demo day." });
-  if (jobType === "siding" && answers.tearoff) flags.push({ level: "warn", message: "Siding tearoff on older homes: test for asbestos cement siding before removal." });
-  if (jobType === "plumbing" && answers.trench) flags.push({ level: "warn", message: "Trenching required: call 811 (Dig Safe) at least 3 business days before digging — required by KY law." });
-  if (jobType === "deck") flags.push({ level: "info", message: "Deck permit required in most KY counties. Factor in 2-4 week permit lead time." });
-  if (jobType === "windows_doors" && n(answers, "windows", 0) > 0) flags.push({ level: "info", message: "Pre-1978 homes: EPA RRP lead paint rules apply to window work. Certified contractor required." });
-  if (jobType === "windows_doors" && answers.headers) flags.push({ level: "warn", message: "Structural headers: load-bearing wall changes require permit and may need engineered drawings in KY." });
-  if (jobType === "addition") flags.push({ level: "warn", message: "Additions require building permit, multiple inspections, and sometimes a survey. Budget 4-8 weeks for permit." });
-  if (jobType === "full_remodel" && answers.structural) flags.push({ level: "warn", message: "Structural changes require permit + likely engineered drawings. Get engineer review before bidding hard price." });
-  if (jobType === "ceiling_repair" && answers.popcorn) flags.push({ level: "warn", message: "Popcorn ceiling removal: if home built before 1978, test for asbestos in texture — abatement can be $3-10/SF." });
-  if (sq > 2000 && (jobType === "full_remodel" || jobType === "addition")) flags.push({ level: "info", message: `Large scope (${sq.toLocaleString()} SF): consider splitting estimate by trade for easier client review and subcontractor bidding.` });
+  if (["kitchen", "bathroom", "full_remodel", "ceiling_repair", "siding"].includes(jobType)) {
+    flags.push({ level: "info", message: "Pre-1980 home? Schedule asbestos inspection before demo — KY law requires testing before demolition of suspect materials." });
+  }
+  if (["windows_doors"].includes(jobType)) {
+    flags.push({ level: "warn", message: "Pre-1978 home: EPA RRP lead paint rules apply. Willard must be RRP-certified or hire a certified sub." });
+  }
+  if (jobType === "plumbing" && answers.trench) {
+    flags.push({ level: "warn", message: "Call 811 before any digging — Kentucky law requires contacting Dig Safe at least 2 business days before excavation." });
+  }
+  if (["deck", "addition", "full_remodel"].includes(jobType) || (jobType === "windows_doors" && answers.headers)) {
+    flags.push({ level: "warn", message: "Permit required in most KY counties for this scope. Budget 2–8 weeks for permit approval. Do not start structural work before permit is in hand." });
+  }
+  if (jobType === "ceiling_repair" && answers.popcorn) {
+    flags.push({ level: "warn", message: "Popcorn ceilings installed before 1978 may contain asbestos. Test before scraping — disturbing asbestos without proper controls is a KY EPA violation." });
+  }
   return flags;
 }
 
 // ─── Phase Templates ──────────────────────────────────────────────────────────
 
 const PHASE_TEMPLATES: Record<string, string[]> = {
-  kitchen:       ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Drywall", "Cabinets", "Countertops", "Flooring", "Paint", "Fixtures & Trim", "Final Punch"],
-  bathroom:      ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Cement Board / Moisture Drywall", "Tile (Shower + Floor)", "Vanity & Toilet", "Paint & Accessories", "Final Punch"],
-  siding:        ["Tearoff & Disposal", "House Wrap Install", "Siding Install", "Trim & Corners", "Caulk & Touch-up", "Final Walkthrough"],
+  kitchen:       ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Drywall", "Cabinet Install", "Countertops", "Flooring", "Fixtures & Appliances", "Paint & Trim", "Final Punch"],
+  bathroom:      ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Cement Board / Drywall", "Tile — Shower/Floor", "Vanity & Fixtures", "Paint", "Final Punch"],
+  siding:        ["Tearoff & Disposal", "Housewrap", "Siding Install", "Trim & Corners", "Caulk & Seal", "Final Cleanup"],
   ceiling_repair:["Protect Floors & Furniture", "Popcorn Scrape", "Crack Repair", "Skim Coat & Sand", "Prime & Paint", "Final Cleanup"],
   plumbing:      ["Locate Tie-in Points", "Rough-in / Trench", "Inspection", "Fixtures Connect", "Pressure Test", "Cleanup"],
   deck:          ["Permit & Layout", "Footings & Posts", "Beam & Joist Framing", "Decking Install", "Railing & Stairs", "Seal / Stain", "Final Inspection"],
@@ -349,11 +354,14 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const qc = useQueryClient();
   const { toast } = useToast();
   const createEstimate = useCreateEstimate();
+  const updateJob = useUpdateJob();
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [jobType, setJobType] = useState<string>("");
   const [answers, setAnswers] = useState<Answers>({});
   const [trades, setTrades] = useState<TradeItem[]>([]);
+  const [phasesEditable, setPhasesEditable] = useState<string[]>([]);
+  const [newPhaseInput, setNewPhaseInput] = useState("");
   const [expandedTipId, setExpandedTipId] = useState<string | null>(null);
   const [markup, setMarkup] = useState(String(DEFAULT_MARKUP));
   const [contingency, setContingency] = useState(String(DEFAULT_CONTINGENCY));
@@ -363,7 +371,6 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
 
   const questions = (jobType ? SCOPE_QUESTIONS[jobType] ?? [] : []).filter(q => !q.condition || q.condition(answers));
   const riskFlags = useMemo(() => jobType ? getRiskFlags(jobType, answers) : [], [jobType, answers]);
-  const phases = jobType ? PHASE_TEMPLATES[jobType] ?? [] : [];
 
   function initAnswers(jt: string) {
     const qs = SCOPE_QUESTIONS[jt] ?? [];
@@ -379,6 +386,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
     initAnswers(jt);
     const label = JOB_TYPES.find(x => x.id === jt)?.label ?? jt;
     setEstimateTitle(`${job.title} — ${label}`);
+    setPhasesEditable(PHASE_TEMPLATES[jt] ?? []);
     setStep(2);
   }
 
@@ -427,13 +435,44 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
     }]);
   }
 
+  function movePhaseUp(i: number) {
+    if (i === 0) return;
+    setPhasesEditable(prev => {
+      const a = [...prev];
+      [a[i - 1], a[i]] = [a[i], a[i - 1]];
+      return a;
+    });
+  }
+
+  function movePhaseDown(i: number) {
+    setPhasesEditable(prev => {
+      if (i >= prev.length - 1) return prev;
+      const a = [...prev];
+      [a[i], a[i + 1]] = [a[i + 1], a[i]];
+      return a;
+    });
+  }
+
+  function removePhase(i: number) {
+    setPhasesEditable(prev => prev.filter((_, j) => j !== i));
+  }
+
+  function addPhase() {
+    const t = newPhaseInput.trim();
+    if (!t) return;
+    setPhasesEditable(prev => [...prev, t]);
+    setNewPhaseInput("");
+  }
+
   const subtotal = trades.reduce((s, t) => s + t.qty * t.selectedCost, 0);
   const markupAmt = subtotal * (parseFloat(markup) / 100 || 0);
   const afterMarkup = subtotal + markupAmt;
   const contingencyAmt = afterMarkup * (parseFloat(contingency) / 100 || 0);
   const grandTotal = afterMarkup + contingencyAmt;
 
-  const phasesNote = phases.length ? `\n\nPHASES:\n${phases.map((p, i) => `${i + 1}. ${p}`).join("\n")}` : "";
+  const phasesNote = phasesEditable.length
+    ? `\n\nPHASES:\n${phasesEditable.map((p, i) => `${i + 1}. ${p}`).join("\n")}`
+    : "";
 
   async function handleCreate() {
     if (!estimateTitle.trim()) return;
@@ -459,7 +498,16 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
       };
       await createEstimate.mutateAsync(req);
       qc.invalidateQueries({ queryKey: ["/api/estimates"] });
-      toast({ title: "Estimate created", description: `${estimateTitle} saved as draft.` });
+
+      if (phasesEditable.length > 0) {
+        await updateJob.mutateAsync({
+          id: job.id,
+          data: { phases: phasesEditable.map(name => ({ name, completed: false })) },
+        });
+        qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      }
+
+      toast({ title: "Estimate created", description: `${estimateTitle} saved as draft. Phases saved to job.` });
       onCreated?.();
       onClose();
     } catch {
@@ -482,8 +530,8 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           </div>
           {/* Step indicator */}
           <div className="flex items-center gap-1 mr-2">
-            {([1, 2, 3, 4] as const).map(s => (
-              <div key={s} className={`w-6 h-1.5 rounded-full transition-colors ${s <= step ? "bg-white" : "bg-amber-300/50"}`} />
+            {([1, 2, 3, 4, 5] as const).map(s => (
+              <div key={s} className={`w-5 h-1.5 rounded-full transition-colors ${s <= step ? "bg-white" : "bg-amber-300/50"}`} />
             ))}
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-amber-600 transition-colors">
@@ -494,10 +542,11 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         {/* Step label */}
         <div className="px-5 py-2 border-b border-gray-100 bg-amber-50 flex-shrink-0">
           <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-            {step === 1 && "Step 1 of 4 — Choose Job Type"}
-            {step === 2 && "Step 2 of 4 — Scope Questions"}
-            {step === 3 && "Step 3 of 4 — Trade Breakdown & KY Cost Ranges"}
-            {step === 4 && "Step 4 of 4 — Review & Create Estimate"}
+            {step === 1 && "Step 1 of 5 — Choose Job Type"}
+            {step === 2 && "Step 2 of 5 — Scope Questions"}
+            {step === 3 && "Step 3 of 5 — Trade Breakdown & KY Cost Ranges"}
+            {step === 4 && "Step 4 of 5 — Project Phases"}
+            {step === 5 && "Step 5 of 5 — Review & Create Estimate"}
           </p>
         </div>
 
@@ -708,8 +757,84 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
             </div>
           )}
 
-          {/* ── Step 4: Review & Create ──────────────────────────────── */}
+          {/* ── Step 4: Phase Template ───────────────────────────────── */}
           {step === 4 && (
+            <div className="p-5 space-y-5">
+              <div>
+                <p className="text-sm font-semibold text-gray-800 mb-1">Project Phases</p>
+                <p className="text-xs text-gray-500">These phases will be saved to the job so you can check them off as work progresses. Add, remove, or reorder to match your plan.</p>
+              </div>
+
+              <div className="space-y-2">
+                {phasesEditable.map((phase, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2">
+                    <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                    <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                    <input
+                      value={phase}
+                      onChange={e => setPhasesEditable(prev => prev.map((p, j) => j === i ? e.target.value : p))}
+                      className="flex-1 text-sm text-gray-800 bg-transparent focus:outline-none focus:ring-0 border-0 p-0 min-w-0"
+                      placeholder="Phase name…"
+                    />
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => movePhaseUp(i)}
+                        disabled={i === 0}
+                        className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => movePhaseDown(i)}
+                        disabled={i === phasesEditable.length - 1}
+                        className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => removePhase(i)}
+                        className="w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add phase row */}
+              <div className="flex gap-2">
+                <input
+                  value={newPhaseInput}
+                  onChange={e => setNewPhaseInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && addPhase()}
+                  placeholder="Add a phase… (press Enter)"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+                <button
+                  onClick={addPhase}
+                  disabled={!newPhaseInput.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 disabled:opacity-40 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add
+                </button>
+              </div>
+
+              <button
+                onClick={() => setPhasesEditable(PHASE_TEMPLATES[jobType] ?? [])}
+                className="text-xs text-blue-500 hover:text-blue-700 font-semibold"
+              >
+                Reset to suggested phases
+              </button>
+
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
+                <strong>Tip:</strong> These phases are saved directly to the job. After the estimate is created, open the Phases panel on the job card to check off phases as work progresses.
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 5: Review & Create ──────────────────────────────── */}
+          {step === 5 && (
             <div className="p-5 space-y-5">
 
               {/* Title */}
@@ -784,13 +909,15 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                 />
               </div>
 
-              {/* Phase Template */}
-              {phases.length > 0 && (
+              {/* Phase summary */}
+              {phasesEditable.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Project Phases (saved to estimate notes)</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                    Phases to save ({phasesEditable.length})
+                  </p>
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5">
                     <ol className="space-y-1">
-                      {phases.map((phase, i) => (
+                      {phasesEditable.map((phase, i) => (
                         <li key={i} className="flex items-center gap-2 text-xs text-blue-800">
                           <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">{i + 1}</span>
                           {phase}
@@ -846,7 +973,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-gray-100 bg-white flex-shrink-0">
           {step > 1 ? (
             <button
-              onClick={() => setStep((step - 1) as 1 | 2 | 3 | 4)}
+              onClick={() => setStep((step - 1) as 1 | 2 | 3 | 4 | 5)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back
@@ -873,10 +1000,18 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
               onClick={() => setStep(4)}
               className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm"
             >
-              Review & Finalize <ChevronRight className="w-4 h-4" />
+              Set Phases <ChevronRight className="w-4 h-4" />
             </button>
           )}
           {step === 4 && (
+            <button
+              onClick={() => setStep(5)}
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm"
+            >
+              Review & Finalize <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+          {step === 5 && (
             <button
               onClick={handleCreate}
               disabled={saving || !estimateTitle.trim()}

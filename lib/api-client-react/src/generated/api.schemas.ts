@@ -113,6 +113,7 @@ export interface Job {
   sqFt?: number | null;
   coats?: number | null;
   createdAt: string;
+  phases?: Array<{ name: string; completed: boolean }> | null;
 }
 
 export type CreateJobRequestStatus =
@@ -145,6 +146,7 @@ export interface CreateJobRequest {
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
+  phases?: Array<{ name: string; completed: boolean }> | null;
 }
 
 export interface DraftLineItem {

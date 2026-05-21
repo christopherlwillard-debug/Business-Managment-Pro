@@ -25,6 +25,7 @@ type JobRow = {
   subPaid: boolean;
   sqFt: number | null;
   coats: number | null;
+  phases: unknown;
   createdAt: Date;
   subcontractorId?: number | null;
   subcontractorName?: string | null;
@@ -67,6 +68,7 @@ async function getJobWithSubs(jobId: number) {
       subPaid: jobsTable.subPaid,
       sqFt: jobsTable.sqFt,
       coats: jobsTable.coats,
+      phases: jobsTable.phases,
       createdAt: jobsTable.createdAt,
       subcontractorId: jobSubcontractorsTable.subcontractorId,
       subcontractorName: subcontractorsTable.name,
@@ -128,6 +130,7 @@ router.get("/", async (req, res) => {
         subPaid: jobsTable.subPaid,
         sqFt: jobsTable.sqFt,
         coats: jobsTable.coats,
+        phases: jobsTable.phases,
         createdAt: jobsTable.createdAt,
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subcontractorName: subcontractorsTable.name,
@@ -160,7 +163,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, notes, businessLine, sqFt, coats } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, notes, businessLine, sqFt, coats, phases } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
@@ -175,6 +178,7 @@ router.post("/", async (req, res) => {
       businessLine: businessLine || null,
       sqFt: sqFt != null ? parseInt(sqFt) : null,
       coats: coats != null ? parseInt(coats) : null,
+      phases: phases ?? null,
     }).returning();
 
     if (Array.isArray(subcontractorIds) && subcontractorIds.length > 0) {
@@ -385,7 +389,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, notes, businessLine, subPaid, sqFt, coats } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, notes, businessLine, subPaid, sqFt, coats, phases } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -408,6 +412,7 @@ router.put("/:id", async (req, res) => {
     if ("subPaid" in req.body) updates.subPaid = subPaid === true;
     if ("sqFt" in req.body) updates.sqFt = sqFt != null ? parseInt(sqFt) : null;
     if ("coats" in req.body) updates.coats = coats != null ? parseInt(coats) : null;
+    if ("phases" in req.body) updates.phases = phases ?? null;
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });

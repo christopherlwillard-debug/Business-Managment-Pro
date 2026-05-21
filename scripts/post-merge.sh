@@ -577,6 +577,15 @@ pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS ai_summary js
 (cd lib/db && node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE jobs ADD COLUMN IF NOT EXISTS phases jsonb')
+  .then(() => { console.log('jobs.phases column ensured'); pool.end(); })
+  .catch(e => { console.error('jobs phases migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Task #559: create contacts table (address book, idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 pool.query(\`
   CREATE TABLE IF NOT EXISTS contacts (
     id SERIAL PRIMARY KEY,
