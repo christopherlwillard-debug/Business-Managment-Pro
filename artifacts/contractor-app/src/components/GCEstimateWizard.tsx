@@ -457,7 +457,14 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const [estimateTitle, setEstimateTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [projectCity, setProjectCity] = useState("");
+  const [projectCity, setProjectCity] = useState<string>(() => {
+    if (job.city) return job.city;
+    if (job.address) {
+      const parts = job.address.split(",").map(p => p.trim());
+      if (parts.length >= 2) return parts[1];
+    }
+    return "";
+  });
   const [copiedTradeId, setCopiedTradeId] = useState<string | null>(null);
 
   const questions = (jobType ? SCOPE_QUESTIONS[jobType] ?? [] : []).filter(q => !q.condition || q.condition(answers));
