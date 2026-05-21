@@ -1185,6 +1185,16 @@ function JobCard({
                   {job.subPaid ? "Sub Paid" : "Sub Unpaid"}
                 </span>
               )}
+              {Array.isArray(job.permitChecklist) && job.permitChecklist.length > 0 && (() => {
+                const unchecked = (job.permitChecklist as Array<{ label: string; checked: boolean }>).filter(p => !p.checked).length;
+                if (unchecked === 0) return null;
+                return (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                    <FileText className="w-2.5 h-2.5" />
+                    {unchecked} Permit{unchecked !== 1 ? "s" : ""} Pending
+                  </span>
+                );
+              })()}
             </div>
             {estimateTotal != null && (
               <p className="text-amber-600 font-bold text-sm">{formatCurrency(estimateTotal)}</p>

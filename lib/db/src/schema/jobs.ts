@@ -10,6 +10,12 @@ export const phaseItemSchema = z.object({
 });
 export type PhaseItem = z.infer<typeof phaseItemSchema>;
 
+export const permitChecklistItemSchema = z.object({
+  label: z.string(),
+  checked: z.boolean(),
+});
+export type PermitChecklistItem = z.infer<typeof permitChecklistItemSchema>;
+
 export const jobsTable = pgTable("jobs", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -30,6 +36,7 @@ export const jobsTable = pgTable("jobs", {
   sqFt: integer("sq_ft"),
   coats: smallint("coats").default(1),
   phases: jsonb("phases").$type<PhaseItem[]>(),
+  permitChecklist: jsonb("permit_checklist").$type<PermitChecklistItem[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

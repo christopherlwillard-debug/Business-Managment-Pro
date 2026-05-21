@@ -114,6 +114,7 @@ export interface Job {
   coats?: number | null;
   createdAt: string;
   phases?: Array<{ name: string; completed: boolean }> | null;
+  permitChecklist?: Array<{ label: string; checked: boolean }> | null;
 }
 
 export type CreateJobRequestStatus =
@@ -147,6 +148,7 @@ export interface CreateJobRequest {
   sqFt?: number | null;
   coats?: number | null;
   phases?: Array<{ name: string; completed: boolean }> | null;
+  permitChecklist?: Array<{ label: string; checked: boolean }> | null;
 }
 
 export interface DraftLineItem {

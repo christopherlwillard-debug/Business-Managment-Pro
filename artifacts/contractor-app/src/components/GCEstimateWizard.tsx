@@ -456,6 +456,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const [trades, setTrades] = useState<TradeItem[]>([]);
   const [phasesEditable, setPhasesEditable] = useState<string[]>([]);
   const [savePhasesToJob, setSavePhasesToJob] = useState(true);
+  const [permitChecked, setPermitChecked] = useState<Record<number, boolean>>({});
   const [newPhaseInput, setNewPhaseInput] = useState("");
   const [expandedTipId, setExpandedTipId] = useState<string | null>(null);
   const [markup, setMarkup] = useState(String(DEFAULT_MARKUP));
@@ -491,6 +492,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
     const label = JOB_TYPES.find(x => x.id === jt)?.label ?? jt;
     setEstimateTitle(`${job.title} — ${label}`);
     setPhasesEditable(PHASE_TEMPLATES[jt] ?? []);
+    setPermitChecked({});
     setStep(2);
   }
 
@@ -603,13 +605,22 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
       await createEstimate.mutateAsync(req);
       qc.invalidateQueries({ queryKey: ["/api/estimates"] });
 
-      if (savePhasesToJob && phasesEditable.length > 0) {
-        await updateJob.mutateAsync({
-          id: job.id,
-          data: { phases: phasesEditable.map(name => ({ name, completed: false })) },
-        });
-        qc.invalidateQueries({ queryKey: ["/api/jobs"] });
-      }
+      const permitItems = (KY_PERMITS[jobType] ?? KY_PERMITS.other);
+      const permitChecklistData = permitItems.map((item, i) => ({
+        label: item.label,
+        checked: permitChecked[i] === true,
+      }));
+
+      await updateJob.mutateAsync({
+        id: job.id,
+        data: {
+          ...(savePhasesToJob && phasesEditable.length > 0
+            ? { phases: phasesEditable.map(name => ({ name, completed: false })) }
+            : {}),
+          permitChecklist: permitChecklistData,
+        },
+      });
+      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
 
       const phasesMsg = savePhasesToJob && phasesEditable.length > 0 ? " Phases saved to job." : "";
       toast({ title: "Estimate created", description: `${estimateTitle} saved as draft.${phasesMsg}` });
@@ -953,26 +964,44 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                   Typical requirements for a <span className="font-semibold">{JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType}</span> in KY. Always verify with your local county building office — requirements vary by jurisdiction.
                 </p>
                 <div className="space-y-2">
-                  {(KY_PERMITS[jobType] ?? KY_PERMITS.other).map((item, i) => (
-                    <div
-                      key={i}
-                      className={`flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl text-xs border ${
-                        item.required
-                          ? "bg-red-50 border-red-200 text-red-800"
-                          : "bg-gray-50 border-gray-200 text-gray-600"
-                      }`}
-                    >
-                      <span className={`flex-shrink-0 mt-0.5 font-bold ${item.required ? "text-red-500" : "text-gray-400"}`}>
-                        {item.required ? "⚠" : "•"}
-                      </span>
-                      <span className="leading-relaxed">{item.label}</span>
-                      {item.required && (
-                        <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-red-500 bg-red-100 px-1.5 py-0.5 rounded">
-                          Required
+                  {(KY_PERMITS[jobType] ?? KY_PERMITS.other).map((item, i) => {
+                    const isChecked = permitChecked[i] === true;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setPermitChecked(prev => ({ ...prev, [i]: !prev[i] }))}
+                        className={`w-full flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl text-xs border text-left transition-colors ${
+                          isChecked
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                            : item.required
+                            ? "bg-red-50 border-red-200 text-red-800"
+                            : "bg-gray-50 border-gray-200 text-gray-600"
+                        }`}
+                      >
+                        <span className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center ${
+                          isChecked
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : item.required
+                            ? "border-red-300 bg-white"
+                            : "border-gray-300 bg-white"
+                        }`}>
+                          {isChecked && <Check className="w-2.5 h-2.5" />}
                         </span>
-                      )}
-                    </div>
-                  ))}
+                        <span className={`leading-relaxed flex-1 ${isChecked ? "line-through opacity-60" : ""}`}>{item.label}</span>
+                        {!isChecked && item.required && (
+                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-red-500 bg-red-100 px-1.5 py-0.5 rounded">
+                            Required
+                          </span>
+                        )}
+                        {isChecked && (
+                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">
+                            Done
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
