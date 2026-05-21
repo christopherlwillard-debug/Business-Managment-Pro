@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import {
-  useCreateEstimate, useUpdateJob,
+  useCreateEstimate, useUpdateJob, useGetSettings,
   Job, CreateEstimateRequest,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,6 +13,55 @@ import {
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CalcDefaults {
+  plumbing: { baseCharge: number; dropRate: number };
+  flooring: { labor: Record<string, number>; full: Record<string, number>; minimumCharge: number };
+  trim: { laborRate: number };
+  siding: { laborRate: number };
+  drywall: { laborRate: number };
+  punchList: { halfDayPrice: number; fullDayPrice: number; helperDayRate: number };
+}
+
+const DEFAULT_CALC: CalcDefaults = {
+  plumbing: { baseCharge: 1000, dropRate: 125 },
+  flooring: {
+    labor: { Carpet: 4.50, Laminate: 4.50, LVP: 4.50, Hardwood: 4.50, Tile: 6.00 },
+    full:  { Carpet: 5.00, Laminate: 6.50, LVP: 7.00, Hardwood: 11.50, Tile: 13.50 },
+    minimumCharge: 500,
+  },
+  trim:    { laborRate: 5.50 },
+  siding:  { laborRate: 2.00 },
+  drywall: { laborRate: 2.50 },
+  punchList: { halfDayPrice: 500, fullDayPrice: 1000, helperDayRate: 275 },
+};
+
+function resolveCalcDefaults(raw: Record<string, unknown> | null | undefined): CalcDefaults {
+  const d = DEFAULT_CALC;
+  if (!raw) return d;
+  const pl = (raw.plumbing ?? {}) as Record<string, number>;
+  const fl = (raw.flooring ?? {}) as Record<string, unknown>;
+  const tr = (raw.trim ?? {}) as Record<string, number>;
+  const si = (raw.siding ?? {}) as Record<string, number>;
+  const dr = (raw.drywall ?? {}) as Record<string, number>;
+  const pu = (raw.punchList ?? {}) as Record<string, number>;
+  return {
+    plumbing: { baseCharge: pl.baseCharge ?? d.plumbing.baseCharge, dropRate: pl.dropRate ?? d.plumbing.dropRate },
+    flooring: {
+      labor: { ...d.flooring.labor, ...((fl.labor ?? {}) as Record<string, number>) },
+      full:  { ...d.flooring.full,  ...((fl.full ?? {}) as Record<string, number>) },
+      minimumCharge: (fl.minimumCharge as number) ?? d.flooring.minimumCharge,
+    },
+    trim:    { laborRate: tr.laborRate ?? d.trim.laborRate },
+    siding:  { laborRate: si.laborRate ?? d.siding.laborRate },
+    drywall: { laborRate: dr.laborRate ?? d.drywall.laborRate },
+    punchList: {
+      halfDayPrice:  pu.halfDayPrice  ?? d.punchList.halfDayPrice,
+      fullDayPrice:  pu.fullDayPrice  ?? d.punchList.fullDayPrice,
+      helperDayRate: pu.helperDayRate ?? d.punchList.helperDayRate,
+    },
+  };
+}
 
 interface Question {
   id: string;
@@ -47,6 +96,7 @@ interface RiskFlag { level: "warn" | "info"; message: string }
 // ─── Job Types ────────────────────────────────────────────────────────────────
 
 const JOB_TYPES = [
+  { id: "manufactured_home", label: "Manufactured Home",    icon: "🏡", desc: "Uses your agreed-upon rates from Settings" },
   { id: "full_remodel",   label: "Full Remodel",           icon: "🏠", desc: "Full interior gut and renovation" },
   { id: "kitchen",        label: "Kitchen Remodel",         icon: "🍳", desc: "Kitchen cabinets, countertops, flooring" },
   { id: "bathroom",       label: "Bathroom Remodel",        icon: "🚿", desc: "Tile, fixtures, plumbing, vanity" },
@@ -62,6 +112,17 @@ const JOB_TYPES = [
 // ─── Scope Questions ──────────────────────────────────────────────────────────
 
 const SCOPE_QUESTIONS: Record<string, Question[]> = {
+  manufactured_home: [
+    { id: "sqft",           label: "Floor area to work on (SF)",             type: "number", unit: "SF",   placeholder: "1000", defaultValue: 1000 },
+    { id: "flooring_type",  label: "Flooring (supply + install)",            type: "select", options: [{ value: "LVP", label: "LVP / Vinyl Plank" }, { value: "Carpet", label: "Carpet" }, { value: "Laminate", label: "Laminate" }, { value: "Tile", label: "Tile" }, { value: "Hardwood", label: "Hardwood" }, { value: "none", label: "No flooring" }], defaultValue: "LVP" },
+    { id: "plumbing_drops", label: "Plumbing hookups (sinks, toilets, etc.)", type: "number", unit: "drops", placeholder: "3", defaultValue: 3 },
+    { id: "include_trim",   label: "Trim work included?",                   type: "boolean", defaultValue: true },
+    { id: "trim_lf",        label: "Trim linear feet",                      type: "number", unit: "LF", placeholder: "200", defaultValue: 200, condition: (a) => a.include_trim === true },
+    { id: "include_siding", label: "Exterior siding included?",             type: "boolean", defaultValue: false },
+    { id: "siding_sf",      label: "Siding wall area (SF)",                 type: "number", unit: "SF", placeholder: "800", defaultValue: 800, condition: (a) => a.include_siding === true },
+    { id: "include_drywall",label: "Drywall / wall panel work included?",   type: "boolean", defaultValue: false },
+    { id: "drywall_sf",     label: "Drywall area (SF)",                     type: "number", unit: "SF", placeholder: "1000", defaultValue: 1000, condition: (a) => a.include_drywall === true },
+  ],
   kitchen: [
     { id: "sqft",       label: "Kitchen floor area (SF)",         type: "number", unit: "SF",  placeholder: "120", defaultValue: 120 },
     { id: "scope",      label: "Scope of work",                   type: "select", options: [{ value: "full_gut", label: "Full gut & rebuild" }, { value: "cosmetic", label: "Cosmetic update (cabinets/counters/floor)" }], defaultValue: "full_gut" },
@@ -138,14 +199,120 @@ function n(a: Answers, key: string, fallback = 0): number {
   return isNaN(p) ? fallback : p;
 }
 
-function computeTrades(jobType: string, answers: Answers): TradeItem[] {
+function computeTrades(jobType: string, answers: Answers, calcDefaults?: CalcDefaults): TradeItem[] {
   const items: TradeItem[] = [];
   let counter = 0;
   const add = (t: Omit<TradeItem, "id" | "selectedCost">) => {
     items.push({ ...t, id: String(counter++), selectedCost: t.midCost });
   };
 
-  if (jobType === "kitchen") {
+  if (jobType === "manufactured_home") {
+    const cd = calcDefaults ?? DEFAULT_CALC;
+    const sqft = Math.max(n(answers, "sqft", 1000), 1);
+    const flType = String(answers.flooring_type ?? "LVP");
+    const drops = n(answers, "plumbing_drops", 0);
+    const trimLf = n(answers, "trim_lf", 0);
+    const sidingSf = n(answers, "siding_sf", 0);
+    const drywallSf = n(answers, "drywall_sf", 0);
+
+    if (flType !== "none") {
+      const rate = cd.flooring.full[flType] ?? cd.flooring.full["LVP"] ?? 7.00;
+      const minCharge = cd.flooring.minimumCharge;
+      const rawTotal = sqft * rate;
+      const effectiveQty = rawTotal < minCharge ? Math.ceil(minCharge / rate) : sqft;
+      add({
+        trade: "Flooring",
+        description: `${flType} flooring — supply & install`,
+        qty: effectiveQty,
+        unit: "SF",
+        lowCost: rate,
+        midCost: rate,
+        highCost: rate,
+        category: "Subcontractor",
+        tips: ["Your agreed-upon rate from Settings", "Confirm subfloor is level and prepped before install", "Add 10% overage to material order"],
+      });
+    }
+
+    if (drops > 0) {
+      const plumbing = cd.plumbing;
+      const extraDrops = Math.max(drops - 2, 0);
+      const totalPlumbing = plumbing.baseCharge + extraDrops * plumbing.dropRate;
+      add({
+        trade: "Plumbing",
+        description: `Plumbing hookup — ${drops} drop${drops !== 1 ? "s" : ""}`,
+        qty: 1,
+        unit: "LOT",
+        lowCost: totalPlumbing,
+        midCost: totalPlumbing,
+        highCost: totalPlumbing,
+        category: "Subcontractor",
+        tips: [
+          "Your agreed-upon rate from Settings",
+          `Base charge covers first 2 drops; ${extraDrops > 0 ? `${extraDrops} extra drop${extraDrops !== 1 ? "s" : ""} at $${plumbing.dropRate}/drop` : "no extra drops"}`,
+          "Get permit for rough-in work",
+        ],
+      });
+    }
+
+    if (answers.include_trim === true && trimLf > 0) {
+      const rate = cd.trim.laborRate;
+      add({
+        trade: "Trim",
+        description: "Baseboard, casing & interior trim — labor",
+        qty: trimLf,
+        unit: "LF",
+        lowCost: rate,
+        midCost: rate,
+        highCost: rate,
+        category: "Labor",
+        tips: ["Your agreed-upon rate from Settings", "Confirm material is pre-purchased or include in separate line item", "Caulk all trim before paint"],
+      });
+    }
+
+    if (answers.include_siding === true && sidingSf > 0) {
+      const rate = cd.siding.laborRate;
+      add({
+        trade: "Siding",
+        description: "Exterior siding — labor install",
+        qty: sidingSf,
+        unit: "SF",
+        lowCost: rate,
+        midCost: rate,
+        highCost: rate,
+        category: "Labor",
+        tips: ["Your agreed-upon rate from Settings", "Confirm housewrap / vapor barrier is included", "Add material cost as a separate line if supplying"],
+      });
+    }
+
+    if (answers.include_drywall === true && drywallSf > 0) {
+      const rate = cd.drywall.laborRate;
+      add({
+        trade: "Drywall",
+        description: "Drywall hang & finish — labor",
+        qty: drywallSf,
+        unit: "SF",
+        lowCost: rate,
+        midCost: rate,
+        highCost: rate,
+        category: "Labor",
+        tips: ["Your agreed-upon rate from Settings", "Confirm tape, mud, and corner bead are included", "Sand before prime coat"],
+      });
+    }
+
+    add({
+      trade: "Cleanup",
+      description: "Final cleanup & haul-off",
+      qty: 1,
+      unit: "LOT",
+      lowCost: 200,
+      midCost: 350,
+      highCost: 550,
+      category: "Labor",
+      tips: [],
+    });
+  }
+
+  else if (jobType === "kitchen") {
     const sf = Math.max(n(answers, "sqft", 120), 1);
     const cabLf = n(answers, "cabinet_lf", 0);
     const isGut = answers.scope === "full_gut";
@@ -330,6 +497,7 @@ function getRiskFlags(jobType: string, answers: Answers): RiskFlag[] {
 // ─── Phase Templates ──────────────────────────────────────────────────────────
 
 const PHASE_TEMPLATES: Record<string, string[]> = {
+  manufactured_home: ["Site Prep & Delivery", "Plumbing Hookup", "Drywall / Wall Panels", "Flooring Install", "Trim & Doors", "Siding (if applicable)", "Paint & Touch-up", "Final Punch & Cleanup"],
   kitchen:       ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Drywall", "Cabinet Install", "Countertops", "Flooring", "Fixtures & Appliances", "Paint & Trim", "Final Punch"],
   bathroom:      ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Cement Board / Drywall", "Tile — Shower/Floor", "Vanity & Fixtures", "Paint", "Final Punch"],
   siding:        ["Tearoff & Disposal", "Housewrap", "Siding Install", "Trim & Corners", "Caulk & Seal", "Final Cleanup"],
@@ -347,6 +515,12 @@ const PHASE_TEMPLATES: Record<string, string[]> = {
 interface PermitItem { label: string; required: boolean }
 
 const KY_PERMITS: Record<string, PermitItem[]> = {
+  manufactured_home: [
+    { label: "Manufactured home installation permit — required in most KY counties", required: true },
+    { label: "Plumbing permit — required for hookup to utilities", required: true },
+    { label: "Electrical permit — required if connecting or extending circuits", required: true },
+    { label: "HUD label / data plate verification — confirm home is HUD-compliant", required: false },
+  ],
   kitchen: [
     { label: "Building permit — required for full gut or any structural change", required: true },
     { label: "Plumbing permit — required if relocating or adding new rough-in", required: true },
@@ -449,6 +623,8 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const { toast } = useToast();
   const createEstimate = useCreateEstimate();
   const updateJob = useUpdateJob();
+  const { data: settingsData } = useGetSettings();
+  const calcDefaults = resolveCalcDefaults(settingsData?.calculatorDefaults);
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [jobType, setJobType] = useState<string>("");
@@ -501,7 +677,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   }
 
   function goToTrades() {
-    const computed = computeTrades(jobType, answers);
+    const computed = computeTrades(jobType, answers, calcDefaults);
     setTrades(computed);
     setStep(3);
   }
