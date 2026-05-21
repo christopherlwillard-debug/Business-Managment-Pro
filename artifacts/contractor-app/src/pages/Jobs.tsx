@@ -1061,7 +1061,12 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-xs font-semibold text-muted-foreground">Progress</span>
-                  <span className="text-xs font-bold text-blue-600">{completedCount}/{phases.length} complete</span>
+                  <span className="text-xs font-bold text-blue-600">
+                    {completedCount}/{phases.length} complete
+                    <span className="ml-1 text-blue-400 font-normal">
+                      ({phases.length > 0 ? Math.round((completedCount / phases.length) * 100) : 0}%)
+                    </span>
+                  </span>
                 </div>
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
                   <div

@@ -1,10 +1,22 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, phaseItemSchema } from "@workspace/db/schema";
 import { eq, and, count, inArray } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
+import { z } from "zod/v4";
 
 const router = Router();
+
+const phasesInputSchema = z.array(phaseItemSchema).nullable().optional();
+
+function parsePhases(raw: unknown) {
+  if (raw === null || raw === undefined) return null;
+  const result = phasesInputSchema.safeParse(raw);
+  if (!result.success) throw new Error("phases must be an array of { name: string, completed: boolean }");
+  return result.data ?? null;
+}
+
+type PhaseItem = { name: string; completed: boolean };
 
 type JobRow = {
   id: number;
@@ -25,7 +37,7 @@ type JobRow = {
   subPaid: boolean;
   sqFt: number | null;
   coats: number | null;
-  phases: unknown;
+  phases: PhaseItem[] | null;
   createdAt: Date;
   subcontractorId?: number | null;
   subcontractorName?: string | null;
@@ -168,6 +180,9 @@ router.post("/", async (req, res) => {
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
+    let parsedPhases;
+    try { parsedPhases = parsePhases(phases); } catch (e: unknown) { return res.status(400).json({ error: e instanceof Error ? e.message : "Invalid phases" }); }
+
     const [job] = await db.insert(jobsTable).values({
       title, description,
       clientId: clientId || null,
@@ -178,7 +193,7 @@ router.post("/", async (req, res) => {
       businessLine: businessLine || null,
       sqFt: sqFt != null ? parseInt(sqFt) : null,
       coats: coats != null ? parseInt(coats) : null,
-      phases: phases ?? null,
+      phases: parsedPhases,
     }).returning();
 
     if (Array.isArray(subcontractorIds) && subcontractorIds.length > 0) {
@@ -412,7 +427,9 @@ router.put("/:id", async (req, res) => {
     if ("subPaid" in req.body) updates.subPaid = subPaid === true;
     if ("sqFt" in req.body) updates.sqFt = sqFt != null ? parseInt(sqFt) : null;
     if ("coats" in req.body) updates.coats = coats != null ? parseInt(coats) : null;
-    if ("phases" in req.body) updates.phases = phases ?? null;
+    if ("phases" in req.body) {
+      try { updates.phases = parsePhases(phases); } catch (e: unknown) { return res.status(400).json({ error: e instanceof Error ? e.message : "Invalid phases" }); }
+    }
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });

@@ -573,7 +573,7 @@ pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS ai_summary js
   .catch(e => { console.error('bid_opportunities ai_summary migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
-# Task #557: create contacts table (address book, idempotent)
+# Task #560: add phases JSONB column to jobs (idempotent)
 (cd lib/db && node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

@@ -449,6 +449,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const [answers, setAnswers] = useState<Answers>({});
   const [trades, setTrades] = useState<TradeItem[]>([]);
   const [phasesEditable, setPhasesEditable] = useState<string[]>([]);
+  const [savePhasesToJob, setSavePhasesToJob] = useState(true);
   const [newPhaseInput, setNewPhaseInput] = useState("");
   const [expandedTipId, setExpandedTipId] = useState<string | null>(null);
   const [markup, setMarkup] = useState(String(DEFAULT_MARKUP));
@@ -589,7 +590,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
       await createEstimate.mutateAsync(req);
       qc.invalidateQueries({ queryKey: ["/api/estimates"] });
 
-      if (phasesEditable.length > 0) {
+      if (savePhasesToJob && phasesEditable.length > 0) {
         await updateJob.mutateAsync({
           id: job.id,
           data: { phases: phasesEditable.map(name => ({ name, completed: false })) },
@@ -597,7 +598,8 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         qc.invalidateQueries({ queryKey: ["/api/jobs"] });
       }
 
-      toast({ title: "Estimate created", description: `${estimateTitle} saved as draft. Phases saved to job.` });
+      const phasesMsg = savePhasesToJob && phasesEditable.length > 0 ? " Phases saved to job." : "";
+      toast({ title: "Estimate created", description: `${estimateTitle} saved as draft.${phasesMsg}` });
       onCreated?.();
       onClose();
     } catch {
@@ -1115,22 +1117,32 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                 />
               </div>
 
-              {/* Phase summary */}
+              {/* Phase summary + opt-in */}
               {phasesEditable.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                    Phases to save ({phasesEditable.length})
-                  </p>
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5">
-                    <ol className="space-y-1">
-                      {phasesEditable.map((phase, i) => (
-                        <li key={i} className="flex items-center gap-2 text-xs text-blue-800">
-                          <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">{i + 1}</span>
-                          {phase}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input
+                      type="checkbox"
+                      checked={savePhasesToJob}
+                      onChange={e => setSavePhasesToJob(e.target.checked)}
+                      className="w-4 h-4 rounded accent-blue-500"
+                    />
+                    <span className="text-xs font-bold text-gray-700">
+                      Save {phasesEditable.length} phases to job for step-by-step tracking
+                    </span>
+                  </label>
+                  {savePhasesToJob && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5">
+                      <ol className="space-y-1">
+                        {phasesEditable.map((phase, i) => (
+                          <li key={i} className="flex items-center gap-2 text-xs text-blue-800">
+                            <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">{i + 1}</span>
+                            {phase}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                 </div>
               )}
 

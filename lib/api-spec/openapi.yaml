@@ -1653,9 +1653,34 @@ components:
         notes:
           type: string
           nullable: true
+        businessLine:
+          type: string
+          nullable: true
+        subPaid:
+          type: boolean
+        sqFt:
+          type: integer
+          nullable: true
+        coats:
+          type: integer
+          nullable: true
+        phases:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PhaseItem"
         createdAt:
           type: string
       required: [id, title, status, createdAt]
+
+    PhaseItem:
+      type: object
+      properties:
+        name:
+          type: string
+        completed:
+          type: boolean
+      required: [name, completed]
 
     CreateJobRequest:
       type: object
@@ -1699,6 +1724,22 @@ components:
         notes:
           type: string
           nullable: true
+        businessLine:
+          type: string
+          nullable: true
+        subPaid:
+          type: boolean
+        sqFt:
+          type: integer
+          nullable: true
+        coats:
+          type: integer
+          nullable: true
+        phases:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/PhaseItem"
       required: [title]
 
     DraftLineItem:

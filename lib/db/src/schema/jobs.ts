@@ -4,6 +4,12 @@ import { z } from "zod/v4";
 import { clientsTable } from "./clients";
 import { subcontractorsTable } from "./subcontractors";
 
+export const phaseItemSchema = z.object({
+  name: z.string(),
+  completed: z.boolean(),
+});
+export type PhaseItem = z.infer<typeof phaseItemSchema>;
+
 export const jobsTable = pgTable("jobs", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -23,7 +29,7 @@ export const jobsTable = pgTable("jobs", {
   subPaid: boolean("sub_paid").notNull().default(false),
   sqFt: integer("sq_ft"),
   coats: smallint("coats").default(1),
-  phases: jsonb("phases"),
+  phases: jsonb("phases").$type<PhaseItem[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
