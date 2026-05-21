@@ -1507,6 +1507,8 @@ function JobFormDialog({
         title: editJob.title,
         clientId: String(editJob.clientId ?? ""),
         status: displayStatus(editJob.status),
+        jobType: editJob.jobType ?? "",
+        address: editJob.address ?? "",
         locationName: editJob.locationName ?? "",
         city: editJob.city ?? "",
         state: editJob.state ?? "KY",
@@ -1520,6 +1522,7 @@ function JobFormDialog({
     }
     return {
       title: "", clientId: "", status: "scheduled",
+      jobType: "", address: "",
       locationName: "", city: "", state: "KY",
       startDate: "", endDate: "", notes: "",
       businessLine: activeBusiness?.slug ?? "",
@@ -1548,6 +1551,8 @@ function JobFormDialog({
         clientId: form.clientId ? parseInt(form.clientId) : undefined,
         subcontractorIds: subIds,
         status: form.status as CreateJobRequest["status"],
+        jobType: form.jobType || undefined,
+        address: form.address || undefined,
         locationName: form.locationName || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
@@ -1658,6 +1663,29 @@ function JobFormDialog({
             </div>
           )}
 
+          {form.businessLine !== "asphalt_sealing" && (
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              <Briefcase className="w-3 h-3 inline mr-1 text-amber-500" />Job Type
+            </label>
+            <select
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              value={form.jobType} onChange={e => setField("jobType", e.target.value)}>
+              <option value="">Select type…</option>
+              <option value="full_remodel">Full Remodel</option>
+              <option value="kitchen">Kitchen Remodel</option>
+              <option value="bathroom">Bathroom Remodel</option>
+              <option value="siding">Siding</option>
+              <option value="ceiling_repair">Ceiling Repair</option>
+              <option value="plumbing">Plumbing Hookup</option>
+              <option value="deck">Deck / Porch</option>
+              <option value="windows_doors">Window/Door Replacement</option>
+              <option value="addition">Addition</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Status</label>
             <div className="flex gap-3">
@@ -1690,27 +1718,36 @@ function JobFormDialog({
             </select>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-3">
+          <div className="space-y-2">
+            <div>
               <label className="block text-sm font-medium text-foreground mb-1">
                 <MapPin className="w-3 h-3 inline mr-1 text-amber-500" />Work Location Name
               </label>
               <input type="text"
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="e.g. 123 Main St"
+                placeholder="e.g. Smith Residence"
                 value={form.locationName} onChange={e => setField("locationName", e.target.value)} />
             </div>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-foreground mb-1">City</label>
-              <input type="text"
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                value={form.city} onChange={e => setField("city", e.target.value)} />
-            </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">State</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Street Address</label>
               <input type="text"
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                value={form.state} onChange={e => setField("state", e.target.value)} />
+                placeholder="e.g. 123 Main St"
+                value={form.address} onChange={e => setField("address", e.target.value)} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-foreground mb-1">City</label>
+                <input type="text"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={form.city} onChange={e => setField("city", e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">State</label>
+                <input type="text"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={form.state} onChange={e => setField("state", e.target.value)} />
+              </div>
             </div>
           </div>
 
