@@ -9,6 +9,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   X, ChevronLeft, ChevronRight, Wand2, AlertTriangle, Info,
   ChevronDown, ChevronUp, Check, Plus, Minus, GripVertical,
+  ClipboardCopy, ClipboardCheck, FileText,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -341,6 +342,93 @@ const PHASE_TEMPLATES: Record<string, string[]> = {
   other:         ["Scope & Materials Procurement", "Phase 1 Work", "Phase 2 Work", "Final Punch & Cleanup"],
 };
 
+// ─── KY Permit Requirements ───────────────────────────────────────────────────
+
+interface PermitItem { label: string; required: boolean }
+
+const KY_PERMITS: Record<string, PermitItem[]> = {
+  kitchen: [
+    { label: "Building permit — required for full gut or any structural change", required: true },
+    { label: "Plumbing permit — required if relocating or adding new rough-in", required: true },
+    { label: "Electrical permit — required for new circuits or panel work", required: true },
+    { label: "No permit needed for cosmetic-only updates (swap fixtures, paint)", required: false },
+  ],
+  bathroom: [
+    { label: "Building permit — required for full gut remodel", required: true },
+    { label: "Plumbing permit — required for any rough-in or fixture relocation", required: true },
+    { label: "Electrical permit — required for GFCI and exhaust fan circuits", required: true },
+  ],
+  siding: [
+    { label: "Building permit — required in most KY counties for re-siding", required: true },
+    { label: "HOA architectural review — if community has HOA", required: false },
+  ],
+  ceiling_repair: [
+    { label: "No permit typically required for cosmetic ceiling repair", required: false },
+    { label: "Asbestos abatement permit — required if pre-1978 and positive test", required: true },
+  ],
+  plumbing: [
+    { label: "Plumbing permit — required for any rough-in or line relocation in KY", required: true },
+    { label: "Licensed KY plumber must pull permit and pass inspection", required: true },
+    { label: "811 Dig-Safe notification — required before any trenching", required: true },
+  ],
+  deck: [
+    { label: "Building permit — required in most KY counties for new decks", required: true },
+    { label: "Zoning setback compliance — verify property lines with county", required: true },
+    { label: "Final inspection after completion — required before use", required: true },
+    { label: "HOA approval — if community has HOA", required: false },
+  ],
+  windows_doors: [
+    { label: "Building permit — required if adding or enlarging structural headers", required: true },
+    { label: "No permit needed for like-for-like replacement in most KY counties", required: false },
+    { label: "EPA RRP lead-paint certification — required if pre-1978 home", required: true },
+  ],
+  full_remodel: [
+    { label: "Building permit — required", required: true },
+    { label: "Plumbing permit — required", required: true },
+    { label: "Electrical permit — required", required: true },
+    { label: "HVAC permit — required if scope includes mechanical work", required: true },
+  ],
+  addition: [
+    { label: "Building permit — required", required: true },
+    { label: "Zoning variance — may be required depending on setbacks", required: true },
+    { label: "Plumbing permit", required: true },
+    { label: "Electrical permit", required: true },
+    { label: "HVAC permit", required: true },
+    { label: "Certificate of Occupancy — issued after final inspections", required: true },
+  ],
+  other: [
+    { label: "Verify permit requirements with your local KY county building office", required: false },
+  ],
+};
+
+// ─── Bid Request Generator ────────────────────────────────────────────────────
+
+function getReplyByDate(): string {
+  const d = new Date();
+  let added = 0;
+  while (added < 5) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) added++;
+  }
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function generateBidRequest(trade: TradeItem, jobTypeLabel: string, city: string): string {
+  const replyBy = getReplyByDate();
+  const cityLine = city.trim() ? `${city.trim()}, KY` : "Kentucky";
+  return `Hi,
+
+I'm bidding a ${jobTypeLabel} project in ${cityLine} and need a quote for the ${trade.trade} scope.
+
+Scope: ${trade.description}
+Quantity: ${trade.qty} ${trade.unit}
+
+Please send your quote by ${replyBy}. Feel free to reply to this email or give me a call.
+
+Thanks,
+[Your name / company]`;
+}
+
 // ─── Wizard Component ─────────────────────────────────────────────────────────
 
 const DEFAULT_MARKUP = 18;
@@ -356,7 +444,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const createEstimate = useCreateEstimate();
   const updateJob = useUpdateJob();
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [jobType, setJobType] = useState<string>("");
   const [answers, setAnswers] = useState<Answers>({});
   const [trades, setTrades] = useState<TradeItem[]>([]);
@@ -368,6 +456,8 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const [estimateTitle, setEstimateTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [projectCity, setProjectCity] = useState("");
+  const [copiedTradeId, setCopiedTradeId] = useState<string | null>(null);
 
   const questions = (jobType ? SCOPE_QUESTIONS[jobType] ?? [] : []).filter(q => !q.condition || q.condition(answers));
   const riskFlags = useMemo(() => jobType ? getRiskFlags(jobType, answers) : [], [jobType, answers]);
@@ -530,8 +620,8 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           </div>
           {/* Step indicator */}
           <div className="flex items-center gap-1 mr-2">
-            {([1, 2, 3, 4, 5] as const).map(s => (
-              <div key={s} className={`w-5 h-1.5 rounded-full transition-colors ${s <= step ? "bg-white" : "bg-amber-300/50"}`} />
+            {([1, 2, 3, 4, 5, 6] as const).map(s => (
+              <div key={s} className={`w-4 h-1.5 rounded-full transition-colors ${s <= step ? "bg-white" : "bg-amber-300/50"}`} />
             ))}
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-white/80 hover:text-white hover:bg-amber-600 transition-colors">
@@ -542,11 +632,12 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         {/* Step label */}
         <div className="px-5 py-2 border-b border-gray-100 bg-amber-50 flex-shrink-0">
           <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-            {step === 1 && "Step 1 of 5 — Choose Job Type"}
-            {step === 2 && "Step 2 of 5 — Scope Questions"}
-            {step === 3 && "Step 3 of 5 — Trade Breakdown & KY Cost Ranges"}
-            {step === 4 && "Step 4 of 5 — Project Phases"}
-            {step === 5 && "Step 5 of 5 — Review & Create Estimate"}
+            {step === 1 && "Step 1 of 6 — Choose Job Type"}
+            {step === 2 && "Step 2 of 6 — Scope Questions"}
+            {step === 3 && "Step 3 of 6 — Trade Breakdown & KY Cost Ranges"}
+            {step === 4 && "Step 4 of 6 — Project Phases"}
+            {step === 5 && "Step 5 of 6 — KY Permits & Bid Requests"}
+            {step === 6 && "Step 6 of 6 — Review & Create Estimate"}
           </p>
         </div>
 
@@ -833,8 +924,123 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
             </div>
           )}
 
-          {/* ── Step 5: Review & Create ──────────────────────────────── */}
+          {/* ── Step 5: KY Permits & Bid Requests ───────────────────── */}
           {step === 5 && (
+            <div className="p-5 space-y-6">
+
+              {/* Permit checklist */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-4 h-4 text-amber-600" />
+                  <p className="text-sm font-bold text-gray-800">Kentucky Permit Checklist</p>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                  Typical requirements for a <span className="font-semibold">{JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType}</span> in KY. Always verify with your local county building office — requirements vary by jurisdiction.
+                </p>
+                <div className="space-y-2">
+                  {(KY_PERMITS[jobType] ?? KY_PERMITS.other).map((item, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl text-xs border ${
+                        item.required
+                          ? "bg-red-50 border-red-200 text-red-800"
+                          : "bg-gray-50 border-gray-200 text-gray-600"
+                      }`}
+                    >
+                      <span className={`flex-shrink-0 mt-0.5 font-bold ${item.required ? "text-red-500" : "text-gray-400"}`}>
+                        {item.required ? "⚠" : "•"}
+                      </span>
+                      <span className="leading-relaxed">{item.label}</span>
+                      {item.required && (
+                        <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-red-500 bg-red-100 px-1.5 py-0.5 rounded">
+                          Required
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Subcontractor bid requests */}
+              {trades.filter(t => t.category === "Subcontractor" && t.qty > 0).length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ClipboardCopy className="w-4 h-4 text-blue-600" />
+                    <p className="text-sm font-bold text-gray-800">Subcontractor Bid Requests</p>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Copy a pre-filled email template for each sub trade. Paste into Gmail, Messages, or email.
+                  </p>
+
+                  {/* City input */}
+                  <div className="mb-4">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">City / Town</label>
+                    <input
+                      value={projectCity}
+                      onChange={e => setProjectCity(e.target.value)}
+                      placeholder="e.g. Lexington"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-0.5">Used to personalise the bid request emails</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {trades.filter(t => t.category === "Subcontractor" && t.qty > 0).map(t => {
+                      const copied = copiedTradeId === t.id;
+                      const jobLabel = JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType;
+                      return (
+                        <div key={t.id} className="rounded-xl border border-blue-100 bg-blue-50 overflow-hidden">
+                          <div className="px-3.5 py-2.5 flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-sm">{t.trade}</p>
+                              <p className="text-xs text-gray-500 truncate">{t.description}</p>
+                              <p className="text-[11px] text-blue-600 mt-0.5">
+                                {t.qty} {t.unit} · {formatCurrency(t.qty * t.selectedCost)}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const text = generateBidRequest(t, jobLabel, projectCity);
+                                navigator.clipboard.writeText(text).then(() => {
+                                  setCopiedTradeId(t.id);
+                                  setTimeout(() => setCopiedTradeId(null), 2500);
+                                });
+                              }}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
+                                copied
+                                  ? "bg-emerald-500 text-white"
+                                  : "bg-blue-600 text-white hover:bg-blue-700"
+                              }`}
+                            >
+                              {copied
+                                ? <><ClipboardCheck className="w-3.5 h-3.5" /> Copied!</>
+                                : <><ClipboardCopy className="w-3.5 h-3.5" /> Copy Bid Request</>
+                              }
+                            </button>
+                          </div>
+                          {/* Preview of template */}
+                          <div className="px-3.5 pb-2.5">
+                            <pre className="text-[10px] text-gray-500 bg-white border border-blue-100 rounded-lg p-2.5 whitespace-pre-wrap leading-relaxed font-sans overflow-hidden max-h-28">
+                              {generateBidRequest(t, JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType, projectCity)}
+                            </pre>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {trades.filter(t => t.category === "Subcontractor" && t.qty > 0).length === 0 && (
+                <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-xs text-gray-500">
+                  No subcontractor trades in this estimate — bid request templates are not needed.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 6: Review & Create ──────────────────────────────── */}
+          {step === 6 && (
             <div className="p-5 space-y-5">
 
               {/* Title */}
@@ -973,7 +1179,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-gray-100 bg-white flex-shrink-0">
           {step > 1 ? (
             <button
-              onClick={() => setStep((step - 1) as 1 | 2 | 3 | 4 | 5)}
+              onClick={() => setStep((step - 1) as 1 | 2 | 3 | 4 | 5 | 6)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back
@@ -1008,10 +1214,18 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
               onClick={() => setStep(5)}
               className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm"
             >
-              Review & Finalize <ChevronRight className="w-4 h-4" />
+              Permits & Bids <ChevronRight className="w-4 h-4" />
             </button>
           )}
           {step === 5 && (
+            <button
+              onClick={() => setStep(6)}
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm"
+            >
+              Review & Finalize <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+          {step === 6 && (
             <button
               onClick={handleCreate}
               disabled={saving || !estimateTitle.trim()}
