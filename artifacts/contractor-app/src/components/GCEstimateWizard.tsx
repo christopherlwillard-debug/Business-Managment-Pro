@@ -9,7 +9,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   X, ChevronLeft, ChevronRight, Wand2, AlertTriangle, Info,
   ChevronDown, ChevronUp, Check, Plus, Minus, GripVertical,
-  ClipboardCopy, ClipboardCheck, FileText,
+  ClipboardCopy, ClipboardCheck, FileText, Mail,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -411,6 +411,12 @@ function getReplyByDate(): string {
     if (d.getDay() !== 0 && d.getDay() !== 6) added++;
   }
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function generateGmailUrl(trade: TradeItem, jobTypeLabel: string, city: string, jobTitle: string): string {
+  const subject = `Bid Request — ${trade.trade} for ${jobTitle || jobTypeLabel}`;
+  const body = generateBidRequest(trade, jobTypeLabel, city);
+  return `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function generateBidRequest(trade: TradeItem, jobTypeLabel: string, city: string): string {
@@ -1007,25 +1013,35 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                                 {t.qty} {t.unit} · {formatCurrency(t.qty * t.selectedCost)}
                               </p>
                             </div>
-                            <button
-                              onClick={() => {
-                                const text = generateBidRequest(t, jobLabel, projectCity);
-                                navigator.clipboard.writeText(text).then(() => {
-                                  setCopiedTradeId(t.id);
-                                  setTimeout(() => setCopiedTradeId(null), 2500);
-                                });
-                              }}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
-                                copied
-                                  ? "bg-emerald-500 text-white"
-                                  : "bg-blue-600 text-white hover:bg-blue-700"
-                              }`}
-                            >
-                              {copied
-                                ? <><ClipboardCheck className="w-3.5 h-3.5" /> Copied!</>
-                                : <><ClipboardCopy className="w-3.5 h-3.5" /> Copy Bid Request</>
-                              }
-                            </button>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                onClick={() => {
+                                  const text = generateBidRequest(t, jobLabel, projectCity);
+                                  navigator.clipboard.writeText(text).then(() => {
+                                    setCopiedTradeId(t.id);
+                                    setTimeout(() => setCopiedTradeId(null), 2500);
+                                  });
+                                }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                  copied
+                                    ? "bg-emerald-500 text-white"
+                                    : "bg-blue-600 text-white hover:bg-blue-700"
+                                }`}
+                              >
+                                {copied
+                                  ? <><ClipboardCheck className="w-3.5 h-3.5" /> Copied!</>
+                                  : <><ClipboardCopy className="w-3.5 h-3.5" /> Copy</>
+                                }
+                              </button>
+                              <a
+                                href={generateGmailUrl(t, jobLabel, projectCity, job.title ?? "")}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500 text-white hover:bg-red-600 transition-all"
+                              >
+                                <Mail className="w-3.5 h-3.5" /> Open in Gmail
+                              </a>
+                            </div>
                           </div>
                           {/* Preview of template */}
                           <div className="px-3.5 pb-2.5">
