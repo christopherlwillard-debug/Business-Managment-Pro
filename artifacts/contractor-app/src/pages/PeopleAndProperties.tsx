@@ -214,11 +214,20 @@ export default function PeopleAndProperties() {
   const queryClient = useQueryClient();
   const googleAuth = useGoogleAuth();
 
-  const rawTab = (searchParams.get("tab") ?? (isOwner ? "prospects" : "clients")) as TabKey;
+  function firstAllowedTab(): TabKey {
+    if (isOwner) return "prospects";
+    if (canView("clients")) return "clients";
+    if (canView("subcontractors")) return "subcontractors";
+    return "clients";
+  }
+  const rawTab = (searchParams.get("tab") ?? firstAllowedTab()) as TabKey;
   function resolveAllowedTab(tab: TabKey): TabKey {
-    if (tab === "prospects" && !isOwner) return "clients";
-    if (tab === "subcontractors" && !isOwner && !canView("subcontractors")) return "clients";
-    if (tab === "contacts" && !isOwner) return "clients";
+    if (!isOwner) {
+      if (tab === "prospects") return canView("clients") ? "clients" : canView("subcontractors") ? "subcontractors" : "clients";
+      if (tab === "clients" && !canView("clients")) return canView("subcontractors") ? "subcontractors" : "clients";
+      if (tab === "subcontractors" && !canView("subcontractors")) return canView("clients") ? "clients" : "subcontractors";
+      if (tab === "contacts") return canView("clients") ? "clients" : canView("subcontractors") ? "subcontractors" : "clients";
+    }
     return tab;
   }
   const activeTab = resolveAllowedTab(rawTab);
@@ -986,15 +995,17 @@ export default function PeopleAndProperties() {
             <span className="ml-2 text-xs opacity-60">({filteredProspects.length})</span>
           </button>
         )}
-        <button
-          onClick={() => setTab("clients")}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === "clients" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Clients
-          <span className="ml-2 text-xs opacity-60">({filteredClients.length})</span>
-        </button>
+        {(isOwner || canView("clients")) && (
+          <button
+            onClick={() => setTab("clients")}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "clients" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Clients
+            <span className="ml-2 text-xs opacity-60">({filteredClients.length})</span>
+          </button>
+        )}
         {(isOwner || canView("subcontractors")) && (
           <button
             onClick={() => setTab("subcontractors")}
