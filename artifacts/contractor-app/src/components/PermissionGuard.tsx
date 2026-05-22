@@ -3,18 +3,20 @@ import { Lock } from "lucide-react";
 
 interface PermissionGuardProps {
   section?: SectionKey;
+  anySectionOf?: SectionKey[];
   ownerOnly?: boolean;
   children: React.ReactNode;
 }
 
-export function PermissionGuard({ section, ownerOnly, children }: PermissionGuardProps) {
+export function PermissionGuard({ section, anySectionOf, ownerOnly, children }: PermissionGuardProps) {
   const { canView, isOwner, accessStatus } = useUserPermissions();
 
   if (accessStatus === "loading") return null;
 
   const blocked =
     (ownerOnly && !isOwner) ||
-    (section !== undefined && !isOwner && !canView(section));
+    (section !== undefined && !isOwner && !canView(section)) ||
+    (anySectionOf !== undefined && !isOwner && !anySectionOf.some(s => canView(s)));
 
   if (blocked) {
     return (

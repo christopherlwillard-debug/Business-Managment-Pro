@@ -55,6 +55,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     icon: LucideIcon;
     feature: string | null;
     section: SectionKey | null;
+    altSection?: SectionKey;
     ownerOnly?: boolean;
     group?: "operations" | "business_tools" | "finance";
   }
@@ -64,7 +65,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Jobs", href: "/jobs", icon: Briefcase, feature: "jobs", section: "jobs", group: "operations" },
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses", group: "operations" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage", group: "operations" },
-    { name: "People", href: "/people", icon: UsersRound, feature: null, section: "clients", ownerOnly: false, group: "operations" },
+    { name: "People", href: "/people", icon: UsersRound, feature: null, section: "clients", altSection: "subcontractors", ownerOnly: false, group: "operations" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },
@@ -82,8 +83,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (item.ownerOnly && !isOwner) return false;
     if (!isOwner) {
       if (item.feature === null && item.section === null && !item.ownerOnly) return true;
-      if (item.section !== null && !canView(item.section)) return false;
-      return item.section !== null;
+      const hasSectionAccess =
+        (item.section !== null && canView(item.section)) ||
+        (item.altSection !== undefined && canView(item.altSection));
+      if (!hasSectionAccess) return false;
+      return item.section !== null || item.altSection !== undefined;
     }
     if (item.feature !== null && !enabledFeatures.includes(item.feature)) return false;
     return true;
