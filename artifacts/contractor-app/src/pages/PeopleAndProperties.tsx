@@ -215,7 +215,13 @@ export default function PeopleAndProperties() {
   const googleAuth = useGoogleAuth();
 
   const rawTab = (searchParams.get("tab") ?? (isOwner ? "prospects" : "clients")) as TabKey;
-  const activeTab = (!isOwner && rawTab === "prospects") ? "clients" : rawTab;
+  function resolveAllowedTab(tab: TabKey): TabKey {
+    if (tab === "prospects" && !isOwner) return "clients";
+    if (tab === "subcontractors" && !isOwner && !canView("subcontractors")) return "clients";
+    if (tab === "contacts" && !isOwner) return "clients";
+    return tab;
+  }
+  const activeTab = resolveAllowedTab(rawTab);
   const activeLine: string = activeBusiness
     ? activeBusiness.slug
     : (searchParams.get("line") ?? "");
@@ -989,7 +995,7 @@ export default function PeopleAndProperties() {
           Clients
           <span className="ml-2 text-xs opacity-60">({filteredClients.length})</span>
         </button>
-        {isOwner && (
+        {(isOwner || canView("subcontractors")) && (
           <button
             onClick={() => setTab("subcontractors")}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -1721,14 +1727,14 @@ export default function PeopleAndProperties() {
       </Dialog>
 
       {/* ───── SUBCONTRACTORS TAB ───── */}
-      {activeTab === "subcontractors" && (
+      {activeTab === "subcontractors" && (isOwner || canView("subcontractors")) && (
         <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
           <SubcontractorsTab />
         </Suspense>
       )}
 
       {/* ───── CONTACTS TAB ───── */}
-      {activeTab === "contacts" && (
+      {activeTab === "contacts" && isOwner && (
         <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
           <ContactsTab />
         </Suspense>

@@ -251,7 +251,7 @@ function AdminApp() {
             <PermissionGuard section="mileage"><Mileage /></PermissionGuard>
           </Route>
           <Route path="/subcontractors">
-            <TabRedirect tab="subcontractors" />
+            <PermissionGuard section="subcontractors"><TabRedirect tab="subcontractors" /></PermissionGuard>
           </Route>
           <Route path="/clients">
             <TabRedirect tab="clients" />
@@ -299,7 +299,7 @@ function AdminApp() {
             <PermissionGuard ownerOnly><BidOpportunities /></PermissionGuard>
           </Route>
           <Route path="/address-book">
-            <TabRedirect tab="contacts" />
+            <PermissionGuard ownerOnly><TabRedirect tab="contacts" /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>
