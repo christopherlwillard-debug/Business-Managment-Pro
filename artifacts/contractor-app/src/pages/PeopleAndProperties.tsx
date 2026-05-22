@@ -1,6 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense, lazy } from "react";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useSearchParams } from "wouter";
+const SubcontractorsTab = lazy(() => import("./Subcontractors"));
+const ContactsTab = lazy(() => import("./AddressBook"));
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListProspects,
@@ -43,7 +45,7 @@ import { sendViaGmail } from "@/lib/gmailSend";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type BusinessLine = string;
-type TabKey = "prospects" | "clients";
+type TabKey = "prospects" | "clients" | "subcontractors" | "contacts";
 
 // Legacy slug migration: old data used short values before slugs were introduced
 const LEGACY_BL_MAP: Record<string, string> = {
@@ -891,28 +893,30 @@ export default function PeopleAndProperties() {
           <h1 className="text-3xl font-display font-bold text-foreground">People</h1>
           <p className="text-muted-foreground mt-1">All prospects and clients across your business lines</p>
         </div>
-        <div className="flex items-center gap-2">
-          {activeTab === "prospects" && canEdit("clients") && (
+        {(activeTab === "prospects" || activeTab === "clients") && (
+          <div className="flex items-center gap-2">
+            {activeTab === "prospects" && canEdit("clients") && (
+              <button
+                onClick={() => setIsImportDialogOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <ListPlus className="w-4 h-4" />
+                Import
+              </button>
+            )}
             <button
-              onClick={() => setIsImportDialogOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              onClick={() => activeTab === "prospects" ? openCreateProspect() : openCreateClient()}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              <ListPlus className="w-4 h-4" />
-              Import
+              <Plus className="w-4 h-4" />
+              {activeTab === "prospects" ? "Log Prospect" : "Add Client"}
             </button>
-          )}
-          <button
-            onClick={() => activeTab === "prospects" ? openCreateProspect() : openCreateClient()}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            {activeTab === "prospects" ? "Log Prospect" : "Add Client"}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Business Line Toggle — only shown when in All Businesses mode */}
-      {!activeBusiness && (
+      {/* Business Line Toggle — only shown when in All Businesses mode, not for sub/contacts tabs */}
+      {!activeBusiness && (activeTab === "prospects" || activeTab === "clients") && (
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setLine("")}
@@ -941,44 +945,70 @@ export default function PeopleAndProperties() {
       </div>
       )}
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-        <input
-          type="text"
-          placeholder={activeTab === "prospects" ? "Search by address, contact, or phone…" : "Search by name, address, or phone…"}
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-9 pr-9 py-2.5 border border-border rounded-xl bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-        />
-        {searchHasText && (
-          <button
-            onClick={() => setSearchQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+      {/* Search Bar — only for prospects/clients tabs */}
+      {(activeTab === "prospects" || activeTab === "clients") && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder={activeTab === "prospects" ? "Search by address, contact, or phone…" : "Search by name, address, or phone…"}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-9 py-2.5 border border-border rounded-xl bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
+          {searchHasText && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
-      <div className="flex border-b border-border">
-        {(["prospects", "clients"] as TabKey[]).filter(tab => tab === "clients" || isOwner).map(tab => (
+      <div className="flex border-b border-border overflow-x-auto">
+        {isOwner && (
           <button
-            key={tab}
-            onClick={() => setTab(tab)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize ${
-              activeTab === tab
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+            onClick={() => setTab("prospects")}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "prospects" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab}
-            <span className="ml-2 text-xs opacity-60">
-              ({tab === "prospects" ? filteredProspects.length : filteredClients.length})
-            </span>
+            Prospects
+            <span className="ml-2 text-xs opacity-60">({filteredProspects.length})</span>
           </button>
-        ))}
+        )}
+        <button
+          onClick={() => setTab("clients")}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+            activeTab === "clients" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Clients
+          <span className="ml-2 text-xs opacity-60">({filteredClients.length})</span>
+        </button>
+        {isOwner && (
+          <button
+            onClick={() => setTab("subcontractors")}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "subcontractors" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Subcontractors
+          </button>
+        )}
+        {isOwner && (
+          <button
+            onClick={() => setTab("contacts")}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "contacts" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Contacts
+          </button>
+        )}
       </div>
 
       {/* ───── PROSPECTS TAB ───── */}
@@ -1689,6 +1719,20 @@ export default function PeopleAndProperties() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ───── SUBCONTRACTORS TAB ───── */}
+      {activeTab === "subcontractors" && (
+        <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+          <SubcontractorsTab />
+        </Suspense>
+      )}
+
+      {/* ───── CONTACTS TAB ───── */}
+      {activeTab === "contacts" && (
+        <Suspense fallback={<div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+          <ContactsTab />
+        </Suspense>
+      )}
 
       {/* ── Drawers ── */}
       <ProspectDrawer

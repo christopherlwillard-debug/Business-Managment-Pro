@@ -2,8 +2,8 @@ import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
-  HardHat, UsersRound,
-  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText, BookMarked,
+  UsersRound,
+  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText,
   Sun, Moon, Building2, ChevronDown,
   type LucideIcon,
 } from "lucide-react";
@@ -20,7 +20,6 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/expenses": { name: "Expenses", icon: Receipt },
   "/mileage": { name: "Mileage", icon: Navigation },
   "/people": { name: "People", icon: UsersRound },
-  "/subcontractors": { name: "Subcontractors", icon: HardHat },
   "/materials": { name: "Materials", icon: Package },
   "/route-planner": { name: "Route Planner", icon: Route },
   "/assets": { name: "Assets", icon: Wrench },
@@ -66,8 +65,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Expenses", href: "/expenses", icon: Receipt, feature: "expenses", section: "expenses", group: "operations" },
     { name: "Mileage", href: "/mileage", icon: Navigation, feature: "mileage", section: "mileage", group: "operations" },
     { name: "People", href: "/people", icon: UsersRound, feature: null, section: "clients", ownerOnly: false, group: "operations" },
-    { name: "Address Book", href: "/address-book", icon: BookMarked, feature: null, section: null, ownerOnly: true, group: "operations" },
-    { name: "Subcontractors", href: "/subcontractors", icon: HardHat, feature: "subcontractors", section: "subcontractors", group: "operations" },
     { name: "Materials", href: "/materials", icon: Package, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Route Planner", href: "/route-planner", icon: Route, feature: null, section: null, ownerOnly: true, group: "business_tools" },
     { name: "Assets", href: "/assets", icon: Wrench, feature: null, section: null, ownerOnly: true, group: "business_tools" },

@@ -15,7 +15,6 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Jobs = lazy(() => import("./pages/Jobs"));
 const Expenses = lazy(() => import("./pages/Expenses"));
 const Mileage = lazy(() => import("./pages/Mileage"));
-const Subcontractors = lazy(() => import("./pages/Subcontractors"));
 const Clients = lazy(() => import("./pages/Clients"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Accounting = lazy(() => import("./pages/Accounting"));
@@ -33,7 +32,6 @@ const QuickCharge = lazy(() => import("./pages/QuickCharge"));
 const SquareTransactions = lazy(() => import("./pages/SquareTransactions"));
 const Banking = lazy(() => import("./pages/Banking"));
 const BidOpportunities = lazy(() => import("./pages/BidOpportunities"));
-const AddressBook = lazy(() => import("./pages/AddressBook"));
 const BusinessSelector = lazy(() => import("./pages/BusinessSelector"));
 const NotFound = lazy(() => import("./pages/not-found"));
 
@@ -253,7 +251,7 @@ function AdminApp() {
             <PermissionGuard section="mileage"><Mileage /></PermissionGuard>
           </Route>
           <Route path="/subcontractors">
-            <PermissionGuard section="subcontractors"><Subcontractors /></PermissionGuard>
+            <TabRedirect tab="subcontractors" />
           </Route>
           <Route path="/clients">
             <TabRedirect tab="clients" />
@@ -301,7 +299,7 @@ function AdminApp() {
             <PermissionGuard ownerOnly><BidOpportunities /></PermissionGuard>
           </Route>
           <Route path="/address-book">
-            <PermissionGuard ownerOnly><AddressBook /></PermissionGuard>
+            <TabRedirect tab="contacts" />
           </Route>
           <Route component={NotFound} />
         </Switch>
