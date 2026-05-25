@@ -2318,9 +2318,7 @@ function JobFormDialog({
           </div>
           )}
 
-          {editJob && (
           <HomeModelInput value={form.homeModel} onChange={v => setField("homeModel", v)} />
-          )}
 
           {editJob && (
           <div>

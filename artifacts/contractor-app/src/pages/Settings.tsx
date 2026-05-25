@@ -1544,6 +1544,56 @@ function JobBenchmarksPanel() {
 
   const fieldCls = "w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20";
 
+  function JobTypeAutocomplete({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [open, setOpen] = useState(false);
+
+    useEffect(() => {
+      Promise.allSettled([
+        fetch(`${BASE_URL}/api/job-type-benchmarks/actuals`).then(r => r.ok ? r.json() : null),
+      ]).then(([actRes]) => {
+        const actuals = actRes.status === "fulfilled" ? actRes.value : null;
+        const jobTypes: string[] = actuals?.byJobType?.map((r: { groupKey: string }) => r.groupKey) ?? [];
+        const homeModels: string[] = actuals?.byHomeModel?.map((r: { groupKey: string }) => r.groupKey) ?? [];
+        setSuggestions(Array.from(new Set([...jobTypes, ...homeModels])).sort());
+      }).catch(() => {});
+    }, []);
+
+    const filtered = suggestions.filter(s =>
+      !value.trim() || s.toLowerCase().includes(value.toLowerCase())
+    );
+
+    return (
+      <div className="relative">
+        <label className="block text-xs font-medium mb-1">Job Type *</label>
+        <input
+          className={fieldCls}
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="e.g. Model Home, Spec Home, Flooring…"
+          required
+          autoComplete="off"
+        />
+        {open && filtered.length > 0 && (
+          <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
+            {filtered.slice(0, 12).map(s => (
+              <button
+                key={s}
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors first:rounded-t-xl last:rounded-b-xl"
+                onMouseDown={() => { onChange(s); setOpen(false); }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function BmForm({ val, set, onSubmit, onCancel, submitLabel }: {
     val: typeof EMPTY_BM;
     set: React.Dispatch<React.SetStateAction<typeof EMPTY_BM>>;
@@ -1553,10 +1603,7 @@ function JobBenchmarksPanel() {
   }) {
     return (
       <form onSubmit={onSubmit} className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-        <div>
-          <label className="block text-xs font-medium mb-1">Job Type *</label>
-          <input className={fieldCls} value={val.jobType} onChange={e => set(f => ({ ...f, jobType: e.target.value }))} placeholder="e.g. Model Home, Spec Home, Flooring…" required />
-        </div>
+        <JobTypeAutocomplete value={val.jobType} onChange={v => set(f => ({ ...f, jobType: v }))} />
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium mb-1">Est. Hours</label>
