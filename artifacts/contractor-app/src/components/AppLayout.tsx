@@ -332,11 +332,17 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Page content — add bottom padding on mobile for the bottom nav */}
-        <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 relative">
-          <div className="max-w-7xl mx-auto">
+        {location === "/aerial-quote" ? (
+          <main className="flex-1 overflow-hidden bg-background relative flex flex-col">
             {children}
-          </div>
-        </main>
+          </main>
+        ) : (
+          <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 relative">
+            <div className="max-w-7xl mx-auto">
+              {children}
+            </div>
+          </main>
+        )}
       </div>
 
       {/* Mobile bottom navigation bar */}

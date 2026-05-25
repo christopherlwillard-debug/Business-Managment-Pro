@@ -526,7 +526,7 @@ export default function AerialQuote() {
       : "Large (> 3,000 SF) — $0.15–$0.25/SF";
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-56px)] overflow-hidden bg-background">
+    <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden bg-background">
       <div className="order-2 lg:order-1 h-[46vh] lg:h-auto w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-r border-border bg-card overflow-y-auto flex-shrink-0 flex flex-col">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3">
@@ -535,7 +535,7 @@ export default function AerialQuote() {
             </div>
             <div>
               <h1 className="font-bold text-foreground text-sm leading-tight">Aerial Quote Tool</h1>
-              <p className="text-[11px] text-muted-foreground">Willard's Asphalt Sealing</p>
+              <p className="text-[11px] text-muted-foreground">Measure &amp; Quote Tool</p>
             </div>
           </div>
 
