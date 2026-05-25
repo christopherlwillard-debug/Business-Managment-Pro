@@ -6,6 +6,8 @@ import {
   useCreateContact,
   useUpdateContact,
   useDeleteContact,
+  useUpdateClient,
+  useUpdateSubcontractor,
   type Contact,
   type ContactInput,
 } from "@workspace/api-client-react";
@@ -16,6 +18,7 @@ import {
   Building2, X, Users, User, ChevronRight,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -130,6 +133,8 @@ export default function AddressBook() {
   const createContact = useCreateContact();
   const updateContact = useUpdateContact();
   const deleteContact = useDeleteContact();
+  const updateClient = useUpdateClient();
+  const updateSubcontractor = useUpdateSubcontractor();
   const { toast } = useToast();
   const [, setSearchParams] = useSearchParams();
 
@@ -144,6 +149,78 @@ export default function AddressBook() {
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // ── Quick-edit sheet for clients / subs ─────────────────────────────────────
+  const [quickEditEntry, setQuickEditEntry] = useState<UnifiedEntry | null>(null);
+  const [quickForm, setQuickForm] = useState({ name: "", phone: "", email: "" });
+  const [quickSaving, setQuickSaving] = useState(false);
+
+  function openQuickEdit(entry: UnifiedEntry) {
+    setQuickEditEntry(entry);
+    setQuickForm({
+      name:  entry.name,
+      phone: entry.phone ?? "",
+      email: entry.email ?? "",
+    });
+  }
+
+  function closeQuickEdit() {
+    setQuickEditEntry(null);
+    setQuickForm({ name: "", phone: "", email: "" });
+  }
+
+  async function handleQuickSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quickEditEntry || !quickForm.name.trim()) return;
+    setQuickSaving(true);
+    try {
+      if (quickEditEntry.sourceType === "client") {
+        await updateClient.mutateAsync({
+          id: quickEditEntry.id,
+          data: {
+            name:  quickForm.name.trim(),
+            phone: quickForm.phone.trim() || null,
+            email: quickForm.email.trim() || null,
+          },
+        });
+      } else {
+        await updateSubcontractor.mutateAsync({
+          id: quickEditEntry.id,
+          data: {
+            name:    quickForm.name.trim(),
+            phone:   quickForm.phone.trim() || null,
+            email:   quickForm.email.trim() || null,
+            w9OnFile: subs.find(s => s.id === quickEditEntry.id)?.w9OnFile ?? false,
+          },
+        });
+      }
+      toast({ title: "Contact info updated" });
+      closeQuickEdit();
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    } finally {
+      setQuickSaving(false);
+    }
+  }
+
+  function navigateToProfile(entry: UnifiedEntry) {
+    closeQuickEdit();
+    if (entry.sourceType === "client") {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", "clients");
+        next.set("clientId", String(entry.id));
+        return next;
+      }, { replace: false });
+    } else {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", "subcontractors");
+        next.set("subId", String(entry.id));
+        return next;
+      }, { replace: false });
+    }
+  }
 
   // ── Build unified list ──────────────────────────────────────────────────────
   const unified: UnifiedEntry[] = useMemo(() => {
@@ -288,20 +365,8 @@ export default function AddressBook() {
 
   // ── Navigation for clients/subs ─────────────────────────────────────────────
   function handleEntryTap(entry: UnifiedEntry) {
-    if (entry.sourceType === "client") {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.set("tab", "clients");
-        next.set("clientId", String(entry.id));
-        return next;
-      }, { replace: false });
-    } else if (entry.sourceType === "sub") {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.set("tab", "subcontractors");
-        next.set("subId", String(entry.id));
-        return next;
-      }, { replace: false });
+    if (entry.sourceType === "client" || entry.sourceType === "sub") {
+      openQuickEdit(entry);
     } else if (entry.rawContact) {
       openEdit(entry.rawContact);
     }
@@ -441,9 +506,13 @@ export default function AddressBook() {
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {isNavigable ? (
-                      <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                        View <ChevronRight className="w-3.5 h-3.5" />
-                      </span>
+                      <button
+                        onClick={e => { e.stopPropagation(); openQuickEdit(entry); }}
+                        className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                        title="Edit contact info"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
                     ) : (
                       <>
                         <button
@@ -690,6 +759,87 @@ export default function AddressBook() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Quick-edit sheet for clients / subs */}
+      <Sheet open={!!quickEditEntry} onOpenChange={open => { if (!open) closeQuickEdit(); }}>
+        <SheetContent side="right" className="w-full sm:max-w-sm flex flex-col">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <Edit2 className="w-4 h-4" />
+              Edit{" "}
+              {quickEditEntry?.sourceType === "client" ? "Client" : "Subcontractor"} Info
+            </SheetTitle>
+            <p className="text-xs text-muted-foreground">
+              Update the contact details for{" "}
+              <span className="font-medium text-foreground">{quickEditEntry?.name}</span>.
+            </p>
+          </SheetHeader>
+
+          <form onSubmit={handleQuickSave} className="flex flex-col flex-1 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Name <span className="text-destructive">*</span>
+              </label>
+              <input
+                value={quickForm.name}
+                onChange={e => setQuickForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Full name"
+                required
+                className="w-full px-3 py-2 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Phone</label>
+              <input
+                value={quickForm.phone}
+                onChange={e => setQuickForm(f => ({ ...f, phone: e.target.value }))}
+                placeholder="555-867-5309"
+                type="tel"
+                className="w-full px-3 py-2 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Email</label>
+              <input
+                value={quickForm.email}
+                onChange={e => setQuickForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="name@example.com"
+                type="email"
+                className="w-full px-3 py-2 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            <div className="flex gap-3 mt-auto pt-2">
+              <button
+                type="button"
+                onClick={closeQuickEdit}
+                className="flex-1 px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={quickSaving || !quickForm.name.trim()}
+                className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {quickSaving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </form>
+
+          {quickEditEntry && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <button
+                type="button"
+                onClick={() => navigateToProfile(quickEditEntry)}
+                className="flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
+              >
+                View full profile <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

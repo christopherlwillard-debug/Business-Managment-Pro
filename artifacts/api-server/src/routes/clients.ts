@@ -130,8 +130,21 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut } = req.body;
+    const updates: Record<string, unknown> = {};
+    if ("name" in req.body) updates.name = name;
+    if ("email" in req.body) updates.email = email;
+    if ("phone" in req.body) updates.phone = phone;
+    if ("address" in req.body) updates.address = address;
+    if ("city" in req.body) updates.city = city;
+    if ("state" in req.body) updates.state = state;
+    if ("zip" in req.body) updates.zip = zip;
+    if ("notes" in req.body) updates.notes = notes;
+    if ("nextServiceDate" in req.body) updates.nextServiceDate = nextServiceDate ?? null;
+    if ("serviceIntervalMonths" in req.body) updates.serviceIntervalMonths = serviceIntervalMonths ?? null;
+    if ("businessLine" in req.body) updates.businessLine = businessLine ?? null;
+    if ("reminderOptOut" in req.body) updates.reminderOptOut = reminderOptOut === true;
     const [client] = await db.update(clientsTable)
-      .set({ name, email, phone, address, city, state, zip, notes, nextServiceDate: nextServiceDate ?? null, serviceIntervalMonths: serviceIntervalMonths ?? null, businessLine: businessLine ?? null, reminderOptOut: reminderOptOut === true })
+      .set(updates)
       .where(eq(clientsTable.id, id))
       .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });
