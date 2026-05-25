@@ -58,7 +58,22 @@ export async function computeYtd(subcontractorId: number, year: number): Promise
       )
     );
 
-  return parseFloat(expRow?.total ?? "0") + parseFloat(payRow?.total ?? "0");
+  // Also include payments recorded directly on job cards (job_subcontractors.amount_paid)
+  const [jobPayRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountPaid}), 0)` })
+    .from(jobSubcontractorsTable)
+    .where(
+      and(
+        eq(jobSubcontractorsTable.subcontractorId, subcontractorId),
+        sql`${jobSubcontractorsTable.paidDate} LIKE ${yearStr + "-%"}`
+      )
+    );
+
+  return (
+    parseFloat(expRow?.total ?? "0") +
+    parseFloat(payRow?.total ?? "0") +
+    parseFloat(jobPayRow?.total ?? "0")
+  );
 }
 
 router.get("/1099-report", async (req, res) => {

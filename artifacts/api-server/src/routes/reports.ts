@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubcontractorsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, sum, ne, inArray } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
@@ -612,7 +612,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const startDate = `${year}-01-01`;
     const endDate   = `${year}-12-31`;
 
-    const [invRows, expRows, mileRows, otherRows] = await Promise.all([
+    const [invRows, expRows, mileRows, otherRows, jobSubPayRows] = await Promise.all([
       db.select({ status: invoicesTable.status, total: invoicesTable.total })
         .from(invoicesTable)
         .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
@@ -629,6 +629,15 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       db.select({ amount: otherIncomeTable.amount })
         .from(otherIncomeTable)
         .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
+      // Sub payments recorded on job cards (paid_date falls within the year)
+      db.select({ total: sum(jobSubcontractorsTable.amountPaid) })
+        .from(jobSubcontractorsTable)
+        .where(
+          and(
+            gte(jobSubcontractorsTable.paidDate, startDate),
+            lte(jobSubcontractorsTable.paidDate, endDate)
+          )
+        ),
     ]);
 
     const grossReceipts = invRows.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
@@ -639,12 +648,17 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const writtenOffExpenses = expRows.filter(e => e.excludeFromNetProfit);
     const writeoffsTotal = writtenOffExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
+    // Job-card sub payments count as contract labor on the P&L
+    const jobSubPayTotal = parseFloat((jobSubPayRows[0]?.total as string | null) ?? "0");
+
     const buckets: Record<string, number> = {};
     for (const e of normalExpenses) {
       const cat = e.category || "Other";
       const key = PL_CATEGORY_MAP[cat] ?? "other";
       buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount ?? "0");
     }
+    // Fold job-card payments into contract labor
+    buckets["contractLabor"] = (buckets["contractLabor"] ?? 0) + jobSubPayTotal;
 
     const cogs = buckets["cogs"] ?? 0;
     const grossProfit = grossRevenue - cogs;

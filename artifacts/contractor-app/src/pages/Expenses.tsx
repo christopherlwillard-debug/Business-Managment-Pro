@@ -2095,7 +2095,8 @@ export default function Expenses() {
                     <option key={s.id} value={s.id}>{s.name}{s.trade ? ` · ${s.trade}` : ""}</option>
                   ))}
                 </select>
-                <p className="text-xs text-muted-foreground mt-1">This expense will appear in the subcontractor's portal.</p>
+                <p className="text-xs text-muted-foreground mt-1">This expense will appear in the subcontractor's portal and on the P&L.</p>
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1.5">Only use this for payments <strong>not</strong> already recorded on a job card — recording both will double-count on the P&L and the sub's YTD.</p>
               </div>
             )}
 

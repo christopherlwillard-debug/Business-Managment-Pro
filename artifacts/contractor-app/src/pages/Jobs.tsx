@@ -1426,6 +1426,9 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                                 onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, paidNotes: e.target.value } }))}
                                 className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
                             </div>
+                            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                              This payment will appear on your P&L and in the sub's portal. Do not also add it as a Subcontractor expense — that would count it twice.
+                            </p>
                             <div className="flex gap-2">
                               <button onClick={() => setEditPayId(null)} className="flex-1 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">Cancel</button>
                               <button onClick={() => handleSavePayment(pay.subcontractorId)} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">Save</button>
