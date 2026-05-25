@@ -1057,14 +1057,17 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   async function loadData() {
     setLoading(true);
     try {
-      const [h, p, allBenchmarks] = await Promise.all([
+      const [hRes, pRes, bmRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${job.id}/sub-hours`).then(r => r.json()),
         fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.json()),
-        fetch(`${BASE}/api/job-type-benchmarks`).then(r => r.json()),
+        fetch(`${BASE}/api/job-type-benchmarks`).then(r => r.ok ? r.json() : Promise.resolve(null)),
       ]);
+      const h = hRes.status === "fulfilled" ? hRes.value : [];
+      const p = pRes.status === "fulfilled" ? pRes.value : [];
+      const allBenchmarks = bmRes.status === "fulfilled" ? bmRes.value : null;
       setHours(Array.isArray(h) ? h : []);
       setPayments(Array.isArray(p) ? p : []);
-      // Find matching benchmark for this job's type
+      // Find matching benchmark for this job's type (silently skipped if endpoint forbidden)
       if (Array.isArray(allBenchmarks) && job.jobType) {
         const match = allBenchmarks.find((b: BenchmarkRow) =>
           b.jobType.toLowerCase() === (job.jobType ?? "").toLowerCase()
@@ -1924,8 +1927,8 @@ function JobCard({
           </button>
         )}
 
-        {/* Sub Hours & Pay button — only when subs assigned */}
-        {Array.isArray(job.subcontractorIds) && (job.subcontractorIds as number[]).length > 0 && (
+        {/* Sub Hours & Pay button — shown for all jobs so benchmark is always accessible */}
+        {(
           <button
             onClick={() => setSubHoursPanelOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">

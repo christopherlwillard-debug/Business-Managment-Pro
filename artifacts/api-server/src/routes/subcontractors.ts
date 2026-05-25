@@ -191,7 +191,17 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile, address, notes, payRate, payType } = req.body;
-    const updates: Record<string, unknown> = { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile: !!w9OnFile, address, notes };
+    const updates: Record<string, unknown> = {};
+    if ("name" in req.body) updates.name = name;
+    if ("email" in req.body) updates.email = email;
+    if ("phone" in req.body) updates.phone = phone;
+    if ("trade" in req.body) updates.trade = trade;
+    if ("licenseNumber" in req.body) updates.licenseNumber = licenseNumber;
+    if ("licenseExpiry" in req.body) updates.licenseExpiry = licenseExpiry;
+    if ("insuranceExpiry" in req.body) updates.insuranceExpiry = insuranceExpiry;
+    if ("w9OnFile" in req.body) updates.w9OnFile = !!w9OnFile;
+    if ("address" in req.body) updates.address = address;
+    if ("notes" in req.body) updates.notes = notes;
     if ("payRate" in req.body) updates.payRate = payRate != null ? String(payRate) : null;
     if ("payType" in req.body) updates.payType = payType || "hourly";
     const [sub] = await db.update(subcontractorsTable).set(updates).where(eq(subcontractorsTable.id, id)).returning();
