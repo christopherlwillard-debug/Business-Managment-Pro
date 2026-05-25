@@ -370,16 +370,20 @@ export default function Subcontractors() {
                 <th className="px-6 py-4">Contact</th>
                 <th className="px-6 py-4 text-center">W-9 Status</th>
                 <th className="px-6 py-4 text-right">YTD Payments</th>
+                <th className="px-4 py-4 text-right">Hrs Tracked</th>
+                <th className="px-4 py-4 text-right">Owed</th>
+                <th className="px-4 py-4 text-right">Paid</th>
+                <th className="px-4 py-4 text-right">Balance</th>
                 <th className="px-6 py-4 text-center">Portal Access</th>
                 <th className="px-4 py-4 text-center">Remove</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground animate-pulse">Loading subs…</td></tr>
+                <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground animate-pulse">Loading subs…</td></tr>
               ) : subs?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-6 py-12 text-center text-muted-foreground">
                     <HardHat className="w-8 h-8 mx-auto mb-2 opacity-20" />
                     No subcontractors added
                   </td>
@@ -408,6 +412,28 @@ export default function Subcontractors() {
                       </td>
                       <td className="px-6 py-4 text-right font-display font-bold text-foreground">
                         {formatCurrency(sub.ytdPayments)}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm">
+                        {(sub as any).totalTrackedHours > 0 ? (
+                          <span className="font-medium text-orange-600">{((sub as any).totalTrackedHours as number).toFixed(1)}h</span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm">
+                        {(sub as any).totalOwed > 0 ? (
+                          <span className="font-medium text-foreground">{formatCurrency((sub as any).totalOwed)}</span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm">
+                        {(sub as any).totalPaid > 0 ? (
+                          <span className="font-medium text-emerald-600">{formatCurrency((sub as any).totalPaid)}</span>
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm">
+                        {(sub as any).balance > 0.01 ? (
+                          <span className="font-bold text-red-600">{formatCurrency((sub as any).balance)}</span>
+                        ) : (sub as any).totalOwed > 0 ? (
+                          <span className="text-emerald-600 font-medium">✓</span>
+                        ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex flex-col items-center gap-1.5">

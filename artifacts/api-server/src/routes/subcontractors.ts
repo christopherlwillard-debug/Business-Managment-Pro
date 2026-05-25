@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable } from "@workspace/db/schema";
+import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 const router = Router();
@@ -93,16 +93,48 @@ router.get("/1099-report", async (req, res) => {
   }
 });
 
+async function computeSubAggregates(subcontractorId: number) {
+  const [hoursRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
+    .from(jobSubHoursTable)
+    .where(eq(jobSubHoursTable.subcontractorId, subcontractorId));
+
+  const [owedRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountOwed}), 0)` })
+    .from(jobSubcontractorsTable)
+    .where(eq(jobSubcontractorsTable.subcontractorId, subcontractorId));
+
+  const [paidRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountPaid}), 0)` })
+    .from(jobSubcontractorsTable)
+    .where(eq(jobSubcontractorsTable.subcontractorId, subcontractorId));
+
+  return {
+    totalHours: parseFloat(hoursRow?.total ?? "0"),
+    totalOwed: parseFloat(owedRow?.total ?? "0"),
+    totalPaid: parseFloat(paidRow?.total ?? "0"),
+  };
+}
+
 router.get("/", async (req, res) => {
   try {
     const year = new Date().getFullYear();
     const subs = await db.select().from(subcontractorsTable).orderBy(subcontractorsTable.name);
     const formatted = await Promise.all(subs.map(async (s) => {
-      const [ytd, hasLinkedRecords] = await Promise.all([
+      const [ytd, hasLinkedRecords, agg] = await Promise.all([
         computeYtd(s.id, year),
         computeHasLinkedRecords(s.id),
+        computeSubAggregates(s.id),
       ]);
-      return { ...format(s, ytd), hasLinkedRecords };
+      return {
+        ...format(s, ytd), hasLinkedRecords,
+        totalTrackedHours: agg.totalHours,
+        totalOwed: agg.totalOwed,
+        totalPaid: agg.totalPaid,
+        balance: agg.totalOwed - agg.totalPaid,
+        payRate: s.payRate != null ? parseFloat(s.payRate) : null,
+        payType: s.payType,
+      };
     }));
     res.json(formatted);
   } catch (err) {

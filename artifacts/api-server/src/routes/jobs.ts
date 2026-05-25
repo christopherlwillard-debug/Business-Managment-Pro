@@ -499,11 +499,32 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
       .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, subId)))
       .returning();
     if (!row) return res.status(404).json({ error: "Sub-job link not found" });
+
+    // Auto-compute sub_paid on the job from all sub payment records
+    // A job is "sub paid" when every linked sub with an owed amount has been fully paid
+    const allRows = await db.select({
+      amountOwed: jobSubcontractorsTable.amountOwed,
+      amountPaid: jobSubcontractorsTable.amountPaid,
+      computedOwed: sql<string>`COALESCE((
+        SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+        FROM job_sub_hours h
+        WHERE h.job_id = ${jobId} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+      ), 0)`,
+    }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
+
+    const allPaid = allRows.length > 0 && allRows.every(r => {
+      const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : parseFloat(r.computedOwed ?? "0");
+      const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+      return owed <= 0 || paid >= owed;
+    });
+    await db.update(jobsTable).set({ subPaid: allPaid }).where(eq(jobsTable.id, jobId));
+
     res.json({
       jobId: row.jobId, subcontractorId: row.subcontractorId,
       amountOwed: row.amountOwed != null ? parseFloat(row.amountOwed) : null,
       amountPaid: row.amountPaid != null ? parseFloat(row.amountPaid) : null,
       paidDate: row.paidDate, paidNotes: row.paidNotes,
+      allSubsPaid: allPaid,
     });
   } catch (err) {
     console.error(err);
@@ -519,19 +540,46 @@ router.get("/:id/sub-payments", async (req, res) => {
       .select({
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subName: subcontractorsTable.name,
-        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountOwedOverride: jobSubcontractorsTable.amountOwed,
         amountPaid: jobSubcontractorsTable.amountPaid,
         paidDate: jobSubcontractorsTable.paidDate,
         paidNotes: jobSubcontractorsTable.paidNotes,
+        payRate: subcontractorsTable.payRate,
+        payType: subcontractorsTable.payType,
+        computedOwed: sql<string>`COALESCE((
+          SELECT SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0))
+          FROM ${jobSubHoursTable}
+          WHERE ${jobSubHoursTable.jobId} = ${id}
+            AND ${jobSubHoursTable.subcontractorId} = ${jobSubcontractorsTable.subcontractorId}
+        ), 0)`,
+        totalHours: sql<string>`COALESCE((
+          SELECT SUM(${jobSubHoursTable.hours})
+          FROM ${jobSubHoursTable}
+          WHERE ${jobSubHoursTable.jobId} = ${id}
+            AND ${jobSubHoursTable.subcontractorId} = ${jobSubcontractorsTable.subcontractorId}
+        ), 0)`,
       })
       .from(jobSubcontractorsTable)
       .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(eq(jobSubcontractorsTable.jobId, id));
-    res.json(rows.map(r => ({
-      ...r,
-      amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
-      amountPaid: r.amountPaid != null ? parseFloat(r.amountPaid) : null,
-    })));
+    res.json(rows.map(r => {
+      const computedOwed = parseFloat(r.computedOwed ?? "0");
+      const manualOverride = r.amountOwedOverride != null ? parseFloat(r.amountOwedOverride) : null;
+      const amountOwed = manualOverride != null ? manualOverride : computedOwed;
+      return {
+        subcontractorId: r.subcontractorId,
+        subName: r.subName,
+        amountOwed,
+        computedOwed,
+        amountOwedIsManual: manualOverride != null,
+        amountPaid: r.amountPaid != null ? parseFloat(r.amountPaid) : null,
+        paidDate: r.paidDate,
+        paidNotes: r.paidNotes,
+        payRate: r.payRate != null ? parseFloat(r.payRate) : null,
+        payType: r.payType,
+        totalHours: parseFloat(r.totalHours ?? "0"),
+      };
+    }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch sub payments" });

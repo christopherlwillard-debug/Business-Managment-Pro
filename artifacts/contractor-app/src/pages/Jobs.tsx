@@ -1029,16 +1029,18 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
 type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; description: string | null; rateSnapshot: number | null };
-type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; amountPaid: number | null; paidDate: string | null; paidNotes: string | null };
+type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null };
+type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
 function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const { canEdit } = useUserPermissions();
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"hours" | "payments">("hours");
+  const [activeTab, setActiveTab] = useState<"hours" | "payments" | "benchmark">("hours");
   const [hours, setHours] = useState<SubHourEntry[]>([]);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
+  const [benchmark, setBenchmark] = useState<BenchmarkRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -1055,12 +1057,20 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   async function loadData() {
     setLoading(true);
     try {
-      const [h, p] = await Promise.all([
+      const [h, p, allBenchmarks] = await Promise.all([
         fetch(`${BASE}/api/jobs/${job.id}/sub-hours`).then(r => r.json()),
         fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.json()),
+        fetch(`${BASE}/api/job-type-benchmarks`).then(r => r.json()),
       ]);
       setHours(Array.isArray(h) ? h : []);
       setPayments(Array.isArray(p) ? p : []);
+      // Find matching benchmark for this job's type
+      if (Array.isArray(allBenchmarks) && job.jobType) {
+        const match = allBenchmarks.find((b: BenchmarkRow) =>
+          b.jobType.toLowerCase() === (job.jobType ?? "").toLowerCase()
+        );
+        setBenchmark(match ?? null);
+      }
       const pf: typeof payForm = {};
       for (const row of (Array.isArray(p) ? p : [])) {
         pf[row.subcontractorId] = {
@@ -1163,10 +1173,14 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
         {/* Tabs */}
         <div className="flex border-b border-border/50 flex-shrink-0">
-          {(["hours", "payments"] as const).map(tab => (
+          {([
+            ["hours", "Track Hours"],
+            ["payments", "Sub Payments"],
+            ["benchmark", "vs Benchmark"],
+          ] as const).map(([tab, label]) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-2.5 text-xs font-semibold capitalize transition-colors ${activeTab === tab ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}>
-              {tab === "hours" ? "Track Hours" : "Sub Payments"}
+              className={`flex-1 py-2.5 text-[11px] font-semibold transition-colors ${activeTab === tab ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}>
+              {label}
             </button>
           ))}
         </div>
@@ -1290,15 +1304,19 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
               ) : (
                 payments.map(pay => {
                   const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
-                  const balance = (pay.amountOwed ?? 0) - (pay.amountPaid ?? 0);
+                  const displayOwed = pay.amountOwed ?? pay.computedOwed;
+                  const balance = displayOwed - (pay.amountPaid ?? 0);
                   const isEditing = editPayId === pay.subcontractorId;
                   return (
                     <div key={pay.subcontractorId} className="rounded-xl border border-border overflow-hidden">
                       <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-                        <p className="text-xs font-bold text-foreground">{pay.subName ?? `Sub #${pay.subcontractorId}`}</p>
-                        {balance > 0 ? (
-                          <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">{formatCurrency(balance)} owed</span>
-                        ) : pay.amountPaid != null && pay.amountPaid > 0 ? (
+                        <div>
+                          <p className="text-xs font-bold text-foreground">{pay.subName ?? `Sub #${pay.subcontractorId}`}</p>
+                          {pay.totalHours > 0 && <p className="text-[10px] text-muted-foreground">{pay.totalHours.toFixed(1)} hrs tracked</p>}
+                        </div>
+                        {balance > 0.01 ? (
+                          <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">{formatCurrency(balance)} balance</span>
+                        ) : displayOwed > 0 ? (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Paid ✓</span>
                         ) : null}
                       </div>
@@ -1306,12 +1324,23 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                         {!isEditing ? (
                           <div className="space-y-1.5">
                             <div className="flex justify-between text-xs">
-                              <span className="text-muted-foreground">Amount Owed</span>
-                              <span className="font-medium">{pay.amountOwed != null ? formatCurrency(pay.amountOwed) : "—"}</span>
+                              <span className="text-muted-foreground">
+                                Amount Owed
+                                {pay.computedOwed > 0 && !pay.amountOwedIsManual && (
+                                  <span className="ml-1 text-[9px] text-orange-500">(from hours×rate)</span>
+                                )}
+                              </span>
+                              <span className="font-medium">{displayOwed > 0 ? formatCurrency(displayOwed) : "—"}</span>
                             </div>
+                            {pay.computedOwed > 0 && pay.amountOwedIsManual && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">Computed from hours</span>
+                                <span className="text-orange-500">{formatCurrency(pay.computedOwed)}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between text-xs">
                               <span className="text-muted-foreground">Amount Paid</span>
-                              <span className="font-medium text-emerald-600">{pay.amountPaid != null ? formatCurrency(pay.amountPaid) : "—"}</span>
+                              <span className="font-medium text-emerald-600">{pay.amountPaid != null && pay.amountPaid > 0 ? formatCurrency(pay.amountPaid) : "—"}</span>
                             </div>
                             {pay.paidDate && (
                               <div className="flex justify-between text-xs">
@@ -1323,16 +1352,22 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                             {canEdit("jobs") && (
                               <button onClick={() => setEditPayId(pay.subcontractorId)}
                                 className="mt-1 w-full py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
-                                Edit Payment
+                                Record Payment
                               </button>
                             )}
                           </div>
                         ) : (
                           <div className="space-y-2">
+                            {pay.computedOwed > 0 && (
+                              <p className="text-[10px] text-orange-600 bg-orange-50 rounded-lg px-2 py-1">
+                                Auto-computed owed: {formatCurrency(pay.computedOwed)} (from {pay.totalHours.toFixed(1)} hrs × rate).
+                                Override below only if different.
+                              </p>
+                            )}
                             <div className="grid grid-cols-2 gap-2">
                               <div>
-                                <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Amount Owed</label>
-                                <input type="number" step="0.01" min="0" placeholder="0.00"
+                                <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Owed Override</label>
+                                <input type="number" step="0.01" min="0" placeholder={pay.computedOwed > 0 ? formatCurrency(pay.computedOwed).replace("$","") : "0.00"}
                                   value={pf.amountOwed}
                                   onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, amountOwed: e.target.value } }))}
                                   className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
@@ -1353,7 +1388,7 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                             </div>
                             <div>
                               <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Notes</label>
-                              <input type="text" placeholder="Check #, method…" value={pf.paidNotes}
+                              <input type="text" placeholder="Check #, method, memo…" value={pf.paidNotes}
                                 onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, paidNotes: e.target.value } }))}
                                 className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
                             </div>
@@ -1367,6 +1402,108 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                     </div>
                   );
                 })
+              )}
+            </div>
+          )}
+
+          {/* BENCHMARK TAB */}
+          {activeTab === "benchmark" && (
+            <div className="p-4 space-y-4">
+              {loading ? (
+                <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+              ) : !benchmark ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <BarChart2 className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm text-muted-foreground font-medium">No benchmark for this job type</p>
+                  {job.jobType ? (
+                    <p className="text-xs text-muted-foreground mt-1">Add a benchmark for "<strong>{job.jobType}</strong>" in Settings → Job Benchmarks</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">Set a job type on this job, then add a benchmark in Settings → Job Benchmarks</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Benchmark: {benchmark.jobType}
+                  </p>
+                  {benchmark.notes && (
+                    <p className="text-xs text-muted-foreground italic">{benchmark.notes}</p>
+                  )}
+
+                  {/* Hours comparison */}
+                  {benchmark.estimatedHours != null && (
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <div className="px-3 py-2 bg-muted/30 text-xs font-semibold text-foreground">Hours</div>
+                      <div className="p-3 space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Estimated</span>
+                          <span className="font-medium">{benchmark.estimatedHours}h</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Actual (tracked)</span>
+                          <span className={`font-bold ${totalHours > benchmark.estimatedHours ? "text-red-600" : "text-emerald-600"}`}>
+                            {totalHours.toFixed(1)}h
+                          </span>
+                        </div>
+                        {totalHours > 0 && (
+                          <div className="mt-1">
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${totalHours > benchmark.estimatedHours ? "bg-red-500" : "bg-emerald-500"}`}
+                                style={{ width: `${Math.min(100, (totalHours / benchmark.estimatedHours) * 100)}%` }}
+                              />
+                            </div>
+                            <p className={`text-[10px] mt-1 text-right ${totalHours > benchmark.estimatedHours ? "text-red-600" : "text-emerald-600"}`}>
+                              {totalHours > benchmark.estimatedHours
+                                ? `+${(totalHours - benchmark.estimatedHours).toFixed(1)}h over budget`
+                                : `${(benchmark.estimatedHours - totalHours).toFixed(1)}h under budget`}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Labor cost comparison */}
+                  {benchmark.estimatedLaborCost != null && (
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <div className="px-3 py-2 bg-muted/30 text-xs font-semibold text-foreground">Sub Labor Cost</div>
+                      <div className="p-3 space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Estimated</span>
+                          <span className="font-medium">{formatCurrency(benchmark.estimatedLaborCost)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Actual (from hours)</span>
+                          <span className={`font-bold ${totalSubLabor > benchmark.estimatedLaborCost ? "text-red-600" : "text-emerald-600"}`}>
+                            {formatCurrency(totalSubLabor)}
+                          </span>
+                        </div>
+                        {totalSubLabor > 0 && (
+                          <p className={`text-[10px] text-right ${totalSubLabor > benchmark.estimatedLaborCost ? "text-red-600" : "text-emerald-600"}`}>
+                            {totalSubLabor > benchmark.estimatedLaborCost
+                              ? `+${formatCurrency(totalSubLabor - benchmark.estimatedLaborCost)} over`
+                              : `${formatCurrency(benchmark.estimatedLaborCost - totalSubLabor)} under`}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Material cost benchmark (informational) */}
+                  {benchmark.estimatedMaterialCost != null && (
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <div className="px-3 py-2 bg-muted/30 text-xs font-semibold text-foreground">Materials Budget</div>
+                      <div className="p-3">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Estimated</span>
+                          <span className="font-medium">{formatCurrency(benchmark.estimatedMaterialCost)}</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1">Compare against job expenses in the P&L panel</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1492,7 +1629,7 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
-  invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, onToggleSubPaid, profitData,
+  invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate,
 }: {
   job: Job;
@@ -1509,7 +1646,6 @@ function JobCard({
   onCreateInvoice?: () => void;
   onClientClick?: (clientId: number) => void;
   hasSubExpenses?: boolean;
-  onToggleSubPaid?: (job: Job, paid: boolean) => void;
   profitData?: JobProfit | null;
   onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number, jobId: number) => void;
   onGoToInvoices?: () => void;
@@ -1830,18 +1966,11 @@ function JobCard({
             <CheckCircle className="w-3.5 h-3.5" /> Mark Completed
           </button>
         )}
-        {/* Sub Paid toggle — only visible when job has sub expenses */}
-        {hasSubExpenses && onToggleSubPaid && canEdit("jobs") && (
-          <button
-            onClick={() => onToggleSubPaid(job, !job.subPaid)}
-            className={`mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-colors border ${
-              job.subPaid
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                : "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
-            }`}>
-            <HardHat className="w-3.5 h-3.5" />
-            {job.subPaid ? "Sub Paid ✓ — Undo" : "Mark Sub Paid"}
-          </button>
+        {/* Sub paid status badge — now computed from payment records */}
+        {hasSubExpenses && job.subPaid && (
+          <div className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <HardHat className="w-3.5 h-3.5" /> All Subs Paid ✓
+          </div>
         )}
       </Card>
 
@@ -2443,19 +2572,6 @@ export default function Jobs() {
     queryClient.invalidateQueries();
   }
 
-  async function handleToggleSubPaid(job: Job, paid: boolean) {
-    const res = await fetch(`${BASE}/api/jobs/${job.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subPaid: paid }),
-    });
-    if (!res.ok) {
-      console.error("Failed to update sub paid status", await res.text());
-      return;
-    }
-    queryClient.invalidateQueries();
-  }
-
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string, currentTotal: number = 0, jobId: number = 0) {
     setGeneratingLinkId(invoiceId);
     try {
@@ -2770,7 +2886,6 @@ export default function Jobs() {
                       onCreateInvoice={() => handleReviewInvoice(job)}
                       onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                       hasSubExpenses={jobsWithSubExpenses.has(job.id)}
-                      onToggleSubPaid={handleToggleSubPaid}
                       profitData={profitMap.get(job.id) ?? null}
                       onSendPaymentLink={handleGetPaymentLink}
                       onGoToInvoices={() => navigate("/invoices")}
@@ -2813,7 +2928,6 @@ export default function Jobs() {
                         onCreateInvoice={() => handleReviewInvoice(job)}
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                         hasSubExpenses={jobsWithSubExpenses.has(job.id)}
-                        onToggleSubPaid={handleToggleSubPaid}
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => navigate("/invoices")}
@@ -2861,7 +2975,6 @@ export default function Jobs() {
                         onCreateInvoice={() => handleReviewInvoice(job)}
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                         hasSubExpenses={jobsWithSubExpenses.has(job.id)}
-                        onToggleSubPaid={handleToggleSubPaid}
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => navigate("/invoices")}
