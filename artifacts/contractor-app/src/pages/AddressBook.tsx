@@ -43,7 +43,7 @@ interface UnifiedEntry {
 
 const STANDALONE_TYPES = [
   "Vendor", "Supplier", "Electrician", "Plumber", "Inspector",
-  "Subcontractor", "Government", "Client", "Other",
+  "Government", "Other",
 ] as const;
 
 const ALL_FILTER_TYPES = [
@@ -292,12 +292,14 @@ export default function AddressBook() {
       setSearchParams(prev => {
         const next = new URLSearchParams(prev);
         next.set("tab", "clients");
+        next.set("clientId", String(entry.id));
         return next;
       }, { replace: false });
     } else if (entry.sourceType === "sub") {
       setSearchParams(prev => {
         const next = new URLSearchParams(prev);
         next.set("tab", "subcontractors");
+        next.set("subId", String(entry.id));
         return next;
       }, { replace: false });
     } else if (entry.rawContact) {

@@ -423,6 +423,16 @@ export default function PeopleAndProperties() {
     }
   }, [searchParams, prospects]);
 
+  useEffect(() => {
+    const clientIdParam = searchParams.get("clientId");
+    if (!clientIdParam || !clients || clients.length === 0) return;
+    const id = parseInt(clientIdParam, 10);
+    if (!isNaN(id) && clients.some((c: Client) => c.id === id)) {
+      setProfileClientId(id);
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete("clientId"); return n; }, { replace: true });
+    }
+  }, [searchParams, clients]);
+
   const [routeTargetId, setRouteTargetId] = useState<number | null>(null);
   const [routeDateStr, setRouteDateStr] = useState(todayStr);
   const [addingToRouteId, setAddingToRouteId] = useState<number | null>(null);

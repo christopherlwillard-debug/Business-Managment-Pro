@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useQuery } from "@tanstack/react-query";
 import { useListSubcontractors, useCreateSubcontractor, useDeleteSubcontractor } from "@workspace/api-client-react";
@@ -18,6 +19,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Subcontractors() {
   const { canEdit } = useUserPermissions();
   const { data: subs, isLoading, refetch } = useListSubcontractors();
+  const [searchParams, setSearchParams] = useSearchParams();
   const createMutation = useCreateSubcontractor();
   const deleteMutation = useDeleteSubcontractor();
   const { toast } = useToast();
@@ -45,6 +47,17 @@ export default function Subcontractors() {
   const [revoke1099Confirm, setRevoke1099Confirm] = useState<{ id: number; subName: string } | null>(null);
   const [revoking1099Id, setRevoking1099Id] = useState<number | null>(null);
   const [revoke1099Error, setRevoke1099Error] = useState<string | null>(null);
+
+  useEffect(() => {
+    const subIdParam = searchParams.get("subId");
+    if (!subIdParam || !subs || subs.length === 0) return;
+    const id = parseInt(subIdParam, 10);
+    const target = subs.find(s => s.id === id);
+    if (target) {
+      openInviteModal(target);
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete("subId"); return n; }, { replace: true });
+    }
+  }, [searchParams, subs]);
 
   const { data: report1099Data, isLoading: report1099Loading, refetch: refetch1099 } = useQuery({
     queryKey: ["1099-report", report1099Year],
