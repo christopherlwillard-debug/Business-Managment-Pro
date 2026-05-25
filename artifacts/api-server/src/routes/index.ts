@@ -61,6 +61,7 @@ import dashboardRouter from "./dashboard.js";
 import businessesRouter from "./businesses";
 import contactsRouter from "./contacts";
 import jobSubHoursRouter from "./job-sub-hours";
+import subHoursAliasRouter from "./sub-hours-alias";
 import jobTypeBenchmarksRouter from "./job-type-benchmarks";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
@@ -219,8 +220,8 @@ router.use("/dashboard", requireOwner, dashboardRouter);
 router.use("/businesses", requireOwner, businessesRouter);
 router.use("/contacts", requireOwner, contactsRouter);
 router.use("/jobs", sectionGuard("jobs"), jobSubHoursRouter);
-// Canonical alias: /api/sub-hours/:id for PUT/DELETE (same router, different prefix strips the jobId-scoped routes)
-router.use("/sub-hours", sectionGuard("jobs"), jobSubHoursRouter);
+// Canonical /api/sub-hours/:id endpoints (PUT + DELETE by ID)
+router.use("/sub-hours", sectionGuard("jobs"), subHoursAliasRouter);
 router.use("/job-type-benchmarks", requireOwner, jobTypeBenchmarksRouter);
 
 export default router;

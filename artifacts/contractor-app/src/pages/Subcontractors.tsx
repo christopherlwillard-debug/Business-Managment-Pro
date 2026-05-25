@@ -794,9 +794,8 @@ export default function Subcontractors() {
                           onChange={e => setRateForm(f => ({ ...f, payType: e.target.value }))}
                           className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none">
                           <option value="hourly">Hourly</option>
-                          <option value="flat">Flat Rate</option>
-                          <option value="daily">Daily</option>
-                          <option value="weekly">Weekly</option>
+                          <option value="flat">Flat per Job</option>
+                          <option value="per_sqft">Per Sq Ft</option>
                         </select>
                       </div>
                     </div>
