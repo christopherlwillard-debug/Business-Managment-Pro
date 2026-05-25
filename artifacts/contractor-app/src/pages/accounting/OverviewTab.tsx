@@ -471,14 +471,14 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
           <span className="font-semibold text-sm text-foreground">Revenue by City</span>
           <span className="text-xs text-muted-foreground ml-1">— track for occupational license &amp; tax filings</span>
         </div>
-        {data.incomeByCity.length === 0 ? (
+        {(data.incomeByCity ?? []).length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-sm">
             <MapPin className="w-8 h-8 mx-auto mb-2 opacity-20" />
             No invoices with city data yet. Add a city to your invoices to track local tax obligations.
           </div>
         ) : (
           <>
-          {data.incomeByCity.length === 1 && data.incomeByCity[0]?.city === "Unspecified" && (
+          {(data.incomeByCity ?? []).length === 1 && data.incomeByCity[0]?.city === "Unspecified" && (
             <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800">
@@ -500,7 +500,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
               </thead>
               <tbody>
                 {(() => {
-                  const sorted = [...data.incomeByCity].sort((a: any, b: any) => {
+                  const sorted = [...(data.incomeByCity ?? [])].sort((a: any, b: any) => {
                     if (a.city === "Unspecified") return 1;
                     if (b.city === "Unspecified") return -1;
                     if (a.city?.toLowerCase() === "owensboro") return -1;
@@ -626,9 +626,9 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
               <tfoot className="bg-muted/30 border-t border-border font-semibold text-sm">
                 <tr>
                   <td colSpan={3} className="px-5 py-3 text-foreground">Totals</td>
-                  <td className="px-5 py-3 text-right">{formatCurrency(data.incomeByCity.reduce((a: number, r: any) => a + r.gross, 0))}</td>
-                  <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency(data.incomeByCity.reduce((a: number, r: any) => a + r.paid, 0))}</td>
-                  <td className="px-5 py-3 text-right text-amber-600">{formatCurrency(data.incomeByCity.reduce((a: number, r: any) => a + (r.estOccTax ?? 0), 0))}</td>
+                  <td className="px-5 py-3 text-right">{formatCurrency((data.incomeByCity ?? []).reduce((a: number, r: any) => a + r.gross, 0))}</td>
+                  <td className="px-5 py-3 text-right text-emerald-600">{formatCurrency((data.incomeByCity ?? []).reduce((a: number, r: any) => a + r.paid, 0))}</td>
+                  <td className="px-5 py-3 text-right text-amber-600">{formatCurrency((data.incomeByCity ?? []).reduce((a: number, r: any) => a + (r.estOccTax ?? 0), 0))}</td>
                 </tr>
               </tfoot>
             </table>

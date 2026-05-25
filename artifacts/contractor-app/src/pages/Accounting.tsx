@@ -6,6 +6,7 @@ import {
   Calendar, FileSpreadsheet, FileCheck,
 } from "lucide-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const OverviewTab     = lazy(() => import("./accounting/OverviewTab"));
 const ProfitLossTab   = lazy(() => import("./accounting/ProfitLossTab"));
@@ -120,41 +121,53 @@ export default function Accounting() {
           {isLoading && <div className="text-center py-20 text-muted-foreground animate-pulse">Loading {year} report…</div>}
           {error && <div className="text-center py-20 text-destructive">Failed to load report. Check that the API is running.</div>}
           {data && (
-            <Suspense fallback={<TabSpinner />}>
-              <OverviewTab data={data} year={year} setActiveTab={setActiveTab} />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<TabSpinner />}>
+                <OverviewTab data={data} year={year} setActiveTab={setActiveTab} />
+              </Suspense>
+            </ErrorBoundary>
           )}
         </>
       )}
 
       {activeTab === "profit-loss" && (
-        <Suspense fallback={<TabSpinner />}>
-          <ProfitLossTab year={year} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <ProfitLossTab year={year} />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {activeTab === "schedule-c" && (
-        <Suspense fallback={<TabSpinner />}>
-          <ScheduleCTab year={year} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <ScheduleCTab year={year} />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {activeTab === "tax-calendar" && (
-        <Suspense fallback={<TabSpinner />}>
-          <TaxCalendarTab year={year} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <TaxCalendarTab year={year} />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {activeTab === "year-end" && isOwner && (
-        <Suspense fallback={<TabSpinner />}>
-          <YearEndReportTab year={year} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <YearEndReportTab year={year} />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {activeTab === "reconcile" && isOwner && (
-        <Suspense fallback={<TabSpinner />}>
-          <ReconcileTab />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <ReconcileTab />
+          </Suspense>
+        </ErrorBoundary>
       )}
     </div>
   );
