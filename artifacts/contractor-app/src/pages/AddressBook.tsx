@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import {
   useListContacts,
+  useListClients,
+  useListSubcontractors,
   useCreateContact,
   useUpdateContact,
   useDeleteContact,
@@ -8,31 +10,67 @@ import {
   type ContactInput,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchParams } from "wouter";
 import {
   Plus, Search, Edit2, Trash2, Phone, Mail, MapPin,
-  Building2, X, BookMarked, User,
+  Building2, X, Users, User, ChevronRight,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-const CONTACT_TYPES = [
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type SourceType = "client" | "sub" | "contact";
+
+interface UnifiedEntry {
+  key: string;
+  id: number;
+  sourceType: SourceType;
+  name: string;
+  type: string;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  notes: string | null;
+  rawContact?: Contact;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const STANDALONE_TYPES = [
   "Vendor", "Supplier", "Electrician", "Plumber", "Inspector",
   "Subcontractor", "Government", "Client", "Other",
 ] as const;
 
-type ContactType = typeof CONTACT_TYPES[number];
+const ALL_FILTER_TYPES = [
+  "Client", "Subcontractor",
+  "Vendor", "Supplier", "Electrician", "Plumber", "Inspector",
+  "Government", "Other",
+] as const;
 
 const TYPE_COLORS: Record<string, string> = {
+  Client:         "bg-blue-100 text-blue-700 border-blue-200",
+  Subcontractor:  "bg-amber-100 text-amber-700 border-amber-200",
   Vendor:         "bg-orange-100 text-orange-700 border-orange-200",
-  Supplier:       "bg-amber-100 text-amber-700 border-amber-200",
+  Supplier:       "bg-teal-100 text-teal-700 border-teal-200",
   Electrician:    "bg-yellow-100 text-yellow-700 border-yellow-200",
-  Plumber:        "bg-blue-100 text-blue-700 border-blue-200",
+  Plumber:        "bg-cyan-100 text-cyan-700 border-cyan-200",
   Inspector:      "bg-purple-100 text-purple-700 border-purple-200",
-  Subcontractor:  "bg-indigo-100 text-indigo-700 border-indigo-200",
   Government:     "bg-slate-100 text-slate-700 border-slate-200",
-  Client:         "bg-green-100 text-green-700 border-green-200",
   Other:          "bg-gray-100 text-gray-700 border-gray-200",
 };
+
+const SOURCE_RING: Record<SourceType, string> = {
+  client:  "ring-1 ring-blue-200",
+  sub:     "ring-1 ring-amber-200",
+  contact: "",
+};
+
+// ─── Contact form ─────────────────────────────────────────────────────────────
 
 type ContactForm = {
   name: string; company: string; type: string; title: string;
@@ -50,18 +88,18 @@ const EMPTY: ContactForm = {
 
 function toInput(f: ContactForm): ContactInput {
   return {
-    name: f.name.trim(),
-    company:  f.company.trim()  || null,
-    type:     f.type            || null,
-    title:    f.title.trim()    || null,
-    phone:    f.phone.trim()    || null,
-    fax:      f.fax.trim()      || null,
-    email:    f.email.trim()    || null,
-    address:  f.address.trim()  || null,
-    city:     f.city.trim()     || null,
-    state:    f.state.trim()    || null,
-    zip:      f.zip.trim()      || null,
-    notes:    f.notes.trim()    || null,
+    name:    f.name.trim(),
+    company: f.company.trim()  || null,
+    type:    f.type            || null,
+    title:   f.title.trim()    || null,
+    phone:   f.phone.trim()    || null,
+    fax:     f.fax.trim()      || null,
+    email:   f.email.trim()    || null,
+    address: f.address.trim()  || null,
+    city:    f.city.trim()     || null,
+    state:   f.state.trim()    || null,
+    zip:     f.zip.trim()      || null,
+    notes:   f.notes.trim()    || null,
   };
 }
 
@@ -82,12 +120,20 @@ function toForm(c: Contact): ContactForm {
   };
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function AddressBook() {
-  const { data: contacts = [], isLoading } = useListContacts();
+  const { data: contacts = [], isLoading: loadingContacts } = useListContacts();
+  const { data: clients = [], isLoading: loadingClients } = useListClients();
+  const { data: subs = [], isLoading: loadingSubs } = useListSubcontractors();
+
   const createContact = useCreateContact();
   const updateContact = useUpdateContact();
   const deleteContact = useDeleteContact();
   const { toast } = useToast();
+  const [, setSearchParams] = useSearchParams();
+
+  const isLoading = loadingContacts || loadingClients || loadingSubs;
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("All");
@@ -99,16 +145,91 @@ export default function AddressBook() {
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // ── Build unified list ──────────────────────────────────────────────────────
+  const unified: UnifiedEntry[] = useMemo(() => {
+    const entries: UnifiedEntry[] = [];
+
+    for (const c of clients) {
+      entries.push({
+        key: `client-${c.id}`,
+        id: c.id,
+        sourceType: "client",
+        name: c.name ?? "",
+        type: "Client",
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+        company: null,
+        address: c.address ?? null,
+        city: c.city ?? null,
+        state: c.state ?? null,
+        zip: c.zip ?? null,
+        notes: null,
+      });
+    }
+
+    for (const s of subs) {
+      entries.push({
+        key: `sub-${s.id}`,
+        id: s.id,
+        sourceType: "sub",
+        name: s.name ?? "",
+        type: "Subcontractor",
+        phone: s.phone ?? null,
+        email: s.email ?? null,
+        company: s.trade ?? null,
+        address: s.address ?? null,
+        city: null,
+        state: null,
+        zip: null,
+        notes: null,
+      });
+    }
+
+    for (const c of contacts) {
+      entries.push({
+        key: `contact-${c.id}`,
+        id: c.id,
+        sourceType: "contact",
+        name: c.name ?? "",
+        type: c.type ?? "Other",
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+        company: c.company ?? null,
+        address: c.address ?? null,
+        city: c.city ?? null,
+        state: c.state ?? null,
+        zip: c.zip ?? null,
+        notes: c.notes ?? null,
+        rawContact: c,
+      });
+    }
+
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }, [clients, subs, contacts]);
+
+  // ── Filter ──────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return contacts.filter(c => {
-      if (typeFilter !== "All" && c.type !== typeFilter) return false;
+    return unified.filter(e => {
+      if (typeFilter !== "All" && e.type !== typeFilter) return false;
       if (!q) return true;
-      return [c.name, c.company, c.title, c.phone, c.email, c.address, c.city, c.notes]
+      return [e.name, e.company, e.phone, e.email, e.address, e.city, e.notes]
         .some(v => v?.toLowerCase().includes(q));
     });
-  }, [contacts, typeFilter, search]);
+  }, [unified, typeFilter, search]);
 
+  // ── Type pill counts ────────────────────────────────────────────────────────
+  const typeCounts = useMemo(() => {
+    const map: Record<string, number> = { All: unified.length };
+    for (const e of unified) {
+      map[e.type] = (map[e.type] ?? 0) + 1;
+    }
+    return map;
+  }, [unified]);
+
+  const visibleTypes = ALL_FILTER_TYPES.filter(t => (typeCounts[t] ?? 0) > 0);
+
+  // ── Dialog helpers ──────────────────────────────────────────────────────────
   function openCreate() {
     setEditingContact(null);
     setForm(EMPTY);
@@ -165,23 +286,50 @@ export default function AddressBook() {
     }
   }
 
-  const typeBadge = (type: string | null) => {
-    if (!type) return null;
+  // ── Navigation for clients/subs ─────────────────────────────────────────────
+  function handleEntryTap(entry: UnifiedEntry) {
+    if (entry.sourceType === "client") {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", "clients");
+        return next;
+      }, { replace: false });
+    } else if (entry.sourceType === "sub") {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", "subcontractors");
+        return next;
+      }, { replace: false });
+    } else if (entry.rawContact) {
+      openEdit(entry.rawContact);
+    }
+  }
+
+  // ── Badge ───────────────────────────────────────────────────────────────────
+  function typeBadge(type: string) {
     return (
-      <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border", TYPE_COLORS[type] ?? TYPE_COLORS.Other)}>
+      <span className={cn(
+        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border",
+        TYPE_COLORS[type] ?? TYPE_COLORS.Other
+      )}>
         {type}
       </span>
     );
-  };
+  }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+
+      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <BookMarked className="w-5 h-5 text-primary" />
+          <Users className="w-5 h-5 text-primary" />
           <div>
-            <h1 className="text-xl font-bold text-foreground">Address Book</h1>
-            <p className="text-sm text-muted-foreground">All your business contacts in one place</p>
+            <h1 className="text-xl font-bold text-foreground">Directory</h1>
+            <p className="text-sm text-muted-foreground">
+              {unified.length} people — clients, subs &amp; contacts
+            </p>
           </div>
         </div>
         <button
@@ -192,12 +340,13 @@ export default function AddressBook() {
         </button>
       </div>
 
+      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, company, phone, email…"
+          placeholder="Search by name, phone, email…"
           className="w-full pl-9 pr-4 py-2.5 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         {search && (
@@ -207,43 +356,56 @@ export default function AddressBook() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {["All", ...CONTACT_TYPES].map(t => (
+      {/* Type filter pills */}
+      {visibleTypes.length > 0 && (
+        <div className="flex flex-wrap gap-2">
           <button
-            key={t}
-            onClick={() => setTypeFilter(t)}
+            onClick={() => setTypeFilter("All")}
             className={cn(
               "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
-              typeFilter === t
+              typeFilter === "All"
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
             )}
           >
-            {t}
-            {t !== "All" && (
-              <span className="ml-1.5 text-xs opacity-70">
-                ({contacts.filter(c => c.type === t).length})
-              </span>
-            )}
-            {t === "All" && (
-              <span className="ml-1.5 text-xs opacity-70">({contacts.length})</span>
-            )}
+            All <span className="ml-1 text-xs opacity-70">({unified.length})</span>
           </button>
-        ))}
-      </div>
+          {visibleTypes.map(t => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
+                typeFilter === t
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+              )}
+            >
+              {t} <span className="ml-1 text-xs opacity-70">({typeCounts[t] ?? 0})</span>
+            </button>
+          ))}
+        </div>
+      )}
 
+      {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-          <BookMarked className="w-10 h-10 opacity-30" />
+          <Users className="w-10 h-10 opacity-30" />
           <div className="text-center">
-            <p className="font-medium">{contacts.length === 0 ? "No contacts yet" : "No contacts match your search"}</p>
-            <p className="text-sm">{contacts.length === 0 ? "Add your first contact to get started" : "Try a different search or filter"}</p>
+            <p className="font-medium">
+              {unified.length === 0 ? "No one here yet" : "No matches"}
+            </p>
+            <p className="text-sm">
+              {unified.length === 0
+                ? "Your clients and subs will appear here automatically. Tap + Add Contact for vendors, inspectors, and others."
+                : "Try a different search or filter"}
+            </p>
           </div>
-          {contacts.length === 0 && (
+          {unified.length === 0 && (
             <button
               onClick={openCreate}
               className="mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
@@ -254,77 +416,100 @@ export default function AddressBook() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(c => (
-            <div key={c.id} className="bg-card border border-border rounded-xl p-4 space-y-3 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground truncate">{c.name}</p>
-                  {c.title && <p className="text-xs text-muted-foreground truncate">{c.title}</p>}
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => openEdit(c)}
-                    className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-                    title="Edit"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(c)}
-                    className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-1.5">
-                {typeBadge(c.type)}
-                {c.company && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border bg-muted text-muted-foreground">
-                    <Building2 className="w-3 h-3" />{c.company}
-                  </span>
+          {filtered.map(entry => {
+            const isNavigable = entry.sourceType !== "contact";
+            return (
+              <div
+                key={entry.key}
+                onClick={() => handleEntryTap(entry)}
+                className={cn(
+                  "bg-card border border-border rounded-xl p-4 space-y-3 transition-shadow",
+                  SOURCE_RING[entry.sourceType],
+                  isNavigable ? "cursor-pointer hover:shadow-md hover:border-primary/30" : "hover:shadow-md"
                 )}
-              </div>
-
-              <div className="space-y-1.5 text-sm">
-                {c.phone && (
-                  <a href={`tel:${c.phone}`} className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors">
-                    <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{c.phone}</span>
-                  </a>
-                )}
-                {c.fax && (
-                  <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                    <span className="w-3.5 text-center flex-shrink-0 font-medium">Fax</span>
-                    <span className="truncate">{c.fax}</span>
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground truncate">{entry.name}</p>
+                    {entry.company && (
+                      <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                        <Building2 className="w-3 h-3 flex-shrink-0" />{entry.company}
+                      </p>
+                    )}
                   </div>
-                )}
-                {c.email && (
-                  <a href={`mailto:${c.email}`} className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors">
-                    <Mail className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="truncate">{c.email}</span>
-                  </a>
-                )}
-                {(c.address || c.city) && (
-                  <div className="flex items-start gap-2 text-muted-foreground">
-                    <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                    <span className="text-xs leading-snug">
-                      {[c.address, c.city, c.state, c.zip].filter(Boolean).join(", ")}
-                    </span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {isNavigable ? (
+                      <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                        View <ChevronRight className="w-3.5 h-3.5" />
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={e => { e.stopPropagation(); entry.rawContact && openEdit(entry.rawContact); }}
+                          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); entry.rawContact && setDeleteTarget(entry.rawContact); }}
+                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
                   </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {typeBadge(entry.type)}
+                </div>
+
+                <div className="space-y-1.5 text-sm">
+                  {entry.phone && (
+                    <a
+                      href={`tel:${entry.phone}`}
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Phone className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="truncate">{entry.phone}</span>
+                    </a>
+                  )}
+                  {entry.email && (
+                    <a
+                      href={`mailto:${entry.email}`}
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Mail className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="truncate">{entry.email}</span>
+                    </a>
+                  )}
+                  {(entry.address || entry.city) && (
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span className="text-xs leading-snug">
+                        {[entry.address, entry.city, entry.state, entry.zip].filter(Boolean).join(", ")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {entry.notes && (
+                  <p className="text-xs text-muted-foreground border-t border-border pt-2 line-clamp-2">
+                    {entry.notes}
+                  </p>
                 )}
               </div>
-
-              {c.notes && (
-                <p className="text-xs text-muted-foreground border-t border-border pt-2 line-clamp-2">{c.notes}</p>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
+      {/* Add / Edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open) closeDialog(); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -333,6 +518,9 @@ export default function AddressBook() {
               {editingContact ? "Edit Contact" : "Add Contact"}
             </DialogTitle>
           </DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-1">
+            For clients and subs, use their dedicated tabs. This form is for vendors, inspectors, suppliers, and other contacts.
+          </p>
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
@@ -361,7 +549,7 @@ export default function AddressBook() {
                   onChange={e => set("type", e.target.value)}
                   className="w-full px-3 py-2 border border-input rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  {CONTACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {STANDALONE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="col-span-2">
@@ -474,13 +662,14 @@ export default function AddressBook() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete confirmation */}
       <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete Contact?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will permanently remove <span className="font-medium text-foreground">{deleteTarget?.name}</span> from your address book.
+            This will permanently remove <span className="font-medium text-foreground">{deleteTarget?.name}</span> from your directory.
           </p>
           <div className="flex gap-3 mt-4">
             <button
