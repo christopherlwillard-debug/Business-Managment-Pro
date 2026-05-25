@@ -7,6 +7,28 @@ import { z } from "zod/v4";
 
 const router = Router();
 
+// Shared helper — recompute and persist jobs.sub_paid from per-sub payment/hour data.
+// Call this any time sub_hours or sub_payments change for a job.
+export async function recomputeSubPaid(jobId: number): Promise<boolean> {
+  const allRows = await db.select({
+    amountOwed: jobSubcontractorsTable.amountOwed,
+    amountPaid: jobSubcontractorsTable.amountPaid,
+    computedOwed: sql<string>`COALESCE((
+      SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+      FROM job_sub_hours h
+      WHERE h.job_id = ${jobId} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+    ), 0)`,
+  }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
+
+  const allPaid = allRows.length > 0 && allRows.every(r => {
+    const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : parseFloat(r.computedOwed ?? "0");
+    const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+    return owed <= 0 || paid >= owed;
+  });
+  await db.update(jobsTable).set({ subPaid: allPaid }).where(eq(jobsTable.id, jobId));
+  return allPaid;
+}
+
 const phasesInputSchema = z.array(phaseItemSchema).nullable().optional();
 const permitChecklistInputSchema = z.array(permitChecklistItemSchema).nullable().optional();
 
@@ -500,24 +522,7 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
       .returning();
     if (!row) return res.status(404).json({ error: "Sub-job link not found" });
 
-    // Auto-compute sub_paid on the job from all sub payment records
-    // A job is "sub paid" when every linked sub with an owed amount has been fully paid
-    const allRows = await db.select({
-      amountOwed: jobSubcontractorsTable.amountOwed,
-      amountPaid: jobSubcontractorsTable.amountPaid,
-      computedOwed: sql<string>`COALESCE((
-        SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
-        FROM job_sub_hours h
-        WHERE h.job_id = ${jobId} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
-      ), 0)`,
-    }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
-
-    const allPaid = allRows.length > 0 && allRows.every(r => {
-      const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : parseFloat(r.computedOwed ?? "0");
-      const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
-      return owed <= 0 || paid >= owed;
-    });
-    await db.update(jobsTable).set({ subPaid: allPaid }).where(eq(jobsTable.id, jobId));
+    const allPaid = await recomputeSubPaid(jobId);
 
     res.json({
       jobId: row.jobId, subcontractorId: row.subcontractorId,

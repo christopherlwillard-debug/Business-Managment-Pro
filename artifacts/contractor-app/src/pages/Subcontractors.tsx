@@ -26,7 +26,11 @@ export default function Subcontractors() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string; hasLinkedRecords: boolean } | null>(null);
   const [inviteModal, setInviteModal] = useState<{
     name: string; token: string | null; id: number; portalApproved: boolean; portalPinSet: boolean;
+    payRate: number | null; payType: string | null;
   } | null>(null);
+  const [editingRate, setEditingRate] = useState(false);
+  const [rateForm, setRateForm] = useState({ payRate: "", payType: "hourly" });
+  const [savingRate, setSavingRate] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -313,13 +317,40 @@ export default function Subcontractors() {
   function openInviteModal(sub: NonNullable<typeof subs>[number]) {
     setCopied(false);
     setPortalError(null);
+    setEditingRate(false);
+    const pr = (sub as any).payRate;
+    const pt = (sub as any).payType;
+    setRateForm({ payRate: pr != null ? String(pr) : "", payType: pt ?? "hourly" });
     setInviteModal({
       name: sub.name,
       token: sub.portalToken ?? null,
       id: sub.id,
       portalApproved: sub.portalApproved ?? false,
       portalPinSet: !!sub.portalPinSet,
+      payRate: pr ?? null,
+      payType: pt ?? null,
     });
+  }
+
+  async function handleSaveRate() {
+    if (!inviteModal) return;
+    setSavingRate(true);
+    try {
+      const rate = rateForm.payRate ? parseFloat(rateForm.payRate) : null;
+      const res = await fetch(`${BASE}/api/subcontractors/${inviteModal.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payRate: rate, payType: rateForm.payType }),
+      });
+      if (!res.ok) throw new Error();
+      setInviteModal(prev => prev ? { ...prev, payRate: rate, payType: rateForm.payType } : null);
+      setEditingRate(false);
+      refetch();
+    } catch {
+      toast({ title: "Failed to save rate", variant: "destructive" });
+    } finally {
+      setSavingRate(false);
+    }
   }
 
   async function handleDelete(id: number) {
@@ -736,6 +767,58 @@ export default function Subcontractors() {
                   </p>
                 </div>
               )}
+              {/* Pay Rate section — always visible, editable */}
+              <div className="border-t border-border/50 pt-4 mt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pay Rate</p>
+                  {!editingRate && (
+                    <button onClick={() => setEditingRate(true)}
+                      className="text-xs text-primary hover:underline">
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {editingRate ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Rate/hr or flat</label>
+                        <input type="number" step="0.01" min="0" placeholder="0.00"
+                          value={rateForm.payRate}
+                          onChange={e => setRateForm(f => ({ ...f, payRate: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Type</label>
+                        <select value={rateForm.payType}
+                          onChange={e => setRateForm(f => ({ ...f, payType: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none">
+                          <option value="hourly">Hourly</option>
+                          <option value="flat">Flat Rate</option>
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditingRate(false)}
+                        className="flex-1 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
+                        Cancel
+                      </button>
+                      <button onClick={handleSaveRate} disabled={savingRate}
+                        className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
+                        {savingRate ? "Saving…" : "Save Rate"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-foreground">
+                    {inviteModal.payRate != null
+                      ? <><span className="font-semibold">{formatCurrency(inviteModal.payRate)}</span> <span className="text-muted-foreground text-xs">{inviteModal.payType ?? "hourly"}</span></>
+                      : <span className="text-muted-foreground italic text-xs">No rate set — click Edit to add one</span>}
+                  </p>
+                )}
+              </div>
             </div>
           </DialogContent>
         </Dialog>

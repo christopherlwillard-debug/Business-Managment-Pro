@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { recomputeSubPaid } from "./jobs";
 
 const router = Router();
 
@@ -67,6 +68,8 @@ router.post("/:jobId/sub-hours", async (req, res) => {
 
     const [sub] = await db.select({ name: subcontractorsTable.name })
       .from(subcontractorsTable).where(eq(subcontractorsTable.id, row.subcontractorId));
+    // Recompute job sub_paid after hours change
+    await recomputeSubPaid(jobId).catch(() => {});
     res.status(201).json(fmt({ ...row, subName: sub?.name ?? null }));
   } catch (err) {
     console.error(err);
@@ -89,6 +92,8 @@ router.put("/sub-hours/:id", async (req, res) => {
 
     const [sub] = await db.select({ name: subcontractorsTable.name })
       .from(subcontractorsTable).where(eq(subcontractorsTable.id, row.subcontractorId));
+    // Recompute job sub_paid after hours change
+    await recomputeSubPaid(row.jobId).catch(() => {});
     res.json(fmt({ ...row, subName: sub?.name ?? null }));
   } catch (err) {
     console.error(err);
@@ -99,7 +104,9 @@ router.put("/sub-hours/:id", async (req, res) => {
 router.delete("/sub-hours/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.delete(jobSubHoursTable).where(eq(jobSubHoursTable.id, id));
+    const [deleted] = await db.delete(jobSubHoursTable).where(eq(jobSubHoursTable.id, id)).returning();
+    // Recompute job sub_paid after hours deletion
+    if (deleted) await recomputeSubPaid(deleted.jobId).catch(() => {});
     res.status(204).send();
   } catch (err) {
     console.error(err);

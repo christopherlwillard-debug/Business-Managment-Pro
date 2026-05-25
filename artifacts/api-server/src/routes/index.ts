@@ -219,6 +219,8 @@ router.use("/dashboard", requireOwner, dashboardRouter);
 router.use("/businesses", requireOwner, businessesRouter);
 router.use("/contacts", requireOwner, contactsRouter);
 router.use("/jobs", sectionGuard("jobs"), jobSubHoursRouter);
+// Canonical alias: /api/sub-hours/:id for PUT/DELETE (same router, different prefix strips the jobId-scoped routes)
+router.use("/sub-hours", sectionGuard("jobs"), jobSubHoursRouter);
 router.use("/job-type-benchmarks", requireOwner, jobTypeBenchmarksRouter);
 
 export default router;
