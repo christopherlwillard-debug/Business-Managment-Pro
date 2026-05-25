@@ -57,6 +57,7 @@ type JobRow = {
   clientName: string | null;
   status: string;
   jobType: string | null;
+  homeModel: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -101,6 +102,7 @@ async function getJobWithSubs(jobId: number) {
       clientName: clientsTable.name,
       status: jobsTable.status,
       jobType: jobsTable.jobType,
+      homeModel: jobsTable.homeModel,
       address: jobsTable.address,
       city: jobsTable.city,
       state: jobsTable.state,
@@ -199,6 +201,7 @@ router.get("/", async (req, res) => {
         coats: jobsTable.coats,
         phases: jobsTable.phases,
         permitChecklist: jobsTable.permitChecklist,
+        homeModel: jobsTable.homeModel,
         createdAt: jobsTable.createdAt,
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subcontractorName: subcontractorsTable.name,
@@ -231,7 +234,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, address, city, state, locationName, startDate, endDate, notes, businessLine, sqFt, coats, phases, permitChecklist } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, sqFt, coats, phases, permitChecklist } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
@@ -246,7 +249,7 @@ router.post("/", async (req, res) => {
       title, description,
       clientId: clientId || null,
       status: status || "scheduled",
-      jobType, address, city, state, locationName,
+      jobType, homeModel: homeModel || null, address, city, state, locationName,
       startDate, endDate,
       notes,
       businessLine: businessLine || null,
@@ -461,6 +464,21 @@ router.get("/:id/invoice-draft", async (req, res) => {
   }
 });
 
+// Distinct home models for autocomplete — must be before /:id
+router.get("/distinct-home-models", async (_req, res) => {
+  try {
+    const rows = await db
+      .selectDistinct({ homeModel: jobsTable.homeModel })
+      .from(jobsTable)
+      .where(sql`home_model IS NOT NULL AND home_model <> ''`)
+      .orderBy(jobsTable.homeModel);
+    res.json(rows.map(r => r.homeModel).filter(Boolean));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch home models" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -476,7 +494,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, address, city, state, locationName, startDate, endDate, notes, businessLine, subPaid, sqFt, coats, phases, permitChecklist } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, subPaid, sqFt, coats, phases, permitChecklist } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -488,6 +506,7 @@ router.put("/:id", async (req, res) => {
     if ("clientId" in req.body) updates.clientId = clientId || null;
     if (status !== undefined) updates.status = status;
     if (jobType !== undefined) updates.jobType = jobType;
+    if ("homeModel" in req.body) updates.homeModel = homeModel || null;
     if (address !== undefined) updates.address = address;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;

@@ -101,6 +101,7 @@ export interface Job {
   subcontractorNames?: string[];
   status: JobStatus;
   jobType?: string | null;
+  homeModel?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -136,6 +137,7 @@ export interface CreateJobRequest {
   subcontractorIds?: number[];
   status?: CreateJobRequestStatus;
   jobType?: string | null;
+  homeModel?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;

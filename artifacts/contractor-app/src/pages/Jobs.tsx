@@ -2036,6 +2036,70 @@ function JobCard({
   );
 }
 
+// ─── Home Model autocomplete input ─────────────────────────────────────────────
+const COMMON_HOME_MODELS = [
+  "Clayton 16x80", "Clayton 14x66", "Clayton 14x76", "Clayton 16x72",
+  "Fleetwood 14x66", "Fleetwood 16x80", "Fleetwood 14x56",
+  "Skyline 16x80", "Skyline 14x76",
+  "Champion 14x66", "Champion 16x80",
+  "Cavco 16x80", "Palm Harbor 16x80",
+  "Commodore 16x80",
+];
+
+function HomeModelInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/jobs/distinct-home-models`)
+      .then(r => r.json())
+      .then((data: string[]) => {
+        const combined = Array.from(new Set([...data, ...COMMON_HOME_MODELS])).sort();
+        setSuggestions(combined);
+      })
+      .catch(() => setSuggestions(COMMON_HOME_MODELS));
+  }, []);
+
+  const filtered = value.trim()
+    ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()) && s !== value)
+    : suggestions;
+
+  return (
+    <div className="relative">
+      <label className="block text-sm font-medium text-foreground mb-1">
+        <span className="text-amber-500 font-bold text-xs mr-1">🏠</span>Home Model
+        <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
+      </label>
+      <input
+        ref={inputRef}
+        type="text"
+        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+        placeholder="e.g. Clayton 16x80, Fleetwood 14x66…"
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
+          {filtered.slice(0, 12).map(s => (
+            <button
+              key={s}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors first:rounded-t-xl last:rounded-b-xl"
+              onMouseDown={() => { onChange(s); setOpen(false); }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Job Form Dialog ───────────────────────────────────────────────────────────
 function JobFormDialog({
   open, onOpenChange, editJob, clients, subcontractors, onSaved,
@@ -2058,6 +2122,7 @@ function JobFormDialog({
         clientId: String(editJob.clientId ?? ""),
         status: displayStatus(editJob.status),
         jobType: editJob.jobType ?? "",
+        homeModel: editJob.homeModel ?? "",
         address: editJob.address ?? "",
         locationName: editJob.locationName ?? "",
         city: editJob.city ?? "",
@@ -2072,7 +2137,7 @@ function JobFormDialog({
     }
     return {
       title: "", clientId: "", status: "scheduled",
-      jobType: "", address: "",
+      jobType: "", homeModel: "", address: "",
       locationName: "", city: "", state: "KY",
       startDate: "", endDate: "", notes: "",
       businessLine: activeBusiness?.slug ?? "",
@@ -2102,6 +2167,7 @@ function JobFormDialog({
         subcontractorIds: subIds,
         status: form.status as CreateJobRequest["status"],
         jobType: form.jobType || undefined,
+        homeModel: form.homeModel || undefined,
         address: form.address || undefined,
         locationName: form.locationName || undefined,
         city: form.city || undefined,
@@ -2250,6 +2316,10 @@ function JobFormDialog({
               <option value="other">Other</option>
             </select>
           </div>
+          )}
+
+          {editJob && (
+          <HomeModelInput value={form.homeModel} onChange={v => setField("homeModel", v)} />
           )}
 
           {editJob && (

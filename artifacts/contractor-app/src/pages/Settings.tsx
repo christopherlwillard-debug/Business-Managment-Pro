@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useGetSettings, useUpdateSettings, useSquareStatus, type AppSettings } from "@workspace/api-client-react";
 import { RegisteredAgentSection } from "@/components/RegisteredAgentSection";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2, Calculator,
-  BarChart2, Edit2, Plus,
+  BarChart2, Edit2, Plus, ChevronDown, ChevronUp, TrendingUp, Home,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -1424,12 +1424,30 @@ type Benchmark = {
   notes: string | null;
 };
 
+type ActualRow = {
+  groupKey: string;
+  groupBy: string;
+  jobCount: number;
+  avgRevenue: number;
+  avgCost: number;
+  avgProfit: number;
+  avgDays: number | null;
+  jobs: { id: number; title: string; startDate: string | null; endDate: string | null }[];
+};
+
+type Actuals = { byJobType: ActualRow[]; byHomeModel: ActualRow[] };
+
 const EMPTY_BM = { jobType: "", estimatedHours: "", estimatedLaborCost: "", estimatedMaterialCost: "", notes: "" };
+
+function fmtMoney(n: number) {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
 
 function JobBenchmarksPanel() {
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   const { toast } = useToast();
   const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
+  const [actuals, setActuals] = useState<Actuals>({ byJobType: [], byHomeModel: [] });
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -1440,13 +1458,22 @@ function JobBenchmarksPanel() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch(`${BASE_URL}/api/job-type-benchmarks`);
-      const data = await r.json();
-      setBenchmarks(Array.isArray(data) ? data : []);
+      const [bmRes, actRes] = await Promise.allSettled([
+        fetch(`${BASE_URL}/api/job-type-benchmarks`).then(r => r.json()),
+        fetch(`${BASE_URL}/api/job-type-benchmarks/actuals`).then(r => r.ok ? r.json() : null),
+      ]);
+      if (bmRes.status === "fulfilled") setBenchmarks(Array.isArray(bmRes.value) ? bmRes.value : []);
+      if (actRes.status === "fulfilled" && actRes.value) setActuals(actRes.value);
     } finally {
       setLoading(false);
     }
   }
+
+  const actualsMap = useMemo(() => {
+    const m = new Map<string, ActualRow>();
+    for (const a of actuals.byJobType) m.set(a.groupKey.toLowerCase(), a);
+    return m;
+  }, [actuals]);
 
   useEffect(() => { load(); }, []);
 
@@ -1589,19 +1616,19 @@ function JobBenchmarksPanel() {
                 {editId === bm.id ? (
                   <BmForm val={editForm} set={setEditForm} onSubmit={e => { e.preventDefault(); handleUpdate(bm.id); }} onCancel={() => setEditId(null)} submitLabel="Save Changes" />
                 ) : (
-                  <div className="rounded-xl border border-border p-4">
+                  <div className="rounded-xl border border-border p-4 space-y-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-sm text-foreground">{bm.jobType}</p>
                         <div className="flex flex-wrap gap-3 mt-1.5">
                           {bm.estimatedHours != null && (
-                            <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{bm.estimatedHours}h</span> estimated</span>
+                            <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{bm.estimatedHours}h</span> est.</span>
                           )}
                           {bm.estimatedLaborCost != null && (
-                            <span className="text-xs text-muted-foreground">Labor: <span className="font-medium text-foreground">${bm.estimatedLaborCost.toLocaleString()}</span></span>
+                            <span className="text-xs text-muted-foreground">Labor: <span className="font-medium text-foreground">{fmtMoney(bm.estimatedLaborCost)}</span></span>
                           )}
                           {bm.estimatedMaterialCost != null && (
-                            <span className="text-xs text-muted-foreground">Materials: <span className="font-medium text-foreground">${bm.estimatedMaterialCost.toLocaleString()}</span></span>
+                            <span className="text-xs text-muted-foreground">Materials: <span className="font-medium text-foreground">{fmtMoney(bm.estimatedMaterialCost)}</span></span>
                           )}
                         </div>
                         {bm.notes && <p className="text-xs text-muted-foreground mt-1">{bm.notes}</p>}
@@ -1615,10 +1642,130 @@ function JobBenchmarksPanel() {
                         </button>
                       </div>
                     </div>
+                    {/* Actuals from completed jobs */}
+                    {(() => {
+                      const act = actualsMap.get(bm.jobType.toLowerCase());
+                      if (!act) return (
+                        <p className="text-xs text-muted-foreground/60 italic">No completed jobs yet for this type.</p>
+                      );
+                      return (
+                        <div className="pt-2 border-t border-border/50">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                            Actuals — {act.jobCount} completed job{act.jobCount !== 1 ? "s" : ""}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">Revenue {fmtMoney(act.avgRevenue)}</span>
+                            <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Cost {fmtMoney(act.avgCost)}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${act.avgProfit >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                              Profit {fmtMoney(act.avgProfit)}
+                            </span>
+                            {act.avgDays != null && (
+                              <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-medium">{act.avgDays}d avg</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function HomeModelPerformancePanel() {
+  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const [actuals, setActuals] = useState<Actuals>({ byJobType: [], byHomeModel: [] });
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/job-type-benchmarks/actuals`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setActuals(data); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  function toggleExpand(key: string) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  const rows = actuals.byHomeModel;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle className="flex items-center gap-2"><Home className="w-4 h-4 text-primary" /> Home Model Performance</CardTitle>
+          <CardDescription className="mt-1">
+            Actual averages from completed jobs, grouped by home model. Tag jobs with a Home Model to build this data over time.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-14 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <Home className="w-10 h-10 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground font-medium">No data yet</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-xs">Tag jobs with a Home Model to start building your performance data. Complete those jobs to see averages here.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {rows.map(row => {
+              const isOpen = expanded.has(row.groupKey);
+              return (
+                <div key={row.groupKey} className="rounded-xl border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between gap-3 p-4 hover:bg-muted/30 transition-colors text-left"
+                    onClick={() => toggleExpand(row.groupKey)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-foreground">{row.groupKey}</p>
+                      <div className="flex flex-wrap gap-2 mt-1.5">
+                        <span className="text-xs text-muted-foreground">{row.jobCount} job{row.jobCount !== 1 ? "s" : ""}</span>
+                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">~{fmtMoney(row.avgRevenue)} rev</span>
+                        <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">~{fmtMoney(row.avgCost)} cost</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${row.avgProfit >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                          ~{fmtMoney(row.avgProfit)} profit
+                        </span>
+                        {row.avgDays != null && (
+                          <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-medium">~{row.avgDays}d</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0 text-muted-foreground">
+                      {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
+                  </button>
+                  {isOpen && row.jobs.length > 0 && (
+                    <div className="border-t border-border/50 divide-y divide-border/30">
+                      {row.jobs.map(j => (
+                        <div key={j.id} className="px-4 py-2.5 flex items-center justify-between gap-3 bg-muted/10">
+                          <p className="text-sm text-foreground flex-1 min-w-0 truncate">{j.title}</p>
+                          {j.startDate && (
+                            <p className="text-xs text-muted-foreground flex-shrink-0">
+                              {j.startDate}{j.endDate && j.endDate !== j.startDate ? ` → ${j.endDate}` : ""}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
@@ -2682,7 +2829,10 @@ export default function Settings() {
 
         {/* ── Job Benchmarks ── */}
         {activeTab === "benchmarks" && (
-          <JobBenchmarksPanel />
+          <div className="space-y-6">
+            <JobBenchmarksPanel />
+            <HomeModelPerformancePanel />
+          </div>
         )}
 
         {/* Save bar — hidden on tabs that manage their own data */}
