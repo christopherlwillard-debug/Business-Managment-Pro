@@ -140,11 +140,33 @@ async function getJobWithSubs(jobId: number) {
 }
 
 async function replaceSubcontractors(jobId: number, ids: number[]) {
-  await db.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
-  if (ids.length > 0) {
+  // Differential update: only insert new links and delete removed ones.
+  // This preserves existing payment/hours data on unchanged job_subcontractors rows.
+  const existing = await db
+    .select({ subcontractorId: jobSubcontractorsTable.subcontractorId })
+    .from(jobSubcontractorsTable)
+    .where(eq(jobSubcontractorsTable.jobId, jobId));
+  const existingIds = existing.map(r => r.subcontractorId);
+
+  const toAdd = ids.filter(id => !existingIds.includes(id));
+  const toRemove = existingIds.filter(id => !ids.includes(id));
+
+  if (toAdd.length > 0) {
     await db.insert(jobSubcontractorsTable).values(
-      ids.map(sid => ({ jobId, subcontractorId: sid }))
+      toAdd.map(sid => ({ jobId, subcontractorId: sid }))
     );
+  }
+  if (toRemove.length > 0) {
+    await db.delete(jobSubcontractorsTable).where(
+      and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        inArray(jobSubcontractorsTable.subcontractorId, toRemove)
+      )
+    );
+  }
+  // Keep sub_paid in sync whenever the sub assignment changes
+  if (toAdd.length > 0 || toRemove.length > 0) {
+    await recomputeSubPaid(jobId).catch(() => {});
   }
 }
 
