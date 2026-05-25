@@ -99,20 +99,34 @@ async function computeSubAggregates(subcontractorId: number) {
     .from(jobSubHoursTable)
     .where(eq(jobSubHoursTable.subcontractorId, subcontractorId));
 
-  const [owedRow] = await db
-    .select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountOwed}), 0)` })
+  // totalOwed: for each job link, use manual amountOwed if set, otherwise sum hours×rate_snapshot
+  const owedRows = await db
+    .select({
+      jobId: jobSubcontractorsTable.jobId,
+      amountOwed: jobSubcontractorsTable.amountOwed,
+      amountPaid: jobSubcontractorsTable.amountPaid,
+      computedOwed: sql<string>`COALESCE((
+        SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+        FROM job_sub_hours h
+        WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+          AND h.subcontractor_id = ${subcontractorId}
+      ), 0)`,
+    })
     .from(jobSubcontractorsTable)
     .where(eq(jobSubcontractorsTable.subcontractorId, subcontractorId));
 
-  const [paidRow] = await db
-    .select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountPaid}), 0)` })
-    .from(jobSubcontractorsTable)
-    .where(eq(jobSubcontractorsTable.subcontractorId, subcontractorId));
+  let totalOwed = 0;
+  let totalPaid = 0;
+  for (const row of owedRows) {
+    const owed = row.amountOwed != null ? parseFloat(row.amountOwed) : parseFloat(row.computedOwed ?? "0");
+    totalOwed += owed;
+    totalPaid += row.amountPaid != null ? parseFloat(row.amountPaid) : 0;
+  }
 
   return {
     totalHours: parseFloat(hoursRow?.total ?? "0"),
-    totalOwed: parseFloat(owedRow?.total ?? "0"),
-    totalPaid: parseFloat(paidRow?.total ?? "0"),
+    totalOwed,
+    totalPaid,
   };
 }
 

@@ -1047,7 +1047,7 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [editPayId, setEditPayId] = useState<number | null>(null);
 
   const today = localDateString();
-  const [form, setForm] = useState({ subcontractorId: "", date: today, hours: "", description: "" });
+  const [form, setForm] = useState({ subcontractorId: "", date: today, hours: "", description: "", rateSnapshot: "" });
   const [payForm, setPayForm] = useState<Record<number, { amountOwed: string; amountPaid: string; paidDate: string; paidNotes: string }>>({});
 
   const { data: subs = [] } = useListSubcontractors();
@@ -1093,9 +1093,16 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
     if (!form.subcontractorId || !form.date || !form.hours) return;
     setSubmitting(true);
     try {
+      const rateVal = form.rateSnapshot !== "" ? parseFloat(form.rateSnapshot) : undefined;
       const res = await fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subcontractorId: parseInt(form.subcontractorId), date: form.date, hours: parseFloat(form.hours), description: form.description || undefined }),
+        body: JSON.stringify({
+          subcontractorId: parseInt(form.subcontractorId),
+          date: form.date,
+          hours: parseFloat(form.hours),
+          description: form.description || undefined,
+          rateSnapshot: rateVal,
+        }),
       });
       if (!res.ok) throw new Error();
       const entry = await res.json();
@@ -1207,16 +1214,27 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
               {canEdit("jobs") && (
                 <form onSubmit={handleAddHours} className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Log Hours</p>
+                  {linkedSubs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-xl px-3 py-2">
+                      No subcontractors assigned to this job. Assign subs in the job details first.
+                    </p>
+                  ) : (
+                  <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium mb-1">Subcontractor</label>
-                      <select value={form.subcontractorId} onChange={e => setForm(f => ({ ...f, subcontractorId: e.target.value }))}
+                      <select value={form.subcontractorId}
+                        onChange={e => {
+                          const subId = e.target.value;
+                          const selectedSub = linkedSubs.find(s => String(s.id) === subId);
+                          const defaultRate = selectedSub && (selectedSub as any).payRate != null
+                            ? String((selectedSub as any).payRate)
+                            : "";
+                          setForm(f => ({ ...f, subcontractorId: subId, rateSnapshot: defaultRate }));
+                        }}
                         className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required>
                         <option value="">Select sub…</option>
                         {linkedSubs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        {(subs as Subcontractor[]).filter(s => !jobSubs.includes(s.id)).map(s => (
-                          <option key={s.id} value={s.id}>{s.name} (not assigned)</option>
-                        ))}
                       </select>
                     </div>
                     <div>
@@ -1225,11 +1243,22 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                         className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Hours</label>
-                    <input type="number" step="0.25" min="0.25" placeholder="e.g. 4.5" value={form.hours}
-                      onChange={e => setForm(f => ({ ...f, hours: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Hours</label>
+                      <input type="number" step="0.25" min="0.25" placeholder="e.g. 4.5" value={form.hours}
+                        onChange={e => setForm(f => ({ ...f, hours: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">
+                        Rate/hr
+                        {form.rateSnapshot && <span className="ml-1 text-[9px] text-muted-foreground">(auto-filled)</span>}
+                      </label>
+                      <input type="number" step="0.01" min="0" placeholder="e.g. 35.00" value={form.rateSnapshot}
+                        onChange={e => setForm(f => ({ ...f, rateSnapshot: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">Notes (optional)</label>
@@ -1237,6 +1266,8 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                       onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                       className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
                   </div>
+                  </>
+                  )}
                   <button type="submit" disabled={submitting}
                     className="w-full py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
                     {submitting ? "Saving…" : "Log Hours"}

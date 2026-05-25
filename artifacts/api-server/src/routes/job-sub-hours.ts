@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobSubHoursTable, subcontractorsTable } from "@workspace/db/schema";
+import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
@@ -39,6 +39,17 @@ router.post("/:jobId/sub-hours", async (req, res) => {
     const { subcontractorId, date, hours, description, rateSnapshot } = req.body;
     if (!subcontractorId || !date || hours == null) {
       return res.status(400).json({ error: "subcontractorId, date, and hours are required" });
+    }
+
+    // Enforce: sub must be assigned to this job
+    const [link] = await db.select({ jobId: jobSubcontractorsTable.jobId })
+      .from(jobSubcontractorsTable)
+      .where(and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        eq(jobSubcontractorsTable.subcontractorId, parseInt(subcontractorId))
+      ));
+    if (!link) {
+      return res.status(400).json({ error: "Subcontractor is not assigned to this job" });
     }
 
     let resolvedRate = rateSnapshot != null ? String(rateSnapshot) : null;
