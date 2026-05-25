@@ -30,6 +30,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
+  Timer, BarChart2,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 
@@ -907,7 +908,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; netProfit: number };
+type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost?: number; totalSubHours?: number; netProfit: number };
 
 function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [data, setData] = useState<JobProfit | null>(null);
@@ -924,6 +925,8 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
   const net = data?.netProfit ?? 0;
   const isProfit = net > 0;
+  const subLaborCost = data?.subLaborCost ?? 0;
+  const totalSubHours = data?.totalSubHours ?? 0;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -979,6 +982,21 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                 <Briefcase className="w-7 h-7 text-red-100" />
               </div>
 
+              {subLaborCost > 0 && (
+                <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Sub Labor Cost</p>
+                      <p className="text-xl font-bold text-orange-500 mt-0.5">{formatCurrency(subLaborCost)}</p>
+                    </div>
+                    <Timer className="w-7 h-7 text-orange-200" />
+                  </div>
+                  {totalSubHours > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">{totalSubHours.toFixed(1)} tracked sub hours</p>
+                  )}
+                </div>
+              )}
+
               <div className={`rounded-xl border p-4 flex items-center justify-between ${
                 isProfit ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"
               }`}>
@@ -987,6 +1005,11 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                   <p className={`text-2xl font-bold mt-0.5 ${isProfit ? "text-emerald-700" : "text-red-600"}`}>
                     {isProfit ? "+" : ""}{formatCurrency(net)}
                   </p>
+                  {subLaborCost > 0 && (
+                    <p className={`text-[10px] mt-0.5 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>
+                      After expenses + sub labor
+                    </p>
+                  )}
                 </div>
                 <TrendingUp className={`w-8 h-8 ${isProfit ? "text-emerald-300" : "text-red-300"}`} />
               </div>
@@ -995,6 +1018,355 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                 <p className="text-xs text-muted-foreground text-center pt-1">
                   {formatCurrency(data.grossInvoiced - data.collected)} outstanding (not yet collected)
                 </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
+type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; description: string | null; rateSnapshot: number | null };
+type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; amountPaid: number | null; paidDate: string | null; paidNotes: string | null };
+
+function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+  const { canEdit } = useUserPermissions();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<"hours" | "payments">("hours");
+  const [hours, setHours] = useState<SubHourEntry[]>([]);
+  const [payments, setPayments] = useState<SubPaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [editPayId, setEditPayId] = useState<number | null>(null);
+
+  const today = localDateString();
+  const [form, setForm] = useState({ subcontractorId: "", date: today, hours: "", description: "" });
+  const [payForm, setPayForm] = useState<Record<number, { amountOwed: string; amountPaid: string; paidDate: string; paidNotes: string }>>({});
+
+  const { data: subs = [] } = useListSubcontractors();
+  const jobSubs = Array.isArray(job.subcontractorIds) ? (job.subcontractorIds as number[]) : [];
+  const linkedSubs = (subs as Subcontractor[]).filter(s => jobSubs.includes(s.id));
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [h, p] = await Promise.all([
+        fetch(`${BASE}/api/jobs/${job.id}/sub-hours`).then(r => r.json()),
+        fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.json()),
+      ]);
+      setHours(Array.isArray(h) ? h : []);
+      setPayments(Array.isArray(p) ? p : []);
+      const pf: typeof payForm = {};
+      for (const row of (Array.isArray(p) ? p : [])) {
+        pf[row.subcontractorId] = {
+          amountOwed: row.amountOwed != null ? String(row.amountOwed) : "",
+          amountPaid: row.amountPaid != null ? String(row.amountPaid) : "",
+          paidDate: row.paidDate ?? "",
+          paidNotes: row.paidNotes ?? "",
+        };
+      }
+      setPayForm(pf);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadData(); }, [job.id]);
+
+  async function handleAddHours(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.subcontractorId || !form.date || !form.hours) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subcontractorId: parseInt(form.subcontractorId), date: form.date, hours: parseFloat(form.hours), description: form.description || undefined }),
+      });
+      if (!res.ok) throw new Error();
+      const entry = await res.json();
+      setHours(prev => [...prev, entry]);
+      setForm(f => ({ ...f, hours: "", description: "" }));
+      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: "Hours logged", description: `${form.hours} hrs added` });
+    } catch {
+      toast({ title: "Failed to log hours", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteHours(id: number) {
+    setDeletingId(id);
+    try {
+      await fetch(`${BASE}/api/jobs/sub-hours/${id}`, { method: "DELETE" });
+      setHours(prev => prev.filter(h => h.id !== id));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleSavePayment(subId: number) {
+    const pf = payForm[subId];
+    if (!pf) return;
+    try {
+      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${subId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountOwed: pf.amountOwed ? parseFloat(pf.amountOwed) : null,
+          amountPaid: pf.amountPaid ? parseFloat(pf.amountPaid) : null,
+          paidDate: pf.paidDate || null,
+          paidNotes: pf.paidNotes || null,
+        }),
+      });
+      await loadData();
+      setEditPayId(null);
+      toast({ title: "Payment updated" });
+    } catch {
+      toast({ title: "Failed to save payment", variant: "destructive" });
+    }
+  }
+
+  const totalHours = hours.reduce((s, h) => s + h.hours, 0);
+  const totalSubLabor = hours.reduce((s, h) => s + (h.hours * (h.rateSnapshot ?? 0)), 0);
+
+  const grouped: Record<number, { name: string; hours: SubHourEntry[] }> = {};
+  for (const h of hours) {
+    if (!grouped[h.subcontractorId]) grouped[h.subcontractorId] = { name: h.subName ?? `Sub #${h.subcontractorId}`, hours: [] };
+    grouped[h.subcontractorId].hours.push(h);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative ml-auto w-full max-w-lg bg-card border-l border-border flex flex-col h-full shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border/50 flex-shrink-0 bg-card">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Timer className="w-4 h-4 text-orange-500 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground font-medium">Sub Hours & Pay</p>
+              <h2 className="font-bold text-foreground text-sm truncate">{job.title}</h2>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-border/50 flex-shrink-0">
+          {(["hours", "payments"] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2.5 text-xs font-semibold capitalize transition-colors ${activeTab === tab ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}>
+              {tab === "hours" ? "Track Hours" : "Sub Payments"}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* HOURS TAB */}
+          {activeTab === "hours" && (
+            <div className="p-4 space-y-4">
+              {/* Summary */}
+              {totalHours > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-orange-50 border border-orange-100 p-3 text-center">
+                    <p className="text-xs text-orange-600 font-medium">Total Hours</p>
+                    <p className="text-lg font-bold text-orange-700">{totalHours.toFixed(1)}</p>
+                  </div>
+                  <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                    <p className="text-xs text-red-600 font-medium">Sub Labor Cost</p>
+                    <p className="text-lg font-bold text-red-700">{formatCurrency(totalSubLabor)}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Add form */}
+              {canEdit("jobs") && (
+                <form onSubmit={handleAddHours} className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Log Hours</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Subcontractor</label>
+                      <select value={form.subcontractorId} onChange={e => setForm(f => ({ ...f, subcontractorId: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required>
+                        <option value="">Select sub…</option>
+                        {linkedSubs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        {(subs as Subcontractor[]).filter(s => !jobSubs.includes(s.id)).map(s => (
+                          <option key={s.id} value={s.id}>{s.name} (not assigned)</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Date</label>
+                      <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Hours</label>
+                    <input type="number" step="0.25" min="0.25" placeholder="e.g. 4.5" value={form.hours}
+                      onChange={e => setForm(f => ({ ...f, hours: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Notes (optional)</label>
+                    <input type="text" placeholder="What they worked on…" value={form.description}
+                      onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <button type="submit" disabled={submitting}
+                    className="w-full py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
+                    {submitting ? "Saving…" : "Log Hours"}
+                  </button>
+                </form>
+              )}
+
+              {/* Hours list grouped by sub */}
+              {loading ? (
+                <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+              ) : hours.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Timer className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm text-muted-foreground">No hours logged yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {Object.entries(grouped).map(([subIdStr, grp]) => {
+                    const subHrs = grp.hours.reduce((s, h) => s + h.hours, 0);
+                    const subCost = grp.hours.reduce((s, h) => s + h.hours * (h.rateSnapshot ?? 0), 0);
+                    return (
+                      <div key={subIdStr} className="rounded-xl border border-border overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                          <p className="text-xs font-bold text-foreground">{grp.name}</p>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>{subHrs.toFixed(1)} hrs</span>
+                            {subCost > 0 && <span className="text-orange-600 font-medium">{formatCurrency(subCost)}</span>}
+                          </div>
+                        </div>
+                        <div className="divide-y divide-border/50">
+                          {grp.hours.map(h => (
+                            <div key={h.id} className="flex items-center gap-2 px-3 py-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-foreground">{formatDate(h.date)} — {h.hours}h</p>
+                                {h.description && <p className="text-[10px] text-muted-foreground truncate">{h.description}</p>}
+                                {h.rateSnapshot != null && <p className="text-[10px] text-orange-600">${h.rateSnapshot}/hr → {formatCurrency(h.hours * h.rateSnapshot)}</p>}
+                              </div>
+                              {canEdit("jobs") && (
+                                <button onClick={() => handleDeleteHours(h.id)} disabled={deletingId === h.id}
+                                  className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors">
+                                  {deletingId === h.id ? <span className="w-3 h-3 border border-muted-foreground/50 border-t-muted-foreground rounded-full animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PAYMENTS TAB */}
+          {activeTab === "payments" && (
+            <div className="p-4 space-y-3">
+              {loading ? (
+                <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+              ) : payments.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <DollarSign className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm text-muted-foreground">No subcontractors assigned to this job yet</p>
+                </div>
+              ) : (
+                payments.map(pay => {
+                  const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
+                  const balance = (pay.amountOwed ?? 0) - (pay.amountPaid ?? 0);
+                  const isEditing = editPayId === pay.subcontractorId;
+                  return (
+                    <div key={pay.subcontractorId} className="rounded-xl border border-border overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                        <p className="text-xs font-bold text-foreground">{pay.subName ?? `Sub #${pay.subcontractorId}`}</p>
+                        {balance > 0 ? (
+                          <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">{formatCurrency(balance)} owed</span>
+                        ) : pay.amountPaid != null && pay.amountPaid > 0 ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Paid ✓</span>
+                        ) : null}
+                      </div>
+                      <div className="p-3 space-y-2">
+                        {!isEditing ? (
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Amount Owed</span>
+                              <span className="font-medium">{pay.amountOwed != null ? formatCurrency(pay.amountOwed) : "—"}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Amount Paid</span>
+                              <span className="font-medium text-emerald-600">{pay.amountPaid != null ? formatCurrency(pay.amountPaid) : "—"}</span>
+                            </div>
+                            {pay.paidDate && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">Paid On</span>
+                                <span>{formatDate(pay.paidDate)}</span>
+                              </div>
+                            )}
+                            {pay.paidNotes && <p className="text-[10px] text-muted-foreground">{pay.paidNotes}</p>}
+                            {canEdit("jobs") && (
+                              <button onClick={() => setEditPayId(pay.subcontractorId)}
+                                className="mt-1 w-full py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
+                                Edit Payment
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Amount Owed</label>
+                                <input type="number" step="0.01" min="0" placeholder="0.00"
+                                  value={pf.amountOwed}
+                                  onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, amountOwed: e.target.value } }))}
+                                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Amount Paid</label>
+                                <input type="number" step="0.01" min="0" placeholder="0.00"
+                                  value={pf.amountPaid}
+                                  onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, amountPaid: e.target.value } }))}
+                                  className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Paid Date</label>
+                              <input type="date" value={pf.paidDate}
+                                onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, paidDate: e.target.value } }))}
+                                className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Notes</label>
+                              <input type="text" placeholder="Check #, method…" value={pf.paidNotes}
+                                onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, paidNotes: e.target.value } }))}
+                                className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => setEditPayId(null)} className="flex-1 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">Cancel</button>
+                              <button onClick={() => handleSavePayment(pay.subcontractorId)} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">Save</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
@@ -1150,6 +1522,7 @@ function JobCard({
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const [profitPanelOpen, setProfitPanelOpen] = useState(false);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
+  const [subHoursPanelOpen, setSubHoursPanelOpen] = useState(false);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
@@ -1384,6 +1757,17 @@ function JobCard({
           </button>
         )}
 
+        {/* Sub Hours & Pay button — only when subs assigned */}
+        {Array.isArray(job.subcontractorIds) && (job.subcontractorIds as number[]).length > 0 && (
+          <button
+            onClick={() => setSubHoursPanelOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+            <Timer className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+            <span className="flex-1 text-left">Sub Hours & Pay</span>
+            <span className="text-[10px] text-muted-foreground">Track</span>
+          </button>
+        )}
+
         {/* P&L button */}
         <button
           onClick={() => setProfitPanelOpen(true)}
@@ -1481,6 +1865,9 @@ function JobCard({
       )}
       {phasesPanelOpen && (
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
+      )}
+      {subHoursPanelOpen && (
+        <JobSubHoursPanel job={job} onClose={() => setSubHoursPanelOpen(false)} />
       )}
     </>
   );

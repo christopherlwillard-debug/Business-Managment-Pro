@@ -35,3 +35,5 @@ export * from "./plaid-connections";
 export * from "./bid-opportunities";
 export * from "./businesses";
 export * from "./contacts";
+export * from "./job-sub-hours";
+export * from "./job-type-benchmarks";

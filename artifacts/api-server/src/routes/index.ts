@@ -60,6 +60,8 @@ import aerialRouter from "./aerial.js";
 import dashboardRouter from "./dashboard.js";
 import businessesRouter from "./businesses";
 import contactsRouter from "./contacts";
+import jobSubHoursRouter from "./job-sub-hours";
+import jobTypeBenchmarksRouter from "./job-type-benchmarks";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -216,5 +218,7 @@ router.use(requireOwner, aerialRouter);
 router.use("/dashboard", requireOwner, dashboardRouter);
 router.use("/businesses", requireOwner, businessesRouter);
 router.use("/contacts", requireOwner, contactsRouter);
+router.use("/jobs", sectionGuard("jobs"), jobSubHoursRouter);
+router.use("/job-type-benchmarks", requireOwner, jobTypeBenchmarksRouter);
 
 export default router;

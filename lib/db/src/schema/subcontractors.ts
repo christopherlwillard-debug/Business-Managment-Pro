@@ -36,6 +36,9 @@ export const subcontractorsTable = pgTable("subcontractors", {
   portalPinHash: text("portal_pin_hash"),
   portalPinAttempts: integer("portal_pin_attempts").notNull().default(0),
   portalPinLockedUntil: timestamp("portal_pin_locked_until"),
+  // Pay rate
+  payRate: numeric("pay_rate", { precision: 10, scale: 2 }),
+  payType: text("pay_type").default("hourly"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -203,6 +203,7 @@ export default function Subcontractors() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const rawRate = formData.get("payRate") as string;
     try {
       await createMutation.mutateAsync({
         data: {
@@ -211,7 +212,9 @@ export default function Subcontractors() {
           trade: formData.get("trade") as string || undefined,
           phone: formData.get("phone") as string || undefined,
           w9OnFile: formData.get("w9") === "on",
-        },
+          payRate: rawRate ? parseFloat(rawRate) : undefined,
+          payType: (formData.get("payType") as string) || "hourly",
+        } as Parameters<typeof createMutation.mutateAsync>[0]["data"],
       });
       setIsDialogOpen(false);
       refetch();
@@ -519,6 +522,20 @@ export default function Subcontractors() {
             <div>
               <label className="block text-sm font-medium mb-1">Email</label>
               <input name="email" type="email" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Pay Rate ($/hr or flat)</label>
+                <input name="payRate" type="number" step="0.01" min="0" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Rate Type</label>
+                <select name="payType" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20">
+                  <option value="hourly">Hourly</option>
+                  <option value="flat">Flat per Job</option>
+                  <option value="per_sqft">Per Sq Ft</option>
+                </select>
+              </div>
             </div>
             <div className="pt-2">
               <label className="flex items-center p-3 border border-border rounded-xl cursor-pointer hover:bg-muted/50 transition-colors">

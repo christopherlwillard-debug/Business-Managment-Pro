@@ -11,6 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2, Calculator,
+  BarChart2, Edit2, Plus,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -69,6 +70,7 @@ const TABS = [
   { key: "financial", label: "Financial", icon: DollarSign },
   { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "calculators", label: "Calculator Defaults", icon: Calculator },
+  { key: "benchmarks", label: "Job Benchmarks", icon: BarChart2 },
   { key: "modules", label: "Modules", icon: Settings2 },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "payments", label: "Payments", icon: Receipt },
@@ -1413,6 +1415,217 @@ function BusinessProfileCard() {
   );
 }
 
+type Benchmark = {
+  id: number;
+  jobType: string;
+  estimatedHours: number | null;
+  estimatedLaborCost: number | null;
+  estimatedMaterialCost: number | null;
+  notes: string | null;
+};
+
+const EMPTY_BM = { jobType: "", estimatedHours: "", estimatedLaborCost: "", estimatedMaterialCost: "", notes: "" };
+
+function JobBenchmarksPanel() {
+  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const { toast } = useToast();
+  const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState(EMPTY_BM);
+  const [editForm, setEditForm] = useState(EMPTY_BM);
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/job-type-benchmarks`);
+      const data = await r.json();
+      setBenchmarks(Array.isArray(data) ? data : []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.jobType.trim()) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/job-type-benchmarks`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobType: form.jobType,
+          estimatedHours: form.estimatedHours ? parseFloat(form.estimatedHours) : null,
+          estimatedLaborCost: form.estimatedLaborCost ? parseFloat(form.estimatedLaborCost) : null,
+          estimatedMaterialCost: form.estimatedMaterialCost ? parseFloat(form.estimatedMaterialCost) : null,
+          notes: form.notes || null,
+        }),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
+      await load();
+      setShowAdd(false);
+      setForm(EMPTY_BM);
+      toast({ title: "Benchmark added" });
+    } catch (err: unknown) {
+      toast({ title: (err as Error).message || "Failed to add benchmark", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdate(id: number) {
+    setSaving(true);
+    try {
+      await fetch(`${BASE_URL}/api/job-type-benchmarks/${id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobType: editForm.jobType,
+          estimatedHours: editForm.estimatedHours ? parseFloat(editForm.estimatedHours) : null,
+          estimatedLaborCost: editForm.estimatedLaborCost ? parseFloat(editForm.estimatedLaborCost) : null,
+          estimatedMaterialCost: editForm.estimatedMaterialCost ? parseFloat(editForm.estimatedMaterialCost) : null,
+          notes: editForm.notes || null,
+        }),
+      });
+      await load();
+      setEditId(null);
+      toast({ title: "Benchmark updated" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: number) {
+    await fetch(`${BASE_URL}/api/job-type-benchmarks/${id}`, { method: "DELETE" });
+    setBenchmarks(prev => prev.filter(b => b.id !== id));
+    toast({ title: "Benchmark removed" });
+  }
+
+  function startEdit(bm: Benchmark) {
+    setEditId(bm.id);
+    setEditForm({
+      jobType: bm.jobType,
+      estimatedHours: bm.estimatedHours != null ? String(bm.estimatedHours) : "",
+      estimatedLaborCost: bm.estimatedLaborCost != null ? String(bm.estimatedLaborCost) : "",
+      estimatedMaterialCost: bm.estimatedMaterialCost != null ? String(bm.estimatedMaterialCost) : "",
+      notes: bm.notes ?? "",
+    });
+  }
+
+  const fieldCls = "w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20";
+
+  function BmForm({ val, set, onSubmit, onCancel, submitLabel }: {
+    val: typeof EMPTY_BM;
+    set: React.Dispatch<React.SetStateAction<typeof EMPTY_BM>>;
+    onSubmit: (e: React.FormEvent) => void;
+    onCancel: () => void;
+    submitLabel: string;
+  }) {
+    return (
+      <form onSubmit={onSubmit} className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
+        <div>
+          <label className="block text-xs font-medium mb-1">Job Type *</label>
+          <input className={fieldCls} value={val.jobType} onChange={e => set(f => ({ ...f, jobType: e.target.value }))} placeholder="e.g. Model Home, Spec Home, Flooring…" required />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium mb-1">Est. Hours</label>
+            <input type="number" step="0.5" min="0" className={fieldCls} value={val.estimatedHours} onChange={e => set(f => ({ ...f, estimatedHours: e.target.value }))} placeholder="—" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Est. Labor $</label>
+            <input type="number" step="0.01" min="0" className={fieldCls} value={val.estimatedLaborCost} onChange={e => set(f => ({ ...f, estimatedLaborCost: e.target.value }))} placeholder="—" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Est. Materials $</label>
+            <input type="number" step="0.01" min="0" className={fieldCls} value={val.estimatedMaterialCost} onChange={e => set(f => ({ ...f, estimatedMaterialCost: e.target.value }))} placeholder="—" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Notes</label>
+          <input className={fieldCls} value={val.notes} onChange={e => set(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes about this job type benchmark…" />
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onCancel} className="flex-1 py-2 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors">Cancel</button>
+          <button type="submit" disabled={saving} className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">{saving ? "Saving…" : submitLabel}</button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2"><BarChart2 className="w-4 h-4 text-primary" /> Job Type Benchmarks</CardTitle>
+            <CardDescription className="mt-1">Set estimated hours, labor, and material costs by job type to compare against actual performance.</CardDescription>
+          </div>
+          {!showAdd && (
+            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm">
+              <Plus className="w-4 h-4" /> Add
+            </button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {showAdd && (
+          <BmForm val={form} set={setForm} onSubmit={handleAdd} onCancel={() => { setShowAdd(false); setForm(EMPTY_BM); }} submitLabel="Add Benchmark" />
+        )}
+        {loading ? (
+          <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+        ) : benchmarks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <BarChart2 className="w-10 h-10 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">No benchmarks yet — add one to start tracking estimated vs actual performance.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {benchmarks.map(bm => (
+              <div key={bm.id}>
+                {editId === bm.id ? (
+                  <BmForm val={editForm} set={setEditForm} onSubmit={e => { e.preventDefault(); handleUpdate(bm.id); }} onCancel={() => setEditId(null)} submitLabel="Save Changes" />
+                ) : (
+                  <div className="rounded-xl border border-border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-foreground">{bm.jobType}</p>
+                        <div className="flex flex-wrap gap-3 mt-1.5">
+                          {bm.estimatedHours != null && (
+                            <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{bm.estimatedHours}h</span> estimated</span>
+                          )}
+                          {bm.estimatedLaborCost != null && (
+                            <span className="text-xs text-muted-foreground">Labor: <span className="font-medium text-foreground">${bm.estimatedLaborCost.toLocaleString()}</span></span>
+                          )}
+                          {bm.estimatedMaterialCost != null && (
+                            <span className="text-xs text-muted-foreground">Materials: <span className="font-medium text-foreground">${bm.estimatedMaterialCost.toLocaleString()}</span></span>
+                          )}
+                        </div>
+                        {bm.notes && <p className="text-xs text-muted-foreground mt-1">{bm.notes}</p>}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => startEdit(bm)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDelete(bm.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Settings() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetSettings();
@@ -2467,8 +2680,13 @@ export default function Settings() {
           />
         )}
 
-        {/* Save bar */}
-        <div className="flex items-center justify-between gap-4 pt-4 border-t border-border">
+        {/* ── Job Benchmarks ── */}
+        {activeTab === "benchmarks" && (
+          <JobBenchmarksPanel />
+        )}
+
+        {/* Save bar — hidden on tabs that manage their own data */}
+        <div className={`flex items-center justify-between gap-4 pt-4 border-t border-border ${activeTab === "benchmarks" ? "hidden" : ""}`}>
           <div>
             {error && (
               <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">

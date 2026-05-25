@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, phaseItemSchema, permitChecklistItemSchema } from "@workspace/db/schema";
-import { eq, and, count, inArray } from "drizzle-orm";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema } from "@workspace/db/schema";
+import { eq, and, count, inArray, sql } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { z } from "zod/v4";
 
@@ -250,7 +250,19 @@ router.get("/:id/profit", async (req, res) => {
       if (exp.category !== "Owner Draw") jobExpenses += parseFloat(exp.amount ?? "0");
     }
 
-    res.json({ grossInvoiced, collected, jobExpenses, netProfit: collected - jobExpenses });
+    const [subHoursRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
+      .from(jobSubHoursTable)
+      .where(eq(jobSubHoursTable.jobId, id));
+    const subLaborCost = parseFloat(subHoursRow?.total ?? "0");
+
+    const [subHoursSum] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
+      .from(jobSubHoursTable)
+      .where(eq(jobSubHoursTable.jobId, id));
+    const totalSubHours = parseFloat(subHoursSum?.total ?? "0");
+
+    res.json({ grossInvoiced, collected, jobExpenses, subLaborCost, totalSubHours, netProfit: collected - jobExpenses - subLaborCost });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch job profit" });
@@ -468,6 +480,61 @@ router.put("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update job" });
+  }
+});
+
+router.put("/:jobId/sub-payments/:subId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const subId = parseInt(req.params.subId);
+    if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
+    const { amountOwed, amountPaid, paidDate, paidNotes } = req.body;
+    const updates: Record<string, unknown> = {};
+    if (amountOwed !== undefined) updates.amountOwed = amountOwed != null ? String(amountOwed) : null;
+    if (amountPaid !== undefined) updates.amountPaid = amountPaid != null ? String(amountPaid) : null;
+    if (paidDate !== undefined) updates.paidDate = paidDate || null;
+    if (paidNotes !== undefined) updates.paidNotes = paidNotes || null;
+    const [row] = await db.update(jobSubcontractorsTable)
+      .set(updates)
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, subId)))
+      .returning();
+    if (!row) return res.status(404).json({ error: "Sub-job link not found" });
+    res.json({
+      jobId: row.jobId, subcontractorId: row.subcontractorId,
+      amountOwed: row.amountOwed != null ? parseFloat(row.amountOwed) : null,
+      amountPaid: row.amountPaid != null ? parseFloat(row.amountPaid) : null,
+      paidDate: row.paidDate, paidNotes: row.paidNotes,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update sub payment" });
+  }
+});
+
+router.get("/:id/sub-payments", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const rows = await db
+      .select({
+        subcontractorId: jobSubcontractorsTable.subcontractorId,
+        subName: subcontractorsTable.name,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+        paidDate: jobSubcontractorsTable.paidDate,
+        paidNotes: jobSubcontractorsTable.paidNotes,
+      })
+      .from(jobSubcontractorsTable)
+      .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+      .where(eq(jobSubcontractorsTable.jobId, id));
+    res.json(rows.map(r => ({
+      ...r,
+      amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
+      amountPaid: r.amountPaid != null ? parseFloat(r.amountPaid) : null,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch sub payments" });
   }
 });
 
