@@ -489,29 +489,40 @@ export function InvoicePanel({
         },
         { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyState, companyZip, logoSize, logoPosition: logoPos, logoAbsoluteUrl: logoForEmail }
       );
-      const pdfResp = await fetch(`${base}/api/invoices/render-html-pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ html: printHtml }),
-      });
-      if (!pdfResp.ok) {
-        const errData = await pdfResp.json().catch(() => ({}));
-        throw new Error(errData.error ?? `PDF render error ${pdfResp.status}`);
-      }
-      const pdfData = await pdfResp.json();
-      if (!pdfData.pdfBase64) throw new Error("PDF render returned an empty result");
+      let pdfBase64: string | undefined;
+      let pdfFilename: string | undefined;
+      try {
+        const pdfResp = await fetch(`${base}/api/invoices/render-html-pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ html: printHtml }),
+        });
+        if (pdfResp.ok) {
+          const pdfData = await pdfResp.json();
+          if (pdfData.pdfBase64) {
+            pdfBase64 = pdfData.pdfBase64;
+            pdfFilename = `Invoice-${effectiveExistingInvoice.invoiceNumber}.pdf`;
+          }
+        }
+      } catch { /* non-fatal — send without PDF if rendering fails */ }
+
       await sendViaGmail({
         token,
         to: gmailTo.trim(),
         subject: gmailSubject.trim() || `Invoice ${effectiveExistingInvoice.invoiceNumber}`,
         html,
         text: gmailMessage.trim() || `Please see invoice ${effectiveExistingInvoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
-        pdfBase64: pdfData.pdfBase64,
-        pdfFilename: `Invoice-${effectiveExistingInvoice.invoiceNumber}.pdf`,
+        pdfBase64,
+        pdfFilename,
       });
       setGmailSent(true);
-      toast({ title: "Invoice sent via Gmail", description: `Delivered to ${gmailTo.trim()} with PDF attached` });
+      toast({
+        title: "Invoice sent via Gmail",
+        description: pdfBase64
+          ? `Delivered to ${gmailTo.trim()} with PDF attached`
+          : `Delivered to ${gmailTo.trim()} (HTML format — PDF unavailable)`,
+      });
       setTimeout(() => { setShowGmailCompose(false); setGmailSent(false); setGmailPreview(false); }, 2000);
     } catch (err: any) {
       toast({ title: "Gmail send failed", description: err?.message ?? "An error occurred.", variant: "destructive" });
