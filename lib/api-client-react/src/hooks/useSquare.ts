@@ -105,6 +105,19 @@ export function useCreateInvoicePaymentLink() {
   });
 }
 
+export function useDeleteInvoicePaymentLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (invoiceId: number) =>
+      customFetch<{ success: boolean; invoice: unknown }>(`/api/invoices/${invoiceId}/payment-link`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/invoices"] });
+    },
+  });
+}
+
 export function useSquareStatus() {
   return useQuery({
     queryKey: ["/api/square/status"],

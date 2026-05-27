@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
+import { createSquarePaymentLink, deleteSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
 
 const router = Router();
@@ -19,6 +19,37 @@ function buildQuery() {
     .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
     .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id));
 }
+
+router.delete("/:id/payment-link", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid invoice id" });
+
+    const [inv] = await buildQuery().where(eq(invoicesTable.id, id));
+    if (!inv) return res.status(404).json({ error: "Invoice not found" });
+
+    const linkId = inv.squarePaymentLinkId as string | null;
+
+    // Best-effort cancel in Square
+    if (linkId && isSquareConfigured()) {
+      try {
+        await deleteSquarePaymentLink(linkId);
+      } catch (squareErr) {
+        console.warn("Square payment link cancel failed (clearing from DB anyway):", squareErr);
+      }
+    }
+
+    await db.update(invoicesTable)
+      .set({ squarePaymentLinkId: null, squarePaymentLinkUrl: null })
+      .where(eq(invoicesTable.id, id));
+
+    const [updated] = await buildQuery().where(eq(invoicesTable.id, id));
+    res.json({ success: true, invoice: updated });
+  } catch (err: unknown) {
+    console.error("Delete payment link error:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to remove payment link" });
+  }
+});
 
 router.post("/:id/payment-link", async (req, res) => {
   try {

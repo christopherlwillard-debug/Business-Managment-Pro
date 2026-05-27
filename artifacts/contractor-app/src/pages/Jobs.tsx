@@ -22,7 +22,7 @@ import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
-import { InvoiceEditorDialog } from "@/components/InvoiceEditorDialog";
+import { InvoicePanel } from "@/components/InvoicePanel";
 import {
   Briefcase, MapPin, Calendar, HardHat, Users,
   Plus, Check, X, Trash2, ChevronDown, ChevronUp, FileText,
@@ -3121,26 +3121,19 @@ export default function Jobs() {
         />
       )}
 
-      {invoiceEditorOpen && (
-        <InvoiceEditorDialog
-          open={invoiceEditorOpen}
-          onOpenChange={open => {
-            if (!open) {
-              setInvoiceEditorOpen(false);
-              setInvoiceDraftData(null);
-              setSelectedExistingInvoice(null);
-            }
-          }}
-          initialData={invoiceDraftData}
-          existingInvoice={selectedExistingInvoice ?? undefined}
-          onSaved={() => {
+      <InvoicePanel
+        open={invoiceEditorOpen}
+        onOpenChange={open => {
+          if (!open) {
             setInvoiceEditorOpen(false);
             setInvoiceDraftData(null);
             setSelectedExistingInvoice(null);
-            queryClient.invalidateQueries();
-          }}
-        />
-      )}
+          }
+        }}
+        initialData={invoiceDraftData}
+        existingInvoice={selectedExistingInvoice ?? undefined}
+        onSaved={() => { queryClient.invalidateQueries(); }}
+      />
 
       {invoiceFetching && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
