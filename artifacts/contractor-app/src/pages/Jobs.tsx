@@ -1967,23 +1967,13 @@ function JobCard({
           </button>
         )}
 
-        {/* Draft invoice — edit + send payment link */}
+        {/* Draft invoice — open invoice panel to edit/send */}
         {invoiceSummary && invoiceSummary.status === "draft" && canEdit("invoices") && (
-          <div className="mt-1 flex gap-1.5">
-            <button
-              onClick={() => onReviewInvoice(job)}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-muted text-foreground border border-border text-xs font-bold hover:bg-muted/80 transition-colors">
-              <Edit2 className="w-3.5 h-3.5" /> Edit
-            </button>
-            <button
-              onClick={() => invoiceSummary && onSendPaymentLink?.(invoiceSummary.id, invoiceSummary.invoiceNumber ?? "", invoiceSummary.total ?? 0, invoiceSummary.jobId ?? 0)}
-              disabled={generatingLinkId === invoiceSummary?.id}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50">
-              {generatingLinkId === invoiceSummary?.id
-                ? <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
-                : <><CreditCard className="w-3.5 h-3.5" /> Send + Pay Link</>}
-            </button>
-          </div>
+          <button
+            onClick={() => onReviewInvoice(job)}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
+            <FileText className="w-3.5 h-3.5" /> Edit Invoice
+          </button>
         )}
 
         {/* Sent/overdue invoice — go manage it on Invoices page */}
