@@ -82,9 +82,9 @@ function BottomNav({ activeTab, setTab, features }: {
 
   const allTabs = [
     { key: "dashboard", label: "Home", icon: LayoutDashboard, primary: true },
-    ...(features.includes("payments") ? [{ key: "payments", label: "My Pay", icon: DollarSign, primary: true }] : []),
     ...(features.includes("jobs") ? [{ key: "jobs", label: "Jobs", icon: Briefcase, primary: true }] : []),
     ...(features.includes("income_report") ? [{ key: "income_report", label: "Income", icon: TrendingUp, primary: true }] : []),
+    ...(features.includes("payments") && !features.includes("income_report") ? [{ key: "payments", label: "My Pay", icon: DollarSign, primary: true }] : []),
     ...(features.includes("w9") ? [{ key: "w9", label: "W-9", icon: FileText, primary: false }] : []),
     ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt, primary: false }] : []),
     ...(features.includes("mileage") ? [{ key: "mileage", label: "Mileage", icon: Navigation, primary: false }] : []),
@@ -1896,7 +1896,7 @@ function TaxReportsTab({ token }: { token: string }) {
 }
 
 // ─── Income Report Tab ────────────────────────────────────────────────────────
-function IncomeReportTab({ token, subName }: { token: string; subName: string }) {
+function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subName: string; ytdPayments?: number }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const years = [currentYear, currentYear - 1, currentYear - 2];
@@ -1946,6 +1946,26 @@ function IncomeReportTab({ token, subName }: { token: string; subName: string })
           )}
         </div>
       </div>
+
+      {/* YTD threshold card — current year only */}
+      {year === currentYear && ytdPayments != null && (
+        <div className="space-y-3 no-print">
+          <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Year-to-Date Payments</p>
+            <p className="text-4xl font-display font-bold text-emerald-600 mt-2">{formatCurrency(ytdPayments)}</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              {ytdPayments >= 2000
+                ? "⚠️ You may receive a 1099-NEC for this tax year."
+                : `${formatCurrency(2000 - ytdPayments)} more before a 1099-NEC is required.`}
+            </p>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <p className="text-xs text-amber-800">
+              <strong>2026 Rule (OBBBA):</strong> If you receive $2,000 or more in total payments from a single contractor in a tax year, they are required to file a 1099-NEC.
+            </p>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-10 text-muted-foreground animate-pulse">Loading income report…</div>
@@ -2217,9 +2237,9 @@ export default function SubcontractorPortal() {
       <Header name={subcontractor.name} trade={subcontractor.trade} />
       <div className="max-w-2xl mx-auto px-4 py-6 pb-28">
         {activeTab === "dashboard" && <DashboardTab data={data} features={features} setTab={setActiveTab} />}
-        {activeTab === "payments" && features.includes("payments") && <PaymentsTab data={data} />}
+        {activeTab === "payments" && features.includes("payments") && !features.includes("income_report") && <PaymentsTab data={data} />}
         {activeTab === "income_report" && features.includes("income_report") && (
-          <IncomeReportTab token={token!} subName={subcontractor.name} />
+          <IncomeReportTab token={token!} subName={subcontractor.name} ytdPayments={stats.ytdPayments} />
         )}
         {activeTab === "jobs" && features.includes("jobs") && <JobsTab jobs={jobs} token={token!} onJobCompleted={() => { refetch(); qc.invalidateQueries({ queryKey: ["portal", token] }); }} />}
         {activeTab === "w9" && features.includes("w9") && (
