@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema } from "@workspace/db/schema";
-import { eq, and, count, inArray, sql } from "drizzle-orm";
+import { eq, and, count, inArray, sql, isNull } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { z } from "zod/v4";
 
@@ -281,8 +281,10 @@ router.get("/:id/profit", async (req, res) => {
     const [invRows, expRows] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
+      // Exclude auto-created sub-hour expenses (jobSubHoursId IS NOT NULL) — those dollars
+      // are already captured in subLaborCost below. Including them here would double-count.
       db.select({ amount: expensesTable.amount, category: expensesTable.category })
-        .from(expensesTable).where(eq(expensesTable.jobId, id)),
+        .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId))),
     ]);
 
     let grossInvoiced = 0;

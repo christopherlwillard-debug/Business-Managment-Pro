@@ -58,21 +58,14 @@ export async function computeYtd(subcontractorId: number, year: number): Promise
       )
     );
 
-  // Also include payments recorded directly on job cards (job_subcontractors.amount_paid)
-  const [jobPayRow] = await db
-    .select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountPaid}), 0)` })
-    .from(jobSubcontractorsTable)
-    .where(
-      and(
-        eq(jobSubcontractorsTable.subcontractorId, subcontractorId),
-        sql`${jobSubcontractorsTable.paidDate} LIKE ${yearStr + "-%"}`
-      )
-    );
+  // NOTE: job_subcontractors.amount_paid is intentionally NOT included here.
+  // Sub hours auto-create linked expenses in expensesTable (category="Subcontractor"),
+  // so expRow already captures those payments. Adding amount_paid on top would
+  // double-count the same dollars in YTD totals and 1099 calculations.
 
   return (
     parseFloat(expRow?.total ?? "0") +
-    parseFloat(payRow?.total ?? "0") +
-    parseFloat(jobPayRow?.total ?? "0")
+    parseFloat(payRow?.total ?? "0")
   );
 }
 
