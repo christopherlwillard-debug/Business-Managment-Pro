@@ -1976,12 +1976,12 @@ function JobCard({
           </button>
         )}
 
-        {/* Sent/overdue invoice — go manage it on Invoices page */}
+        {/* Sent/overdue invoice — open panel to view/manage */}
         {invoiceSummary && (invoiceSummary.status === "sent" || invoiceSummary.status === "overdue") && (
           <button
-            onClick={onGoToInvoices}
+            onClick={() => onReviewInvoice(job)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-colors">
-            <FileText className="w-3.5 h-3.5" /> Manage Invoice <ArrowRight className="w-3 h-3 ml-auto" />
+            <FileText className="w-3.5 h-3.5" /> View Invoice
           </button>
         )}
 

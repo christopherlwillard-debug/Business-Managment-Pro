@@ -607,7 +607,7 @@ export function InvoicePanel({
                   {generatingLink
                     ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     : <CreditCard className="w-3.5 h-3.5" />}
-                  <span className="hidden sm:inline">{generatingLink ? "Generating…" : "Pay Link"}</span>
+                  <span className="hidden sm:inline">{generatingLink ? "Generating…" : "Payment Link"}</span>
                 </button>
               )
             )}
@@ -842,7 +842,7 @@ export function InvoicePanel({
                 </div>
 
                 {/* ── Bill To + Work Location ── */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Bill To */}
                   <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
                     <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
