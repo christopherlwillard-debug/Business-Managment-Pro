@@ -2778,7 +2778,14 @@ export default function Jobs() {
           li => !currentLineItems.some(cur => cur.description === li.description)
         );
 
-        if (missingLines.length > 0) {
+        // Skip the merge if the invoice already has real (non-zero, non-Materials) line items.
+        // Once the user has customised their invoice lines, their edits take precedence and
+        // we must not re-add estimate lines that no longer match by description.
+        const hasRealContent = currentLineItems.some(
+          li => li.unitPrice !== 0 && li.description !== "Materials"
+        );
+
+        if (!hasRealContent && missingLines.length > 0) {
           // Remove $0 placeholder lines (inserted by auto-sync before estimates were linked)
           // but keep anything manually edited (non-zero price) and the Materials line.
           const keepLines = currentLineItems.filter(
