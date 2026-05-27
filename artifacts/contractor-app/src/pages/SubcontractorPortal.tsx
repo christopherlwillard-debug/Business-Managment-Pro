@@ -75,17 +75,17 @@ function Header({ name, trade, activeTab, setTab, features }: {
   ];
 
   return (
-    <div className="bg-foreground text-background sticky top-0 z-10 shadow-lg">
+    <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
       <div className="max-w-2xl mx-auto px-4 pt-4 pb-0">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
-            <HardHat className="w-5 h-5 text-primary" />
+          <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <HardHat className="w-5 h-5 text-amber-600" />
           </div>
           <div>
-            <p className="text-[10px] text-background/40 font-semibold uppercase tracking-widest">Subcontractor Portal</p>
-            <h1 className="text-base font-display font-bold leading-tight">{name}</h1>
+            <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-widest">Subcontractor Portal</p>
+            <h1 className="text-base font-display font-bold leading-tight text-gray-900">{name}</h1>
           </div>
-          {trade && <span className="ml-auto text-xs px-2.5 py-1 rounded-full bg-primary/20 text-primary font-medium">{trade}</span>}
+          {trade && <span className="ml-auto text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">{trade}</span>}
         </div>
         {/* Tab bar */}
         <div className="flex overflow-x-auto scrollbar-hide gap-0.5 pb-0">
@@ -98,8 +98,8 @@ function Header({ name, trade, activeTab, setTab, features }: {
                 onClick={() => setTab(tab.key)}
                 className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
                   active
-                    ? "border-primary text-primary bg-primary/10"
-                    : "border-transparent text-background/50 hover:text-background/80 hover:border-background/20"
+                    ? "border-amber-500 text-amber-700 bg-amber-50"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" /> {tab.label}
