@@ -348,10 +348,6 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
           </table>
         </td></tr>
 
-        <tr><td style="padding:16px 40px;background:#fafafa;border-top:1px solid #f0f0f0;">
-          <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;">Thank you for your business &middot; ${esc(displayCompanyName || opts.companyName || "")}${opts.companyEmail ? ` &middot; ${esc(opts.companyEmail)}` : ""}</p>
-        </td></tr>
-
         <tr><td style="height:6px;background:linear-gradient(to right,#fbbf24,#f59e0b);font-size:0;">&nbsp;</td></tr>
       </table>
     </td></tr>

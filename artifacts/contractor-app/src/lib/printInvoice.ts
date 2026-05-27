@@ -224,10 +224,7 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
     </div>
     ${notesHtml}
   </div>
-  <div style="height:6px;background:linear-gradient(to right,#fbbf24,#f59e0b);margin-top:32px;"></div>
-  <div style="text-align:center;padding:12px 0 8px;font-size:10px;color:#9ca3af;">
-    Thank you for your business${settings.companyName ? " &middot; " + esc(settings.companyName) : ""}
-  </div>`;
+  <div style="height:6px;background:linear-gradient(to right,#fbbf24,#f59e0b);margin-top:32px;"></div>`;
 }
 
 export function buildInvoiceHtml(inv: PrintableInvoice, settings: PrintableSettings): string {

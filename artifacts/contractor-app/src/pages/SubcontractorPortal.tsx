@@ -57,58 +57,127 @@ const TAX_CLASSIFICATIONS = [
 ];
 
 // ─── Header ──────────────────────────────────────────────────────────────────
-function Header({ name, trade, activeTab, setTab, features }: {
-  name: string; trade?: string | null; activeTab: string;
-  setTab: (t: string) => void; features: string[];
-}) {
-  const tabs = [
-    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    ...(features.includes("payments") ? [{ key: "payments", label: "My Pay", icon: DollarSign }] : []),
-    ...(features.includes("income_report") ? [{ key: "income_report", label: "Income Report", icon: TrendingUp }] : []),
-    ...(features.includes("jobs") ? [{ key: "jobs", label: "Jobs", icon: Briefcase }] : []),
-    ...(features.includes("w9") ? [{ key: "w9", label: "W-9", icon: FileText }] : []),
-    ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt }] : []),
-    ...(features.includes("mileage") ? [{ key: "mileage", label: "Mileage", icon: Navigation }] : []),
-    ...(features.includes("tax_reports") ? [{ key: "tax_reports", label: "Tax Reports", icon: BarChart3 }] : []),
-    ...(features.includes("home_office") ? [{ key: "home_office", label: "Home Office", icon: Home }] : []),
-    { key: "settings", label: "Settings", icon: Settings },
-  ];
-
+function Header({ name, trade }: { name: string; trade?: string | null }) {
   return (
     <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
-      <div className="max-w-2xl mx-auto px-4 pt-4 pb-0">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-            <HardHat className="w-5 h-5 text-amber-600" />
-          </div>
-          <div>
-            <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-widest">Subcontractor Portal</p>
-            <h1 className="text-base font-display font-bold leading-tight text-gray-900">{name}</h1>
-          </div>
-          {trade && <span className="ml-auto text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">{trade}</span>}
+      <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+          <HardHat className="w-5 h-5 text-amber-600" />
         </div>
-        {/* Tab bar */}
-        <div className="flex overflow-x-auto scrollbar-hide gap-0.5 pb-0">
-          {tabs.map(tab => {
+        <div className="min-w-0">
+          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest leading-none mb-0.5">Subcontractor Portal</p>
+          <h1 className="text-sm font-display font-bold leading-tight text-gray-900 truncate">{name}</h1>
+        </div>
+        {trade && <span className="ml-auto flex-shrink-0 text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">{trade}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Bottom Nav ───────────────────────────────────────────────────────────────
+function BottomNav({ activeTab, setTab, features }: {
+  activeTab: string; setTab: (t: string) => void; features: string[];
+}) {
+  const [showMore, setShowMore] = useState(false);
+
+  const allTabs = [
+    { key: "dashboard", label: "Home", icon: LayoutDashboard, primary: true },
+    ...(features.includes("payments") ? [{ key: "payments", label: "My Pay", icon: DollarSign, primary: true }] : []),
+    ...(features.includes("jobs") ? [{ key: "jobs", label: "Jobs", icon: Briefcase, primary: true }] : []),
+    ...(features.includes("income_report") ? [{ key: "income_report", label: "Income", icon: TrendingUp, primary: true }] : []),
+    ...(features.includes("w9") ? [{ key: "w9", label: "W-9", icon: FileText, primary: false }] : []),
+    ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt, primary: false }] : []),
+    ...(features.includes("mileage") ? [{ key: "mileage", label: "Mileage", icon: Navigation, primary: false }] : []),
+    ...(features.includes("tax_reports") ? [{ key: "tax_reports", label: "Tax Reports", icon: BarChart3, primary: false }] : []),
+    ...(features.includes("home_office") ? [{ key: "home_office", label: "Home Office", icon: Home, primary: false }] : []),
+    { key: "settings", label: "Settings", icon: Settings, primary: false },
+  ];
+
+  const MAX_PRIMARY = 4;
+  const primaryTabs = allTabs.filter(t => t.primary).slice(0, MAX_PRIMARY);
+  const secondaryTabs = allTabs.filter(t => !primaryTabs.includes(t));
+  const hasMore = secondaryTabs.length > 0;
+  const moreIsActive = secondaryTabs.some(t => t.key === activeTab);
+
+  function handleTabClick(key: string) {
+    setTab(key);
+    setShowMore(false);
+  }
+
+  return (
+    <>
+      {/* More sheet overlay */}
+      {showMore && (
+        <div className="fixed inset-0 z-30" onClick={() => setShowMore(false)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div
+            className="absolute bottom-16 left-0 right-0 max-w-2xl mx-auto bg-white rounded-t-2xl shadow-xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-4" />
+            <div className="grid grid-cols-3 gap-1 px-4 pb-6">
+              {secondaryTabs.map(tab => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => handleTabClick(tab.key)}
+                    className={`flex flex-col items-center gap-1.5 py-4 px-2 rounded-xl transition-colors ${
+                      active ? "bg-amber-50 text-amber-700" : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    }`}
+                  >
+                    <Icon className={`w-6 h-6 ${active ? "text-amber-600" : ""}`} />
+                    <span className="text-[11px] font-semibold text-center leading-tight">{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]">
+        <div className="max-w-2xl mx-auto flex">
+          {primaryTabs.map(tab => {
             const Icon = tab.icon;
             const active = activeTab === tab.key;
             return (
               <button
                 key={tab.key}
-                onClick={() => setTab(tab.key)}
-                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
-                  active
-                    ? "border-amber-500 text-amber-700 bg-amber-50"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                onClick={() => handleTabClick(tab.key)}
+                className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 transition-colors ${
+                  active ? "text-amber-600" : "text-gray-400 hover:text-gray-600"
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" /> {tab.label}
+                <div className={`p-1.5 rounded-xl transition-colors ${active ? "bg-amber-100" : ""}`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className={`text-[10px] font-semibold ${active ? "text-amber-700" : ""}`}>{tab.label}</span>
               </button>
             );
           })}
+          {hasMore && (
+            <button
+              onClick={() => setShowMore(v => !v)}
+              className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 transition-colors ${
+                moreIsActive || showMore ? "text-amber-600" : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              <div className={`p-1.5 rounded-xl transition-colors ${moreIsActive || showMore ? "bg-amber-100" : ""}`}>
+                <ChevronDown className={`w-5 h-5 transition-transform ${showMore ? "rotate-180" : ""}`} />
+              </div>
+              <span className={`text-[10px] font-semibold ${moreIsActive || showMore ? "text-amber-700" : ""}`}>
+                {moreIsActive ? secondaryTabs.find(t => t.key === activeTab)?.label ?? "More" : "More"}
+              </span>
+            </button>
+          )}
         </div>
+        {/* safe area spacer for phones with home bar */}
+        <div className="h-safe-bottom" style={{ height: "env(safe-area-inset-bottom, 0px)" }} />
       </div>
-    </div>
+    </>
   );
 }
 
@@ -2145,14 +2214,8 @@ export default function SubcontractorPortal() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <Header
-        name={subcontractor.name}
-        trade={subcontractor.trade}
-        activeTab={activeTab}
-        setTab={setActiveTab}
-        features={features}
-      />
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <Header name={subcontractor.name} trade={subcontractor.trade} />
+      <div className="max-w-2xl mx-auto px-4 py-6 pb-28">
         {activeTab === "dashboard" && <DashboardTab data={data} features={features} setTab={setActiveTab} />}
         {activeTab === "payments" && features.includes("payments") && <PaymentsTab data={data} />}
         {activeTab === "income_report" && features.includes("income_report") && (
@@ -2181,6 +2244,7 @@ export default function SubcontractorPortal() {
           Secure portal powered by your contractor · Data visible only to you and your contractor
         </p>
       </div>
+      <BottomNav activeTab={activeTab} setTab={setActiveTab} features={features} />
     </div>
   );
 }

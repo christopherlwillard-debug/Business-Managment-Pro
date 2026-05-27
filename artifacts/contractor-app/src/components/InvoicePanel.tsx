@@ -289,7 +289,6 @@ export function InvoicePanel({
     : (jobs as any[]);
 
   function handlePrint() {
-    const absoluteLogoUrl = logoUrl ? `${window.location.origin}${base}${logoUrl}` : null;
     printInvoiceWindow(
       {
         invoiceNumber: previewNumber,
@@ -323,7 +322,7 @@ export function InvoicePanel({
         companyCity,
         companyState,
         companyZip,
-        logoAbsoluteUrl: absoluteLogoUrl,
+        logoAbsoluteUrl: logoDataUri,
         logoSize,
         logoPosition: logoPos,
       }
@@ -409,7 +408,10 @@ export function InvoicePanel({
   }
 
   async function handleGmailSend() {
-    if (!effectiveExistingInvoice) return;
+    if (!effectiveExistingInvoice) {
+      toast({ title: "Save the invoice first", description: "Save the invoice before sending via Gmail.", variant: "destructive" });
+      return;
+    }
     if (!gmailTo.trim()) {
       toast({ title: "Recipient required", description: "Enter a recipient email address.", variant: "destructive" });
       return;
