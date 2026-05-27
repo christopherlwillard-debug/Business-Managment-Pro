@@ -1905,9 +1905,14 @@ export default function Expenses() {
                                         <RotateCcw className="w-2.5 h-2.5" /> Recurring ↓
                                       </button>
                                     )}
-                                    {(exp as any).subcontractorName && exp.category?.toLowerCase() === "subcontractor" && (
+                                    {(exp as any).subcontractorName && exp.category?.toLowerCase() === "subcontractor" && !(exp as any).jobSubHoursId && (
                                       <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-100 flex-shrink-0">
                                         <HardHat className="w-2.5 h-2.5" /> Sub Payment
+                                      </span>
+                                    )}
+                                    {(exp as any).jobSubHoursId && (
+                                      <span className="inline-flex items-center gap-1 bg-violet-50 text-violet-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-violet-200 flex-shrink-0" title="Auto-created from sub hours logged on the job card. Edit hours on the job to update.">
+                                        <HardHat className="w-2.5 h-2.5" /> Auto • Hours
                                       </span>
                                     )}
                                   </div>
@@ -1952,7 +1957,7 @@ export default function Expenses() {
                                       className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
                                       <Eye className="w-4 h-4" />
                                     </button>
-                                    {canEdit("expenses") && (
+                                    {canEdit("expenses") && !(exp as any).jobSubHoursId && (
                                       <>
                                         <button onClick={() => { setEditReceiptFile(null); setEditingRow({
                                             id: exp.id,
@@ -1974,6 +1979,11 @@ export default function Expenses() {
                                           <Trash2 className="w-4 h-4" />
                                         </button>
                                       </>
+                                    )}
+                                    {(exp as any).jobSubHoursId && (
+                                      <span className="text-[10px] text-muted-foreground italic" title="Managed from sub hours on the job card">
+                                        From job card
+                                      </span>
                                     )}
                                   </div>
                                 </td>

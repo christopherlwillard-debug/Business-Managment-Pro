@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable } from "@workspace/db/schema";
+import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable, expensesTable, jobsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { recomputeSubPaid } from "./jobs";
 
@@ -14,6 +14,47 @@ function fmt(row: typeof jobSubHoursTable.$inferSelect & { subName?: string | nu
     subName: row.subName ?? null,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
   };
+}
+
+function buildExpenseDescription(hours: number, rate: number | null, subName: string | null): string {
+  const h = hours.toFixed(1).replace(/\.0$/, "");
+  if (rate != null && rate > 0) {
+    return `${subName ?? "Subcontractor"} — ${h}h @ $${rate.toFixed(2)}/hr`;
+  }
+  return `${subName ?? "Subcontractor"} — ${h}h labor`;
+}
+
+async function upsertLinkedExpense(hoursId: number, jobId: number, subcontractorId: number, date: string, hours: number, rate: number | null, subName: string | null): Promise<void> {
+  const amount = rate != null && rate > 0 ? hours * rate : 0;
+  const description = buildExpenseDescription(hours, rate, subName);
+
+  const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+
+  const existing = await db.select({ id: expensesTable.id })
+    .from(expensesTable)
+    .where(eq(expensesTable.jobSubHoursId, hoursId));
+
+  if (existing.length > 0) {
+    await db.update(expensesTable)
+      .set({ description, amount: String(amount.toFixed(2)), date, jobSubHoursId: hoursId })
+      .where(eq(expensesTable.jobSubHoursId, hoursId));
+  } else {
+    await db.insert(expensesTable).values({
+      description,
+      amount: String(amount.toFixed(2)),
+      category: "Subcontractor",
+      date,
+      jobId,
+      subcontractorId,
+      jobSubHoursId: hoursId,
+      businessLine: job?.businessLine ?? null,
+      notes: "Auto-created from job card sub hours",
+    });
+  }
+}
+
+async function deleteLinkedExpense(hoursId: number): Promise<void> {
+  await db.delete(expensesTable).where(eq(expensesTable.jobSubHoursId, hoursId));
 }
 
 router.get("/:jobId/sub-hours", async (req, res) => {
@@ -68,7 +109,12 @@ router.post("/:jobId/sub-hours", async (req, res) => {
 
     const [sub] = await db.select({ name: subcontractorsTable.name })
       .from(subcontractorsTable).where(eq(subcontractorsTable.id, row.subcontractorId));
-    // Recompute job sub_paid after hours change
+
+    const rateNum = resolvedRate != null ? parseFloat(resolvedRate) : null;
+    await upsertLinkedExpense(row.id, jobId, row.subcontractorId, date, parseFloat(String(hours)), rateNum, sub?.name ?? null).catch(e => {
+      console.error("Auto-expense creation failed:", e.message);
+    });
+
     await recomputeSubPaid(jobId).catch(() => {});
     res.status(201).json(fmt({ ...row, subName: sub?.name ?? null }));
   } catch (err) {
@@ -92,7 +138,13 @@ router.put("/sub-hours/:id", async (req, res) => {
 
     const [sub] = await db.select({ name: subcontractorsTable.name })
       .from(subcontractorsTable).where(eq(subcontractorsTable.id, row.subcontractorId));
-    // Recompute job sub_paid after hours change
+
+    const rateNum = row.rateSnapshot != null ? parseFloat(row.rateSnapshot) : null;
+    const hoursNum = parseFloat(row.hours ?? "0");
+    await upsertLinkedExpense(row.id, row.jobId, row.subcontractorId, row.date, hoursNum, rateNum, sub?.name ?? null).catch(e => {
+      console.error("Auto-expense update failed:", e.message);
+    });
+
     await recomputeSubPaid(row.jobId).catch(() => {});
     res.json(fmt({ ...row, subName: sub?.name ?? null }));
   } catch (err) {
@@ -104,8 +156,10 @@ router.put("/sub-hours/:id", async (req, res) => {
 router.delete("/sub-hours/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    await deleteLinkedExpense(id).catch(e => {
+      console.error("Auto-expense deletion failed:", e.message);
+    });
     const [deleted] = await db.delete(jobSubHoursTable).where(eq(jobSubHoursTable.id, id)).returning();
-    // Recompute job sub_paid after hours deletion
     if (deleted) await recomputeSubPaid(deleted.jobId).catch(() => {});
     res.status(204).send();
   } catch (err) {

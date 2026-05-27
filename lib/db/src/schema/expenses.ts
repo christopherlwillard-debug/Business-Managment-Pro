@@ -18,6 +18,7 @@ export const expensesTable = pgTable("expenses", {
   recurringExpenseId: integer("recurring_expense_id").references(() => recurringExpensesTable.id, { onDelete: "set null" }),
   excludeFromNetProfit: boolean("exclude_from_net_profit").default(false).notNull(),
   businessLine: text("business_line"),
+  jobSubHoursId: integer("job_sub_hours_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

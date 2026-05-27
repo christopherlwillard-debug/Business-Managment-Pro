@@ -616,3 +616,12 @@ pool.query(\`
 \`).then(() => { console.log('contacts table ensured'); pool.end(); })
   .catch(e => { console.error('contacts migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Idempotent migration: add job_sub_hours_id to expenses (auto-expense from sub hours)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS job_sub_hours_id integer REFERENCES job_sub_hours(id) ON DELETE SET NULL')
+  .then(() => { console.log('expenses.job_sub_hours_id ensured'); pool.end(); })
+  .catch(e => { console.error('job_sub_hours_id migration error:', e.message); pool.end(); process.exit(1); });
+")
