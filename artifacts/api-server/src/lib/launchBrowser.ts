@@ -4,31 +4,36 @@ import { existsSync } from "node:fs";
 
 function resolveChromiumPath(): string {
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH;
-    if (existsSync(fromEnv)) return fromEnv;
+    const p = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (existsSync(p)) return p;
   }
 
-  // Try system chromium via PATH first (works in dev with pkgs.chromium in replit.nix)
+  // Login shell sources the Nix profile (~/.nix-profile/etc/profile.d/nix.sh)
+  // which puts pkgs.chromium on PATH — works in both dev and deployed containers.
   for (const cmd of ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]) {
     try {
-      const p = execSync(`which ${cmd}`, { encoding: "utf8" }).trim();
-      if (p && existsSync(p)) return p;
+      const p = execSync(`bash -l -c 'which ${cmd}'`, { encoding: "utf8", timeout: 5000 }).trim();
+      if (p && existsSync(p)) {
+        console.log(`[launchBrowser] Found system chromium via login shell: ${p}`);
+        return p;
+      }
     } catch {}
   }
 
-  // Well-known NixOS paths (deployed Replit environment)
+  // Direct Nix store paths as additional fallback
   const nixPaths = [
     "/home/runner/.nix-profile/bin/chromium",
     "/nix/var/nix/profiles/default/bin/chromium",
     "/run/current-system/sw/bin/chromium",
-    "/home/runner/.nix-profile/bin/chromium-browser",
   ];
   for (const p of nixPaths) {
     if (existsSync(p)) return p;
   }
 
   // Last resort: bundled puppeteer chrome
-  return puppeteer.executablePath();
+  const bundled = puppeteer.executablePath();
+  console.log(`[launchBrowser] Falling back to bundled Chrome: ${bundled}`);
+  return bundled;
 }
 
 const ARGS = [
@@ -44,17 +49,6 @@ const ARGS = [
 ];
 
 export async function launchBrowser(): Promise<Browser> {
-  const primary = resolveChromiumPath();
-  try {
-    return await puppeteer.launch({ executablePath: primary, headless: true, args: ARGS });
-  } catch (firstErr) {
-    // If primary failed, try the bundled chrome as a last-ditch fallback
-    const bundled = puppeteer.executablePath();
-    if (bundled && bundled !== primary && existsSync(bundled)) {
-      try {
-        return await puppeteer.launch({ executablePath: bundled, headless: true, args: ARGS });
-      } catch {}
-    }
-    throw firstErr;
-  }
+  const execPath = resolveChromiumPath();
+  return puppeteer.launch({ executablePath: execPath, headless: true, args: ARGS });
 }
