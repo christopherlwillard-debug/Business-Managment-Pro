@@ -281,8 +281,9 @@ router.get("/:id/profit", async (req, res) => {
     const [invRows, expRows] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
-      // Exclude auto-created sub-hour expenses (jobSubHoursId IS NOT NULL) — those dollars
-      // are already captured in subLaborCost below. Including them here would double-count.
+      // Fetch all expenses not auto-linked to a sub-hours row.
+      // Subcontractor-category expenses are moved into the sub labor bucket below
+      // so they never double-count with hours-based sub labor cost.
       db.select({ amount: expensesTable.amount, category: expensesTable.category })
         .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId))),
     ]);
@@ -295,21 +296,33 @@ router.get("/:id/profit", async (req, res) => {
       if (inv.status === "paid") collected += t;
     }
     let jobExpenses = 0;
+    let flatSubCost = 0; // Subcontractor-category expenses not linked to hours
     for (const exp of expRows) {
-      if (exp.category !== "Owner Draw") jobExpenses += parseFloat(exp.amount ?? "0");
+      if (exp.category === "Owner Draw") continue;
+      if (exp.category === "Subcontractor") {
+        // Keep sub costs in the sub labor bucket, not in general job expenses
+        flatSubCost += parseFloat(exp.amount ?? "0");
+      } else {
+        jobExpenses += parseFloat(exp.amount ?? "0");
+      }
     }
 
     const [subHoursRow] = await db
       .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
       .from(jobSubHoursTable)
       .where(eq(jobSubHoursTable.jobId, id));
-    const subLaborCost = parseFloat(subHoursRow?.total ?? "0");
+    const hoursLaborCost = parseFloat(subHoursRow?.total ?? "0");
 
     const [subHoursSum] = await db
       .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
       .from(jobSubHoursTable)
       .where(eq(jobSubHoursTable.jobId, id));
     const totalSubHours = parseFloat(subHoursSum?.total ?? "0");
+
+    // If hours are tracked, those expenses are the authoritative sub cost (auto-expenses
+    // from hours carry jobSubHoursId and were already excluded above). If no hours exist,
+    // fall back to flat sub expenses so flat-rate subs still show up.
+    const subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : flatSubCost;
 
     res.json({ grossInvoiced, collected, jobExpenses, subLaborCost, totalSubHours, netProfit: collected - jobExpenses - subLaborCost });
   } catch (err) {
@@ -329,8 +342,9 @@ router.get("/profit-summary", async (req, res) => {
     const [invRows, expRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
+      // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
       db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
-        .from(expensesTable).where(inArray(expensesTable.jobId, jobIds)),
+        .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId))),
     ]);
 
     const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; netProfit: number }> = {};
@@ -349,6 +363,7 @@ router.get("/profit-summary", async (req, res) => {
       const r = result[exp.jobId];
       if (!r) continue;
       if (exp.category === "Owner Draw") continue;
+      if (exp.category === "Subcontractor") continue; // sub costs shown in Sub Labor Cost, not here
       r.jobExpenses += parseFloat(exp.amount ?? "0");
     }
     for (const id of jobIds) result[id].netProfit = result[id].collected - result[id].jobExpenses;
