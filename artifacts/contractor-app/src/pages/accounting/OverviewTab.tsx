@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   TrendingUp, TrendingDown, DollarSign, MapPin, AlertCircle, CheckCircle2,
   AlertTriangle, Calendar, ExternalLink, ChevronDown, CheckCircle,
-  Plus, Pencil, Trash2, X, PieChart, ChevronRight, Upload, Eye, EyeOff,
+  Plus, Pencil, Trash2, X, PieChart, ChevronRight, Upload, Eye, EyeOff, Wallet,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -215,6 +215,38 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
     }
     return null;
   });
+  // ── Owner Capital Recovery ──────────────────────────────────────────────────
+  const qc2 = useQueryClient();
+  const { data: settingsData } = useQuery<any>({
+    queryKey: ["settings"],
+    queryFn: () => fetch(`${BASE}/api/settings`).then(r => r.json()),
+  });
+  const savedInvestment: number = parseFloat(settingsData?.calculatorDefaults?.ownerPersonalInvestment ?? "0") || 0;
+  const [investmentInput, setInvestmentInput] = useState<string>("");
+  const [investmentEditing, setInvestmentEditing] = useState(false);
+  const [investmentSaving, setInvestmentSaving] = useState(false);
+  const { toast } = useToast();
+  useEffect(() => {
+    if (!investmentEditing) setInvestmentInput(savedInvestment > 0 ? String(savedInvestment) : "");
+  }, [savedInvestment, investmentEditing]);
+
+  async function saveInvestment() {
+    setInvestmentSaving(true);
+    try {
+      const amount = parseFloat(investmentInput) || 0;
+      const existing = settingsData?.calculatorDefaults ?? {};
+      await fetch(`${BASE}/api/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ calculatorDefaults: { ...existing, ownerPersonalInvestment: String(amount) } }),
+      });
+      await qc2.invalidateQueries({ queryKey: ["settings"] });
+      setInvestmentEditing(false);
+      toast({ title: "Saved", description: "Personal investment amount updated." });
+    } catch { toast({ title: "Error", description: "Could not save.", variant: "destructive" }); }
+    finally { setInvestmentSaving(false); }
+  }
+
   const { data: clientsList = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["clients-list-oi"],
     queryFn: () => fetch(`${BASE}/api/clients`).then(r => r.json()),
@@ -368,6 +400,111 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
           </div>
         </div>
       </div>
+
+      {/* ── Owner Capital Recovery ── */}
+      {(() => {
+        const ownerDraws = s.ownerDrawTotal ?? 0;
+        const owedToOwner = savedInvestment + netProfit - ownerDraws;
+        return (
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-violet-600 flex-shrink-0" />
+                <span className="font-semibold text-sm text-foreground">Owner Capital Recovery — {year}</span>
+              </div>
+              {!investmentEditing && (
+                <button
+                  onClick={() => { setInvestmentEditing(true); setInvestmentInput(savedInvestment > 0 ? String(savedInvestment) : ""); }}
+                  className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
+                >
+                  <Pencil className="w-3 h-3" />
+                  {savedInvestment > 0 ? "Edit" : "Set investment"}
+                </button>
+              )}
+            </div>
+            <div className="p-5 space-y-3">
+
+              {/* Personal funds invested — editable row */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Personal Funds Invested</p>
+                  <p className="text-[10px] text-muted-foreground">Money you put in out of pocket</p>
+                </div>
+                {investmentEditing ? (
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        autoFocus
+                        value={investmentInput}
+                        onChange={e => setInvestmentInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") saveInvestment(); if (e.key === "Escape") setInvestmentEditing(false); }}
+                        className="w-32 pl-6 pr-2 py-1.5 border border-border rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-violet-400 bg-background"
+                      />
+                    </div>
+                    <button onClick={saveInvestment} disabled={investmentSaving} className="text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-violet-700 disabled:opacity-50">
+                      {investmentSaving ? "…" : "Save"}
+                    </button>
+                    <button onClick={() => setInvestmentEditing(false)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-sm font-bold text-violet-700">
+                    {savedInvestment > 0 ? formatCurrency(savedInvestment) : <span className="text-muted-foreground italic text-xs">Not set</span>}
+                  </span>
+                )}
+              </div>
+
+              {/* Net profit */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">+ Net Profit (YTD)</p>
+                  <p className="text-[10px] text-muted-foreground">Revenue minus all business expenses</p>
+                </div>
+                <span className={`text-sm font-bold ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{netProfit >= 0 ? "+" : ""}{formatCurrency(netProfit)}</span>
+              </div>
+
+              {/* Owner draws */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">− Owner Draws Taken</p>
+                  <p className="text-[10px] text-muted-foreground">Money already pulled out</p>
+                </div>
+                <span className="text-sm font-bold text-foreground">−{formatCurrency(ownerDraws)}</span>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-border" />
+
+              {/* Result */}
+              <div className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 ${owedToOwner >= 0 ? "border-violet-300 bg-violet-50" : "border-red-300 bg-red-50"}`}>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wide ${owedToOwner >= 0 ? "text-violet-700" : "text-red-700"}`}>
+                    {owedToOwner >= 0 ? "= Business Owes You" : "= Still in the Hole"}
+                  </p>
+                  <p className={`text-[10px] mt-0.5 ${owedToOwner >= 0 ? "text-violet-600" : "text-red-500"}`}>
+                    {owedToOwner >= 0
+                      ? "Your investment + profits not yet drawn out"
+                      : "Business hasn't earned back your investment yet"}
+                  </p>
+                </div>
+                <span className={`text-xl font-black ${owedToOwner >= 0 ? "text-violet-700" : "text-red-600"}`}>{formatCurrency(Math.abs(owedToOwner))}</span>
+              </div>
+
+              {savedInvestment === 0 && !investmentEditing && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-start gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800">Tap <span className="font-semibold">"Set investment"</span> above to enter the total personal funds you've put into the business.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Direct Job Costs vs Overhead ── */}
       {(() => {
