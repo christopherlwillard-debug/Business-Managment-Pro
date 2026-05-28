@@ -603,11 +603,15 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
     if (amountPaid !== undefined) updates.amountPaid = amountPaid != null ? String(amountPaid) : null;
     if (paidDate !== undefined) updates.paidDate = paidDate || null;
     if (paidNotes !== undefined) updates.paidNotes = paidNotes || null;
-    const [row] = await db.update(jobSubcontractorsTable)
-      .set(updates)
-      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, subId)))
+    // Upsert: creates the sub-job link if it doesn't exist yet, then updates payment fields.
+    // This allows recording a payment even when the sub was never formally assigned to the job.
+    const [row] = await db.insert(jobSubcontractorsTable)
+      .values({ jobId, subcontractorId: subId, ...updates })
+      .onConflictDoUpdate({
+        target: [jobSubcontractorsTable.jobId, jobSubcontractorsTable.subcontractorId],
+        set: updates,
+      })
       .returning();
-    if (!row) return res.status(404).json({ error: "Sub-job link not found" });
 
     const allPaid = await recomputeSubPaid(jobId);
 

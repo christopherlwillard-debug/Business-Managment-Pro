@@ -1335,10 +1335,51 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
             <div className="p-4 space-y-3">
               {loading ? (
                 <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-xl bg-muted/40 animate-pulse" />)}</div>
-              ) : payments.length === 0 ? (
+              ) : payments.length === 0 && subExpenses.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <DollarSign className="w-10 h-10 text-muted-foreground/30 mb-3" />
                   <p className="text-sm text-muted-foreground">No subcontractors assigned to this job yet</p>
+                </div>
+              ) : payments.length === 0 && subExpenses.length > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground px-1">
+                    No subs are formally assigned to this job, but these sub expenses were recorded. Tap <strong>Mark Paid</strong> to link and settle them.
+                  </p>
+                  {Object.entries(
+                    subExpenses.reduce<Record<number, { subName: string | null; total: number; lastDate: string }>>((acc, e) => {
+                      const sid = e.subcontractorId ?? 0;
+                      if (!acc[sid]) acc[sid] = { subName: e.subName, total: 0, lastDate: e.date };
+                      acc[sid].total += parseFloat(e.amount ?? "0");
+                      if (e.date > acc[sid].lastDate) acc[sid].lastDate = e.date;
+                      return acc;
+                    }, {})
+                  ).map(([sidStr, grp]) => {
+                    const sid = parseInt(sidStr);
+                    return (
+                      <div key={sid} className="rounded-xl border border-border overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                          <p className="text-xs font-bold text-foreground">{grp.subName ?? `Sub #${sid}`}</p>
+                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">{formatCurrency(grp.total)} owed</span>
+                        </div>
+                        <div className="p-3 space-y-2">
+                          <p className="text-xs text-muted-foreground">Expense recorded on {formatDate(grp.lastDate)} — not yet marked paid on this job.</p>
+                          <button
+                            onClick={async () => {
+                              await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${sid}`, {
+                                method: "PUT", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ amountPaid: grp.total, amountOwed: grp.total, paidDate: grp.lastDate, paidNotes: "Synced from expense record" }),
+                              });
+                              await loadData();
+                              qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+                              toast({ title: "Marked as paid", description: `${formatCurrency(grp.total)} payment recorded for ${grp.subName ?? "sub"}` });
+                            }}
+                            className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">
+                            Mark Paid — {formatCurrency(grp.total)}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 payments.map(pay => {
