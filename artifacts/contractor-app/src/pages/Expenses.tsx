@@ -1509,6 +1509,32 @@ export default function Expenses() {
         await saveVendor.mutateAsync(vendor.trim()).catch(() => {});
       }
 
+      // Auto-sync to job card: if this is a sub expense linked to a job,
+      // mark that sub as paid on the job card (only if not already paid)
+      const newJobId = fd.get("jobId");
+      if (category === "Subcontractor" && newJobId && subcontractorId) {
+        const jobIdVal = parseInt(newJobId as string);
+        const subIdVal = parseInt(subcontractorId);
+        const amount = parseFloat(fd.get("amount") as string);
+        const date = fd.get("date") as string;
+        try {
+          const payRes = await fetch(`${API}/jobs/${jobIdVal}/sub-payments`);
+          if (payRes.ok) {
+            const payRows = await payRes.json();
+            const row = Array.isArray(payRows) ? payRows.find((r: any) => r.subcontractorId === subIdVal) : null;
+            if (row && (row.amountPaid ?? 0) < 0.01) {
+              await fetch(`${API}/jobs/${jobIdVal}/sub-payments/${subIdVal}`, {
+                method: "PUT", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ amountPaid: amount, paidDate: date, paidNotes: "Synced from Expenses page" }),
+              });
+              toast({ title: "Job card updated", description: "Sub marked as paid on the job card." });
+            }
+          }
+        } catch {
+          // Non-fatal — expense was saved, sync is best-effort
+        }
+      }
+
       setIsDialogOpen(false);
       setReceiptFile(null);
       setVendor("");

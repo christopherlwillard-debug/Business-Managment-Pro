@@ -1032,12 +1032,12 @@ type SubHourEntry = { id: number; subcontractorId: number; subName: string | nul
 type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
-function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; onClose: () => void; initialTab?: "hours" | "payments" | "benchmark" }) {
   const { canEdit } = useUserPermissions();
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"hours" | "payments" | "benchmark">("hours");
+  const [activeTab, setActiveTab] = useState<"hours" | "payments" | "benchmark">(initialTab);
   const [hours, setHours] = useState<SubHourEntry[]>([]);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [benchmark, setBenchmark] = useState<BenchmarkRow | null>(null);
@@ -1045,6 +1045,8 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [editPayId, setEditPayId] = useState<number | null>(null);
+  type SubExpenseRow = { id: number; subcontractorId: number | null; subName: string | null; amount: string; date: string; description: string | null };
+  const [subExpenses, setSubExpenses] = useState<SubExpenseRow[]>([]);
 
   const today = localDateString();
   const [form, setForm] = useState({ subcontractorId: "", date: today, hours: "", description: "", rateSnapshot: "" });
@@ -1057,16 +1059,19 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   async function loadData() {
     setLoading(true);
     try {
-      const [hRes, pRes, bmRes] = await Promise.allSettled([
+      const [hRes, pRes, bmRes, seRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${job.id}/sub-hours`).then(r => r.json()),
         fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.json()),
         fetch(`${BASE}/api/job-type-benchmarks`).then(r => r.ok ? r.json() : Promise.resolve(null)),
+        fetch(`${BASE}/api/jobs/${job.id}/sub-expenses`).then(r => r.json()),
       ]);
       const h = hRes.status === "fulfilled" ? hRes.value : [];
       const p = pRes.status === "fulfilled" ? pRes.value : [];
       const allBenchmarks = bmRes.status === "fulfilled" ? bmRes.value : null;
+      const se = seRes.status === "fulfilled" ? seRes.value : [];
       setHours(Array.isArray(h) ? h : []);
       setPayments(Array.isArray(p) ? p : []);
+      setSubExpenses(Array.isArray(se) ? se : []);
       // Find matching benchmark for this job's type (silently skipped if endpoint forbidden)
       if (Array.isArray(allBenchmarks) && job.jobType) {
         const match = allBenchmarks.find((b: BenchmarkRow) =>
@@ -1383,6 +1388,36 @@ function JobSubHoursPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                               </div>
                             )}
                             {pay.paidNotes && <p className="text-[10px] text-muted-foreground">{pay.paidNotes}</p>}
+                            {(() => {
+                            const expsForSub = subExpenses.filter(e => e.subcontractorId === pay.subcontractorId);
+                            const expTotal = expsForSub.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+                            const notYetPaid = (pay.amountPaid ?? 0) < 0.01;
+                            if (expsForSub.length > 0 && notYetPaid) {
+                              return (
+                                <div className="flex items-center justify-between gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
+                                  <div className="min-w-0">
+                                    <p className="text-[11px] font-semibold text-blue-800">Expense found: {formatCurrency(expTotal)}</p>
+                                    <p className="text-[10px] text-blue-600">Subcontractor expense already recorded for this job. Mark paid?</p>
+                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      const lastExp = expsForSub[expsForSub.length - 1];
+                                      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${pay.subcontractorId}`, {
+                                        method: "PUT", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ amountPaid: expTotal, paidDate: lastExp.date, paidNotes: "Synced from expense record" }),
+                                      });
+                                      await loadData();
+                                      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+                                      toast({ title: "Marked as paid", description: `${formatCurrency(expTotal)} payment recorded` });
+                                    }}
+                                    className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 transition-colors">
+                                    Mark Paid
+                                  </button>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                             {canEdit("jobs") && (
                               <button onClick={() => setEditPayId(pay.subcontractorId)}
                                 className="mt-1 w-full py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
@@ -1696,6 +1731,7 @@ function JobCard({
   const [profitPanelOpen, setProfitPanelOpen] = useState(false);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [subHoursPanelOpen, setSubHoursPanelOpen] = useState(false);
+  const [subHoursInitialTab, setSubHoursInitialTab] = useState<"hours" | "payments" | "benchmark">("hours");
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
@@ -1723,13 +1759,19 @@ function JobCard({
                   GC
                 </span>
               )}
-              {hasSubExpenses && (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  job.subPaid ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
-                }`}>
+              {hasSubExpenses && job.subPaid && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
                   <HardHat className="w-2.5 h-2.5" />
-                  {job.subPaid ? "Sub Paid" : "Sub Unpaid"}
+                  Sub Paid
                 </span>
+              )}
+              {hasSubExpenses && !job.subPaid && (
+                <button
+                  onClick={() => { setSubHoursInitialTab("payments"); setSubHoursPanelOpen(true); }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors cursor-pointer">
+                  <HardHat className="w-2.5 h-2.5" />
+                  Sub Unpaid — tap to pay
+                </button>
               )}
               {Array.isArray(job.permitChecklist) && job.permitChecklist.length > 0 && (() => {
                 const unchecked = (job.permitChecklist as Array<{ label: string; checked: boolean }>).filter(p => !p.checked).length;
@@ -2023,7 +2065,7 @@ function JobCard({
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
       )}
       {subHoursPanelOpen && (
-        <JobSubHoursPanel job={job} onClose={() => setSubHoursPanelOpen(false)} />
+        <JobSubHoursPanel job={job} initialTab={subHoursInitialTab} onClose={() => { setSubHoursPanelOpen(false); setSubHoursInitialTab("hours"); }} />
       )}
     </>
   );

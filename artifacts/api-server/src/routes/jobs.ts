@@ -375,6 +375,35 @@ router.get("/profit-summary", async (req, res) => {
   }
 });
 
+// Subcontractor-category expenses for a job (not auto-linked to hours)
+// Used by the job card payments tab to detect existing expense records
+router.get("/:id/sub-expenses", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const rows = await db
+      .select({
+        id: expensesTable.id,
+        subcontractorId: expensesTable.subcontractorId,
+        subName: subcontractorsTable.name,
+        amount: expensesTable.amount,
+        date: expensesTable.date,
+        description: expensesTable.description,
+      })
+      .from(expensesTable)
+      .leftJoin(subcontractorsTable, eq(subcontractorsTable.id, expensesTable.subcontractorId))
+      .where(and(
+        eq(expensesTable.jobId, id),
+        eq(expensesTable.category, "Subcontractor"),
+        isNull(expensesTable.jobSubHoursId),
+      ));
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch sub expenses" });
+  }
+});
+
 router.get("/:id/invoice-draft", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

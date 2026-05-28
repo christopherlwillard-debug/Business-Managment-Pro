@@ -1,0 +1,140 @@
+You’re honestly building something pretty solid already. The layout looks clean, and more importantly, you’re tracking the right financial categories. Most contractor apps don’t even separate operational profit, owner draws, subcontractor obligations, and business categories the way you already are.
+
+Looking at your screenshots, the biggest thing I notice is that your app currently explains what already happened financially, but it doesn’t yet guide you toward what needs to happen next. That’s where the real value is.
+
+From your year-to-date numbers:
+
+* Revenue collected: $8,500
+* Total expenses: about $11,298
+* Operational loss: about -$3,115
+
+That means your expenses are currently higher than your revenue. Right now the business is spending roughly $1.33 for every $1 brought in.
+
+That sounds scary on paper, but honestly, for an early-stage contractor business it’s extremely common. Startup phases usually include:
+
+* tool purchases
+* truck expenses
+* software
+* branding
+* fuel
+* business setup costs
+* inconsistent work volume
+* underpriced jobs while learning
+* delayed collections
+
+A lot of those costs are growth-related, not necessarily signs of failure.
+
+The most important feature you should add next is a “Required Revenue” section. This would calculate:
+
+* monthly overhead
+* debt payments
+* your personal pay goal
+* taxes
+* and show the minimum amount the business must generate each month to survive
+
+Then it should break that down into weekly and daily goals.
+
+For example, if:
+
+* overhead is $4,000/month
+* debt payments are $2,000/month
+* owner pay goal is $5,000/month
+* taxes are $1,500/month
+
+Then the app would show:
+
+* minimum revenue needed: $12,500/month
+* weekly target: about $2,900/week
+* daily target: about $580/day
+
+That’s powerful because contractors think in weeks and jobs, not annual spreadsheets.
+
+Another thing your app needs is financial health indicators.
+
+Right now you have profit and expense numbers, but you need metrics that instantly tell you if the business is healthy.
+
+For example:
+
+* Expense ratio
+* Debt load ratio
+* Cash runway
+
+An expense ratio compares expenses to revenue. Healthy contractor businesses are usually under 70–75%. Once it gets close to or above 100%, the business is bleeding cash.
+
+A debt load ratio compares monthly debt payments against monthly revenue. If too much revenue is tied up in truck payments, equipment loans, or credit cards, growth becomes difficult.
+
+Cash runway tells you how long the business could survive if work slowed down.
+
+One major improvement I’d make is separating expenses into categories.
+
+Right now your app appears to lump everything together, which hides what’s actually happening financially.
+
+You should separate:
+
+* fixed overhead
+* variable job costs
+* debt payments
+* growth investments
+
+Fixed overhead includes things like:
+
+* insurance
+* software
+* phone
+* truck payment
+* storage/shop costs
+
+Variable costs are tied directly to jobs:
+
+* labor
+* materials
+* fuel
+* dump fees
+
+Growth investments are things like:
+
+* tools
+* trailers
+* branding
+* equipment
+* website costs
+
+Those aren’t necessarily “bad losses.” They’re investments into growth.
+
+Another feature that would be huge is a breakeven tracker.
+
+Something simple like:
+
+* monthly breakeven goal
+* revenue collected so far
+* amount still needed this month
+
+That becomes incredibly motivating because it gives you a real target to chase.
+
+You could also build a feature that answers:
+“Can I afford this new truck, trailer, or employee?”
+
+The app could calculate:
+
+* additional monthly payment
+* increased insurance
+* increased fuel costs
+* additional revenue needed weekly to justify the purchase
+
+That would help contractors avoid making emotional purchases that hurt cash flow.
+
+The smartest niche feature you could build specifically for manufactured home work is profit tracking by service type.
+
+Track profits separately for:
+
+* trim work
+* siding
+* skirting
+* flooring
+* marriage line finishing
+* punch-out work
+* service calls
+
+Eventually you’ll discover which work types actually make the best margins and which ones secretly lose money. That’s where scaling decisions become much smarter.
+
+Overall, I think you’re already building something that could genuinely help contractors because it’s based on real-world field experience instead of generic accounting software logic. The next step is shifting the app from simply recording numbers to actively helping owners make financial decisions.
