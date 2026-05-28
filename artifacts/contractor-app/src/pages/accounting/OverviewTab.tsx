@@ -369,6 +369,110 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         </div>
       </div>
 
+      {/* ── Direct Job Costs vs Overhead ── */}
+      {(() => {
+        const revenue = s.paidRevenue ?? 0;
+        const directJobCosts: number = s.directJobCosts ?? 0;
+        const overheadCosts: number = s.overheadCosts ?? 0;
+        const grossMargin: number = s.grossMargin ?? (revenue - directJobCosts);
+        const directCats: { category: string; amount: number; count: number }[] = Array.isArray(data.directJobCostsByCategory) ? data.directJobCostsByCategory : [];
+        const overheadCats: { category: string; amount: number; count: number }[] = Array.isArray(data.overheadByCategory) ? data.overheadByCategory : [];
+        const grossMarginPct = revenue > 0 ? (grossMargin / revenue) * 100 : 0;
+        const netProfitForCard = s.netProfit ?? 0;
+
+        return (
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+              <PieChart className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <span className="font-semibold text-sm text-foreground">Cost Breakdown — {year}</span>
+              <span className="text-xs text-muted-foreground ml-1">Job costs vs overhead</span>
+            </div>
+            <div className="p-5 space-y-3">
+
+              {/* Revenue row */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-foreground">Revenue Collected</span>
+                <span className="text-sm font-bold text-emerald-700">{formatCurrency(revenue)}</span>
+              </div>
+
+              {/* Direct Job Costs */}
+              <div className="rounded-xl border border-blue-200 bg-blue-50/60 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <div>
+                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wide">− Direct Job Costs</p>
+                    <p className="text-[10px] text-blue-600 mt-0.5">Materials, subs &amp; supplies tied to specific jobs</p>
+                  </div>
+                  <span className="text-sm font-bold text-blue-800">−{formatCurrency(directJobCosts)}</span>
+                </div>
+                {directCats.length > 0 && (
+                  <div className="border-t border-blue-200 divide-y divide-blue-100">
+                    {directCats.map(c => (
+                      <div key={c.category} className="flex items-center justify-between px-4 py-1.5">
+                        <span className="text-xs text-blue-700">{c.category} <span className="text-blue-400">({c.count})</span></span>
+                        <span className="text-xs font-semibold text-blue-800">{formatCurrency(c.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {directCats.length === 0 && (
+                  <div className="px-4 py-2 border-t border-blue-200 text-xs text-blue-500 italic">
+                    No job-linked expenses yet — link expenses to jobs to track direct costs
+                  </div>
+                )}
+              </div>
+
+              {/* Gross Margin */}
+              <div className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 ${grossMargin >= 0 ? "border-emerald-300 bg-emerald-50" : "border-red-300 bg-red-50"}`}>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wide ${grossMargin >= 0 ? "text-emerald-700" : "text-red-700"}`}>= Gross Margin</p>
+                  <p className={`text-[10px] mt-0.5 ${grossMargin >= 0 ? "text-emerald-600" : "text-red-500"}`}>Revenue minus direct job costs · {grossMarginPct.toFixed(0)}% margin</p>
+                </div>
+                <span className={`text-lg font-black ${grossMargin >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(grossMargin)}</span>
+              </div>
+
+              {/* Overhead */}
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <div>
+                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">− Overhead</p>
+                    <p className="text-[10px] text-amber-600 mt-0.5">Fixed costs not tied to a specific job</p>
+                  </div>
+                  <span className="text-sm font-bold text-amber-800">−{formatCurrency(overheadCosts)}</span>
+                </div>
+                {overheadCats.length > 0 && (
+                  <div className="border-t border-amber-200 divide-y divide-amber-100">
+                    {overheadCats.map(c => (
+                      <div key={c.category} className="flex items-center justify-between px-4 py-1.5">
+                        <span className="text-xs text-amber-700">{c.category} <span className="text-amber-400">({c.count})</span></span>
+                        <span className="text-xs font-semibold text-amber-800">{formatCurrency(c.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {overheadCats.length === 0 && (
+                  <div className="px-4 py-2 border-t border-amber-200 text-xs text-amber-500 italic">
+                    No overhead expenses yet
+                  </div>
+                )}
+              </div>
+
+              {/* Net Profit */}
+              <div className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 ${netProfitForCard >= 0 ? "border-emerald-400 bg-emerald-50" : "border-red-300 bg-red-50"}`}>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wide ${netProfitForCard >= 0 ? "text-emerald-700" : "text-red-700"}`}>= Net Profit</p>
+                  <p className={`text-[10px] mt-0.5 ${netProfitForCard >= 0 ? "text-emerald-600" : "text-red-500"}`}>Gross margin minus overhead</p>
+                </div>
+                <span className={`text-lg font-black ${netProfitForCard >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(netProfitForCard)}</span>
+              </div>
+
+              <p className="text-[10px] text-muted-foreground italic leading-relaxed">
+                Direct job costs = expenses linked to a specific job. Overhead = business costs not tied to any job (insurance, tools, advertising, etc.). Link expenses to jobs when logging to keep this split accurate.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Partner Profit Split (50/50) ── */}
       {(() => {
         const profitToSplit = netProfit;

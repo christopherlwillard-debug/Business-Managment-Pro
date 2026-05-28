@@ -458,6 +458,27 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // Business expenses = total non-mileage expenses minus owner draws
     const businessExpenses = totalExpenses - ownerDrawTotal;
 
+    // Direct Job Costs vs Overhead split
+    // Direct = expenses linked to a specific job (jobId set); Overhead = not linked to any job
+    const buildCatBreakdown = (list: typeof nonMileageExpenses) => {
+      const map = new Map<string, { category: string; amount: number; count: number }>();
+      for (const e of list) {
+        const cat = e.category || "Uncategorized";
+        const row = map.get(cat) ?? { category: cat, amount: 0, count: 0 };
+        row.amount += parseFloat(e.amount ?? "0");
+        row.count++;
+        map.set(cat, row);
+      }
+      return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+    };
+    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && e.category !== "Owner Draw");
+    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && e.category !== "Owner Draw");
+    const directJobCosts = directJobExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const overheadCosts  = overheadExpenses.reduce((s, e)  => s + parseFloat(e.amount ?? "0"), 0);
+    const grossMargin = paidRevenue - directJobCosts;
+    const directJobCostsByCategory = buildCatBreakdown(directJobExpenses);
+    const overheadByCategory = buildCatBreakdown(overheadExpenses);
+
     // Monthly income trend
     const monthlyIncome = [];
     for (let m = 1; m <= 12; m++) {
@@ -540,10 +561,12 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       year,
-      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance },
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
       incomeByCity,
       estimatedTaxes,
       expensesByCategory,
+      directJobCostsByCategory,
+      overheadByCategory,
       monthlyIncome,
       subcontractor1099,
       invoiceRecords: allRecords,
