@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { sendEmail } from "./sendEmail.js";
+import { launchBrowser } from "./launchBrowser.js";
 
 export interface InvoiceEmailInv {
   invoiceNumber: string;
@@ -123,9 +124,37 @@ export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEma
 }
 
 /**
+ * Generate a PDF buffer from invoice HTML using Puppeteer.
+ * Returns null (with a console warning) if rendering fails so the email can
+ * still be sent without an attachment rather than failing entirely.
+ */
+async function generateInvoicePdf(html: string): Promise<Buffer | null> {
+  let browser;
+  try {
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    await page.goto("about:blank");
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url.startsWith("data:") || url === "about:blank") req.continue();
+      else req.abort();
+    });
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    const pdfBuffer = await page.pdf({ format: "Letter", printBackground: true, preferCSSPageSize: true });
+    return Buffer.from(pdfBuffer);
+  } catch (err) {
+    console.warn("[invoiceEmail] PDF generation failed — sending without attachment:", err);
+    return null;
+  } finally {
+    try { await browser?.close(); } catch {}
+  }
+}
+
+/**
  * Send an invoice email. Uses SMTP (nodemailer) if fully configured, otherwise
  * falls back to the connected Gmail integration so emails work without any
- * additional SMTP setup.
+ * additional SMTP setup. A PDF copy of the invoice is always attached.
  */
 export async function sendInvoiceEmail(
   inv: InvoiceEmailInv,
@@ -137,6 +166,10 @@ export async function sendInvoiceEmail(
   const html = buildInvoiceEmailHtml(inv, settings, message);
   const total = parseFloat(inv.total ?? "0");
   const text = message || `Please find invoice ${inv.invoiceNumber} attached. Total Due: $${total.toFixed(2)}`;
+  const safeNum = (inv.invoiceNumber ?? "invoice").replace(/[^a-zA-Z0-9\-_]/g, "_");
+  const pdfFilename = `Invoice-${safeNum}.pdf`;
+
+  const pdfBuffer = await generateInvoicePdf(html);
 
   const smtpConfigured = !!(settings.smtpHost && settings.smtpUser && settings.smtpPass);
 
@@ -154,8 +187,15 @@ export async function sendInvoiceEmail(
       subject,
       html,
       text,
+      attachments: pdfBuffer ? [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }] : [],
     });
   } else {
-    await sendEmail({ to, subject, html, text });
+    await sendEmail({
+      to,
+      subject,
+      html,
+      text,
+      ...(pdfBuffer ? { attachment: { filename: pdfFilename, mimeType: "application/pdf", base64Data: pdfBuffer.toString("base64") } } : {}),
+    });
   }
 }

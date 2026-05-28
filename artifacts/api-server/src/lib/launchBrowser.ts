@@ -42,7 +42,6 @@ const ARGS = [
   "--disable-dev-shm-usage",
   "--disable-gpu",
   "--no-zygote",
-  "--single-process",
   "--no-first-run",
   "--disable-extensions",
   "--disable-features=VizDisplayCompositor",

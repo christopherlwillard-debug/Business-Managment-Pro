@@ -424,6 +424,9 @@ router.post("/render-html-pdf", async (req, res) => {
     const browser = await launchBrowser();
     try {
       const page = await browser.newPage();
+      // Navigate to about:blank first so the main frame is fully ready before
+      // setRequestInterception — avoids "Requesting main frame too early!" crash.
+      await page.goto("about:blank");
       // Block all network requests — HTML is self-contained; logo is embedded as
       // a data URI. This prevents SSRF via injected <img src="http://..."> tags.
       await page.setRequestInterception(true);
