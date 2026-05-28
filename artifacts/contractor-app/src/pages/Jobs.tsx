@@ -30,7 +30,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2,
+  Timer, BarChart2, PieChart,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 
@@ -910,6 +910,255 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
 type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost?: number; totalSubHours?: number; netProfit: number };
 
+// ─── Pay Breakdown Panel ───────────────────────────────────────────────────────
+function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
+  job: Job;
+  profitData?: JobProfit | null;
+  onClose: () => void;
+}) {
+  const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
+  const [payments, setPayments] = useState<SubPaymentRow[]>([]);
+  const [loading, setLoading] = useState(!initialProfit);
+
+  const [growthPct, setGrowthPct] = useState(5);
+  const [ownerSplitPct, setOwnerSplitPct] = useState(50);
+  const [taxReservePct, setTaxReservePct] = useState(25);
+  const [useCollected, setUseCollected] = useState(false);
+
+  useEffect(() => {
+    const fetches: Promise<any>[] = [
+      fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.ok ? r.json() : []),
+    ];
+    if (!initialProfit) {
+      fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`).then(r => r.ok ? r.json() : null));
+    }
+    Promise.allSettled(fetches).then(results => {
+      const [pRes, profRes] = results;
+      if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) setPayments(pRes.value);
+      if (profRes?.status === "fulfilled" && profRes.value) setProfit(profRes.value);
+      setLoading(false);
+    });
+  }, [job.id]);
+
+  const revenue = useCollected
+    ? (profit?.collected || profit?.grossInvoiced || 0)
+    : (profit?.grossInvoiced || 0);
+  const hourlyWorkers = profit?.subLaborCost ?? 0;
+  const afterWorkers = Math.max(0, revenue - hourlyWorkers);
+  const growthFund = afterWorkers * (growthPct / 100);
+  const toSplit = afterWorkers - growthFund;
+  const ownerShare = toSplit * (ownerSplitPct / 100);
+  const subShare = toSplit * ((100 - ownerSplitPct) / 100);
+  const taxReserve = ownerShare * (taxReservePct / 100);
+  const ownerTakeHome = ownerShare - taxReserve;
+
+  function fmt(n: number) {
+    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border shadow-2xl flex flex-col">
+        <div className="h-1 bg-gradient-to-r from-amber-500 to-yellow-400 flex-shrink-0" />
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <PieChart className="w-4 h-4 text-amber-500" />
+            <div>
+              <h2 className="font-bold text-foreground text-sm">Pay Breakdown</h2>
+              <p className="text-xs text-muted-foreground truncate max-w-[180px]">{job.title}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {loading ? (
+            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+          ) : (
+            <>
+              {/* Revenue toggle */}
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Revenue Source</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseCollected(false)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors ${!useCollected ? "bg-amber-500 border-amber-500 text-white" : "bg-muted/30 border-border text-muted-foreground"}`}
+                  >
+                    <span className="block text-[10px] opacity-70 mb-0.5">Invoiced</span>
+                    ${fmt(profit?.grossInvoiced ?? 0)}
+                  </button>
+                  <button
+                    onClick={() => setUseCollected(true)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors ${useCollected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-muted/30 border-border text-muted-foreground"}`}
+                  >
+                    <span className="block text-[10px] opacity-70 mb-0.5">Collected</span>
+                    ${fmt(profit?.collected ?? 0)}
+                  </button>
+                </div>
+              </div>
+
+              {/* Sliders */}
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4 space-y-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Adjust Breakdown</p>
+                <div>
+                  <div className="flex justify-between mb-1.5">
+                    <span className="text-xs text-muted-foreground">Growth Fund</span>
+                    <span className="text-xs font-bold text-amber-500">{growthPct}% · ${fmt(growthFund)}</span>
+                  </div>
+                  <input type="range" min={0} max={20} step={1} value={growthPct}
+                    onChange={e => setGrowthPct(Number(e.target.value))}
+                    className="w-full h-1.5 rounded-full accent-amber-500 cursor-pointer" />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-muted-foreground/50">0%</span>
+                    <span className="text-[10px] text-muted-foreground/50">20%</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1.5">
+                    <span className="text-xs text-muted-foreground">Your Split</span>
+                    <span className="text-xs font-bold text-blue-500">You {ownerSplitPct}% / Sub {100 - ownerSplitPct}%</span>
+                  </div>
+                  <input type="range" min={10} max={90} step={5} value={ownerSplitPct}
+                    onChange={e => setOwnerSplitPct(Number(e.target.value))}
+                    className="w-full h-1.5 rounded-full accent-blue-500 cursor-pointer" />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-muted-foreground/50">10%</span>
+                    <span className="text-[10px] text-muted-foreground/50">90%</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1.5">
+                    <span className="text-xs text-muted-foreground">Tax Reserve</span>
+                    <span className="text-xs font-bold text-red-500">{taxReservePct}% · ${fmt(taxReserve)}</span>
+                  </div>
+                  <input type="range" min={0} max={40} step={1} value={taxReservePct}
+                    onChange={e => setTaxReservePct(Number(e.target.value))}
+                    className="w-full h-1.5 rounded-full accent-red-500 cursor-pointer" />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-muted-foreground/50">0%</span>
+                    <span className="text-[10px] text-muted-foreground/50">40%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Waterfall */}
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Breakdown</p>
+                </div>
+                <div className="divide-y divide-border/30">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-foreground">Job Revenue</span>
+                    <span className="text-sm font-bold text-foreground">${fmt(revenue)}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <span className="text-sm text-foreground">Hourly Workers</span>
+                      {(profit?.totalSubHours ?? 0) > 0 && (
+                        <p className="text-[10px] text-muted-foreground">{profit!.totalSubHours!.toFixed(1)} hrs tracked</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-bold text-red-500">−${fmt(hourlyWorkers)}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20">
+                    <span className="text-xs font-semibold text-muted-foreground">Remaining</span>
+                    <span className="text-sm font-bold text-foreground">${fmt(afterWorkers)}</span>
+                  </div>
+                  {growthPct > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-foreground">Growth Fund ({growthPct}%)</span>
+                      <span className="text-sm font-bold text-amber-600">−${fmt(growthFund)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20">
+                    <span className="text-xs font-semibold text-muted-foreground">To Split</span>
+                    <span className="text-sm font-bold text-foreground">${fmt(toSplit)}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-foreground">Sub Share ({100 - ownerSplitPct}%)</span>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">${fmt(subShare)}</p>
+                      {payments.length > 0 && (() => {
+                        const totalOwed = payments.reduce((s, p) => s + (p.amountOwed ?? p.computedOwed ?? 0), 0);
+                        const totalPaid = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
+                        return totalOwed > 0 ? (
+                          <p className="text-[10px] text-muted-foreground">
+                            Recorded: ${fmt(totalOwed)}{totalPaid > 0 ? ` · Paid: $${fmt(totalPaid)}` : ""}
+                          </p>
+                        ) : null;
+                      })()}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 bg-blue-50/60">
+                    <span className="text-sm font-semibold text-blue-800">Your Share ({ownerSplitPct}%)</span>
+                    <span className="text-sm font-bold text-blue-700">${fmt(ownerShare)}</span>
+                  </div>
+                  {taxReservePct > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-foreground">Tax Reserve ({taxReservePct}%)</span>
+                      <span className="text-sm font-bold text-red-500">−${fmt(taxReserve)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between px-4 py-4 bg-emerald-50">
+                    <div>
+                      <p className="text-sm font-black text-emerald-800">Your Take-Home</p>
+                      {taxReservePct > 0 && (
+                        <p className="text-[10px] text-emerald-600">After {taxReservePct}% tax reserve</p>
+                      )}
+                    </div>
+                    <span className="text-xl font-black text-emerald-700">${fmt(ownerTakeHome)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Per-sub payment records */}
+              {payments.length > 0 && (
+                <div className="rounded-xl border border-border/50 overflow-hidden">
+                  <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sub Payment Records</p>
+                  </div>
+                  <div className="divide-y divide-border/30">
+                    {payments.map(p => {
+                      const owed = p.amountOwed ?? p.computedOwed ?? 0;
+                      const paid = p.amountPaid ?? 0;
+                      const balance = owed - paid;
+                      return (
+                        <div key={p.subcontractorId} className="px-4 py-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <HardHat className="w-3.5 h-3.5 text-muted-foreground/50" />
+                              <span className="text-sm font-medium text-foreground">{p.subName ?? "Sub"}</span>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold">${fmt(owed)}</p>
+                              {paid > 0 && <p className="text-[10px] text-emerald-600">Paid: ${fmt(paid)}</p>}
+                              {balance > 0.01 && <p className="text-[10px] text-orange-600">Balance: ${fmt(balance)}</p>}
+                              {balance <= 0.01 && paid > 0 && <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {revenue === 0 && (
+                <p className="text-center text-xs text-muted-foreground py-4">
+                  Add an invoice to this job to see the breakdown.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [data, setData] = useState<JobProfit | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1770,6 +2019,7 @@ function JobCard({
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const [profitPanelOpen, setProfitPanelOpen] = useState(false);
+  const [payBreakdownPanelOpen, setPayBreakdownPanelOpen] = useState(false);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [subHoursPanelOpen, setSubHoursPanelOpen] = useState(false);
   const [subHoursInitialTab, setSubHoursInitialTab] = useState<"hours" | "payments" | "benchmark">("hours");
@@ -2041,6 +2291,21 @@ function JobCard({
           )}
         </button>
 
+        {/* Pay Breakdown button */}
+        <button
+          onClick={() => setPayBreakdownPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
+          <PieChart className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <span className="flex-1 text-left">Pay Breakdown</span>
+          {profitData != null && profitData.grossInvoiced > 0 ? (
+            <span className="text-[10px] font-semibold text-amber-500">
+              {formatCurrency(profitData.grossInvoiced)}
+            </span>
+          ) : (
+            <span className="text-[10px] text-amber-400">Growth · Split · Tax</span>
+          )}
+        </button>
+
         {/* Create Invoice — no invoice exists yet */}
         {!invoiceSummary && canEdit("invoices") && onCreateInvoice && (
           <button
@@ -2101,6 +2366,9 @@ function JobCard({
       )}
       {profitPanelOpen && (
         <JobProfitPanel job={job} onClose={() => setProfitPanelOpen(false)} />
+      )}
+      {payBreakdownPanelOpen && (
+        <JobPayBreakdownPanel job={job} profitData={profitData} onClose={() => setPayBreakdownPanelOpen(false)} />
       )}
       {phasesPanelOpen && (
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
