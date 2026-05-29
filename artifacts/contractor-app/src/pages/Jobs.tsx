@@ -943,7 +943,10 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
   const revenue = useCollected
     ? (profit?.collected || profit?.grossInvoiced || 0)
     : (profit?.grossInvoiced || 0);
-  const hourlyWorkers = profit?.subLaborCost ?? 0;
+  // Use whichever is higher: computed hours×rate cost, or the actual amount
+  // already paid out to subs (recorded in sub payment records).
+  const paidToSubs = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
+  const hourlyWorkers = Math.max(profit?.subLaborCost ?? 0, paidToSubs);
   const afterWorkers = Math.max(0, revenue - hourlyWorkers);
   const growthFund = afterWorkers * (growthPct / 100);
   const toSplit = afterWorkers - growthFund;
