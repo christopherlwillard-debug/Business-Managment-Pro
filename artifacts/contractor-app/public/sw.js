@@ -35,10 +35,44 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+const SUB_PORTAL_MANIFEST = JSON.stringify({
+  name: "Sub Portal",
+  short_name: "Sub Portal",
+  description: "Secure subcontractor portal — view jobs, expenses, and payments.",
+  start_url: "/sub-login",
+  scope: "/",
+  display: "standalone",
+  orientation: "portrait-primary",
+  theme_color: "#f59e0b",
+  background_color: "#f59e0b",
+  icons: [
+    { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png", purpose: "any" },
+    { src: "/favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }
+  ]
+});
+
 // ── Fetch: tiered caching strategy ────────────────────────────────────────
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+
+  // Manifest intercept — serve Sub Portal manifest when a portal page is open,
+  // BuildPro manifest otherwise. This lets "Add to Home Screen" show the right
+  // app name depending on who is viewing the page.
+  if (url.pathname.endsWith('/manifest.json')) {
+    event.respondWith(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(wins => {
+        const isPortal = wins.some(w => new URL(w.url).pathname.includes('/portal/'));
+        if (isPortal) {
+          return new Response(SUB_PORTAL_MANIFEST, {
+            headers: { 'Content-Type': 'application/manifest+json' }
+          });
+        }
+        return fetch(event.request);
+      })
+    );
+    return;
+  }
 
   // Skip API calls — always network
   if (url.pathname.startsWith(base + 'api/')) return;

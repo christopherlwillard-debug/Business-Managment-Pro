@@ -2156,6 +2156,26 @@ export default function SubcontractorPortal() {
     checked: false, valid: false, pinSet: false,
   });
 
+  // Swap title + apple-mobile-web-app-title for iOS "Add to Home Screen" —
+  // iOS Safari ignores the manifest and reads these meta tags instead.
+  useEffect(() => {
+    const prevTitle = document.title;
+    const appleMeta = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]');
+    const prevApple = appleMeta?.getAttribute("content") ?? "BuildPro";
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const prevTheme = themeColor?.getAttribute("content") ?? "#6366f1";
+
+    document.title = "Sub Portal";
+    if (appleMeta) appleMeta.setAttribute("content", "Sub Portal");
+    if (themeColor) themeColor.setAttribute("content", "#f59e0b");
+
+    return () => {
+      document.title = prevTitle;
+      if (appleMeta) appleMeta.setAttribute("content", prevApple);
+      if (themeColor) themeColor.setAttribute("content", prevTheme);
+    };
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     // If the user arrived via phone lookup, never honour an existing session —
