@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams } from "wouter";
+import { useParams, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
 import {
@@ -2146,6 +2146,8 @@ function PortalSettings({ token, features, onChange }: { token: string; features
 // ─── Main Portal ──────────────────────────────────────────────────────────────
 export default function SubcontractorPortal() {
   const { token } = useParams<{ token: string }>();
+  const search = useSearch();
+  const viaPhone = new URLSearchParams(search).get("via") === "phone";
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState("dashboard");
 
@@ -2156,6 +2158,20 @@ export default function SubcontractorPortal() {
 
   useEffect(() => {
     if (!token) return;
+    // If the user arrived via phone lookup, never honour an existing session —
+    // they must always prove identity with their PIN before getting in.
+    if (viaPhone) {
+      fetch(`${BASE}/api/portal/check-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+        credentials: "include",
+      })
+        .then(r => r.json())
+        .then(d => setPinStatus({ checked: true, valid: false, pinSet: !!d.pinSet }))
+        .catch(() => setPinStatus({ checked: true, valid: false, pinSet: false }));
+      return;
+    }
     fetch(`${BASE}/api/portal/check-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2165,7 +2181,7 @@ export default function SubcontractorPortal() {
       .then(r => r.json())
       .then(d => setPinStatus({ checked: true, valid: !!d.valid, pinSet: !!d.pinSet }))
       .catch(() => setPinStatus({ checked: true, valid: false, pinSet: false }));
-  }, [token]);
+  }, [token, viaPhone]);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["portal", token],

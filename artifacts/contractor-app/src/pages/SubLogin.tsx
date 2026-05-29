@@ -45,7 +45,7 @@ export default function SubLogin() {
         setError(data.error ?? "Something went wrong.");
         return;
       }
-      navigate(`/portal/${data.token}`);
+      navigate(`/portal/${data.token}?via=phone`);
     } catch {
       setError("Could not connect. Check your internet and try again.");
     } finally {
