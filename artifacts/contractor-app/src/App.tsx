@@ -26,6 +26,7 @@ const Prospects = lazy(() => import("./pages/Prospects"));
 const PeopleAndProperties = lazy(() => import("./pages/PeopleAndProperties"));
 const Assets = lazy(() => import("./pages/Assets"));
 const SubcontractorPortal = lazy(() => import("./pages/SubcontractorPortal"));
+const SubLogin = lazy(() => import("./pages/SubLogin"));
 const AerialQuote = lazy(() => import("./pages/AerialQuote"));
 const Pay = lazy(() => import("./pages/Pay"));
 const QuickCharge = lazy(() => import("./pages/QuickCharge"));
@@ -314,6 +315,7 @@ function Router() {
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
       <Switch>
         <Route path="/portal/:token" component={SubcontractorPortal} />
+        <Route path="/sub-login" component={SubLogin} />
         <Route path="/pay/:payToken" component={Pay} />
         <Route>
           <AdminApp />

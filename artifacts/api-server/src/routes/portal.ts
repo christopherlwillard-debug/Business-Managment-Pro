@@ -262,6 +262,53 @@ function maskTaxId(id: string): string {
   return "***-**-" + id.slice(-4);
 }
 
+// ─── Phone lookup — lets a sub find their portal link by phone number ──────────
+// Normalises both stored and submitted phone numbers (digits only) before comparing.
+// Returns only the token + first name so the client can redirect — no other PII.
+router.post("/lookup", async (req, res) => {
+  try {
+    const raw: string = req.body.phone ?? "";
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length < 7) return res.status(400).json({ error: "Enter a valid phone number" });
+
+    const subs = await db
+      .select({ id: subcontractorsTable.id, name: subcontractorsTable.name, phone: subcontractorsTable.phone, portalToken: subcontractorsTable.portalToken, portalApproved: subcontractorsTable.portalApproved })
+      .from(subcontractorsTable);
+
+    const match = subs.find(s => s.phone && s.phone.replace(/\D/g, "") === digits);
+    if (!match) return res.status(404).json({ error: "No portal found for that number. Ask your contractor for your portal link." });
+    if (!match.portalApproved) return res.status(403).json({ error: "Portal access not yet approved. Ask your contractor to approve your portal." });
+    if (!match.portalToken) return res.status(404).json({ error: "No portal link generated yet. Ask your contractor to create your portal." });
+
+    res.json({ token: match.portalToken, name: match.name.split(" ")[0] });
+  } catch (err) {
+    console.error("[portal-lookup]", err);
+    res.status(500).json({ error: "Lookup failed" });
+  }
+});
+
+// ─── Per-token PWA manifest — gives "Sub Portal" name + correct start_url ──────
+router.get("/:token/manifest.json", async (req, res) => {
+  const sub = await getSubByToken(req.params.token);
+  if (!sub) return res.status(404).json({ error: "Not found" });
+  const base = process.env.BASE_URL ?? "";
+  res.json({
+    name: "Sub Portal",
+    short_name: "Sub Portal",
+    description: `Secure subcontractor portal for ${sub.name}`,
+    start_url: `${base}/portal/${req.params.token}`,
+    scope: `${base}/`,
+    display: "standalone",
+    orientation: "portrait-primary",
+    theme_color: "#f59e0b",
+    background_color: "#f59e0b",
+    icons: [
+      { src: `${base}/apple-touch-icon.png`, sizes: "180x180", type: "image/png", purpose: "any" },
+      { src: `${base}/favicon.svg`, sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+    ],
+  });
+});
+
 // ─── Token-scoped data routes (all gated by requirePinSession) ─────────────────
 // Every route below requires either no PIN to be set on the subcontractor, or a
 // valid HMAC-verified PIN session cookie.  This is enforced server-side by the

@@ -33,7 +33,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
-const EXPENSE_CATS = ["Materials", "Fuel", "Equipment", "Insurance", "Office", "Tools", "Other"];
+const EXPENSE_CATS = ["Materials", "Fuel", "Equipment", "Insurance", "Office", "Tools/Supplies", "Other"];
 
 const ALL_FEATURES = [
   { key: "payments", label: "My Payments", desc: "View what your contractor pays you", icon: DollarSign },
@@ -2153,6 +2153,26 @@ export default function SubcontractorPortal() {
   const [pinStatus, setPinStatus] = useState<{ checked: boolean; valid: boolean; pinSet: boolean }>({
     checked: false, valid: false, pinSet: false,
   });
+
+  // Swap the PWA manifest to a token-specific one so "Add to Home Screen" shows
+  // "Sub Portal" and opens directly to this sub's portal, not the main app.
+  useEffect(() => {
+    if (!token) return;
+    const existing = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    const original = existing?.getAttribute("href") ?? "/manifest.json";
+    if (existing) {
+      existing.setAttribute("href", `${BASE}/api/portal/${token}/manifest.json`);
+    } else {
+      const link = document.createElement("link");
+      link.rel = "manifest";
+      link.href = `${BASE}/api/portal/${token}/manifest.json`;
+      document.head.appendChild(link);
+    }
+    return () => {
+      const el = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+      if (el) el.setAttribute("href", original);
+    };
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
