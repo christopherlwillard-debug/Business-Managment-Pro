@@ -1,13 +1,13 @@
 {
-  "name": "BuildPro",
-  "short_name": "BuildPro",
-  "description": "Contractor business management — invoices, mileage, expenses, and more.",
-  "start_url": "/",
+  "name": "Sub Portal",
+  "short_name": "Sub Portal",
+  "description": "Secure subcontractor portal — view jobs, expenses, and payments.",
+  "start_url": "/sub-login",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#6366f1",
-  "background_color": "#6366f1",
+  "theme_color": "#f59e0b",
+  "background_color": "#f59e0b",
   "icons": [
     {
       "src": "/apple-touch-icon.png",
