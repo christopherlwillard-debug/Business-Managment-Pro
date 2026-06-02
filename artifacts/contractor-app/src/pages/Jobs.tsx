@@ -2307,7 +2307,7 @@ function JobCard({
               )}
               {hasSubExpenses && !job.subPaid && (
                 <button
-                  onClick={() => { setSubHoursInitialTab("payments"); setSubHoursPanelOpen(true); }}
+                  onClick={() => { setFinancialsInitialTab("hours"); setFinancialsPanelOpen(true); }}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors cursor-pointer">
                   <HardHat className="w-2.5 h-2.5" />
                   Sub Unpaid — tap to pay
