@@ -185,6 +185,98 @@ function TaxSpendPlanner({ netProfit, estimatedTaxes }: {
   );
 }
 
+// ─── Reserve Summary Hook ─────────────────────────────────────────────────────
+function useReserveSummary(year: number) {
+  return useQuery<{
+    months: { month: string; revenue: number; subLaborCost: number; ownerShare: number; taxReserve: number; growthFund: number; takeHome: number }[];
+    ytd: { revenue: number; subLaborCost: number; ownerShare: number; taxReserve: number; growthFund: number; takeHome: number };
+  }>({
+    queryKey: ["reserve-summary", year],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/reports/reserve-summary?year=${year}`);
+      if (!res.ok) throw new Error("Failed to load reserve summary");
+      return res.json();
+    },
+  });
+}
+
+// ─── Tax & Growth Reserve Card ────────────────────────────────────────────────
+function ReserveCard({ year }: { year: number }) {
+  const { data, isLoading } = useReserveSummary(year);
+  const ytd = data?.ytd ?? { taxReserve: 0, growthFund: 0, ownerShare: 0, takeHome: 0, revenue: 0, subLaborCost: 0 };
+  const dontTouch = ytd.taxReserve + ytd.growthFund;
+  const months = data?.months ?? [];
+
+  if (isLoading) {
+    return <div className="h-32 rounded-2xl bg-muted/40 animate-pulse" />;
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      <div className="px-5 py-3 bg-emerald-50/80 border-b border-emerald-200 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Wallet className="w-4 h-4 text-emerald-600" />
+          <span className="font-bold text-sm text-emerald-900">Tax &amp; Growth Reserve</span>
+        </div>
+        <span className="text-xs text-emerald-700/70">Take-home based · 5% growth, 50/50 split, 25% tax</span>
+      </div>
+      <div className="p-5 space-y-4">
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-red-700 mb-1">Keep in Your Bank — Don't Touch</p>
+          <p className="text-4xl font-black text-red-800 leading-none">{formatCurrency(dontTouch)}</p>
+          <p className="text-xs text-red-600 mt-1">Tax reserve + growth fund from all {year} paid jobs</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-center">
+            <p className="text-[10px] uppercase font-semibold text-amber-700 mb-1">Tax Reserve (25%)</p>
+            <p className="text-xl font-bold text-amber-800">{formatCurrency(ytd.taxReserve)}</p>
+            <p className="text-[10px] text-amber-600 mt-0.5">of your owner share</p>
+          </div>
+          <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-center">
+            <p className="text-[10px] uppercase font-semibold text-blue-700 mb-1">Growth Fund (5%)</p>
+            <p className="text-xl font-bold text-blue-800">{formatCurrency(ytd.growthFund)}</p>
+            <p className="text-[10px] text-blue-600 mt-0.5">reinvest in business</p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-emerald-700">Your Take-Home YTD</p>
+            <p className="text-[10px] text-emerald-600">After subs, growth fund &amp; tax reserve</p>
+          </div>
+          <p className="text-xl font-bold text-emerald-700">{formatCurrency(ytd.takeHome)}</p>
+        </div>
+        {months.length > 0 && (
+          <div className="rounded-xl border border-border/50 overflow-hidden">
+            <div className="bg-muted/30 px-4 py-2 border-b border-border/50 grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Month</span>
+              <span className="text-right">Revenue</span>
+              <span className="text-right">Tax Set-Aside</span>
+              <span className="text-right">Take-Home</span>
+            </div>
+            <div className="divide-y divide-border/30">
+              {months.map(m => {
+                const label = new Date(m.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+                return (
+                  <div key={m.month} className="px-4 py-2 grid grid-cols-4 gap-1 text-xs">
+                    <span className="font-semibold text-foreground">{label}</span>
+                    <span className="text-right text-muted-foreground">{formatCurrency(m.revenue)}</span>
+                    <span className="text-right text-amber-700">{formatCurrency(m.taxReserve)}</span>
+                    <span className="text-right text-emerald-700 font-semibold">{formatCurrency(m.takeHome)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {months.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-2">No paid invoices yet for {year}. Numbers appear once jobs are collected.</p>
+        )}
+        <p className="text-[11px] text-muted-foreground italic">Adjust percentages per job in Job Financials → Pay Breakdown tab.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
 function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; setActiveTab: (tab: AccountingTab) => void }) {
@@ -328,7 +420,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
               <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0" />
               <span className="font-bold text-sm text-amber-900">Estimated Tax Owed — {year} YTD</span>
             </div>
-            <span className="text-xs text-amber-700/80">Based on net profit after expenses &amp; mileage</span>
+            <span className="text-xs text-amber-700/80">Accounting-based · net profit after all deductible expenses &amp; mileage</span>
           </div>
           <div className="p-5 space-y-4">
             <div className="text-center">
@@ -358,6 +450,8 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
           </div>
         </div>
       )}
+
+      <ReserveCard year={year} />
 
       {/* ── Net Profit hero + secondary stat tiles ── */}
       <div className="space-y-3">

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, sum, ne, inArray } from "drizzle-orm";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, desc, sum, ne, inArray, sql } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
@@ -1077,6 +1077,98 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
   } catch (err) {
     console.error("Year-end report error:", err);
     res.status(500).json({ error: "Failed to generate year-end report" });
+  }
+});
+
+// ─── Reserve Summary: take-home-based tax & growth reserve ───────────────────
+// Uses the same waterfall as Pay Breakdown (5% growth, 50/50 split, 25% tax reserve)
+router.get("/reserve-summary", sectionGuard("jobs"), async (req, res) => {
+  try {
+    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const GROWTH_PCT = 0.05;
+    const OWNER_PCT = 0.50;
+    const TAX_PCT = 0.25;
+
+    const invoices = await db.select({
+      id: invoicesTable.id,
+      jobId: invoicesTable.jobId,
+      total: invoicesTable.total,
+      status: invoicesTable.status,
+      issueDate: invoicesTable.issueDate,
+    }).from(invoicesTable)
+      .where(and(
+        gte(invoicesTable.issueDate, startDate),
+        lte(invoicesTable.issueDate, endDate),
+        ne(invoicesTable.status, "draft")
+      ));
+
+    const jobIds = [...new Set(invoices.map(i => i.jobId).filter((id): id is number => id != null))];
+    if (jobIds.length === 0) {
+      return res.json({ months: [], ytd: { revenue: 0, subLaborCost: 0, ownerShare: 0, taxReserve: 0, growthFund: 0, takeHome: 0 } });
+    }
+
+    const subHoursRows = await db.select({
+      jobId: jobSubHoursTable.jobId,
+      cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+    }).from(jobSubHoursTable)
+      .where(inArray(jobSubHoursTable.jobId, jobIds))
+      .groupBy(jobSubHoursTable.jobId);
+
+    const subPaymentRows = await db.select({
+      jobId: jobSubcontractorsTable.jobId,
+      paid: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountPaid}::numeric), 0)`,
+    }).from(jobSubcontractorsTable)
+      .where(inArray(jobSubcontractorsTable.jobId, jobIds))
+      .groupBy(jobSubcontractorsTable.jobId);
+
+    const hoursCostByJob = new Map(subHoursRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+    const paidByJob = new Map(subPaymentRows.map(r => [r.jobId, parseFloat(r.paid ?? "0")]));
+
+    const monthMap = new Map<string, { revenue: number; subLaborCost: number; ownerShare: number; taxReserve: number; growthFund: number; takeHome: number }>();
+
+    for (const inv of invoices) {
+      if (!inv.jobId || !inv.issueDate) continue;
+      const revenue = inv.status === "paid" ? parseFloat(inv.total ?? "0") : 0;
+      const hoursCost = hoursCostByJob.get(inv.jobId) ?? 0;
+      const paidCost = paidByJob.get(inv.jobId) ?? 0;
+      const subLaborCost = Math.max(hoursCost, paidCost);
+      const afterSubs = Math.max(0, revenue - subLaborCost);
+      const growthFund = afterSubs * GROWTH_PCT;
+      const toSplit = afterSubs - growthFund;
+      const ownerShare = toSplit * OWNER_PCT;
+      const taxReserve = ownerShare * TAX_PCT;
+      const takeHome = ownerShare - taxReserve;
+      const month = inv.issueDate.substring(0, 7);
+      const existing = monthMap.get(month) ?? { revenue: 0, subLaborCost: 0, ownerShare: 0, taxReserve: 0, growthFund: 0, takeHome: 0 };
+      existing.revenue += revenue;
+      existing.subLaborCost += subLaborCost;
+      existing.ownerShare += ownerShare;
+      existing.taxReserve += taxReserve;
+      existing.growthFund += growthFund;
+      existing.takeHome += takeHome;
+      monthMap.set(month, existing);
+    }
+
+    const months = Array.from(monthMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, data]) => ({ month, ...data }));
+
+    const ytd = months.reduce((acc, m) => ({
+      revenue: acc.revenue + m.revenue,
+      subLaborCost: acc.subLaborCost + m.subLaborCost,
+      ownerShare: acc.ownerShare + m.ownerShare,
+      taxReserve: acc.taxReserve + m.taxReserve,
+      growthFund: acc.growthFund + m.growthFund,
+      takeHome: acc.takeHome + m.takeHome,
+    }), { revenue: 0, subLaborCost: 0, ownerShare: 0, taxReserve: 0, growthFund: 0, takeHome: 0 });
+
+    res.json({ months, ytd });
+  } catch (err) {
+    console.error("[reserve-summary]", err);
+    res.status(500).json({ error: "Failed to compute reserve summary" });
   }
 });
 
