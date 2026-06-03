@@ -811,10 +811,10 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch md:items-center justify-center bg-black/70 backdrop-blur-sm p-0 md:p-4">
-      <div className="relative w-full max-w-2xl bg-white rounded-none md:rounded-2xl shadow-2xl flex flex-col overflow-hidden h-full md:max-h-[92vh]">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-gray-900 rounded-none md:rounded-2xl shadow-2xl flex flex-col overflow-hidden h-full md:max-h-[92vh]">
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 flex-shrink-0 bg-amber-500">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0 bg-amber-500">
           <Wand2 className="w-5 h-5 text-white flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-white text-base leading-tight">GC Smart Estimate Wizard</h2>
@@ -832,8 +832,8 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         </div>
 
         {/* Step label */}
-        <div className="px-5 py-2 border-b border-gray-100 bg-amber-50 flex-shrink-0">
-          <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+        <div className="px-5 py-2 border-b border-gray-100 dark:border-gray-700 bg-amber-50 dark:bg-amber-950/40 flex-shrink-0">
+          <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
             {step === 1 && "Step 1 of 6 — Choose Job Type"}
             {step === 2 && "Step 2 of 6 — Scope Questions"}
             {step === 3 && "Step 3 of 6 — Trade Breakdown & KY Cost Ranges"}
@@ -849,17 +849,17 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           {/* ── Step 1: Job Type ─────────────────────────────────────── */}
           {step === 1 && (
             <div className="p-5">
-              <p className="text-sm text-gray-500 mb-4">What type of job is this? Select the category that best fits.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">What type of job is this? Select the category that best fits.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {JOB_TYPES.map(jt => (
                   <button
                     key={jt.id}
                     onClick={() => selectJobType(jt.id)}
-                    className="flex flex-col items-start gap-1.5 p-3.5 rounded-xl border-2 border-gray-200 hover:border-amber-400 hover:bg-amber-50 transition-all text-left group"
+                    className="flex flex-col items-start gap-1.5 p-3.5 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all text-left group"
                   >
                     <span className="text-2xl">{jt.icon}</span>
-                    <span className="font-semibold text-gray-900 text-sm leading-tight">{jt.label}</span>
-                    <span className="text-[11px] text-gray-400 leading-tight">{jt.desc}</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm leading-tight">{jt.label}</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight">{jt.desc}</span>
                   </button>
                 ))}
               </div>
@@ -869,10 +869,10 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           {/* ── Step 2: Scope Questions ──────────────────────────────── */}
           {step === 2 && (
             <div className="p-5 space-y-4">
-              <p className="text-sm text-gray-500">Answer these questions to generate accurate KY cost estimates for each trade.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Answer these questions to generate accurate KY cost estimates for each trade.</p>
               {questions.map(q => (
                 <div key={q.id}>
-                  <label className="block text-sm font-semibold text-gray-800 mb-1.5">{q.label}</label>
+                  <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1.5">{q.label}</label>
                   {q.type === "number" && (
                     <input
                       type="number"
@@ -880,14 +880,14 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                       onChange={e => setAnswer(q.id, parseFloat(e.target.value) || 0)}
                       placeholder={q.placeholder}
                       min={0}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     />
                   )}
                   {q.type === "select" && (
                     <select
                       value={String(answers[q.id] ?? q.defaultValue ?? "")}
                       onChange={e => setAnswer(q.id, e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     >
                       {q.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
@@ -902,7 +902,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                           className={`flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
                             answers[q.id] === v
                               ? "bg-amber-500 border-amber-500 text-white"
-                              : "bg-white border-gray-200 text-gray-700 hover:border-amber-300"
+                              : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-amber-300"
                           }`}
                         >
                           {l}
@@ -923,7 +923,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
               {riskFlags.length > 0 && (
                 <div className="space-y-2">
                   {riskFlags.map((rf, i) => (
-                    <div key={i} className={`flex gap-2.5 px-3.5 py-2.5 rounded-xl text-sm ${rf.level === "warn" ? "bg-red-50 border border-red-200 text-red-800" : "bg-blue-50 border border-blue-200 text-blue-800"}`}>
+                    <div key={i} className={`flex gap-2.5 px-3.5 py-2.5 rounded-xl text-sm ${rf.level === "warn" ? "bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300" : "bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300"}`}>
                       {rf.level === "warn" ? <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />}
                       <span className="text-xs font-medium leading-relaxed">{rf.message}</span>
                     </div>
@@ -931,7 +931,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                 </div>
               )}
 
-              <p className="text-xs text-gray-400">Select Low / Mid / High for each trade, or type a custom amount. Quantities are editable.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Select Low / Mid / High for each trade, or type a custom amount. Quantities are editable.</p>
 
               {/* Trade items */}
               <div className="space-y-3">
@@ -939,35 +939,35 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                   const isCustom = t.selectedCost !== t.lowCost && t.selectedCost !== t.midCost && t.selectedCost !== t.highCost;
                   const tipsOpen = expandedTipId === t.id;
                   return (
-                    <div key={t.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                    <div key={t.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
                       <div className="px-3.5 py-3">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900 text-sm">{t.trade}</p>
+                            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t.trade}</p>
                             <input
                               value={t.description}
                               onChange={e => setTrades(prev => prev.map(x => x.id === t.id ? { ...x, description: e.target.value } : x))}
-                              className="text-xs text-gray-500 w-full bg-transparent focus:outline-none focus:ring-0 border-0 p-0"
+                              className="text-xs text-gray-500 dark:text-gray-400 w-full bg-transparent focus:outline-none focus:ring-0 border-0 p-0"
                               placeholder="Description…"
                             />
                           </div>
-                          <button onClick={() => removeTrade(t.id)} className="text-gray-300 hover:text-red-400 p-1">
+                          <button onClick={() => removeTrade(t.id)} className="text-gray-300 dark:text-gray-600 hover:text-red-400 p-1">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
                         {/* Qty row */}
                         <div className="flex items-center gap-2 mb-2.5">
-                          <span className="text-[11px] text-gray-400 font-semibold uppercase">Qty</span>
-                          <button onClick={() => adjustQty(t.id, -1)} className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 hover:bg-gray-200 text-gray-600"><Minus className="w-2.5 h-2.5" /></button>
+                          <span className="text-[11px] text-gray-400 dark:text-gray-500 font-semibold uppercase">Qty</span>
+                          <button onClick={() => adjustQty(t.id, -1)} className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"><Minus className="w-2.5 h-2.5" /></button>
                           <input
                             type="number" min="0" step="any"
                             value={t.qty}
                             onChange={e => setQtyDirect(t.id, parseFloat(e.target.value) || 0)}
-                            className="w-16 text-center text-xs border border-gray-200 rounded-lg py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            className="w-16 text-center text-xs border border-gray-200 dark:border-gray-600 rounded-lg py-0.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                           />
-                          <button onClick={() => adjustQty(t.id, 1)} className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 hover:bg-gray-200 text-gray-600"><Plus className="w-2.5 h-2.5" /></button>
-                          <span className="text-xs text-gray-400">{t.unit}</span>
+                          <button onClick={() => adjustQty(t.id, 1)} className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300"><Plus className="w-2.5 h-2.5" /></button>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{t.unit}</span>
                           <span className="ml-auto text-sm font-bold text-amber-600">
                             {formatCurrency(t.qty * t.selectedCost)}
                           </span>
@@ -976,9 +976,9 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                         {/* Cost range buttons */}
                         <div className="flex gap-1.5 flex-wrap">
                           {[
-                            { label: `Low  ${formatCurrency(t.lowCost)}`, val: t.lowCost, cls: "border-emerald-300 text-emerald-700 hover:bg-emerald-50" },
-                            { label: `Mid  ${formatCurrency(t.midCost)}`, val: t.midCost, cls: "border-amber-300 text-amber-700 hover:bg-amber-50" },
-                            { label: `High  ${formatCurrency(t.highCost)}`, val: t.highCost, cls: "border-red-300 text-red-700 hover:bg-red-50" },
+                            { label: `Low  ${formatCurrency(t.lowCost)}`, val: t.lowCost, cls: "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" },
+                            { label: `Mid  ${formatCurrency(t.midCost)}`, val: t.midCost, cls: "border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20" },
+                            { label: `High  ${formatCurrency(t.highCost)}`, val: t.highCost, cls: "border-red-300 text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20" },
                           ].map(({ label, val, cls }) => (
                             <button
                               key={label}
@@ -986,7 +986,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                               onClick={() => setTradeCost(t.id, val)}
                               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all ${
                                 t.selectedCost === val && !isCustom
-                                  ? "bg-gray-800 border-gray-800 text-white"
+                                  ? "bg-gray-800 border-gray-800 text-white dark:bg-gray-200 dark:border-gray-200 dark:text-gray-900"
                                   : cls
                               }`}
                             >
@@ -996,13 +996,13 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                             </button>
                           ))}
                           <div className="flex items-center gap-1">
-                            <span className="text-[11px] text-gray-400">Custom $</span>
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500">Custom $</span>
                             <input
                               type="number" min="0" step="any"
                               value={isCustom ? t.selectedCost : ""}
                               onChange={e => setCustomCost(t.id, e.target.value)}
                               placeholder="—"
-                              className={`w-16 text-xs text-right border rounded-lg py-1 px-2 focus:outline-none focus:ring-1 focus:ring-amber-400 ${isCustom ? "border-amber-400 bg-amber-50" : "border-gray-200"}`}
+                              className={`w-16 text-xs text-right border rounded-lg py-1 px-2 focus:outline-none focus:ring-1 focus:ring-amber-400 ${isCustom ? "border-amber-400 bg-amber-50 dark:bg-amber-900/30" : "border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"}`}
                             />
                           </div>
                         </div>
@@ -1011,7 +1011,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                         {t.tips.filter(Boolean).length > 0 && (
                           <button
                             onClick={() => setExpandedTipId(tipsOpen ? null : t.id)}
-                            className="mt-2 flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 font-semibold"
+                            className="mt-2 flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-semibold"
                           >
                             {tipsOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                             What to ask / watch for
@@ -1020,8 +1020,8 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                         {tipsOpen && (
                           <ul className="mt-1.5 space-y-1 pl-3">
                             {t.tips.filter(Boolean).map((tip, i) => (
-                              <li key={i} className="text-[11px] text-gray-600 flex gap-1.5">
-                                <span className="text-blue-400 flex-shrink-0">•</span>
+                              <li key={i} className="text-[11px] text-gray-600 dark:text-gray-400 flex gap-1.5">
+                                <span className="text-blue-400 dark:text-blue-500 flex-shrink-0">•</span>
                                 {tip}
                               </li>
                             ))}
@@ -1034,15 +1034,15 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
 
                 <button
                   onClick={addBlankTrade}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-gray-300 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Trade
                 </button>
               </div>
 
               {/* Running subtotal */}
-              <div className="sticky bottom-0 -mx-5 px-5 py-3 bg-white border-t border-gray-100">
-                <div className="flex justify-between text-sm font-bold text-gray-900">
+              <div className="sticky bottom-0 -mx-5 px-5 py-3 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex justify-between text-sm font-bold text-gray-900 dark:text-gray-100">
                   <span>Subtotal (before markup)</span>
                   <span className="text-amber-600">{formatCurrency(subtotal)}</span>
                 </div>
@@ -1054,39 +1054,39 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           {step === 4 && (
             <div className="p-5 space-y-5">
               <div>
-                <p className="text-sm font-semibold text-gray-800 mb-1">Project Phases</p>
-                <p className="text-xs text-gray-500">These phases will be saved to the job so you can check them off as work progresses. Add, remove, or reorder to match your plan.</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Project Phases</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">These phases will be saved to the job so you can check them off as work progresses. Add, remove, or reorder to match your plan.</p>
               </div>
 
               <div className="space-y-2">
                 {phasesEditable.map((phase, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2">
-                    <GripVertical className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
-                    <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                  <div key={i} className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2">
+                    <GripVertical className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" />
+                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
                     <input
                       value={phase}
                       onChange={e => setPhasesEditable(prev => prev.map((p, j) => j === i ? e.target.value : p))}
-                      className="flex-1 text-sm text-gray-800 bg-transparent focus:outline-none focus:ring-0 border-0 p-0 min-w-0"
+                      className="flex-1 text-sm text-gray-800 dark:text-gray-200 bg-transparent focus:outline-none focus:ring-0 border-0 p-0 min-w-0"
                       placeholder="Phase name…"
                     />
                     <div className="flex items-center gap-0.5 flex-shrink-0">
                       <button
                         onClick={() => movePhaseUp(i)}
                         disabled={i === 0}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                        className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-20 transition-colors"
                       >
                         <ChevronUp className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => movePhaseDown(i)}
                         disabled={i === phasesEditable.length - 1}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 transition-colors"
+                        className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-20 transition-colors"
                       >
                         <ChevronDown className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => removePhase(i)}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                        className="w-6 h-6 flex items-center justify-center rounded text-gray-300 dark:text-gray-600 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -1102,7 +1102,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                   onChange={e => setNewPhaseInput(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && addPhase()}
                   placeholder="Add a phase… (press Enter)"
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
                 <button
                   onClick={addPhase}
@@ -1115,12 +1115,12 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
 
               <button
                 onClick={() => setPhasesEditable(PHASE_TEMPLATES[jobType] ?? [])}
-                className="text-xs text-blue-500 hover:text-blue-700 font-semibold"
+                className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-semibold"
               >
                 Reset to suggested phases
               </button>
 
-              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
+              <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800 rounded-xl px-4 py-3 text-xs text-blue-700 dark:text-blue-300">
                 <strong>Tip:</strong> These phases are saved directly to the job. After the estimate is created, open the Phases panel on the job card to check off phases as work progresses.
               </div>
             </div>
@@ -1134,9 +1134,9 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <FileText className="w-4 h-4 text-amber-600" />
-                  <p className="text-sm font-bold text-gray-800">Kentucky Permit Checklist</p>
+                  <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Kentucky Permit Checklist</p>
                 </div>
-                <p className="text-xs text-gray-500 mb-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
                   Typical requirements for a <span className="font-semibold">{JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType}</span> in KY. Always verify with your local county building office — requirements vary by jurisdiction.
                 </p>
                 <div className="space-y-2">
@@ -1149,29 +1149,29 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                         onClick={() => setPermitChecked(prev => ({ ...prev, [i]: !prev[i] }))}
                         className={`w-full flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl text-xs border text-left transition-colors ${
                           isChecked
-                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                            ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
                             : item.required
-                            ? "bg-red-50 border-red-200 text-red-800"
-                            : "bg-gray-50 border-gray-200 text-gray-600"
+                            ? "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300"
+                            : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"
                         }`}
                       >
                         <span className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center ${
                           isChecked
                             ? "bg-emerald-500 border-emerald-500 text-white"
                             : item.required
-                            ? "border-red-300 bg-white"
-                            : "border-gray-300 bg-white"
+                            ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800"
+                            : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
                         }`}>
                           {isChecked && <Check className="w-2.5 h-2.5" />}
                         </span>
                         <span className={`leading-relaxed flex-1 ${isChecked ? "line-through opacity-60" : ""}`}>{item.label}</span>
                         {!isChecked && item.required && (
-                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-red-500 bg-red-100 px-1.5 py-0.5 rounded">
+                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-red-500 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded">
                             Required
                           </span>
                         )}
                         {isChecked && (
-                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">
                             Done
                           </span>
                         )}
@@ -1186,22 +1186,22 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <ClipboardCopy className="w-4 h-4 text-blue-600" />
-                    <p className="text-sm font-bold text-gray-800">Subcontractor Bid Requests</p>
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Subcontractor Bid Requests</p>
                   </div>
-                  <p className="text-xs text-gray-500 mb-3">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
                     Copy a pre-filled email template for each sub trade. Paste into Gmail, Messages, or email.
                   </p>
 
                   {/* City input */}
                   <div className="mb-4">
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">City / Town</label>
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">City / Town</label>
                     <input
                       value={projectCity}
                       onChange={e => setProjectCity(e.target.value)}
                       placeholder="e.g. Lexington"
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
-                    <p className="text-[10px] text-gray-400 mt-0.5">Used to personalise the bid request emails</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Used to personalise the bid request emails</p>
                   </div>
 
                   <div className="space-y-3">
@@ -1209,12 +1209,12 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                       const copied = copiedTradeId === t.id;
                       const jobLabel = JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType;
                       return (
-                        <div key={t.id} className="rounded-xl border border-blue-100 bg-blue-50 overflow-hidden">
+                        <div key={t.id} className="rounded-xl border border-blue-100 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 overflow-hidden">
                           <div className="px-3.5 py-2.5 flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 text-sm">{t.trade}</p>
-                              <p className="text-xs text-gray-500 truncate">{t.description}</p>
-                              <p className="text-[11px] text-blue-600 mt-0.5">
+                              <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t.trade}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{t.description}</p>
+                              <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">
                                 {t.qty} {t.unit} · {formatCurrency(t.qty * t.selectedCost)}
                               </p>
                             </div>
@@ -1250,7 +1250,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                           </div>
                           {/* Preview of template */}
                           <div className="px-3.5 pb-2.5">
-                            <pre className="text-[10px] text-gray-500 bg-white border border-blue-100 rounded-lg p-2.5 whitespace-pre-wrap leading-relaxed font-sans overflow-hidden max-h-28">
+                            <pre className="text-[10px] text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 border border-blue-100 dark:border-blue-800 rounded-lg p-2.5 whitespace-pre-wrap leading-relaxed font-sans overflow-hidden max-h-28">
                               {generateBidRequest(t, JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType, projectCity)}
                             </pre>
                           </div>
@@ -1262,7 +1262,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
               )}
 
               {trades.filter(t => t.category === "Subcontractor" && t.qty > 0).length === 0 && (
-                <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-xs text-gray-500">
+                <div className="bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
                   No subcontractor trades in this estimate — bid request templates are not needed.
                 </div>
               )}
@@ -1275,11 +1275,11 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
 
               {/* Title */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Estimate Title</label>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Estimate Title</label>
                 <input
                   value={estimateTitle}
                   onChange={e => setEstimateTitle(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   placeholder="e.g. Johnson Kitchen Remodel — GC Estimate"
                 />
               </div>
@@ -1287,47 +1287,47 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
               {/* Markup & Contingency */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Markup %</label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Markup %</label>
                   <input
                     type="number" min="0" step="0.5"
                     value={markup}
                     onChange={e => setMarkup(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   />
-                  <p className="text-[10px] text-gray-400 mt-0.5">Typical GC: 15–25%</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Typical GC: 15–25%</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Contingency %</label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Contingency %</label>
                   <input
                     type="number" min="0" step="0.5"
                     value={contingency}
                     onChange={e => setContingency(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   />
-                  <p className="text-[10px] text-gray-400 mt-0.5">Typical: 5–15%</p>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Typical: 5–15%</p>
                 </div>
               </div>
 
               {/* Totals */}
-              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-2">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Running Total</p>
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 space-y-2">
+                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Running Total</p>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Subtotal ({trades.filter(t => t.qty > 0).length} trades)</span>
-                  <span className="font-semibold">{formatCurrency(subtotal)}</span>
+                  <span className="text-gray-600 dark:text-gray-400">Subtotal ({trades.filter(t => t.qty > 0).length} trades)</span>
+                  <span className="font-semibold dark:text-gray-100">{formatCurrency(subtotal)}</span>
                 </div>
                 {parseFloat(markup) > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Markup ({markup}%)</span>
+                    <span className="text-gray-500 dark:text-gray-400">Markup ({markup}%)</span>
                     <span className="text-emerald-600 font-medium">+ {formatCurrency(markupAmt)}</span>
                   </div>
                 )}
                 {parseFloat(contingency) > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Contingency ({contingency}%)</span>
-                    <span className="text-blue-600 font-medium">+ {formatCurrency(contingencyAmt)}</span>
+                    <span className="text-gray-500 dark:text-gray-400">Contingency ({contingency}%)</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">+ {formatCurrency(contingencyAmt)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200">
+                <div className="flex justify-between text-base font-bold text-gray-900 dark:text-gray-100 pt-2 border-t border-gray-200 dark:border-gray-600">
                   <span>Grand Total</span>
                   <span className="text-amber-600">{formatCurrency(grandTotal)}</span>
                 </div>
@@ -1335,13 +1335,13 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Notes / Scope Language</label>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Notes / Scope Language</label>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   rows={3}
                   placeholder="Exclusions, payment terms, scope clarifications…"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
                 />
               </div>
 
@@ -1355,16 +1355,16 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
                       onChange={e => setSavePhasesToJob(e.target.checked)}
                       className="w-4 h-4 rounded accent-blue-500"
                     />
-                    <span className="text-xs font-bold text-gray-700">
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
                       Save {phasesEditable.length} phases to job for step-by-step tracking
                     </span>
                   </label>
                   {savePhasesToJob && (
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5">
+                    <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800 rounded-xl p-3.5">
                       <ol className="space-y-1">
                         {phasesEditable.map((phase, i) => (
-                          <li key={i} className="flex items-center gap-2 text-xs text-blue-800">
-                            <span className="w-4 h-4 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">{i + 1}</span>
+                          <li key={i} className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-300">
+                            <span className="w-4 h-4 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-300 flex items-center justify-center text-[10px] font-bold flex-shrink-0">{i + 1}</span>
                             {phase}
                           </li>
                         ))}
@@ -1378,7 +1378,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
               {riskFlags.length > 0 && (
                 <div className="space-y-2">
                   {riskFlags.filter(r => r.level === "warn").map((rf, i) => (
-                    <div key={i} className="flex gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                    <div key={i} className="flex gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-xs text-red-800 dark:text-red-300">
                       <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> {rf.message}
                     </div>
                   ))}
@@ -1387,23 +1387,23 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
 
               {/* Line item summary */}
               <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Line Items</p>
-                <div className="border border-gray-100 rounded-xl overflow-hidden text-xs">
+                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Line Items</p>
+                <div className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden text-xs">
                   <table className="w-full">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
                       <tr>
-                        <th className="text-left px-3 py-2 text-[10px] font-bold text-gray-400 uppercase">Trade</th>
-                        <th className="text-right px-2 py-2 text-[10px] font-bold text-gray-400 uppercase">Qty</th>
-                        <th className="text-right px-2 py-2 text-[10px] font-bold text-gray-400 uppercase">Unit $</th>
-                        <th className="text-right px-3 py-2 text-[10px] font-bold text-gray-400 uppercase">Total</th>
+                        <th className="text-left px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Trade</th>
+                        <th className="text-right px-2 py-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Qty</th>
+                        <th className="text-right px-2 py-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Unit $</th>
+                        <th className="text-right px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Total</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                       {trades.filter(t => t.qty > 0 && t.selectedCost > 0).map(t => (
-                        <tr key={t.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-1.5 font-medium text-gray-800 truncate max-w-[140px]">{t.trade}</td>
-                          <td className="px-2 py-1.5 text-right text-gray-500">{t.qty} {t.unit}</td>
-                          <td className="px-2 py-1.5 text-right text-gray-500">{formatCurrency(t.selectedCost)}</td>
+                        <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <td className="px-3 py-1.5 font-medium text-gray-800 dark:text-gray-200 truncate max-w-[140px]">{t.trade}</td>
+                          <td className="px-2 py-1.5 text-right text-gray-500 dark:text-gray-400">{t.qty} {t.unit}</td>
+                          <td className="px-2 py-1.5 text-right text-gray-500 dark:text-gray-400">{formatCurrency(t.selectedCost)}</td>
                           <td className="px-3 py-1.5 text-right font-semibold text-amber-600">{formatCurrency(t.qty * t.selectedCost)}</td>
                         </tr>
                       ))}
@@ -1416,22 +1416,22 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         </div>
 
         {/* Footer nav */}
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-gray-100 bg-white flex-shrink-0">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0">
           {step > 1 ? (
             <button
               onClick={() => setStep((step - 1) as 1 | 2 | 3 | 4 | 5 | 6)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
           ) : (
-            <button onClick={onClose} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors">
+            <button onClick={onClose} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
               Cancel
             </button>
           )}
 
           {step === 1 && (
-            <p className="text-xs text-gray-400">Select a job type to continue</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Select a job type to continue</p>
           )}
           {step === 2 && (
             <button

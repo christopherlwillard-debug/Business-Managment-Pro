@@ -14,9 +14,10 @@ async function handleSquarePayment(opts: {
   squarePaymentId: string | null;
   amountMoney: number | null;
   customerId: string | null;
+  buyerEmail: string | null;
   paidAt: Date;
 }) {
-  const { referenceId, squarePaymentId, amountMoney, customerId, paidAt } = opts;
+  const { referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, paidAt } = opts;
 
   const recognized =
     referenceId &&
@@ -77,11 +78,16 @@ async function handleSquarePayment(opts: {
     }
   }
 
-  if (!recognized && customerId && squarePaymentId && amountMoney !== null) {
-    const [client] = await db
-      .select()
-      .from(clientsTable)
-      .where(eq(clientsTable.squareCustomerId, customerId));
+  if (!recognized && squarePaymentId && amountMoney !== null) {
+    // Try to match a client: first by Square customer ID, then by buyer email
+    let client: typeof clientsTable.$inferSelect | undefined;
+    if (customerId) {
+      [client] = await db.select().from(clientsTable).where(eq(clientsTable.squareCustomerId, customerId));
+    }
+    if (!client && buyerEmail) {
+      const emailLower = buyerEmail.trim().toLowerCase();
+      [client] = await db.select().from(clientsTable).where(ilike(clientsTable.email, emailLower));
+    }
 
     const clientId = client?.id ?? null;
 
@@ -176,6 +182,7 @@ router.post("/", async (req: Request, res: Response) => {
             id?: string;
             order_id?: string;
             customer_id?: string;
+            buyer_email_address?: string;
             amount_money?: { amount?: number };
             status?: string;
             created_at?: string;
@@ -198,12 +205,13 @@ router.post("/", async (req: Request, res: Response) => {
       const squarePaymentId = payment.id ?? null;
       const amountMoney = payment.amount_money?.amount ?? null;
       const customerId = payment.customer_id ?? null;
+      const buyerEmail = payment.buyer_email_address ?? null;
       const paidAt = payment.created_at ? new Date(payment.created_at) : new Date();
 
       const order = body.data?.object?.order;
       const referenceId = order?.reference_id ?? null;
 
-      await handleSquarePayment({ referenceId, squarePaymentId, amountMoney, customerId, paidAt });
+      await handleSquarePayment({ referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, paidAt });
     }
 
     return res.json({ received: true });

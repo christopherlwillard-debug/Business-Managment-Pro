@@ -1280,11 +1280,12 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 }
 
 // ─── Unified Job Financials Panel ─────────────────────────────────────────────
-function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl", onClose }: {
+function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl", onClose, onSubsPaidChanged }: {
   job: Job;
   profitData?: JobProfit | null;
   initialTab?: "pl" | "breakdown" | "hours";
   onClose: () => void;
+  onSubsPaidChanged?: (allPaid: boolean) => void;
 }) {
   const [tab, setTab] = useState<"pl" | "breakdown" | "hours">(initialTab);
   const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
@@ -1297,16 +1298,37 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [taxReservePct, setTaxReservePct] = useState(25);
   const [useCollected, setUseCollected] = useState(false);
 
+  function notifySubsPaid(rows: SubPaymentRow[]) {
+    if (!onSubsPaidChanged || rows.length === 0) return;
+    const allPaid = rows.every(p => {
+      const owed = p.amountOwed ?? p.computedOwed ?? 0;
+      const paid = p.amountPaid ?? 0;
+      return owed <= 0 || paid >= owed;
+    });
+    onSubsPaidChanged(allPaid);
+  }
+
+  async function refreshPayments() {
+    const rows: SubPaymentRow[] = await fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : []).catch(() => []);
+    setPayments(rows);
+    notifySubsPaid(rows);
+  }
+
   useEffect(() => {
     const fetches: Promise<any>[] = [
-      fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ];
     if (!initialProfit) {
-      fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`).then(r => r.ok ? r.json() : null));
+      fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null));
     }
     Promise.allSettled(fetches).then(results => {
       const [pRes, profRes] = results;
-      if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) setPayments(pRes.value as SubPaymentRow[]);
+      if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) {
+        const rows = pRes.value as SubPaymentRow[];
+        setPayments(rows);
+        notifySubsPaid(rows);
+      }
       if (profRes?.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
       setLoading(false);
     });
@@ -1522,7 +1544,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
           )}
         </div>
       </div>
-      {subHoursOpen && <JobSubHoursPanel job={job} onClose={() => setSubHoursOpen(false)} />}
+      {subHoursOpen && <JobSubHoursPanel job={job} onClose={() => { setSubHoursOpen(false); refreshPayments(); }} />}
     </div>
   );
 }
@@ -2272,6 +2294,7 @@ function JobCard({
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"pl" | "breakdown" | "hours">("pl");
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
+  const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
@@ -2299,13 +2322,13 @@ function JobCard({
                   GC
                 </span>
               )}
-              {hasSubExpenses && job.subPaid && (
+              {hasSubExpenses && localSubPaid && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
                   <HardHat className="w-2.5 h-2.5" />
                   Sub Paid
                 </span>
               )}
-              {hasSubExpenses && !job.subPaid && (
+              {hasSubExpenses && !localSubPaid && (
                 <button
                   onClick={() => { setFinancialsInitialTab("hours"); setFinancialsPanelOpen(true); }}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors cursor-pointer">
@@ -2565,7 +2588,7 @@ function JobCard({
           </button>
         )}
         {/* Sub paid status badge — now computed from payment records */}
-        {hasSubExpenses && job.subPaid && (
+        {hasSubExpenses && localSubPaid && (
           <div className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <HardHat className="w-3.5 h-3.5" /> All Subs Paid ✓
           </div>
@@ -2588,7 +2611,7 @@ function JobCard({
         />
       )}
       {financialsPanelOpen && (
-        <JobFinancialsPanel job={job} profitData={profitData} initialTab={financialsInitialTab} onClose={() => setFinancialsPanelOpen(false)} />
+        <JobFinancialsPanel job={job} profitData={profitData} initialTab={financialsInitialTab} onClose={() => setFinancialsPanelOpen(false)} onSubsPaidChanged={setLocalSubPaid} />
       )}
       {phasesPanelOpen && (
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
