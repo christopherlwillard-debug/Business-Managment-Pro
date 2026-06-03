@@ -63,6 +63,7 @@ import contactsRouter from "./contacts";
 import jobSubHoursRouter from "./job-sub-hours";
 import subHoursAliasRouter from "./sub-hours-alias";
 import jobTypeBenchmarksRouter from "./job-type-benchmarks";
+import wixIntegrationRouter from "./wix-integration";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -167,6 +168,7 @@ router.use(authRouter);
 
 router.use("/portal", portalRouter);
 router.use("/pay", payPublicRouter);
+router.use("/integrations/wix", wixIntegrationRouter);
 router.use(requireAuth);
 router.use(requireAccess);
 
@@ -223,5 +225,13 @@ router.use("/jobs", sectionGuard("jobs"), jobSubHoursRouter);
 // Canonical /api/sub-hours/:id endpoints (PUT + DELETE by ID)
 router.use("/sub-hours", sectionGuard("jobs"), subHoursAliasRouter);
 router.use("/job-type-benchmarks", requireOwner, jobTypeBenchmarksRouter);
+
+router.get("/integrations/wix/config", requireOwner, (req, res) => {
+  const token = process.env["WIX_WEBHOOK_SECRET"] ?? null;
+  const protocol = req.headers["x-forwarded-proto"] ?? req.protocol;
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host;
+  const webhookUrl = `${protocol}://${host}/api/integrations/wix`;
+  res.json({ webhookUrl, token });
+});
 
 export default router;

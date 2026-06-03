@@ -4,7 +4,7 @@ import {
   invoicesTable, quickChargesTable, prospectsTable, estimatesTable,
   prospectEventsTable, otherIncomeTable, squarePaymentsTable, clientsTable,
 } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, ne, asc } from "drizzle-orm";
 import { verifySquareWebhookSignature } from "../lib/square";
 
 const router = Router();
@@ -88,24 +88,47 @@ async function handleSquarePayment(opts: {
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
 
+    if (clientId) {
+      const [openInvoice] = await db
+        .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, total: invoicesTable.total })
+        .from(invoicesTable)
+        .where(and(
+          eq(invoicesTable.clientId, clientId),
+          ne(invoicesTable.status, "paid"),
+          ne(invoicesTable.status, "draft"),
+        ))
+        .orderBy(asc(invoicesTable.issueDate))
+        .limit(1);
+
+      if (openInvoice) {
+        await db.update(invoicesTable)
+          .set({ status: "paid", squarePaidAt: paidAt })
+          .where(eq(invoicesTable.id, openInvoice.id));
+        console.log(
+          `Square Wix/Tap payment ${squarePaymentId} — matched to invoice #${openInvoice.invoiceNumber} for client ${client?.name ?? clientId} ($${amountDollars})`
+        );
+        return;
+      }
+    }
+
     const inserted = await db.insert(squarePaymentsTable).values({
       squarePaymentId,
       amountCents: amountMoney,
-      description: "Square Tap to Pay",
+      description: "Square Payment",
       clientId,
       clientName: client?.name ?? null,
       paidAt,
     }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
 
     if (inserted.length === 0) {
-      console.log(`Square Tap to Pay ${squarePaymentId} already recorded — skipping duplicate`);
+      console.log(`Square payment ${squarePaymentId} already recorded — skipping duplicate`);
       return;
     }
 
     await db.insert(otherIncomeTable).values({
       amount: amountDollars,
       date: dateStr,
-      description: "Square Tap to Pay",
+      description: "Square Payment",
       source: "square_tap_to_pay",
       paymentMethod: "card",
       clientId,
@@ -113,7 +136,7 @@ async function handleSquarePayment(opts: {
     });
 
     console.log(
-      `Tap to Pay ${squarePaymentId} recorded — $${amountDollars}` +
+      `Square payment ${squarePaymentId} recorded as Other Income — $${amountDollars}` +
         (client ? ` for client ${client.name}` : " (unmatched customer)")
     );
   }

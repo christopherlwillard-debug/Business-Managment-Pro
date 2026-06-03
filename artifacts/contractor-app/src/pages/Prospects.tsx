@@ -18,7 +18,7 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import {
   Target, Plus, Edit2, Trash2, Phone, MapPin, DollarSign,
   Maximize2, Building2, CheckCircle2, AlertCircle, CreditCard,
-  BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2, ListPlus,
+  BadgeCheck, CalendarClock, Route, X, TrendingUp, UserCheck, Loader2, ListPlus, Globe,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -630,6 +630,12 @@ export default function Prospects() {
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200">
                         <BadgeCheck className="w-3 h-3" />
                         Online Customer
+                      </span>
+                    )}
+                    {p.source === "wix_form" && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-blue-100 text-blue-700 border-blue-200">
+                        <Globe className="w-3 h-3" />
+                        From Website
                       </span>
                     )}
                     {isFollowUpDue(p.followUpDate) && (

@@ -54,3 +54,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"
+WIX_WEBHOOK_SECRET = "08f285b6672963affb8817a9cd27e7e3857adb18409d6ea9"

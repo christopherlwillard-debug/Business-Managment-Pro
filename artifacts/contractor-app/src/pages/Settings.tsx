@@ -11,7 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2, Calculator,
-  BarChart2, Edit2, Plus, ChevronDown, ChevronUp, TrendingUp, Home,
+  BarChart2, Edit2, Plus, ChevronDown, ChevronUp, TrendingUp, Home, Globe, Eye, EyeOff, Copy,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -76,6 +76,7 @@ const TABS = [
   { key: "payments", label: "Payments", icon: Receipt },
   { key: "team", label: "Team", icon: Users2 },
   { key: "google", label: "Google", icon: Link2 },
+  { key: "integrations", label: "Wix Website", icon: Globe },
 ];
 
 const FLOORING_TYPES = ["Carpet", "Laminate", "LVP", "Hardwood", "Tile"] as const;
@@ -939,6 +940,136 @@ function GoogleSection() {
                 You'll be prompted to sign in to Google and grant access to Drive (read-only) and Gmail (send only). Your files and emails are never stored on our servers.
               </p>
             </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Wix Integration Section ──────────────────────────────────────────────────
+function WixIntegrationSection() {
+  const [config, setConfig] = useState<{ webhookUrl: string; token: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showToken, setShowToken] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetch(`${BASE}/api/integrations/wix/config`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setConfig(data); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  function copyText(text: string, which: "url" | "token") {
+    navigator.clipboard.writeText(text).then(() => {
+      if (which === "url") { setCopiedUrl(true); setTimeout(() => setCopiedUrl(false), 2000); }
+      else { setCopiedToken(true); setTimeout(() => setCopiedToken(false), 2000); }
+    }).catch(() => toast({ title: "Copy failed", variant: "destructive" }));
+  }
+
+  return (
+    <div className="space-y-5 pb-8">
+      <Card className="border-border/50 shadow-md bg-card">
+        <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+          <CardTitle className="font-display flex items-center gap-2">
+            <Globe className="w-5 h-5 text-blue-500" />
+            Wix Website Integration
+          </CardTitle>
+          <CardDescription>
+            Connect your Wix website so that quote request form submissions automatically create a new Prospect in BuildPro — no manual re-entry needed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-6 space-y-6">
+          {loading ? (
+            <div className="h-20 rounded-xl bg-muted animate-pulse" />
+          ) : (
+            <>
+              <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                <p className="text-sm text-blue-800">Integration is ready — paste the URL below into your Wix Automation to start receiving leads.</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">Your Webhook URL</p>
+                <p className="text-xs text-muted-foreground">Copy this URL and paste it into Wix → Automations → Action: "Send an HTTP request".</p>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  <code className="text-xs text-gray-700 font-mono flex-1 truncate">
+                    {config?.webhookUrl ?? `${typeof window !== "undefined" ? window.location.origin : ""}/api/integrations/wix`}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyText(config?.webhookUrl ?? `${window.location.origin}/api/integrations/wix`, "url")}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0 transition-colors"
+                  >
+                    {copiedUrl ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedUrl ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              {config?.token && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">Secret Token</p>
+                  <p className="text-xs text-muted-foreground">Add this as a custom header <code className="bg-muted px-1 rounded font-mono">x-wix-secret</code> in your Wix HTTP request to authenticate it.</p>
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    <code className="text-xs text-gray-700 font-mono flex-1 truncate">
+                      {showToken ? config.token : "•".repeat(24)}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => setShowToken(v => !v)}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                    >
+                      {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyText(config.token!, "token")}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium flex-shrink-0 transition-colors"
+                    >
+                      {copiedToken ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedToken ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="border border-border rounded-xl p-4 space-y-3 bg-muted/20">
+                <p className="text-sm font-semibold text-foreground">How to set this up in Wix (4 steps)</p>
+                <ol className="space-y-3 text-sm text-muted-foreground">
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">1</span>
+                    <span>In Wix, go to <strong className="text-foreground">Automations</strong> → <strong className="text-foreground">+ New Automation</strong> and choose your quote/contact form as the trigger.</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">2</span>
+                    <span>Add an action: <strong className="text-foreground">Send an HTTP request</strong> → Method: <code className="bg-muted px-1 rounded font-mono text-xs">POST</code> → paste your Webhook URL above.</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">3</span>
+                    <span>Add a custom header — Key: <code className="bg-muted px-1 rounded font-mono text-xs">x-wix-secret</code> · Value: your Secret Token above.</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">4</span>
+                    <span>Map your form fields in the request body (name, phone, email, address, message). A new <strong className="text-foreground">Prospect</strong> will appear in BuildPro instantly when someone submits your form.</span>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">What gets created</p>
+                <ul className="space-y-1.5 text-xs text-muted-foreground">
+                  <li className="flex items-start gap-2"><Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" /> A new Prospect with the contact's name, phone, email, and address</li>
+                  <li className="flex items-start gap-2"><Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" /> Status set to "Cold" — ready for you to follow up and qualify</li>
+                  <li className="flex items-start gap-2"><Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" /> A "From Website" badge so you know which leads came from Wix</li>
+                  <li className="flex items-start gap-2"><Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" /> Any service description or message stored in the Notes field</li>
+                </ul>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -2062,6 +2193,9 @@ export default function Settings() {
       {/* ── Google (outside form) ── */}
       {activeTab === "google" && <GoogleSection />}
 
+      {/* ── Wix Integration (outside form) ── */}
+      {activeTab === "integrations" && <WixIntegrationSection />}
+
       {/* ── Square Payments (outside form) ── */}
       {activeTab === "payments" && (
         <div className="space-y-5 pb-8">
@@ -2136,7 +2270,7 @@ export default function Settings() {
         </div>
       )}
 
-      <form onSubmit={handleSave} className={`space-y-5 ${(activeTab === "team" || activeTab === "google" || activeTab === "payments") ? "hidden" : ""}`}>
+      <form onSubmit={handleSave} className={`space-y-5 ${(activeTab === "team" || activeTab === "google" || activeTab === "payments" || activeTab === "integrations") ? "hidden" : ""}`}>
 
         {/* ── Profile ── */}
         {activeTab === "profile" && (
