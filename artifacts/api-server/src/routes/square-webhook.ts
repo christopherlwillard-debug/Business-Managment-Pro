@@ -15,9 +15,10 @@ async function handleSquarePayment(opts: {
   amountMoney: number | null;
   customerId: string | null;
   buyerEmail: string | null;
+  buyerName: string | null;
   paidAt: Date;
 }) {
-  const { referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, paidAt } = opts;
+  const { referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, buyerName, paidAt } = opts;
 
   const recognized =
     referenceId &&
@@ -79,7 +80,7 @@ async function handleSquarePayment(opts: {
   }
 
   if (!recognized && squarePaymentId && amountMoney !== null) {
-    // Try to match a client: first by Square customer ID, then by buyer email
+    // Try to match a client: Square customer ID → buyer email → client name
     let client: typeof clientsTable.$inferSelect | undefined;
     if (customerId) {
       [client] = await db.select().from(clientsTable).where(eq(clientsTable.squareCustomerId, customerId));
@@ -87,6 +88,10 @@ async function handleSquarePayment(opts: {
     if (!client && buyerEmail) {
       const emailLower = buyerEmail.trim().toLowerCase();
       [client] = await db.select().from(clientsTable).where(ilike(clientsTable.email, emailLower));
+    }
+    if (!client && buyerName) {
+      const nameLower = buyerName.trim();
+      [client] = await db.select().from(clientsTable).where(ilike(clientsTable.name, nameLower));
     }
 
     const clientId = client?.id ?? null;
@@ -183,6 +188,8 @@ router.post("/", async (req: Request, res: Response) => {
             order_id?: string;
             customer_id?: string;
             buyer_email_address?: string;
+            shipping_address?: { first_name?: string; last_name?: string };
+            note?: string;
             amount_money?: { amount?: number };
             status?: string;
             created_at?: string;
@@ -190,6 +197,7 @@ router.post("/", async (req: Request, res: Response) => {
           order?: {
             id?: string;
             reference_id?: string;
+            fulfillments?: Array<{ recipient?: { display_name?: string } }>;
             line_items?: Array<{ name?: string }>;
           };
         };
@@ -208,10 +216,15 @@ router.post("/", async (req: Request, res: Response) => {
       const buyerEmail = payment.buyer_email_address ?? null;
       const paidAt = payment.created_at ? new Date(payment.created_at) : new Date();
 
+      // Extract buyer name from shipping address, fulfillment recipient, or payment note
       const order = body.data?.object?.order;
       const referenceId = order?.reference_id ?? null;
+      const fulfillmentName = order?.fulfillments?.[0]?.recipient?.display_name ?? null;
+      const shippingName = [payment.shipping_address?.first_name, payment.shipping_address?.last_name]
+        .filter(Boolean).join(" ").trim() || null;
+      const buyerName = fulfillmentName ?? shippingName;
 
-      await handleSquarePayment({ referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, paidAt });
+      await handleSquarePayment({ referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, buyerName, paidAt });
     }
 
     return res.json({ received: true });
