@@ -4,7 +4,7 @@ import {
   invoicesTable, quickChargesTable, prospectsTable, estimatesTable,
   prospectEventsTable, otherIncomeTable, squarePaymentsTable, clientsTable,
 } from "@workspace/db/schema";
-import { eq, and, ne, asc } from "drizzle-orm";
+import { eq, and, ne, asc, ilike, or } from "drizzle-orm";
 import { verifySquareWebhookSignature } from "../lib/square";
 
 const router = Router();

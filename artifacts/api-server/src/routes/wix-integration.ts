@@ -6,7 +6,10 @@ const router = Router();
 
 function validateSecret(req: import("express").Request): boolean {
   const envSecret = process.env["WIX_WEBHOOK_SECRET"];
-  if (!envSecret) return true;
+  if (!envSecret) {
+    console.error("[wix-webhook] WIX_WEBHOOK_SECRET is not configured — rejecting all requests");
+    return false;
+  }
   const headerSecret = req.headers["x-wix-secret"] as string | undefined;
   const queryToken = typeof req.query["token"] === "string" ? req.query["token"] : undefined;
   return headerSecret === envSecret || queryToken === envSecret;
