@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
+import { sectionGuard } from "./guards";
 import { db } from "@workspace/db";
 import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
@@ -221,8 +222,8 @@ router.post("/verify-pin", async (req, res) => {
   }
 });
 
-// Approve or revoke portal access
-router.post("/approve/:subId", async (req, res) => {
+// Approve or revoke portal access — requires authenticated admin access
+router.post("/approve/:subId", sectionGuard("subcontractors"), async (req, res) => {
   try {
     const id = parseInt(req.params.subId);
     const { approved } = req.body; // boolean
@@ -239,8 +240,8 @@ router.post("/approve/:subId", async (req, res) => {
   }
 });
 
-// Generate portal token for a sub
-router.post("/generate/:subId", async (req, res) => {
+// Generate portal token for a sub — requires authenticated admin access
+router.post("/generate/:subId", sectionGuard("subcontractors"), async (req, res) => {
   try {
     const id = parseInt(req.params.subId);
     const token = crypto.randomUUID();
@@ -262,9 +263,9 @@ function maskTaxId(id: string): string {
   return "***-**-" + id.slice(-4);
 }
 
-// ─── Phone lookup — lets a sub find their portal link by phone number ──────────
+// ─── Phone lookup — lets a sub verify their account by phone number ───────────
 // Normalises both stored and submitted phone numbers (digits only) before comparing.
-// Returns only the token + first name so the client can redirect — no other PII.
+// Returns only the subcontractor's first name — does NOT disclose the portal token.
 router.post("/lookup", async (req, res) => {
   try {
     const raw: string = req.body.phone ?? "";
@@ -280,7 +281,7 @@ router.post("/lookup", async (req, res) => {
     if (!match.portalApproved) return res.status(403).json({ error: "Portal access not yet approved. Ask your contractor to approve your portal." });
     if (!match.portalToken) return res.status(404).json({ error: "No portal link generated yet. Ask your contractor to create your portal." });
 
-    res.json({ token: match.portalToken, name: match.name.split(" ")[0] });
+    res.json({ name: match.name.split(" ")[0] });
   } catch (err) {
     console.error("[portal-lookup]", err);
     res.status(500).json({ error: "Lookup failed" });
