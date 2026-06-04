@@ -3,14 +3,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Receipt, Printer } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function useProfitLoss(year: number) {
+function useProfitLoss(year: number, businessLine?: string) {
   return useQuery<ProfitLossReport>({
-    queryKey: ["profit-loss", year],
+    queryKey: ["profit-loss", year, businessLine ?? "all"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/reports/profit-loss?year=${year}`);
+      const params = new URLSearchParams({ year: String(year) });
+      if (businessLine) params.set("businessLine", businessLine);
+      const res = await fetch(`${BASE}/api/reports/profit-loss?${params}`);
       if (!res.ok) throw new Error("Failed to load P&L report");
       return res.json();
     },
@@ -51,7 +54,8 @@ function PLSection({ title }: { title: string }) {
 }
 
 function ProfitLossTab({ year }: { year: number }) {
-  const { data: report, isLoading, error } = useProfitLoss(year);
+  const { activeBusiness } = useBusiness();
+  const { data: report, isLoading, error } = useProfitLoss(year, activeBusiness?.slug);
 
   function handlePrint() {
     if (!report) return;

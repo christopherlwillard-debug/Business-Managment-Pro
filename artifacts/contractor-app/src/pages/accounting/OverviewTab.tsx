@@ -280,7 +280,7 @@ function ReserveCard({ year }: { year: number }) {
 // ─── Overview Dashboard ──────────────────────────────────────────────────────
 
 function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; setActiveTab: (tab: AccountingTab) => void }) {
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const [, navigate] = useLocation();
   const s = data?.summary ?? {};
   const netProfit = s.netProfit ?? 0;
@@ -1060,13 +1060,15 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Business Line <span className="font-normal">(optional)</span></label>
-              <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
+              <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border flex-wrap">
                 <button type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: "" } : f)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!oiForm.businessLine ? "bg-white text-gray-800 shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Untagged</button>
-                <button type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: "general_contracting" } : f)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${oiForm.businessLine === "general_contracting" ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>General Contracting</button>
-                <button type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: "asphalt_sealing" } : f)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${oiForm.businessLine === "asphalt_sealing" ? "bg-amber-500 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Asphalt Sealing</button>
+                {businesses.map(b => (
+                  <button key={b.id} type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: b.slug } : f)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${oiForm.businessLine === b.slug ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                    {b.name}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-1">

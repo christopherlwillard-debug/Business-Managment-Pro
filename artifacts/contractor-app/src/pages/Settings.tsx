@@ -1329,8 +1329,84 @@ function BusinessProfileCard() {
             {saved && <span className="text-sm text-emerald-600 font-medium flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
           </div>
         </form>
+        <DeleteBusinessSection activeBusiness={activeBusiness} businesses={businesses} BASE={BASE} refresh={refresh} />
       </CardContent>
     </Card>
+  );
+}
+
+function DeleteBusinessSection({ activeBusiness, businesses, BASE, refresh }: {
+  activeBusiness: NonNullable<ReturnType<typeof useBusiness>["activeBusiness"]>;
+  businesses: ReturnType<typeof useBusiness>["businesses"];
+  BASE: string;
+  refresh: () => void;
+}) {
+  const { clearSelection } = useBusiness();
+  const [open, setOpen] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const hasChildren = businesses.some(b => b.parentBusinessId === activeBusiness.id);
+
+  async function handleDelete() {
+    if (confirmName !== activeBusiness.name) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${BASE}/api/businesses/${activeBusiness.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      clearSelection();
+      await refresh();
+    } finally {
+      setDeleting(false);
+      setOpen(false);
+      setConfirmName("");
+    }
+  }
+
+  return (
+    <div className="mt-6 pt-5 border-t border-red-200/60">
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          disabled={hasChildren}
+          title={hasChildren ? "Remove all DBAs under this business first" : undefined}
+          className="px-4 py-2 rounded-xl border border-red-300 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Delete This Business…
+        </button>
+      ) : (
+        <div className="rounded-xl border border-red-300 bg-red-50/50 p-4 space-y-3">
+          <p className="text-sm font-semibold text-red-700">Delete "{activeBusiness.name}"?</p>
+          <p className="text-xs text-red-600">This is permanent. Type the business name to confirm.</p>
+          <input
+            className="flex h-9 w-full rounded-md border border-red-300 bg-white px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400"
+            placeholder={activeBusiness.name}
+            value={confirmName}
+            onChange={e => setConfirmName(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting || confirmName !== activeBusiness.name}
+              className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {deleting ? "Deleting…" : "Permanently Delete"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setConfirmName(""); }}
+              className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

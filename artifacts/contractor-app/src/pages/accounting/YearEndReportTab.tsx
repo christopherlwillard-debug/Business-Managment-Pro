@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   RefreshCw, AlertCircle, FileSpreadsheet, TrendingUp, TrendingDown,
@@ -48,11 +49,13 @@ interface YearEndReport {
   estimatedTaxPayments: { id: number; quarter: number; level: string; amountPaid: number; paidDate: string | null; paymentMethod: string | null; notes: string | null }[];
 }
 
-function useYearEndReport(year: number) {
+function useYearEndReport(year: number, businessLine?: string) {
   return useQuery<YearEndReport>({
-    queryKey: ["year-end-report", year],
+    queryKey: ["year-end-report", year, businessLine ?? "all"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/reports/year-end?year=${year}`);
+      const params = new URLSearchParams({ year: String(year) });
+      if (businessLine) params.set("businessLine", businessLine);
+      const res = await fetch(`${BASE}/api/reports/year-end?${params}`);
       if (!res.ok) throw new Error("Failed to load year-end report");
       return res.json();
     },
@@ -336,7 +339,8 @@ const ALL_YEAR_END_SECTIONS = ["pl", "expenses", "depreciation", "disposed", "mi
 type YearEndSection = typeof ALL_YEAR_END_SECTIONS[number];
 
 export default function YearEndReportTab({ year }: { year: number }) {
-  const { data: report, isLoading, error, refetch } = useYearEndReport(year);
+  const { activeBusiness } = useBusiness();
+  const { data: report, isLoading, error, refetch } = useYearEndReport(year, activeBusiness?.slug);
   const [isDownloading, setIsDownloading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<YearEndSection>>(new Set(ALL_YEAR_END_SECTIONS));
   const [showFullDeprecSchedule, setShowFullDeprecSchedule] = useState(false);

@@ -74,11 +74,12 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { date, startLocation, endLocation, miles, purpose, jobId, classification, notes, source } = req.body;
+    const { date, startLocation, endLocation, miles, purpose, jobId, businessId, classification, notes, source } = req.body;
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
     const rate = await getRate();
     const milesNum = parseFloat(miles);
     const deductionAmount = classification === "business" ? milesNum * rate : 0;
+    const bizId = businessId ? parseInt(businessId) : null;
 
     let expenseId: number | null = null;
 
@@ -93,6 +94,7 @@ router.post("/", async (req, res) => {
         category: "mileage",
         amount: deductionAmount.toFixed(2),
         jobId: jobId || null,
+        businessId: bizId,
         notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${rate}/mi`,
       }).returning();
       expenseId = expense.id;
@@ -102,6 +104,7 @@ router.post("/", async (req, res) => {
       date, startLocation, endLocation,
       miles: miles.toString(),
       purpose, jobId: jobId || null,
+      businessId: bizId,
       classification: classification || "business",
       ratePerMile: rate.toString(),
       deductionAmount: deductionAmount.toString(),
