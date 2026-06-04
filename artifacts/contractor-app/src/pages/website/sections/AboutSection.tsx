@@ -1,4 +1,5 @@
 import { ImagePlus, Loader2 } from "lucide-react";
+import { AiCopyPopover } from "./AiCopyPopover";
 
 interface AboutContent {
   heading: string;
@@ -14,9 +15,12 @@ interface AboutSectionProps {
   onChange?: (content: AboutContent) => void;
   onPhotoUpload?: (file: File) => Promise<void>;
   isPhotoUploading?: boolean;
+  businessName?: string;
 }
 
-export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading }: AboutSectionProps) {
+export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading, businessName }: AboutSectionProps) {
+  const biz = businessName ?? "a contractor business";
+
   function update(patch: Partial<AboutContent>) {
     onChange?.({ ...content, ...patch });
   }
@@ -37,6 +41,11 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
                 value={content.body}
                 rows={6}
                 onChange={e => update({ body: e.target.value })}
+              />
+              <AiCopyPopover
+                label="About body"
+                defaultPrompt={`Write a 3-4 sentence About Us paragraph for ${biz}. Use a warm, professional tone. Mention experience, quality, and serving the local community.`}
+                onAccept={v => update({ body: v })}
               />
             </>
           ) : (

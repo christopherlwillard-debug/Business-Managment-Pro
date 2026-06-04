@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { AiCopyPopover } from "./AiCopyPopover";
 
 interface ServiceItem {
   id: string;
@@ -16,9 +17,12 @@ interface ServicesSectionProps {
   settings: { brandColor: string };
   isEditing?: boolean;
   onChange?: (content: ServicesContent) => void;
+  businessName?: string;
 }
 
-export function ServicesSection({ content, settings, isEditing, onChange }: ServicesSectionProps) {
+export function ServicesSection({ content, settings, isEditing, onChange, businessName }: ServicesSectionProps) {
+  const biz = businessName ?? "a contractor business";
+
   function update(patch: Partial<ServicesContent>) {
     onChange?.({ ...content, ...patch });
   }
@@ -68,6 +72,11 @@ export function ServicesSection({ content, settings, isEditing, onChange }: Serv
                     value={item.description}
                     rows={3}
                     onChange={e => updateItem(item.id, { description: e.target.value })}
+                  />
+                  <AiCopyPopover
+                    label={item.title}
+                    defaultPrompt={`Write a 1-2 sentence description for the "${item.title}" service at ${biz}. Focus on the benefit to the customer, keep it under 25 words.`}
+                    onAccept={v => updateItem(item.id, { description: v })}
                   />
                 </>
               ) : (

@@ -61,13 +61,14 @@ function renderSection(
     isAboutPhotoUploading?: boolean;
     onPortfolioPhotoUpload?: (projectId: string, photoId: string, file: File) => Promise<void>;
     uploadingPortfolioPhotoIds?: Set<string>;
+    businessName?: string;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any };
   switch (section.type) {
-    case "hero":    return <HeroSection {...props} />;
-    case "services": return <ServicesSection {...props} />;
-    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} />;
+    case "hero":    return <HeroSection {...props} businessName={extras?.businessName} />;
+    case "services": return <ServicesSection {...props} businessName={extras?.businessName} />;
+    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} />;
     case "contact": return <ContactFormSection {...props} />;
     case "footer":  return <FooterSection {...props} />;
     case "portfolio": return (
@@ -737,6 +738,7 @@ export default function WebsiteEditor() {
               isAboutPhotoUploading: aboutPhotoUploading,
               onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
               uploadingPortfolioPhotoIds,
+              businessName: activeBusiness?.name,
             })}
           </div>
         ))}

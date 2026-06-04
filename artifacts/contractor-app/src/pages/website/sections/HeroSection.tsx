@@ -1,3 +1,5 @@
+import { AiCopyPopover } from "./AiCopyPopover";
+
 interface HeroContent {
   headline: string;
   subheadline: string;
@@ -10,10 +12,12 @@ interface HeroSectionProps {
   settings: { brandColor: string; logoUrl?: string };
   isEditing?: boolean;
   onChange?: (content: HeroContent) => void;
+  businessName?: string;
 }
 
-export function HeroSection({ content, settings, isEditing, onChange }: HeroSectionProps) {
+export function HeroSection({ content, settings, isEditing, onChange, businessName }: HeroSectionProps) {
   const bg = content.bgColor || settings.brandColor || "#1a1a2e";
+  const biz = businessName ?? "a contractor business";
 
   function update(patch: Partial<HeroContent>) {
     onChange?.({ ...content, ...patch });
@@ -35,17 +39,31 @@ export function HeroSection({ content, settings, isEditing, onChange }: HeroSect
       {isEditing ? (
         <>
           <input
-            className="w-full text-center text-4xl font-bold bg-transparent border-b border-white/30 focus:border-white outline-none mb-4 placeholder-white/40"
+            className="w-full text-center text-4xl font-bold bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
             value={content.headline}
             placeholder="Your headline here"
             onChange={e => update({ headline: e.target.value })}
           />
+          <AiCopyPopover
+            variant="dark"
+            label="Headline"
+            defaultPrompt={`Write a punchy 5-8 word headline for ${biz}'s website. It should be confident and appeal to homeowners.`}
+            onAccept={v => update({ headline: v })}
+          />
+          <div className="mb-4" />
           <input
-            className="w-full text-center text-lg bg-transparent border-b border-white/30 focus:border-white outline-none mb-8 placeholder-white/40"
+            className="w-full text-center text-lg bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
             value={content.subheadline}
             placeholder="Subheadline text"
             onChange={e => update({ subheadline: e.target.value })}
           />
+          <AiCopyPopover
+            variant="dark"
+            label="Subheadline"
+            defaultPrompt={`Write a 1-2 sentence subheadline for ${biz}'s website. The headline is: "${content.headline}". Keep it under 20 words.`}
+            onAccept={v => update({ subheadline: v })}
+          />
+          <div className="mb-8" />
           <input
             className="inline-block text-sm font-semibold px-6 py-3 rounded-full bg-white/20 border border-white/40 focus:border-white outline-none text-center placeholder-white/40"
             value={content.ctaLabel}

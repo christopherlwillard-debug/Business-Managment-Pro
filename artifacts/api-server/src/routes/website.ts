@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Readable } from "stream";
+import OpenAI from "openai";
 import { db } from "@workspace/db";
 import { websiteConfigsTable, businessesTable, prospectsTable } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -7,6 +8,11 @@ import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 
 const objectStorageService = new ObjectStorageService();
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
 
 const router = Router();
 const publicRouter = Router();
@@ -388,6 +394,28 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     .returning({ id: prospectsTable.id });
 
   res.json({ success: true, prospectId: prospect.id });
+}));
+
+router.post("/generate-copy", wrapAsync(async (req, res) => {
+  const { prompt } = req.body as { prompt?: string };
+  if (!prompt?.trim()) {
+    return res.status(400).json({ error: "prompt is required" });
+  }
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4.1-mini",
+    max_completion_tokens: 300,
+    messages: [
+      {
+        role: "system",
+        content: `You are a professional copywriter for contractor and trade business websites. Write clear, confident, trustworthy copy that appeals to homeowners and property managers hiring a contractor. Be concise and direct — no fluff, no hype words like "premier" or "unparalleled". Return ONLY the copy text, no quotes, no explanation, no markdown formatting.`,
+      },
+      { role: "user", content: prompt.trim() },
+    ],
+  });
+
+  const result = completion.choices[0]?.message?.content?.trim() ?? "";
+  res.json({ result });
 }));
 
 router.post("/upload-logo", wrapAsync(async (req, res) => {
