@@ -1322,6 +1322,7 @@ export default function Settings() {
   const updateMutation = useUpdateSettings();
   const { isOwner } = useUserPermissions();
   const { data: squareStatus } = useSquareStatus();
+  const { activeBusiness } = useBusiness();
 
   const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
