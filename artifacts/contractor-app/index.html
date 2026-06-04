@@ -19,7 +19,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="bp-splash" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:#f8fafc;font-family:'Inter',system-ui,sans-serif"><style>@media(prefers-color-scheme:dark){#bp-splash{background:#0f172a!important}#bp-splash-title{color:#f1f5f9!important}#bp-splash-sub{color:#94a3b8!important}}html.dark #bp-splash{background:#0f172a!important}html.dark #bp-splash-title{color:#f1f5f9!important}html.dark #bp-splash-sub{color:#94a3b8!important}@keyframes bp-spin{to{transform:rotate(360deg)}}#bp-ring{animation:bp-spin 0.9s linear infinite}</style><div style="width:56px;height:56px;border-radius:16px;background:#f59e0b;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;letter-spacing:-1px">BP</div><div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div id="bp-splash-title" style="font-size:20px;font-weight:700;color:#1e293b;letter-spacing:-0.3px">BuildPro</div><div id="bp-splash-sub" style="font-size:13px;color:#64748b">Loading your dashboard…</div></div><div id="bp-ring" style="width:28px;height:28px;border-radius:50%;border:3px solid #e2e8f0;border-top-color:#f59e0b"></div></div></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
