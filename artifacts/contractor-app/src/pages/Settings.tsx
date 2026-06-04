@@ -1615,12 +1615,20 @@ export default function Settings() {
         {/* ── Profile ── */}
         {activeTab === "profile" && (
           <>
+            {/* When a specific business is active, show its card first */}
+            {activeBusiness && <BusinessProfileCard />}
+
             <Card className="border-border/50 shadow-md bg-card">
               <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
                 <CardTitle className="font-display flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-primary" /> Business Profile
+                  <Building2 className="w-5 h-5 text-primary" />
+                  {activeBusiness ? "Main Company Defaults" : "Business Profile"}
                 </CardTitle>
-                <CardDescription>This information appears on all invoices, estimates, and reports.</CardDescription>
+                <CardDescription>
+                  {activeBusiness
+                    ? "Global company info shared across all businesses — appears on invoices and reports."
+                    : "This information appears on all invoices, estimates, and reports."}
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1682,9 +1690,6 @@ export default function Settings() {
                 <RegisteredAgentSection className="space-y-4" />
               </CardContent>
             </Card>
-
-            {/* Active Business Profile Card */}
-            <BusinessProfileCard />
 
             {/* Branding — Logo & Invoice Placement */}
             <Card className="border-border/50 shadow-md bg-card">

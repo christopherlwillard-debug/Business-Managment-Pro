@@ -56,7 +56,7 @@ function BusinessCardStats({ business }: { business: Business }) {
   );
 }
 
-const EMPTY_FORM = { name: "", type: "other", address: "", city: "", state: "", zip: "", phone: "", email: "", licenseNumber: "", taxId: "" };
+const EMPTY_FORM = { name: "", type: "", address: "", city: "", state: "", zip: "", phone: "", email: "", licenseNumber: "", taxId: "" };
 
 export default function BusinessSelector({ onSelect }: { onSelect: (b: Business | null) => void }) {
   const { businesses, setActiveBusiness, refresh } = useBusiness();
@@ -65,6 +65,9 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const [addToolsCustomized, setAddToolsCustomized] = useState(false);
+  const [addFeatures, setAddFeatures] = useState<string[]>([]);
 
   const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
@@ -130,7 +133,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
         body: JSON.stringify({
           name: form.name.trim(),
           slug: slugify(form.name.trim()),
-          type: form.type,
+          type: form.type.trim() || "other",
           address: form.address || null,
           city: form.city || null,
           state: form.state || null,
@@ -139,12 +142,15 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
           email: form.email || null,
           licenseNumber: form.licenseNumber || null,
           taxId: form.taxId || null,
+          enabledFeatures: addToolsCustomized ? addFeatures : null,
         }),
       });
       if (!res.ok) { const d = await res.json(); setError(d.error || "Failed to create business"); return; }
       await refresh();
       setShowAddForm(false);
       setForm(EMPTY_FORM);
+      setAddToolsCustomized(false);
+      setAddFeatures([]);
     } catch {
       setError("Failed to create business");
     } finally {
@@ -420,18 +426,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                       </div>
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-semibold text-muted-foreground mb-1">Type</label>
-                        <select className={inp} value={editForm.type} onChange={e => setEF("type", e.target.value)}>
-                          <option value="general_contracting">General Contracting</option>
-                          <option value="asphalt_sealing">Asphalt Sealing</option>
-                          <option value="real_estate">Real Estate</option>
-                          <option value="landscaping">Landscaping</option>
-                          <option value="electrical">Electrical</option>
-                          <option value="plumbing">Plumbing</option>
-                          <option value="hvac">HVAC</option>
-                          <option value="painting">Painting</option>
-                          <option value="roofing">Roofing</option>
-                          <option value="other">Other</option>
-                        </select>
+                        <input type="text" className={inp} placeholder="e.g. General Contracting, Roofing, HVAC…" value={editForm.type} onChange={e => setEF("type", e.target.value)} />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-muted-foreground mb-1">Phone</label>
@@ -549,18 +544,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-muted-foreground mb-1">Type</label>
-                  <select className={inp} value={form.type} onChange={e => setF("type", e.target.value)}>
-                    <option value="general_contracting">General Contracting</option>
-                    <option value="asphalt_sealing">Asphalt Sealing</option>
-                    <option value="real_estate">Real Estate</option>
-                    <option value="landscaping">Landscaping</option>
-                    <option value="electrical">Electrical</option>
-                    <option value="plumbing">Plumbing</option>
-                    <option value="hvac">HVAC</option>
-                    <option value="painting">Painting</option>
-                    <option value="roofing">Roofing</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <input type="text" className={inp} placeholder="e.g. General Contracting, Roofing, HVAC…" value={form.type} onChange={e => setF("type", e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1">Phone</label>
@@ -596,8 +580,49 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                 </div>
               </div>
 
+              {/* Tools section */}
+              <div className="border-t border-border/50 pt-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground">Tools &amp; Modules</p>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={addToolsCustomized}
+                      onChange={e => {
+                        setAddToolsCustomized(e.target.checked);
+                        if (e.target.checked && addFeatures.length === 0) {
+                          setAddFeatures(FEATURE_OPTIONS.map(f => f.key));
+                        }
+                      }}
+                      className="rounded border-border"
+                    />
+                    <span className="text-xs font-medium text-foreground">Customize for this business</span>
+                  </label>
+                </div>
+                {addToolsCustomized ? (
+                  <div className="grid grid-cols-2 gap-0.5 mt-1">
+                    {FEATURE_OPTIONS.map(f => (
+                      <label key={f.key} className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-lg hover:bg-muted/60 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={addFeatures.includes(f.key)}
+                          onChange={e => {
+                            if (e.target.checked) setAddFeatures(prev => [...prev, f.key]);
+                            else setAddFeatures(prev => prev.filter(k => k !== f.key));
+                          }}
+                          className="rounded border-border"
+                        />
+                        <span className="text-xs font-medium">{f.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Using global defaults from Settings → Modules</p>
+                )}
+              </div>
+
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => { setShowAddForm(false); setError(""); setForm(EMPTY_FORM); }}
+                <button type="button" onClick={() => { setShowAddForm(false); setError(""); setForm(EMPTY_FORM); setAddToolsCustomized(false); setAddFeatures([]); }}
                   className="flex-1 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors">
                   Cancel
                 </button>

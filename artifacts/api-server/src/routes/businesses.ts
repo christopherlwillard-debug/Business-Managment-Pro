@@ -83,14 +83,12 @@ router.patch("/reorder", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId } = req.body;
+    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures } = req.body;
     if (!name || !slug) return res.status(400).json({ error: "name and slug are required" });
-    const resolvedType = type || "other";
-    if (!isValidBusinessType(resolvedType)) {
-      return res.status(400).json({ error: `Invalid type. Must be one of: ${BUSINESS_TYPES.join(", ")}` });
-    }
+    const resolvedType = (typeof type === "string" && type.trim()) ? type.trim() : "other";
     const [business] = await db.insert(businessesTable).values({
       name, slug, type: resolvedType, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId,
+      enabledFeatures: Array.isArray(enabledFeatures) ? enabledFeatures : null,
     }).returning();
     res.status(201).json(business);
   } catch (err) {
@@ -107,10 +105,7 @@ router.put("/:id", async (req, res) => {
     if (name !== undefined) updates.name = name;
     if (slug !== undefined) updates.slug = slug;
     if (type !== undefined) {
-      if (!isValidBusinessType(type)) {
-        return res.status(400).json({ error: `Invalid type. Must be one of: ${BUSINESS_TYPES.join(", ")}` });
-      }
-      updates.type = type;
+      updates.type = (typeof type === "string" && type.trim()) ? type.trim() : "other";
     }
     if (logoUrl !== undefined) updates.logoUrl = logoUrl;
     if (address !== undefined) updates.address = address;
