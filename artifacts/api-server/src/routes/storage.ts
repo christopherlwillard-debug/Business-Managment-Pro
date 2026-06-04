@@ -1,9 +1,72 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { getOwnerId, getRequestUserId } from "./guards";
+import type { Permissions, SectionKey } from "./guards";
+import { db, accessRequestsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+/**
+ * Determine required authorization for a private object path.
+ *
+ * Returns:
+ *   { kind: "owner" }              – only the business owner may access
+ *   { kind: "section", key }       – any user with view access to that section
+ *   { kind: "approved" }           – any approved user (e.g. logos shown in UI)
+ */
+function resolveObjectPolicy(
+  wildcardPath: string,
+): { kind: "owner" } | { kind: "section"; key: SectionKey } | { kind: "approved" } {
+  if (wildcardPath.startsWith("uploads/receipts/")) {
+    return { kind: "section", key: "expenses" };
+  }
+  if (wildcardPath.startsWith("uploads/asset-receipts/")) {
+    return { kind: "owner" };
+  }
+  if (wildcardPath.startsWith("compliance-items/")) {
+    return { kind: "section", key: "compliance" };
+  }
+  if (wildcardPath.startsWith("ky-filings/")) {
+    return { kind: "section", key: "compliance" };
+  }
+  if (wildcardPath.startsWith("uploads/logos/")) {
+    return { kind: "owner" };
+  }
+  // All other paths default to owner-only.
+  return { kind: "owner" };
+}
+
+async function canDownloadObject(req: Request, wildcardPath: string): Promise<boolean> {
+  const userId = getRequestUserId(req);
+  if (!userId) return false;
+
+  const ownerId = await getOwnerId();
+  if (ownerId === userId) return true;
+
+  const policy = resolveObjectPolicy(wildcardPath);
+
+  if (policy.kind === "approved") {
+    return true;
+  }
+
+  if (policy.kind === "owner") {
+    return false;
+  }
+
+  // policy.kind === "section" — check that the approved user has view access to that section.
+  const [record] = await db
+    .select({ permissions: accessRequestsTable.permissions })
+    .from(accessRequestsTable)
+    .where(and(eq(accessRequestsTable.userId, userId), eq(accessRequestsTable.status, "approved")));
+
+  if (!record) return false;
+
+  const perms = record.permissions as Permissions | null;
+  return perms?.[policy.key]?.view === true;
+}
 
 /**
  * POST /storage/uploads/request-url
@@ -65,12 +128,20 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
  *
  * Serve object entities from PRIVATE_OBJECT_DIR.
  * Protected — requires prior requireAuth + requireAccess middleware
- * (mounted in index.ts after those guards).
+ * (mounted in index.ts after those guards), plus per-object authorization
+ * enforced here based on object path prefix.
  */
 router.get("/storage/objects/*path", async (req: Request, res: Response): Promise<void> => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+
+    const allowed = await canDownloadObject(req, wildcardPath);
+    if (!allowed) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(objectFile);

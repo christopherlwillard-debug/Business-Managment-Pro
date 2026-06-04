@@ -101,10 +101,16 @@ router.post("/dba-logo", logoUpload.single("logo"), async (req, res) => {
 // ── Logo data URI (for embedding in emails) ────────────────────────────────────
 // Resolves the company logo from settings and returns it as a base64 data URI.
 // Pass ?businessLine=asphalt_sealing to get the DBA logo instead.
+// Owner-only: logo objects are owner-managed private files.
 router.get("/logo-data-uri", async (req, res) => {
   try {
     const [s] = await db.select().from(settingsTable).limit(1);
     if (!s) return res.status(404).json({ error: "No settings found" });
+
+    const requestUserId = (req.user as { id?: string } | undefined)?.id;
+    if (!requestUserId || s.ownerUserId !== requestUserId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const businessLine = typeof req.query.businessLine === "string" ? req.query.businessLine : null;
     const rawLogoUrl = (businessLine === "asphalt_sealing" ? (s.dbaLogoUrl ?? s.logoUrl) : s.logoUrl) ?? null;
@@ -271,7 +277,7 @@ router.get("/", async (req, res) => {
     const isOwner = settings.ownerUserId === userId;
     const formatted = format(settings);
     if (!isOwner) {
-      const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, complianceNotificationEmail, complianceEmailEnabled, quickLinks, ...safe } = formatted;
+      const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, complianceNotificationEmail, complianceEmailEnabled, quickLinks, logoUrl, dbaLogoUrl, ...safe } = formatted;
       res.json(safe);
       return;
     }
