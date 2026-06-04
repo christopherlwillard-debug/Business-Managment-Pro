@@ -16,6 +16,7 @@ export interface Business {
   taxId: string | null;
   sortOrder: number;
   enabledFeatures: string[] | null;
+  parentBusinessId: number | null;
   createdAt: string;
 }
 

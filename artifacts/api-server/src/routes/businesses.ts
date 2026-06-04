@@ -47,7 +47,7 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const businesses = await db.select().from(businessesTable).orderBy(asc(businessesTable.sortOrder), asc(businessesTable.id));
-    res.json(businesses);
+    res.json(businesses.map(b => ({ ...b, logoUrl: toServingUrl(b.logoUrl) })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch businesses" });
@@ -83,14 +83,15 @@ router.patch("/reorder", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures } = req.body;
+    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     if (!name || !slug) return res.status(400).json({ error: "name and slug are required" });
     const resolvedType = (typeof type === "string" && type.trim()) ? type.trim() : "other";
     const [business] = await db.insert(businessesTable).values({
       name, slug, type: resolvedType, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId,
       enabledFeatures: Array.isArray(enabledFeatures) ? enabledFeatures : null,
+      parentBusinessId: parentBusinessId ? parseInt(parentBusinessId) : null,
     }).returning();
-    res.status(201).json(business);
+    res.status(201).json({ ...business, logoUrl: toServingUrl(business.logoUrl) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create business" });
@@ -100,7 +101,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures } = req.body;
+    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (slug !== undefined) updates.slug = slug;
@@ -119,9 +120,12 @@ router.put("/:id", async (req, res) => {
     if ("enabledFeatures" in req.body) {
       updates.enabledFeatures = Array.isArray(enabledFeatures) ? enabledFeatures : null;
     }
+    if ("parentBusinessId" in req.body) {
+      updates.parentBusinessId = parentBusinessId ? parseInt(parentBusinessId) : null;
+    }
     const [updated] = await db.update(businessesTable).set(updates).where(eq(businessesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Business not found" });
-    res.json(updated);
+    res.json({ ...updated, logoUrl: toServingUrl(updated.logoUrl) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update business" });

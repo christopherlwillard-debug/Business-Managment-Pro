@@ -83,11 +83,14 @@ function toMonthlyRate(amount: number, frequency: RecurringExpenseFrequency): nu
 }
 
 // ─── Recurring expense hooks ───────────────────────────────────────────────────
-function useRecurringExpenses() {
+function useRecurringExpenses(businessId?: number | null) {
   return useQuery<RecurringExpense[]>({
-    queryKey: ["recurring-expenses"],
+    queryKey: ["recurring-expenses", businessId ?? null],
     queryFn: async () => {
-      const res = await fetch(`${API}/recurring-expenses`);
+      const url = businessId
+        ? `${API}/recurring-expenses?businessId=${businessId}`
+        : `${API}/recurring-expenses`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to load recurring expenses");
       return res.json();
     },
@@ -821,6 +824,7 @@ function RecurringModal({
   onClose: () => void;
   jobs: any[];
 }) {
+  const { activeBusiness } = useBusiness();
   const createRecurring = useCreateRecurring();
   const saveVendor      = useSaveVendor();
   const [vendor, setVendor]     = useState("");
@@ -849,6 +853,7 @@ function RecurringModal({
         frequency:   fd.get("frequency") as string,
         startDate:   fd.get("startDate") as string,
         endDate:     (fd.get("endDate") as string) || undefined,
+        businessId:  activeBusiness?.id ?? undefined,
       });
 
       if (vendor.trim()) {
@@ -995,7 +1000,8 @@ function RecurringSection({
   onClearHighlight: () => void;
 }) {
   const { canEdit } = useUserPermissions();
-  const { data: templates = [], isLoading } = useRecurringExpenses();
+  const { activeBusiness: activeBiz } = useBusiness();
+  const { data: templates = [], isLoading } = useRecurringExpenses(activeBiz?.id);
   const updateRecurring = useUpdateRecurring();
   const deleteRecurring = useDeleteRecurring();
   const [modalOpen,   setModalOpen]   = useState(false);
@@ -1418,7 +1424,7 @@ export default function Expenses() {
   const yearExpenses = useMemo(
     () => (expenses ?? [])
       .filter(e => (e.date ?? "").startsWith(selectedYear))
-      .filter(e => !activeBusiness || (e as any).businessLine === activeBusiness.slug),
+      .filter(e => !activeBusiness || (e as any).businessId === activeBusiness.id || (!(e as any).businessId && (e as any).businessLine === activeBusiness.slug)),
     [expenses, selectedYear, activeBusiness]
   );
 
@@ -1498,6 +1504,7 @@ export default function Expenses() {
           subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
           excludeFromNetProfit,
           businessLine: businessLine || null,
+          businessId: activeBusiness?.id ?? null,
         },
       });
 

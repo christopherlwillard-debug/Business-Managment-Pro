@@ -53,13 +53,14 @@ function buildExpenseQuery() {
 
 router.get("/", async (req, res) => {
   try {
-    const { category, jobId, startDate, endDate } = req.query;
+    const { category, jobId, startDate, endDate, businessId } = req.query;
     // Show ALL expenses including subcontractor payment records so users can see and delete them.
     const conditions: any[] = [];
     if (category) conditions.push(eq(expensesTable.category, category as string));
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
+    if (businessId) conditions.push(eq(expensesTable.businessId, parseInt(businessId as string)));
 
     const expenses = await buildExpenseQuery()
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -74,7 +75,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, businessLine } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, businessLine, businessId } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
@@ -83,6 +84,7 @@ router.post("/", async (req, res) => {
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
       excludeFromNetProfit: excludeFromNetProfit === true,
       businessLine: validBusinessLines.includes(businessLine) ? businessLine : null,
+      businessId: businessId ? parseInt(businessId) : null,
     }).returning();
 
     // Client derives jobTitle/subcontractorName from its own loaded lists — skip the JOIN

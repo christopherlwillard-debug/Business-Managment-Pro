@@ -18,6 +18,7 @@ export const businessesTable = pgTable("businesses", {
   taxId: text("tax_id"),
   sortOrder: integer("sort_order").notNull().default(0),
   enabledFeatures: jsonb("enabled_features"),
+  parentBusinessId: integer("parent_business_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

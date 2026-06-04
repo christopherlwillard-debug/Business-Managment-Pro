@@ -33,12 +33,17 @@ function formatTemplate(t: typeof recurringExpensesTable.$inferSelect, jobTitle?
   };
 }
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
+    const { businessId } = req.query;
+    const condition = businessId
+      ? eq(recurringExpensesTable.businessId, parseInt(businessId as string))
+      : undefined;
     const rows = await db
       .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
       .from(recurringExpensesTable)
       .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
+      .where(condition)
       .orderBy(recurringExpensesTable.nextDueDate);
     res.json(rows.map(r => formatTemplate(r, r.jobTitle)));
   } catch (err) {
@@ -49,7 +54,7 @@ router.get("/", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate } = req.body;
+    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate, businessId } = req.body;
     if (!description || !amount || !category || !frequency || !startDate) {
       return res.status(400).json({ error: "Missing required fields" });
     }
@@ -64,6 +69,7 @@ router.post("/", async (req, res) => {
       description, amount: amount.toString(), category,
       vendor: vendor || null, jobId: jobId || null, notes: notes || null,
       frequency, startDate, endDate: endDate || null, nextDueDate, active: true,
+      businessId: businessId ? parseInt(businessId) : null,
     }).returning();
 
     // If the start date is today or in the past, immediately generate the
@@ -78,6 +84,7 @@ router.post("/", async (req, res) => {
         notes: template.notes,
         date: template.nextDueDate,
         recurringExpenseId: template.id,
+        businessId: template.businessId,
       });
       const nextNext = advanceDate(template.nextDueDate, template.frequency);
       const shouldDeactivate = template.endDate && nextNext > template.endDate;

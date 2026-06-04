@@ -19,6 +19,7 @@ export const recurringExpensesTable = pgTable("recurring_expenses", {
   endDate: text("end_date"),
   nextDueDate: text("next_due_date").notNull(),
   active: boolean("active").default(true).notNull(),
+  businessId: integer("business_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

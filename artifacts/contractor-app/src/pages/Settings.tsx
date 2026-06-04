@@ -1191,8 +1191,9 @@ function SquareAppIdCard() {
 
 
 function BusinessProfileCard() {
-  const { activeBusiness, refresh } = useBusiness();
+  const { activeBusiness, businesses, refresh } = useBusiness();
   const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", state: "", zip: "", licenseNumber: "", taxId: "" });
+  const [parentBusinessId, setParentBusinessId] = useState<number | null>(null);
   const [seededId, setSeededId] = useState<number | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1213,6 +1214,7 @@ function BusinessProfileCard() {
         licenseNumber: activeBusiness.licenseNumber ?? "",
         taxId: activeBusiness.taxId ?? "",
       });
+      setParentBusinessId(activeBusiness.parentBusinessId ?? null);
       setLogoUrl(activeBusiness.logoUrl ?? null);
       setSeededId(activeBusiness.id);
       setSaved(false);
@@ -1229,7 +1231,7 @@ function BusinessProfileCard() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, parentBusinessId: parentBusinessId ?? null }),
       });
       if (!res.ok) throw new Error("Failed to save");
       await refresh();
@@ -1299,6 +1301,24 @@ function BusinessProfileCard() {
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Tax ID / EIN</label>
               <input className={inp} value={form.taxId} onChange={e => setF("taxId", e.target.value)} placeholder="XX-XXXXXXX" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Parent Business <span className="font-normal text-muted-foreground/70">(optional — for DBAs / subsidiaries)</span></label>
+              <select
+                className={inp}
+                value={parentBusinessId ?? ""}
+                onChange={e => { setParentBusinessId(e.target.value ? parseInt(e.target.value) : null); setSaved(false); }}
+              >
+                <option value="">— Standalone (no parent) —</option>
+                {businesses.filter(b => b.id !== activeBusiness.id).map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              {parentBusinessId && (
+                <p className="mt-1 text-xs text-blue-600">
+                  DBA under {businesses.find(b => b.id === parentBusinessId)?.name ?? "another business"}
+                </p>
+              )}
             </div>
           </div>
           <div className="pt-2 flex items-center gap-3">
