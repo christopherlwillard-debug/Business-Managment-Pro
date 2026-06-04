@@ -7,7 +7,7 @@ import {
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
 import { db, usersTable, settingsTable, accessRequestsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   clearSession,
   getOidcConfig,
@@ -19,7 +19,6 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
-import { invalidateOwnerCache } from "./owner-cache";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
@@ -84,16 +83,6 @@ async function upsertUser(claims: Record<string, unknown>) {
   return user;
 }
 
-async function ensureOwner(userId: string): Promise<void> {
-  const [settings] = await db.select({ id: settingsTable.id, ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
-  if (!settings) {
-    await db.insert(settingsTable).values({ ownerUserId: userId }).onConflictDoNothing();
-  } else if (!settings.ownerUserId) {
-    await db.update(settingsTable)
-      .set({ ownerUserId: userId })
-      .where(and(eq(settingsTable.id, settings.id), sql`${settingsTable.ownerUserId} IS NULL`));
-  }
-}
 
 router.get("/auth/user", (req: Request, res: Response) => {
   res.json(
@@ -294,9 +283,6 @@ router.get("/callback", async (req: Request, res: Response) => {
     claims as unknown as Record<string, unknown>,
   );
 
-  await ensureOwner(dbUser.id);
-  invalidateOwnerCache();
-
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
     user: {
@@ -366,9 +352,6 @@ router.post(
       const dbUser = await upsertUser(
         claims as unknown as Record<string, unknown>,
       );
-
-      await ensureOwner(dbUser.id);
-      invalidateOwnerCache();
 
       const now = Math.floor(Date.now() / 1000);
       const sessionData: SessionData = {
@@ -457,8 +440,6 @@ router.get("/mobile-auth/complete", async (req: Request, res: Response) => {
     }
 
     const dbUser = await upsertUser(claims as unknown as Record<string, unknown>);
-    await ensureOwner(dbUser.id);
-    invalidateOwnerCache();
 
     const now = Math.floor(Date.now() / 1000);
     const sessionData: SessionData = {
