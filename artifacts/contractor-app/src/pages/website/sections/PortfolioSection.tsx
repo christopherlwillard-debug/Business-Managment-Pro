@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -5,7 +6,7 @@ import {
   SortableContext, rectSortingStrategy, useSortable, arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ImagePlus, Loader2, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical, ImagePlus, Loader2, Plus, X } from "lucide-react";
 
 export interface PortfolioPhoto {
   id: string;
@@ -147,6 +148,99 @@ function SortablePhotoCard({
   );
 }
 
+function Lightbox({
+  photos,
+  startIndex,
+  onClose,
+}: {
+  photos: PortfolioPhoto[];
+  startIndex: number;
+  onClose: () => void;
+}) {
+  const [index, setIndex] = useState(startIndex);
+
+  const prev = () => setIndex(i => (i - 1 + photos.length) % photos.length);
+  const next = () => setIndex(i => (i + 1) % photos.length);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") prev();
+      else if (e.key === "ArrowRight") next();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const photo = photos[index];
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90"
+      onClick={onClose}
+    >
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+        aria-label="Close"
+      >
+        <X className="w-6 h-6" />
+      </button>
+
+      {/* Prev arrow */}
+      {photos.length > 1 && (
+        <button
+          onClick={e => { e.stopPropagation(); prev(); }}
+          className="absolute left-3 sm:left-6 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          aria-label="Previous photo"
+        >
+          <ChevronLeft className="w-7 h-7" />
+        </button>
+      )}
+
+      {/* Image + caption */}
+      <div
+        className="flex flex-col items-center max-w-4xl w-full px-16"
+        onClick={e => e.stopPropagation()}
+      >
+        <img
+          key={photo.id}
+          src={photo.photoUrl}
+          alt={photo.caption || "Portfolio photo"}
+          className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-2xl"
+        />
+        {photo.caption && (
+          <p className="mt-4 text-center text-white/90 text-sm sm:text-base max-w-xl">
+            {photo.caption}
+          </p>
+        )}
+        {photos.length > 1 && (
+          <p className="mt-2 text-white/40 text-xs">
+            {index + 1} / {photos.length}
+          </p>
+        )}
+      </div>
+
+      {/* Next arrow */}
+      {photos.length > 1 && (
+        <button
+          onClick={e => { e.stopPropagation(); next(); }}
+          className="absolute right-3 sm:right-6 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          aria-label="Next photo"
+        >
+          <ChevronRight className="w-7 h-7" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function PortfolioSection({
   content,
   settings,
@@ -156,6 +250,7 @@ export function PortfolioSection({
   uploadingPhotoIds = new Set(),
 }: PortfolioSectionProps) {
   const photos = content.photos ?? [];
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -235,32 +330,52 @@ export function PortfolioSection({
   if (visiblePhotos.length === 0) return null;
 
   return (
-    <div className="py-16 px-6 bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-5xl mx-auto">
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-10 text-center">
-          {content.heading}
-        </h2>
-        <div className="columns-1 sm:columns-2 md:columns-3 gap-4 space-y-4">
-          {visiblePhotos.map(photo => (
-            <div
-              key={photo.id}
-              className="break-inside-avoid rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800"
-            >
-              <img
-                src={photo.photoUrl}
-                alt={photo.caption || "Portfolio photo"}
-                className="w-full object-cover"
-                loading="lazy"
-              />
-              {photo.caption && (
-                <p className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 text-center">
-                  {photo.caption}
-                </p>
-              )}
-            </div>
-          ))}
+    <>
+      {lightboxIndex !== null && (
+        <Lightbox
+          photos={visiblePhotos}
+          startIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
+      <div className="py-16 px-6 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-10 text-center">
+            {content.heading}
+          </h2>
+          <div className="columns-1 sm:columns-2 md:columns-3 gap-4 space-y-4">
+            {visiblePhotos.map((photo, i) => (
+              <div
+                key={photo.id}
+                className="break-inside-avoid rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer group"
+                onClick={() => setLightboxIndex(i)}
+              >
+                <div className="relative">
+                  <img
+                    src={photo.photoUrl}
+                    alt={photo.caption || "Portfolio photo"}
+                    className="w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 flex items-center justify-center">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/20 backdrop-blur-sm rounded-full p-3">
+                      <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0zm-3-3v2m0 4h.01" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 11h2m-2 0h-2" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                {photo.caption && (
+                  <p className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 text-center">
+                    {photo.caption}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
