@@ -63,11 +63,15 @@ export interface AllSubcontractorsPayments {
   subcontractors: SubcontractorPaymentSummary[];
 }
 
-// Get Schedule C report for a specific year
-export function useScheduleCReport(year: number = new Date().getFullYear()) {
+// Get Schedule C report for a specific year, optionally filtered by business
+export function useScheduleCReport(year: number = new Date().getFullYear(), businessLine?: string) {
   return useQuery({
-    queryKey: ["/api/tax-reports/schedule-c", year],
-    queryFn: () => customFetch<ScheduleCReport>(`/api/tax-reports/schedule-c?year=${year}`, { method: "GET" }),
+    queryKey: ["/api/tax-reports/schedule-c", year, businessLine ?? "all"],
+    queryFn: () => {
+      const params = new URLSearchParams({ year: String(year) });
+      if (businessLine) params.set("businessLine", businessLine);
+      return customFetch<ScheduleCReport>(`/api/tax-reports/schedule-c?${params}`, { method: "GET" });
+    },
   });
 }
 

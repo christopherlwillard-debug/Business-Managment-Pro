@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   invoicesTable, expensesTable, mileageLogsTable,
-  paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable
+  paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable, businessesTable
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sum, desc, count, ne } from "drizzle-orm";
 
@@ -98,12 +98,24 @@ interface ScheduleCReport {
   };
 }
 
-// GET /api/tax-reports/schedule-c?year=2025
+// GET /api/tax-reports/schedule-c?year=2025&businessLine=general_contracting
 router.get("/schedule-c", async (req, res) => {
   try {
     const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const blFilter = (req.query.businessLine as string | undefined) || null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
+
+    const blWhere = (col: Parameters<typeof eq>[0]) =>
+      blFilter ? eq(col, blFilter) : undefined;
+
+    // Resolve businessId from slug for mileage isolation
+    let mileageBusinessId: number | null = null;
+    if (blFilter) {
+      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
+      mileageBusinessId = biz?.id ?? null;
+    }
+    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
 
     // 1. Gross Receipts (Line 1) - only paid/sent invoices
     const [grossResult] = await db
@@ -111,22 +123,23 @@ router.get("/schedule-c", async (req, res) => {
       .from(invoicesTable)
       .where(
         and(
-          // Include paid and sent status invoices
           gte(invoicesTable.issueDate, startDate),
-          lte(invoicesTable.issueDate, endDate)
+          lte(invoicesTable.issueDate, endDate),
+          blWhere(invoicesTable.businessLine)
         )
       );
 
     const invoiceReceipts = grossResult?.total ? parseFloat(grossResult.total as any) : 0;
 
-    // 1b. Prior/external revenue entered as "Other Income" - same business, goes into Line 1
+    // 1b. Prior/external revenue entered as "Other Income"
     const [otherIncomeResult] = await db
       .select({ total: sum(otherIncomeTable.amount) })
       .from(otherIncomeTable)
       .where(
         and(
           gte(otherIncomeTable.date, startDate),
-          lte(otherIncomeTable.date, endDate)
+          lte(otherIncomeTable.date, endDate),
+          blWhere(otherIncomeTable.businessLine)
         )
       );
 
@@ -147,7 +160,8 @@ router.get("/schedule-c", async (req, res) => {
         and(
           gte(expensesTable.date, startDate),
           lte(expensesTable.date, endDate),
-          ne(expensesTable.category, "mileage")
+          ne(expensesTable.category, "mileage"),
+          blWhere(expensesTable.businessLine)
         )
       )
       .groupBy(expensesTable.category);
@@ -189,7 +203,8 @@ router.get("/schedule-c", async (req, res) => {
         and(
           eq(mileageLogsTable.classification, "business"),
           gte(mileageLogsTable.date, startDate),
-          lte(mileageLogsTable.date, endDate)
+          lte(mileageLogsTable.date, endDate),
+          mileageWhere
         )
       );
 
@@ -199,7 +214,8 @@ router.get("/schedule-c", async (req, res) => {
       .where(
         and(
           gte(mileageLogsTable.date, startDate),
-          lte(mileageLogsTable.date, endDate)
+          lte(mileageLogsTable.date, endDate),
+          mileageWhere
         )
       );
 

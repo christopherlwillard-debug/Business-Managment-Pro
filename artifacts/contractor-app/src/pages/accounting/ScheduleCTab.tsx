@@ -7,6 +7,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useScheduleCReport } from "@workspace/api-client-react";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -35,12 +36,13 @@ interface ProfitLossReport {
 
 
 function ScheduleCTab({ year }: { year: number }) {
-  const { data: report, isLoading: reportLoading } = useScheduleCReport(year);
+  const { activeBusiness } = useBusiness();
+  const { data: report, isLoading: reportLoading } = useScheduleCReport(year, activeBusiness?.slug);
   const [showHomeOffice, setShowHomeOffice] = useState(false);
 
   const [ho, setHo] = useState<Record<string, string>>(() => loadHomeOffice(year));
 
-  useEffect(() => { setHo(loadHomeOffice(year)); }, [year]);
+  useEffect(() => { setHo(loadHomeOffice(year)); }, [year, activeBusiness?.slug]);
 
   function setHoField(k: string, v: string) {
     setHo(prev => {
