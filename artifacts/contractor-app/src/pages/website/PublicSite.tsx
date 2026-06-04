@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { HeroSection } from "./sections/HeroSection";
@@ -50,6 +51,14 @@ export default function PublicSite() {
   });
 
   const resolvedSlug = data?.businessSlug ?? slug ?? "";
+
+  const trackedRef = useRef(false);
+  useEffect(() => {
+    const s = data?.businessSlug;
+    if (!s || trackedRef.current) return;
+    trackedRef.current = true;
+    fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
+  }, [data?.businessSlug]);
 
   async function handleContactSubmit(formData: {
     name: string; phone: string; email: string; serviceType: string; message: string;

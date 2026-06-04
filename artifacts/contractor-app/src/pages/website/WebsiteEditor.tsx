@@ -9,7 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
-  Monitor, Tablet, Smartphone, LayoutTemplate,
+  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
+import { WebsiteAnalytics } from "./WebsiteAnalytics";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -350,6 +351,7 @@ export default function WebsiteEditor() {
   const [pendingTemplate, setPendingTemplate] = useState<WebsiteTemplate | null>(null);
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
   const pickerShownRef = useRef(false);
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
@@ -815,12 +817,36 @@ export default function WebsiteEditor() {
     <div className="flex flex-col h-full">
       {/* Top bar */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-card gap-3 flex-wrap">
-        <div>
+        <div className="flex flex-col gap-1.5">
           <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
             <Globe className="w-5 h-5 text-primary" />
             Website Editor
           </h1>
           <p className="text-xs text-muted-foreground">{activeBusiness.name}</p>
+          <div className="flex items-center bg-muted/60 rounded-lg p-0.5 w-fit">
+            <button
+              onClick={() => setActiveTab("editor")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                activeTab === "editor"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Pencil className="w-3 h-3" />
+              Editor
+            </button>
+            <button
+              onClick={() => setActiveTab("analytics")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                activeTab === "analytics"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <BarChart2 className="w-3 h-3" />
+              Analytics
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Viewport toggle */}
@@ -886,6 +912,9 @@ export default function WebsiteEditor() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
+        {activeTab === "analytics" ? (
+          <WebsiteAnalytics businessId={bizId!} />
+        ) : (<>
         {/* Left panel — section list */}
         <div className="w-56 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-y-auto">
           <div className="px-3 py-3 border-b border-border">
@@ -1002,6 +1031,7 @@ export default function WebsiteEditor() {
             )}
           </div>
         </div>
+        </>)}
       </div>
     </div>
     </>

@@ -2,8 +2,8 @@ import { Router } from "express";
 import { Readable } from "stream";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, businessesTable, prospectsTable } from "@workspace/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable } from "@workspace/db/schema";
+import { eq, and, sql, gte } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 
@@ -361,6 +361,24 @@ publicRouter.get("/:slug", wrapAsync(async (req, res) => {
   res.json({ ...config, businessName: biz.name, businessSlug: biz.slug });
 }));
 
+publicRouter.post("/:slug/view", (req, res) => {
+  const { slug } = req.params;
+  const ua = req.headers["user-agent"] ?? "";
+  const deviceType = /Mobile|Android|iPhone|iPad/i.test(ua) ? "mobile" : "desktop";
+
+  res.status(204).send();
+
+  db.select({ id: businessesTable.id })
+    .from(businessesTable)
+    .where(eq(businessesTable.slug, slug))
+    .then(([biz]) => {
+      if (biz) {
+        return db.insert(websitePageViewsTable).values({ businessId: biz.id, deviceType });
+      }
+    })
+    .catch(() => {});
+});
+
 publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
   const { slug } = req.params;
   const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug));
@@ -394,6 +412,60 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     .returning({ id: prospectsTable.id });
 
   res.json({ success: true, prospectId: prospect.id });
+}));
+
+router.get("/analytics", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const now = new Date();
+  const ago7  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000);
+  const ago30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const ago28 = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
+
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(websitePageViewsTable)
+    .where(eq(websitePageViewsTable.businessId, businessId));
+
+  const [week7Row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(websitePageViewsTable)
+    .where(and(eq(websitePageViewsTable.businessId, businessId), gte(websitePageViewsTable.viewedAt, ago7)));
+
+  const [month30Row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(websitePageViewsTable)
+    .where(and(eq(websitePageViewsTable.businessId, businessId), gte(websitePageViewsTable.viewedAt, ago30)));
+
+  const dailyRows = await db
+    .select({
+      date: sql<string>`date(${websitePageViewsTable.viewedAt})::text`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(websitePageViewsTable)
+    .where(and(eq(websitePageViewsTable.businessId, businessId), gte(websitePageViewsTable.viewedAt, ago28)))
+    .groupBy(sql`date(${websitePageViewsTable.viewedAt})`)
+    .orderBy(sql`date(${websitePageViewsTable.viewedAt})`);
+
+  const dailyMap: Record<string, number> = {};
+  dailyRows.forEach(r => { dailyMap[r.date] = r.count; });
+
+  const daily: Array<{ date: string; views: number }> = [];
+  for (let i = 27; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    const dateStr = d.toISOString().slice(0, 10);
+    daily.push({ date: dateStr, views: dailyMap[dateStr] ?? 0 });
+  }
+
+  res.json({
+    total: totalRow?.count ?? 0,
+    last7days: week7Row?.count ?? 0,
+    last30days: month30Row?.count ?? 0,
+    daily,
+  });
 }));
 
 router.post("/generate-copy", wrapAsync(async (req, res) => {

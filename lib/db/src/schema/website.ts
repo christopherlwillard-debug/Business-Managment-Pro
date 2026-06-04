@@ -1,5 +1,15 @@
-import { boolean, integer, jsonb, pgTable, serial, timestamp, unique } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, serial, timestamp, unique, varchar } from "drizzle-orm/pg-core";
 import { businessesTable } from "./businesses";
+
+export const websitePageViewsTable = pgTable("website_page_views", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  viewedAt: timestamp("viewed_at").defaultNow().notNull(),
+  deviceType: varchar("device_type", { length: 10 }).notNull().default("desktop"),
+});
+
+export type WebsitePageView = typeof websitePageViewsTable.$inferSelect;
+export type InsertWebsitePageView = typeof websitePageViewsTable.$inferInsert;
 
 export const websiteConfigsTable = pgTable("website_configs", {
   id: serial("id").primaryKey(),
