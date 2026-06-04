@@ -488,12 +488,13 @@ export function EstimateModal({
           calculatorDefaults={s.calculatorDefaults ?? null}
           onSaveDefaults={async (defaults) => {
             const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-            await fetch(`${base}/api/settings`, {
+            const res = await fetch(`${base}/api/settings`, {
               method: "PUT",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ calculatorDefaults: defaults }),
             });
+            if (!res.ok) throw new Error(`Failed to save rates: ${res.status}`);
             qc.invalidateQueries({ queryKey: ["settings"] });
           }}
           onUseNumbers={(calcLines, append) => {
