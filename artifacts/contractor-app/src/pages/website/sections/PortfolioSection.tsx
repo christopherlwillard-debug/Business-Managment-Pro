@@ -1,4 +1,11 @@
-import { ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, rectSortingStrategy, useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, ImagePlus, Loader2, Plus, X } from "lucide-react";
 
 export interface PortfolioPhoto {
   id: string;
@@ -21,6 +28,125 @@ interface PortfolioSectionProps {
   uploadingPhotoIds?: Set<string>;
 }
 
+function SortablePhotoCard({
+  photo,
+  isUploading,
+  brandColor,
+  onRemove,
+  onPhotoUpload,
+  onUrlChange,
+  onCaptionChange,
+}: {
+  photo: PortfolioPhoto;
+  isUploading: boolean;
+  brandColor: string;
+  onRemove: () => void;
+  onPhotoUpload?: (file: File) => Promise<void>;
+  onUrlChange: (url: string) => void;
+  onCaptionChange: (caption: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: photo.id,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative" as const,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800 flex flex-col"
+    >
+      {/* Drag handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing bg-gray-100 dark:bg-gray-700/60 text-gray-400 hover:text-gray-600 transition-colors"
+        title="Drag to reorder"
+      >
+        <GripVertical className="w-4 h-4" />
+      </div>
+
+      {/* Remove button */}
+      <button
+        onClick={onRemove}
+        className="absolute top-8 right-2 z-10 p-1 rounded-full bg-black/50 text-white hover:bg-red-600 transition-colors"
+        title="Remove photo"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+
+      {/* Photo preview */}
+      <div className="aspect-[4/3] w-full overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center relative">
+        {photo.photoUrl ? (
+          <img
+            src={photo.photoUrl}
+            alt={photo.caption || "Portfolio photo"}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center text-xs font-medium"
+            style={{ color: brandColor + "80" }}
+          >
+            No photo yet
+          </div>
+        )}
+        {isUploading && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 text-white animate-spin" />
+          </div>
+        )}
+      </div>
+
+      {/* Controls */}
+      <div className="p-2 space-y-1.5">
+        {onPhotoUpload && (
+          <label
+            className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${isUploading ? "opacity-60 pointer-events-none" : ""}`}
+          >
+            {isUploading ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <ImagePlus className="w-3 h-3" />
+            )}
+            {isUploading ? "Uploading…" : photo.photoUrl ? "Replace Photo" : "Upload Photo"}
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              disabled={isUploading}
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) onPhotoUpload(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        )}
+        <input
+          className="text-xs text-gray-500 bg-transparent border-b border-gray-200 dark:border-gray-600 focus:border-blue-500 outline-none w-full placeholder-gray-400"
+          value={photo.photoUrl && !photo.photoObjectPath ? photo.photoUrl : ""}
+          placeholder="Or paste an image URL"
+          onChange={e => onUrlChange(e.target.value)}
+        />
+        <input
+          className="text-xs text-gray-600 dark:text-gray-300 bg-transparent border-b border-gray-200 dark:border-gray-600 focus:border-blue-500 outline-none w-full placeholder-gray-400"
+          value={photo.caption ?? ""}
+          placeholder="Caption (optional)"
+          onChange={e => onCaptionChange(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function PortfolioSection({
   content,
   settings,
@@ -30,6 +156,8 @@ export function PortfolioSection({
   uploadingPhotoIds = new Set(),
 }: PortfolioSectionProps) {
   const photos = content.photos ?? [];
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   function update(patch: Partial<PortfolioContent>) {
     onChange?.({ ...content, ...patch });
@@ -52,6 +180,15 @@ export function PortfolioSection({
     update({ photos: photos.filter(p => p.id !== id) });
   }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = photos.findIndex(p => p.id === active.id);
+    const newIndex = photos.findIndex(p => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    update({ photos: arrayMove(photos, oldIndex, newIndex) });
+  }
+
   if (isEditing) {
     return (
       <div className="py-16 px-6 bg-white dark:bg-gray-900">
@@ -61,106 +198,33 @@ export function PortfolioSection({
             value={content.heading}
             onChange={e => update({ heading: e.target.value })}
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {photos.map(photo => {
-              const isUploading = uploadingPhotoIds.has(photo.id);
-              return (
-                <div
-                  key={photo.id}
-                  className="relative rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800 flex flex-col"
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {photos.map(photo => (
+                  <SortablePhotoCard
+                    key={photo.id}
+                    photo={photo}
+                    isUploading={uploadingPhotoIds.has(photo.id)}
+                    brandColor={settings.brandColor}
+                    onRemove={() => removePhoto(photo.id)}
+                    onPhotoUpload={onPhotoUpload ? (file) => onPhotoUpload(photo.id, file) : undefined}
+                    onUrlChange={url => updatePhoto(photo.id, { photoUrl: url, photoObjectPath: undefined })}
+                    onCaptionChange={caption => updatePhoto(photo.id, { caption })}
+                  />
+                ))}
+
+                {/* Add photo card — outside sortable items so it doesn't get dragged */}
+                <button
+                  onClick={addPhoto}
+                  className="aspect-[4/3] flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-600 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors p-6"
                 >
-                  {/* Remove button */}
-                  <button
-                    onClick={() => removePhoto(photo.id)}
-                    className="absolute top-2 right-2 z-10 p-1 rounded-full bg-black/50 text-white hover:bg-red-600 transition-colors"
-                    title="Remove photo"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Photo preview */}
-                  <div className="aspect-[4/3] w-full overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center relative">
-                    {photo.photoUrl ? (
-                      <img
-                        src={photo.photoUrl}
-                        alt={photo.caption || "Portfolio photo"}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className="w-full h-full flex items-center justify-center text-xs font-medium"
-                        style={{ color: settings.brandColor + "80" }}
-                      >
-                        No photo yet
-                      </div>
-                    )}
-                    {isUploading && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <Loader2 className="w-6 h-6 text-white animate-spin" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Controls */}
-                  <div className="p-2 space-y-1.5">
-                    {onPhotoUpload && (
-                      <label
-                        className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${isUploading ? "opacity-60 pointer-events-none" : ""}`}
-                      >
-                        {isUploading ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <ImagePlus className="w-3 h-3" />
-                        )}
-                        {isUploading
-                          ? "Uploading…"
-                          : photo.photoUrl
-                          ? "Replace Photo"
-                          : "Upload Photo"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="sr-only"
-                          disabled={isUploading}
-                          onChange={e => {
-                            const f = e.target.files?.[0];
-                            if (f) onPhotoUpload(photo.id, f);
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
-                    )}
-                    <input
-                      className="text-xs text-gray-500 bg-transparent border-b border-gray-200 dark:border-gray-600 focus:border-blue-500 outline-none w-full placeholder-gray-400"
-                      value={photo.photoUrl && !photo.photoObjectPath ? photo.photoUrl : ""}
-                      placeholder="Or paste an image URL"
-                      onChange={e =>
-                        updatePhoto(photo.id, {
-                          photoUrl: e.target.value,
-                          photoObjectPath: undefined,
-                        })
-                      }
-                    />
-                    <input
-                      className="text-xs text-gray-600 dark:text-gray-300 bg-transparent border-b border-gray-200 dark:border-gray-600 focus:border-blue-500 outline-none w-full placeholder-gray-400"
-                      value={photo.caption ?? ""}
-                      placeholder="Caption (optional)"
-                      onChange={e => updatePhoto(photo.id, { caption: e.target.value })}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Add photo card */}
-            <button
-              onClick={addPhoto}
-              className="aspect-[4/3] flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-600 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors p-6"
-            >
-              <Plus className="w-6 h-6" />
-              <span className="text-sm">Add Photo</span>
-            </button>
-          </div>
+                  <Plus className="w-6 h-6" />
+                  <span className="text-sm">Add Photo</span>
+                </button>
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
     );
