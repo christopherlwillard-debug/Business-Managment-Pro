@@ -51,13 +51,17 @@ function renderSection(
   section: Section,
   settings: SiteSettings,
   isEditing: boolean,
-  onChange: (content: Record<string, unknown>) => void
+  onChange: (content: Record<string, unknown>) => void,
+  extras?: {
+    onAboutPhotoUpload?: (file: File) => Promise<void>;
+    isAboutPhotoUploading?: boolean;
+  }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any };
   switch (section.type) {
     case "hero":    return <HeroSection {...props} />;
     case "services": return <ServicesSection {...props} />;
-    case "about":   return <AboutSection {...props} />;
+    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} />;
     case "contact": return <ContactFormSection {...props} />;
     case "footer":  return <FooterSection {...props} />;
     default: return null;
@@ -121,6 +125,7 @@ export default function WebsiteEditor() {
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [aboutPhotoUploading, setAboutPhotoUploading] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const isDirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -231,8 +236,27 @@ export default function WebsiteEditor() {
     setLocalSections(sections.map(s => s.id === id ? { ...s, content } : s));
   }
 
+  async function saveNow(overrideSettings?: SiteSettings, overrideSections?: Section[]) {
+    const payload = {
+      sections: (overrideSections ?? sections).map((s, i) => ({ ...s, order: i })),
+      settings: overrideSettings ?? settings,
+    };
+    const res = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Save failed");
+    return res.json();
+  }
+
   async function handleLogoUpload(file: File) {
     setLogoUploading(true);
+    const blobUrl = URL.createObjectURL(file);
+    const settingsAtStart = settings;
+    isDirtyRef.current = true;
+    setLocalSettings({ ...settingsAtStart, logoUrl: blobUrl } as SiteSettings);
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-logo`, {
         method: "POST",
@@ -249,14 +273,72 @@ export default function WebsiteEditor() {
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
       const slug = activeBusiness!.slug;
-      const publicLogoUrl = `${BASE}/api/public/site/${slug}/logo`;
-      isDirtyRef.current = true;
-      setLocalSettings({ ...settings, logoObjectPath: objectPath, logoUrl: publicLogoUrl } as SiteSettings & { logoObjectPath: string });
+      const canonicalUrl = `${BASE}/api/public/site/${slug}/logo`;
+      const savedSettings = { ...settingsAtStart, logoObjectPath: objectPath, logoUrl: canonicalUrl } as SiteSettings & { logoObjectPath: string };
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await saveNow(savedSettings);
+      URL.revokeObjectURL(blobUrl);
+      isDirtyRef.current = false;
+      setLocalSettings({ ...savedSettings, logoUrl: `${canonicalUrl}?v=${Date.now()}` } as SiteSettings);
+      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
       toast({ title: "Logo uploaded" });
     } catch {
+      URL.revokeObjectURL(blobUrl);
+      setLocalSettings(settingsAtStart);
       toast({ title: "Logo upload failed", variant: "destructive" });
     } finally {
       setLogoUploading(false);
+    }
+  }
+
+  async function handleAboutPhotoUpload(file: File) {
+    setAboutPhotoUploading(true);
+    const blobUrl = URL.createObjectURL(file);
+    const sectionsAtStart = sections;
+    const settingsAtStart = settings;
+    isDirtyRef.current = true;
+    setLocalSections(sectionsAtStart.map(s =>
+      s.type === "about" ? { ...s, content: { ...s.content, photoUrl: blobUrl } } : s
+    ));
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-about-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const slug = activeBusiness!.slug;
+      const canonicalUrl = `${BASE}/api/public/site/${slug}/about-photo`;
+      const savedSections = sectionsAtStart.map(s =>
+        s.type === "about"
+          ? { ...s, content: { ...s.content, photoObjectPath: objectPath, photoUrl: canonicalUrl } }
+          : s
+      );
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await saveNow(settingsAtStart, savedSections);
+      URL.revokeObjectURL(blobUrl);
+      isDirtyRef.current = false;
+      setLocalSections(savedSections.map(s =>
+        s.type === "about"
+          ? { ...s, content: { ...s.content, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
+          : s
+      ));
+      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+      toast({ title: "Photo uploaded" });
+    } catch {
+      URL.revokeObjectURL(blobUrl);
+      setLocalSections(sectionsAtStart);
+      toast({ title: "Photo upload failed", variant: "destructive" });
+    } finally {
+      setAboutPhotoUploading(false);
     }
   }
 
@@ -419,7 +501,7 @@ export default function WebsiteEditor() {
                     {SECTION_LABELS[s.type]}
                   </div>
                 )}
-                {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content))}
+                {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), { onAboutPhotoUpload: handleAboutPhotoUpload, isAboutPhotoUploading: aboutPhotoUploading })}
               </div>
             ))}
             {sections.filter(s => s.enabled).length === 0 && (

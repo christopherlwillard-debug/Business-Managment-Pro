@@ -229,6 +229,42 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
   }
 }));
 
+publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
+  const { slug } = req.params;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, biz.id));
+
+  if (!config) return res.status(404).json({ error: "No website config" });
+
+  const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
+  const aboutSection = sections.find(s => s.type === "about");
+  const photoObjectPath = aboutSection?.content?.photoObjectPath as string | undefined;
+  if (!photoObjectPath?.startsWith("/objects/uploads/website-about-photos/")) {
+    return res.status(404).json({ error: "No about photo" });
+  }
+
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(photoObjectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "About photo not found" });
+    throw err;
+  }
+}));
+
 publicRouter.get("/:slug", wrapAsync(async (req, res) => {
   const { slug } = req.params;
   const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.slug, slug));
@@ -285,6 +321,15 @@ router.post("/upload-logo", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
   }
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-logos");
+  res.json({ uploadURL, objectPath });
+}));
+
+router.post("/upload-about-photo", wrapAsync(async (req, res) => {
+  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+  if (!name || !size || !contentType) {
+    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+  }
+  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-about-photos");
   res.json({ uploadURL, objectPath });
 }));
 

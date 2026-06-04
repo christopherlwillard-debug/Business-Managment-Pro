@@ -1,7 +1,10 @@
+import { ImagePlus, Loader2 } from "lucide-react";
+
 interface AboutContent {
   heading: string;
   body: string;
   photoUrl?: string;
+  photoObjectPath?: string;
 }
 
 interface AboutSectionProps {
@@ -9,9 +12,11 @@ interface AboutSectionProps {
   settings: { brandColor: string };
   isEditing?: boolean;
   onChange?: (content: AboutContent) => void;
+  onPhotoUpload?: (file: File) => Promise<void>;
+  isPhotoUploading?: boolean;
 }
 
-export function AboutSection({ content, settings, isEditing, onChange }: AboutSectionProps) {
+export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading }: AboutSectionProps) {
   function update(patch: Partial<AboutContent>) {
     onChange?.({ ...content, ...patch });
   }
@@ -53,12 +58,27 @@ export function AboutSection({ content, settings, isEditing, onChange }: AboutSe
             </div>
           )}
           {isEditing && (
-            <input
-              className="mt-2 text-xs text-gray-500 bg-transparent border-b border-gray-200 focus:border-blue-500 outline-none w-full placeholder-gray-400"
-              value={content.photoUrl ?? ""}
-              placeholder="Photo URL (optional)"
-              onChange={e => update({ photoUrl: e.target.value })}
-            />
+            <div className="mt-2 space-y-1.5">
+              {onPhotoUpload && (
+                <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${isPhotoUploading ? "opacity-60 pointer-events-none" : ""}`}>
+                  {isPhotoUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+                  {isPhotoUploading ? "Uploading…" : content.photoUrl ? "Replace Photo" : "Upload Photo"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={isPhotoUploading}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) onPhotoUpload(f); e.target.value = ""; }}
+                  />
+                </label>
+              )}
+              <input
+                className="text-xs text-gray-500 bg-transparent border-b border-gray-200 focus:border-blue-500 outline-none w-full placeholder-gray-400"
+                value={content.photoUrl ?? ""}
+                placeholder="Or paste a photo URL"
+                onChange={e => update({ photoUrl: e.target.value, photoObjectPath: undefined })}
+              />
+            </div>
           )}
         </div>
       </div>
