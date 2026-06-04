@@ -457,7 +457,20 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   const amountCents = Math.round(amount * 100);
 
   const { returnUrl } = req.body as { returnUrl?: string };
-  const redirectUrl = returnUrl ? `${returnUrl}?payment=success` : undefined;
+  let redirectUrl: string | undefined;
+  if (returnUrl) {
+    try {
+      const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
+      const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
+      const requestOrigin = `${proto}://${host}`.toLowerCase();
+      const parsed = new URL(returnUrl);
+      if (parsed.origin.toLowerCase() === requestOrigin) {
+        redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
+      }
+    } catch {
+      // Invalid or mismatched URL — no redirect
+    }
+  }
 
   const { url } = await createSquarePaymentLink({
     amountCents,

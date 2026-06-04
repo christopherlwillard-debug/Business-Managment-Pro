@@ -25,7 +25,8 @@ async function handleSquarePayment(opts: {
     (referenceId.startsWith("inv_") ||
       referenceId.startsWith("quick_") ||
       referenceId.startsWith("prospect_") ||
-      referenceId.startsWith("estimate_"));
+      referenceId.startsWith("estimate_") ||
+      referenceId.startsWith("website_deposit_"));
 
   if (referenceId?.startsWith("inv_")) {
     const invoiceId = parseInt(referenceId.slice(4));
@@ -77,6 +78,33 @@ async function handleSquarePayment(opts: {
         .where(eq(estimatesTable.id, estimateId));
       console.log(`Estimate ${estimateId} deposit paid via Square`);
     }
+  }
+
+  if (referenceId?.startsWith("website_deposit_") && squarePaymentId && amountMoney !== null) {
+    const siteSlug = referenceId.slice(16);
+    const amountDollars = (amountMoney / 100).toFixed(2);
+    const dateStr = paidAt.toISOString().split("T")[0];
+
+    await db.insert(squarePaymentsTable).values({
+      squarePaymentId,
+      amountCents: amountMoney,
+      description: `Website Deposit — ${siteSlug}`,
+      clientId: null,
+      clientName: buyerName ?? null,
+      paidAt,
+    }).onConflictDoNothing();
+
+    await db.insert(otherIncomeTable).values({
+      amount: amountDollars,
+      date: dateStr,
+      description: `Website Deposit — ${siteSlug}`,
+      source: "website_deposit",
+      paymentMethod: "card",
+      clientId: null,
+      businessLine: siteSlug,
+    });
+
+    console.log(`Website deposit payment ${squarePaymentId} recorded for site "${siteSlug}" — $${amountDollars}`);
   }
 
   if (!recognized && squarePaymentId && amountMoney !== null) {
