@@ -8,7 +8,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import {
   CreditCard, RefreshCw, ExternalLink, AlertCircle,
-  TrendingUp, CheckCircle2, XCircle, Clock, Wifi, Users,
+  TrendingUp, CheckCircle2, XCircle, Clock, Wifi, Users, Globe,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -75,17 +75,33 @@ function StatusBadge({ status }: { status: string | null }) {
   );
 }
 
+function getPaymentType(tx: SquareTransaction): { label: string; slug: string | null } | null {
+  if (tx.referenceId?.startsWith("website_deposit_")) {
+    return { label: "Website Deposit", slug: tx.referenceId.slice(16) || null };
+  }
+  if (tx.referenceId?.startsWith("inv_")) return { label: "Invoice Payment", slug: null };
+  if (tx.referenceId?.startsWith("quick_")) return { label: "Quick Charge", slug: null };
+  if (tx.referenceId?.startsWith("prospect_")) return { label: "Prospect Deposit", slug: null };
+  if (tx.referenceId?.startsWith("estimate_")) return { label: "Estimate Deposit", slug: null };
+  return null;
+}
+
 function TransactionRow({ tx, matchedClientName }: { tx: SquareTransaction; matchedClientName: string | null }) {
   const cardLabel = tx.cardBrand ? (CARD_BRAND_LABELS[tx.cardBrand] ?? tx.cardBrand) : null;
   const sourceLabel = tx.sourceType ? (SOURCE_LABELS[tx.sourceType] ?? tx.sourceType) : null;
 
   const payerName = tx.cardholderName || tx.buyerEmail || null;
   const cardInfo = cardLabel && tx.last4 ? `${cardLabel} ···${tx.last4}` : (sourceLabel ?? "—");
+  const paymentType = getPaymentType(tx);
+  const isWebsiteDeposit = paymentType?.label === "Website Deposit";
 
   return (
     <div className="flex items-center gap-3 py-3 px-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-        <CreditCard className="w-4 h-4 text-amber-600" />
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isWebsiteDeposit ? "bg-indigo-100" : "bg-amber-100"}`}>
+        {isWebsiteDeposit
+          ? <Globe className="w-4 h-4 text-indigo-600" />
+          : <CreditCard className="w-4 h-4 text-amber-600" />
+        }
       </div>
 
       <div className="flex-1 min-w-0">
@@ -94,6 +110,19 @@ function TransactionRow({ tx, matchedClientName }: { tx: SquareTransaction; matc
             {payerName || "Unknown customer"}
           </span>
           <StatusBadge status={tx.status} />
+          {paymentType && (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
+              isWebsiteDeposit
+                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                : "bg-slate-100 text-slate-600 border-slate-200"
+            }`}>
+              {isWebsiteDeposit && <Globe className="w-3 h-3" />}
+              {paymentType.label}
+              {paymentType.slug && (
+                <span className="font-mono text-[10px] opacity-75 ml-0.5">{paymentType.slug}</span>
+              )}
+            </span>
+          )}
           {matchedClientName && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
               <Users className="w-3 h-3" />
