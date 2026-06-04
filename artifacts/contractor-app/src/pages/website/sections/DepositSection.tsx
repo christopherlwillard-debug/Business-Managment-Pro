@@ -8,6 +8,7 @@ interface DepositContent {
   description: string;
   amount: number;
   buttonLabel: string;
+  allowCustomAmount?: boolean;
 }
 
 interface DepositSectionProps {
@@ -21,6 +22,7 @@ interface DepositSectionProps {
 export function DepositSection({ content, settings, isEditing, onChange, businessSlug }: DepositSectionProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [customAmount, setCustomAmount] = useState<string>(String(content.amount ?? 250));
 
   function update(patch: Partial<DepositContent>) {
     onChange?.({ ...content, ...patch });
@@ -28,14 +30,33 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
 
   async function handlePayNow() {
     if (!businessSlug) return;
+
+    const parsedCustom = parseFloat(customAmount);
+    const minAmount = content.amount ?? 0;
+
+    if (content.allowCustomAmount) {
+      if (isNaN(parsedCustom) || parsedCustom <= 0) {
+        setError("Please enter a valid amount.");
+        return;
+      }
+      if (parsedCustom < minAmount) {
+        setError(`Minimum deposit is ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(minAmount)}.`);
+        return;
+      }
+    }
+
     setLoading(true);
     setError("");
     try {
       const returnUrl = window.location.origin + window.location.pathname;
+      const body: Record<string, unknown> = { returnUrl };
+      if (content.allowCustomAmount && !isNaN(parsedCustom) && parsedCustom !== minAmount) {
+        body.customAmount = parsedCustom;
+      }
       const res = await fetch(`${BASE}/api/public/site/${businessSlug}/create-deposit-link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -75,7 +96,7 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
           />
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
-              Deposit Amount ($)
+              {content.allowCustomAmount ? "Minimum Amount ($)" : "Deposit Amount ($)"}
             </label>
             <input
               type="number"
@@ -96,6 +117,20 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
               onChange={e => update({ buttonLabel: e.target.value })}
               placeholder="Pay Deposit Now"
             />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={!!content.allowCustomAmount}
+                onChange={e => update({ allowCustomAmount: e.target.checked })}
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600" />
+            </label>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Allow visitors to enter a custom amount
+            </span>
           </div>
           <div className="pt-2">
             <button
@@ -133,9 +168,32 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
               {content.description}
             </p>
           )}
-          <p className="text-4xl font-bold mb-6" style={{ color: settings.brandColor }}>
-            {formattedAmount}
-          </p>
+          {content.allowCustomAmount ? (
+            <div className="mb-6">
+              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">
+                Deposit Amount (minimum {formattedAmount})
+              </label>
+              <div className="relative max-w-[180px] mx-auto">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 font-medium">$</span>
+                <input
+                  type="number"
+                  min={content.amount}
+                  step={1}
+                  value={customAmount}
+                  onChange={e => {
+                    setCustomAmount(e.target.value);
+                    setError("");
+                  }}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-xl pl-7 pr-3 py-2.5 text-xl font-bold text-center bg-white dark:bg-gray-700 focus:outline-none focus:ring-2"
+                  style={{ focusRingColor: settings.brandColor } as React.CSSProperties}
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-4xl font-bold mb-6" style={{ color: settings.brandColor }}>
+              {formattedAmount}
+            </p>
+          )}
           {error && (
             <p className="text-sm text-red-600 dark:text-red-400 mb-3 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
               {error}

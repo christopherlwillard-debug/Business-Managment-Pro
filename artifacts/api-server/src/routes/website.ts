@@ -450,13 +450,32 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   const depositSection = sections.find(s => s.type === "deposit" && s.enabled);
   if (!depositSection) return res.status(404).json({ error: "Deposit section not found or not enabled" });
 
-  const amount = parseFloat(String(depositSection.content.amount ?? 0));
-  if (!amount || amount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredAmount = parseFloat(String(depositSection.content.amount ?? 0));
+  if (!configuredAmount || configuredAmount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+
+  const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
 
   const heading = (depositSection.content.heading as string) || "Deposit";
+
+  const { returnUrl, customAmount } = req.body as { returnUrl?: string; customAmount?: number };
+
+  let amount = configuredAmount;
+  if (customAmount !== undefined) {
+    if (!allowCustomAmount) {
+      return res.status(400).json({ error: "Custom amount is not allowed for this deposit." });
+    }
+    const parsed = parseFloat(String(customAmount));
+    if (isNaN(parsed) || parsed <= 0) {
+      return res.status(400).json({ error: "Invalid custom amount." });
+    }
+    if (parsed < configuredAmount) {
+      return res.status(400).json({ error: `Custom amount must be at least $${configuredAmount.toFixed(2)}.` });
+    }
+    amount = parsed;
+  }
+
   const amountCents = Math.round(amount * 100);
 
-  const { returnUrl } = req.body as { returnUrl?: string };
   let redirectUrl: string | undefined;
   if (returnUrl) {
     try {
