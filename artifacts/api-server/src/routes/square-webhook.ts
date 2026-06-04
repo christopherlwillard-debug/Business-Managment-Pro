@@ -85,14 +85,19 @@ async function handleSquarePayment(opts: {
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
 
-    await db.insert(squarePaymentsTable).values({
+    const inserted = await db.insert(squarePaymentsTable).values({
       squarePaymentId,
       amountCents: amountMoney,
       description: `Website Deposit — ${siteSlug}`,
       clientId: null,
       clientName: buyerName ?? null,
       paidAt,
-    }).onConflictDoNothing();
+    }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
+
+    if (inserted.length === 0) {
+      console.log(`Website deposit payment ${squarePaymentId} already recorded — skipping duplicate`);
+      return;
+    }
 
     await db.insert(otherIncomeTable).values({
       amount: amountDollars,
