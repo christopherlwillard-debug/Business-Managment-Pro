@@ -265,8 +265,13 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
   }
 }));
 
+function normalizeHost(raw: string): string {
+  return raw.toLowerCase().split(":")[0].replace(/\.+$/, "").trim();
+}
+
 publicRouter.get("/by-host", wrapAsync(async (req, res) => {
-  const host = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname;
+  const rawHost = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname || "";
+  const host = normalizeHost(rawHost);
   if (!host) return res.status(400).json({ error: "Cannot determine host" });
 
   const [config] = await db
@@ -275,7 +280,7 @@ publicRouter.get("/by-host", wrapAsync(async (req, res) => {
     .where(
       and(
         eq(websiteConfigsTable.published, true),
-        sql`${websiteConfigsTable.settings}->>'customDomain' = ${host}`
+        sql`lower(trim(trailing '.' from ${websiteConfigsTable.settings}->>'customDomain')) = ${host}`
       )
     );
 

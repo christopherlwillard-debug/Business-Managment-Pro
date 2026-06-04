@@ -315,7 +315,18 @@ function AdminApp() {
   );
 }
 
+function isBuiltInHost(host: string): boolean {
+  const h = host.toLowerCase().split(":")[0];
+  return (
+    h === "localhost" ||
+    h.endsWith(".replit.dev") ||
+    h.endsWith(".replit.app") ||
+    h.endsWith(".repl.co")
+  );
+}
+
 function Router() {
+  const onCustomDomain = !isBuiltInHost(window.location.host);
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
       <Switch>
@@ -324,7 +335,7 @@ function Router() {
         <Route path="/pay/:payToken" component={Pay} />
         <Route path="/site/:slug" component={PublicSite} />
         <Route>
-          <AdminApp />
+          {onCustomDomain ? <PublicSite /> : <AdminApp />}
         </Route>
       </Switch>
     </Suspense>
