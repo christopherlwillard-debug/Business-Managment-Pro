@@ -1,0 +1,107 @@
+If you’re building this in Replit, don’t prompt it with “build me a website builder.” That’s too broad and you’ll get a messy result.
+
+Instead, break it into phases.
+
+First Prompt: Build the Core Editor
+
+Create a modern drag-and-drop website builder similar to ZenBusiness, Wix, or Squarespace.
+
+Requirements:
+
+* React frontend
+* Drag-and-drop page editor
+* Left sidebar containing content blocks
+* Blocks include:
+    * Header
+    * Hero Section
+    * Text
+    * Image
+    * Button
+    * Services Section
+    * Gallery
+    * Contact Form
+    * Footer
+* Users can drag blocks onto the canvas
+* Users can reorder blocks
+* Users can click any block and edit content in a settings panel
+* Auto-save changes
+* Mobile, tablet, and desktop preview modes
+* Clean modern UI
+* Store page structure as JSON
+
+Second Prompt: Add Templates
+
+Create a template system.
+
+Requirements:
+
+* Users can select from templates:
+    * General Contractor
+    * Manufactured Home Installer
+    * Plumbing Contractor
+    * Landscaping
+    * HVAC
+* Templates automatically populate the page builder with prebuilt sections.
+* Users can fully edit every section.
+
+Third Prompt: AI Website Generator
+
+This is where it gets powerful.
+
+Create an AI website generator.
+
+User enters:
+
+* Business name
+* Industry
+* Services
+* Service area
+* Phone number
+
+AI automatically generates:
+
+* Hero section
+* About section
+* Services section
+* Contact section
+* SEO title
+* SEO description
+
+The generated website loads directly into the drag-and-drop editor.
+
+Fourth Prompt: White-Label It
+
+Since I know you’re eventually wanting this inside your contractor/business ecosystem:
+
+Create a multi-tenant website builder.
+
+Requirements:
+
+* User accounts
+* Each user has their own websites
+* Custom domains
+* Website publishing
+* SSL
+* SEO settings
+* Analytics dashboard
+* Subscription plans
+* Admin panel
+
+Fifth Prompt: Make it Better Than ZenBusiness
+
+Add contractor-specific features:
+
+Add contractor business widgets:
+
+* Financing section
+* Google Reviews widget
+* Before/After gallery
+* Service area map
+* Estimate request form
+* Project showcase
+* Veteran-owned badge
+* SBA certification badge
+* Appointment scheduling
+* Square payment integration
+
+For your manufactured home business niche, I’d actually build it around industry-specific templates and AI generation, because that’s what would separate it from generic builders like Wix or ZenBusiness. A manufactured home contractor could answer 10 questions and have a complete professional website in under 5 minutes. That’s a much stronger selling point than just another drag-and-drop builder.
