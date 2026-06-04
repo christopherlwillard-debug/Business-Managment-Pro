@@ -1501,47 +1501,66 @@ export default function Expenses() {
         },
       });
 
-      if (receiptFile && expense.id) {
-        await uploadMutation.mutateAsync({ id: expense.id, data: { receipt: receiptFile } });
-      }
+      // Optimistically add to cache — derive display names from already-loaded lists
+      const jobIdVal  = fd.get("jobId") ? parseInt(fd.get("jobId") as string) : null;
+      const subIdVal  = subcontractorId ? parseInt(subcontractorId) : null;
+      const jobTitle  = jobIdVal ? ((jobs ?? []).find(j => j.id === jobIdVal)?.title ?? null) : null;
+      const subName   = subIdVal ? ((subs  ?? []).find(s => s.id === subIdVal)?.name  ?? null) : null;
+      qc.setQueryData(["/api/expenses"], (old: any[] | undefined) =>
+        old ? [...old, { ...expense, jobTitle, subcontractorName: subName }] : [{ ...expense, jobTitle, subcontractorName: subName }]
+      );
 
-      if (vendor.trim()) {
-        await saveVendor.mutateAsync(vendor.trim()).catch(() => {});
-      }
-
-      // Auto-sync to job card: if this is a sub expense linked to a job,
-      // mark that sub as paid on the job card (only if not already paid)
-      const newJobId = fd.get("jobId");
-      if (category === "Subcontractor" && newJobId && subcontractorId) {
-        const jobIdVal = parseInt(newJobId as string);
-        const subIdVal = parseInt(subcontractorId);
-        const amount = parseFloat(fd.get("amount") as string);
-        const date = fd.get("date") as string;
-        try {
-          const payRes = await fetch(`${API}/jobs/${jobIdVal}/sub-payments`);
-          if (payRes.ok) {
-            const payRows = await payRes.json();
-            const row = Array.isArray(payRows) ? payRows.find((r: any) => r.subcontractorId === subIdVal) : null;
-            if (row && (row.amountPaid ?? 0) < 0.01) {
-              await fetch(`${API}/jobs/${jobIdVal}/sub-payments/${subIdVal}`, {
-                method: "PUT", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ amountPaid: amount, paidDate: date, paidNotes: "Synced from Expenses page" }),
-              });
-              toast({ title: "Job card updated", description: "Sub marked as paid on the job card." });
-            }
-          }
-        } catch {
-          // Non-fatal — expense was saved, sync is best-effort
-        }
-      }
-
+      // ── Close dialog immediately — background work continues below ──
       setIsDialogOpen(false);
       setReceiptFile(null);
       setVendor("");
       setSubcontractorId("");
       setExcludeFromNetProfit(false);
       setBusinessLine(activeBusiness?.slug ?? undefined);
-      refetch();
+
+      // Background: receipt upload (receiptFile still holds the file — setState is async)
+      if (receiptFile && expense.id) {
+        uploadMutation.mutateAsync({ id: expense.id, data: { receipt: receiptFile } })
+          .catch(() => {
+            toast({ title: "Receipt upload failed", description: "Expense saved. Open it to re-attach the receipt.", variant: "destructive" });
+          });
+      }
+
+      // Background: vendor save
+      if (vendor.trim()) {
+        saveVendor.mutateAsync(vendor.trim()).catch(() => {});
+      }
+
+      // Background: sub-payment sync
+      const newJobId = fd.get("jobId");
+      if (category === "Subcontractor" && newJobId && subcontractorId) {
+        const jobIdSync = parseInt(newJobId as string);
+        const subIdSync = parseInt(subcontractorId);
+        const amount    = parseFloat(fd.get("amount") as string);
+        const date      = fd.get("date") as string;
+        (async () => {
+          try {
+            const payRes = await fetch(`${API}/jobs/${jobIdSync}/sub-payments`);
+            if (payRes.ok) {
+              const payRows = await payRes.json();
+              const row = Array.isArray(payRows) ? payRows.find((r: any) => r.subcontractorId === subIdSync) : null;
+              if (row && (row.amountPaid ?? 0) < 0.01) {
+                await fetch(`${API}/jobs/${jobIdSync}/sub-payments/${subIdSync}`, {
+                  method: "PUT", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ amountPaid: amount, paidDate: date, paidNotes: "Synced from Expenses page" }),
+                });
+                toast({ title: "Job card updated", description: "Sub marked as paid on the job card." });
+              }
+            }
+          } catch {
+            // Non-fatal
+          }
+        })();
+      }
+
+      // Background invalidation — marks cache stale so a background refetch fills in any gaps
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+
     } catch {
       setUploadError("Failed to save expense. Please try again.");
     }

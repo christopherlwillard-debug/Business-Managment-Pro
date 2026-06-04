@@ -85,8 +85,8 @@ router.post("/", async (req, res) => {
       businessLine: validBusinessLines.includes(businessLine) ? businessLine : null,
     }).returning();
 
-    const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, expense.id));
-    res.status(201).json(formatExpense(joined ?? expense, joined?.jobTitle, joined?.subcontractorName));
+    // Client derives jobTitle/subcontractorName from its own loaded lists — skip the JOIN
+    res.status(201).json(formatExpense(expense, null, null));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create expense" });
