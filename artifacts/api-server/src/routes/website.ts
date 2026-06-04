@@ -70,7 +70,7 @@ function defaultSections() {
       order: 4,
       content: {
         heading: "Our Work",
-        photos: [],
+        projects: [],
       },
     },
     {
@@ -100,7 +100,24 @@ type SectionRow = { id: string; type: string; enabled: boolean; order: number; c
 
 function normalizeSections(existing: SectionRow[]): SectionRow[] {
   const defaults = defaultSections() as SectionRow[];
-  const result = [...existing];
+  const result = existing.map(s => {
+    if (s.type === "portfolio") {
+      const c = s.content as any;
+      if (!Array.isArray(c.projects)) {
+        const legacy = Array.isArray(c.photos) ? c.photos : [];
+        return {
+          ...s,
+          content: {
+            heading: c.heading ?? "Our Work",
+            projects: legacy.length > 0
+              ? [{ id: "default", name: "Featured Work", description: "", photos: legacy }]
+              : [],
+          },
+        } as SectionRow;
+      }
+    }
+    return s;
+  });
   const maxOrder = result.reduce((m, s) => Math.max(m, s.order ?? 0), -1);
   let nextOrder = maxOrder + 1;
   for (const def of defaults) {
@@ -414,9 +431,16 @@ publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res)
 
   const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
   const portfolioSection = sections.find(s => s.type === "portfolio");
-  const photos = (portfolioSection?.content?.photos as Array<{ photoObjectPath?: string }>) ?? [];
   const expectedObjectPath = `/objects/uploads/website-portfolio-photos/${photoUuid}`;
-  const photo = photos.find(p => p.photoObjectPath === expectedObjectPath);
+  type PhotoRow = { photoObjectPath?: string };
+  const allPhotos: PhotoRow[] = (() => {
+    const c = portfolioSection?.content ?? {};
+    if (Array.isArray((c as any).projects)) {
+      return (c as any).projects.flatMap((proj: any) => proj.photos ?? []) as PhotoRow[];
+    }
+    return ((c as any).photos ?? []) as PhotoRow[];
+  })();
+  const photo = allPhotos.find(p => p.photoObjectPath === expectedObjectPath);
 
   if (!photo?.photoObjectPath) {
     return res.status(404).json({ error: "Photo not found" });

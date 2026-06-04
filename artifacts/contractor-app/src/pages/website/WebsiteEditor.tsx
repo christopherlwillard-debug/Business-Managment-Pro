@@ -58,7 +58,7 @@ function renderSection(
   extras?: {
     onAboutPhotoUpload?: (file: File) => Promise<void>;
     isAboutPhotoUploading?: boolean;
-    onPortfolioPhotoUpload?: (photoId: string, file: File) => Promise<void>;
+    onPortfolioPhotoUpload?: (projectId: string, photoId: string, file: File) => Promise<void>;
     uploadingPortfolioPhotoIds?: Set<string>;
   }
 ) {
@@ -413,25 +413,41 @@ export default function WebsiteEditor() {
     }
   }
 
-  async function handlePortfolioPhotoUpload(photoId: string, file: File) {
-    setUploadingPortfolioPhotoIds(prev => new Set(prev).add(photoId));
-    const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    isDirtyRef.current = true;
-    setLocalSections(sectionsAtStart.map(s =>
+  function patchPortfolioPhoto(
+    sectionList: Section[],
+    projectId: string,
+    photoId: string,
+    patch: Record<string, unknown>
+  ): Section[] {
+    return sectionList.map(s =>
       s.type === "portfolio"
         ? {
             ...s,
             content: {
               ...s.content,
-              photos: ((s.content.photos as any[]) ?? []).map((p: any) =>
-                p.id === photoId ? { ...p, photoUrl: blobUrl } : p
+              projects: ((s.content.projects as any[]) ?? []).map((proj: any) =>
+                proj.id === projectId
+                  ? {
+                      ...proj,
+                      photos: (proj.photos ?? []).map((p: any) =>
+                        p.id === photoId ? { ...p, ...patch } : p
+                      ),
+                    }
+                  : proj
               ),
             },
           }
         : s
-    ));
+    );
+  }
+
+  async function handlePortfolioPhotoUpload(projectId: string, photoId: string, file: File) {
+    setUploadingPortfolioPhotoIds(prev => new Set(prev).add(photoId));
+    const blobUrl = URL.createObjectURL(file);
+    const sectionsAtStart = sections;
+    const settingsAtStart = settings;
+    isDirtyRef.current = true;
+    setLocalSections(patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoUrl: blobUrl }));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-portfolio-photo`, {
         method: "POST",
@@ -450,40 +466,12 @@ export default function WebsiteEditor() {
       const slug = activeBusiness!.slug;
       const photoUuid = objectPath.split("/").pop()!;
       const canonicalUrl = `${BASE}/api/public/site/${slug}/portfolio-photo/${photoUuid}`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.type === "portfolio"
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                photos: ((s.content.photos as any[]) ?? []).map((p: any) =>
-                  p.id === photoId
-                    ? { ...p, photoObjectPath: objectPath, photoUrl: canonicalUrl }
-                    : p
-                ),
-              },
-            }
-          : s
-      );
+      const savedSections = patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoObjectPath: objectPath, photoUrl: canonicalUrl });
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
       await saveNow(settingsAtStart, savedSections);
       URL.revokeObjectURL(blobUrl);
       isDirtyRef.current = false;
-      setLocalSections(savedSections.map(s =>
-        s.type === "portfolio"
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                photos: ((s.content.photos as any[]) ?? []).map((p: any) =>
-                  p.id === photoId
-                    ? { ...p, photoUrl: `${canonicalUrl}?v=${Date.now()}` }
-                    : p
-                ),
-              },
-            }
-          : s
-      ));
+      setLocalSections(patchPortfolioPhoto(savedSections, projectId, photoId, { photoUrl: `${canonicalUrl}?v=${Date.now()}` }));
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
       toast({ title: "Photo uploaded" });
     } catch {
