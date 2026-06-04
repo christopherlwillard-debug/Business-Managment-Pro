@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Readable } from "stream";
 import { db } from "@workspace/db";
 import { websiteConfigsTable, businessesTable, prospectsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 
@@ -263,6 +263,32 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
     if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "About photo not found" });
     throw err;
   }
+}));
+
+publicRouter.get("/by-host", wrapAsync(async (req, res) => {
+  const host = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname;
+  if (!host) return res.status(400).json({ error: "Cannot determine host" });
+
+  const [config] = await db
+    .select()
+    .from(websiteConfigsTable)
+    .where(
+      and(
+        eq(websiteConfigsTable.published, true),
+        sql`${websiteConfigsTable.settings}->>'customDomain' = ${host}`
+      )
+    );
+
+  if (!config) return res.status(404).json({ error: "No site found for this domain" });
+
+  const [biz] = await db
+    .select()
+    .from(businessesTable)
+    .where(eq(businessesTable.id, config.businessId));
+
+  if (!biz) return res.status(404).json({ error: "Business not found" });
+
+  res.json({ ...config, businessName: biz.name, businessSlug: biz.slug });
 }));
 
 publicRouter.get("/:slug", wrapAsync(async (req, res) => {

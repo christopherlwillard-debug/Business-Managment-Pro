@@ -34,19 +34,26 @@ export default function PublicSite() {
   const slug = params.slug;
 
   const { data, isLoading, isError } = useQuery<PublishedConfig>({
-    queryKey: ["public-site", slug],
+    queryKey: ["public-site", slug ?? `__host__${window.location.host}`],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/public/site/${slug}`);
+      if (slug) {
+        const res = await fetch(`${BASE}/api/public/site/${slug}`);
+        if (!res.ok) throw new Error("Not found");
+        return res.json();
+      }
+      const res = await fetch(`${BASE}/api/public/site/by-host`);
       if (!res.ok) throw new Error("Not found");
       return res.json();
     },
     retry: false,
   });
 
+  const resolvedSlug = data?.businessSlug ?? slug ?? "";
+
   async function handleContactSubmit(formData: {
     name: string; phone: string; email: string; serviceType: string; message: string;
   }) {
-    const res = await fetch(`${BASE}/api/public/site/${slug}/contact`, {
+    const res = await fetch(`${BASE}/api/public/site/${resolvedSlug}/contact`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData),

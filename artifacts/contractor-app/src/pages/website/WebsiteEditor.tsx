@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2,
+  Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -36,6 +36,8 @@ interface SiteSettings {
   brandColor: string;
   fontFamily: string;
   logoUrl: string;
+  logoObjectPath?: string;
+  customDomain?: string;
 }
 
 interface WebsiteConfig {
@@ -110,6 +112,63 @@ function SortableRow({
       >
         {section.enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
       </button>
+    </div>
+  );
+}
+
+function CustomDomainPanel({
+  customDomain,
+  appHost,
+  onChange,
+  onCopy,
+}: {
+  customDomain: string;
+  appHost: string;
+  onChange: (v: string) => void;
+  onCopy: (v: string) => void;
+}) {
+  return (
+    <div className="border-t border-border p-3 space-y-2">
+      <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+        <Link2 className="w-3 h-3" />
+        Custom Domain
+      </p>
+      <input
+        type="text"
+        placeholder="www.yourdomain.com"
+        value={customDomain}
+        onChange={e => onChange(e.target.value.trim())}
+        className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+      />
+      {customDomain ? (
+        <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-2 space-y-1.5">
+          <p className="text-[10px] font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-1">
+            <Info className="w-3 h-3 flex-shrink-0" />
+            DNS Setup Instructions
+          </p>
+          <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
+            Add a <strong>CNAME</strong> record at your domain registrar:
+          </p>
+          <div className="rounded bg-blue-100 dark:bg-blue-900/40 px-2 py-1 flex items-center justify-between gap-1">
+            <span className="text-[10px] font-mono text-blue-900 dark:text-blue-200 break-all">{appHost}</span>
+            <button
+              type="button"
+              onClick={() => onCopy(appHost)}
+              className="flex-shrink-0 text-blue-600 hover:text-blue-800 dark:text-blue-400"
+              title="Copy"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+          </div>
+          <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-relaxed">
+            DNS changes can take up to 48 hours to propagate. Save and publish your site first.
+          </p>
+        </div>
+      ) : (
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          Enter a domain to get CNAME setup instructions.
+        </p>
+      )}
     </div>
   );
 }
@@ -485,6 +544,14 @@ export default function WebsiteEditor() {
               </label>
             </div>
           </div>
+
+          {/* Custom domain settings */}
+          <CustomDomainPanel
+            customDomain={settings.customDomain ?? ""}
+            appHost={window.location.host}
+            onChange={domain => { isDirtyRef.current = true; setLocalSettings({ ...settings, customDomain: domain }); }}
+            onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
+          />
         </div>
 
         {/* Canvas — live preview */}
