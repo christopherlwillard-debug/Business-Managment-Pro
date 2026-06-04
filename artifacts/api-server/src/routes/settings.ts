@@ -271,7 +271,7 @@ router.get("/", async (req, res) => {
     const isOwner = settings.ownerUserId === userId;
     const formatted = format(settings);
     if (!isOwner) {
-      const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, complianceNotificationEmail, complianceEmailEnabled, ...safe } = formatted;
+      const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, complianceNotificationEmail, complianceEmailEnabled, quickLinks, ...safe } = formatted;
       res.json(safe);
       return;
     }
