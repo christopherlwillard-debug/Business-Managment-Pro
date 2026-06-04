@@ -9,7 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
-  Monitor, Tablet, Smartphone,
+  Monitor, Tablet, Smartphone, LayoutTemplate,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -185,6 +185,148 @@ function CustomDomainPanel({
   );
 }
 
+interface WebsiteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  brandColor: string;
+  settings: SiteSettings;
+  sections: Section[];
+}
+
+const WEBSITE_TEMPLATES: WebsiteTemplate[] = [
+  {
+    id: "general-contracting",
+    name: "General Contracting",
+    description: "Construction, renovation & site work",
+    brandColor: "#1e3a5f",
+    settings: { brandColor: "#1e3a5f", fontFamily: "Inter", logoUrl: "" },
+    sections: [
+      { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Built Right, Built to Last", subheadline: "Full-service general contracting for residential and commercial projects.", ctaLabel: "Get a Free Quote", bgColor: "#1e3a5f" } },
+      { id: "services", type: "services", enabled: true, order: 1, content: { heading: "Our Services", items: [
+        { id: "s1", title: "New Construction", description: "From ground-up homes to commercial build-outs — we handle every phase." },
+        { id: "s2", title: "Renovations & Remodels", description: "Kitchen, bath, basement, or full home renovations done on time and on budget." },
+        { id: "s3", title: "Site Preparation", description: "Land clearing, grading, drainage, and excavation before the first nail is driven." },
+      ] } },
+      { id: "about", type: "about", enabled: true, order: 2, content: { heading: "About Our Company", body: "We are a licensed, insured general contracting firm with deep roots in this community. Our crew brings decades of hands-on experience to every job — big or small. We treat your project like it's our own, with the craftsmanship and communication you deserve.", photoUrl: "" } },
+      { id: "contact", type: "contact", enabled: true, order: 3, content: { heading: "Request a Free Quote", subheading: "Tell us about your project and we'll follow up within one business day.", serviceTypes: ["New Construction", "Renovation / Remodel", "Site Preparation", "Repairs", "Other"] } },
+      { id: "portfolio", type: "portfolio", enabled: true, order: 4, content: { heading: "Our Work", projects: [] } },
+      { id: "footer", type: "footer", enabled: true, order: 5, content: { phone: "", email: "", licenseNumber: "", copyright: "" } },
+    ],
+  },
+  {
+    id: "asphalt-sealing",
+    name: "Asphalt & Sealing",
+    description: "Paving, sealcoating & striping",
+    brandColor: "#1a1a1a",
+    settings: { brandColor: "#1a1a1a", fontFamily: "Inter", logoUrl: "" },
+    sections: [
+      { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Smooth Roads. Lasting Results.", subheadline: "Professional asphalt paving, sealcoating, and crack repair for driveways and parking lots.", ctaLabel: "Get a Free Estimate", bgColor: "#1a1a1a" } },
+      { id: "services", type: "services", enabled: true, order: 1, content: { heading: "What We Do", items: [
+        { id: "s1", title: "Asphalt Paving", description: "New asphalt for driveways, parking lots, and roadways — hot-mix applied and compacted to spec." },
+        { id: "s2", title: "Sealcoating", description: "Protect pavement from UV, oil, and water. Extends asphalt life by years at a fraction of replacement cost." },
+        { id: "s3", title: "Crack Repair & Striping", description: "Hot-pour crack filler and fresh line striping to keep your lot safe, compliant, and looking sharp." },
+      ] } },
+      { id: "about", type: "about", enabled: true, order: 2, content: { heading: "About Us", body: "We've been sealing and paving in this area for years. Our equipment is commercial-grade, our materials are top quality, and every crew member is trained to deliver results you'll be proud of. No shortcuts — just honest work at a fair price.", photoUrl: "" } },
+      { id: "contact", type: "contact", enabled: true, order: 3, content: { heading: "Get Your Free Estimate", subheading: "Send us your location and what you need — we get back to you fast.", serviceTypes: ["Asphalt Paving", "Sealcoating", "Crack Repair", "Striping", "Parking Lot Maintenance", "Other"] } },
+      { id: "portfolio", type: "portfolio", enabled: true, order: 4, content: { heading: "Recent Projects", projects: [] } },
+      { id: "footer", type: "footer", enabled: true, order: 5, content: { phone: "", email: "", licenseNumber: "", copyright: "" } },
+    ],
+  },
+  {
+    id: "property-management",
+    name: "Property Management",
+    description: "Maintenance, inspections & tenant services",
+    brandColor: "#1b4332",
+    settings: { brandColor: "#1b4332", fontFamily: "Inter", logoUrl: "" },
+    sections: [
+      { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Property Care You Can Count On", subheadline: "Professional maintenance and management services — keeping your investment protected and your tenants happy.", ctaLabel: "Contact Us Today", bgColor: "#1b4332" } },
+      { id: "services", type: "services", enabled: true, order: 1, content: { heading: "Our Services", items: [
+        { id: "s1", title: "Routine Maintenance", description: "Scheduled inspections, HVAC servicing, plumbing checks, and landscaping to protect your property year-round." },
+        { id: "s2", title: "Tenant Services", description: "Fast response to maintenance requests, move-in/move-out inspections, and 24/7 emergency contact." },
+        { id: "s3", title: "Repairs & Renovation", description: "From small fixes to full unit turns, we handle the work so you don't have to." },
+      ] } },
+      { id: "about", type: "about", enabled: true, order: 2, content: { heading: "Who We Are", body: "We manage residential and light commercial properties with a hands-on approach. Our team handles everything from routine upkeep to emergency repairs, so property owners stay hands-off while their investment stays protected.", photoUrl: "" } },
+      { id: "contact", type: "contact", enabled: true, order: 3, content: { heading: "Get In Touch", subheading: "Whether you're a property owner or a tenant, we're here to help.", serviceTypes: ["Property Management", "Maintenance Request", "Repair Request", "General Inquiry"] } },
+      { id: "portfolio", type: "portfolio", enabled: true, order: 4, content: { heading: "Properties We Manage", projects: [] } },
+      { id: "footer", type: "footer", enabled: true, order: 5, content: { phone: "", email: "", licenseNumber: "", copyright: "" } },
+    ],
+  },
+];
+
+function TemplatePicker({
+  businessName,
+  isReset,
+  onSelect,
+  onScratch,
+  applying,
+}: {
+  businessName: string;
+  isReset: boolean;
+  onSelect: (t: WebsiteTemplate) => void;
+  onScratch: () => void;
+  applying: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 overflow-y-auto">
+      <div className="max-w-2xl w-full">
+        <div className="text-center mb-8">
+          <LayoutTemplate className="w-10 h-10 text-primary mx-auto mb-3" />
+          <h1 className="text-2xl font-bold text-foreground">
+            {isReset ? "Reset to a template" : "Choose a starter template"}
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            {isReset
+              ? "This will replace all current content. Pick a template to start fresh."
+              : <>Pick a starting point for <strong>{businessName}</strong>'s website. You can customize everything after.</>
+            }
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {WEBSITE_TEMPLATES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => !applying && onSelect(t)}
+              disabled={applying}
+              className="text-left rounded-xl border-2 border-border hover:border-primary hover:shadow-md transition-all p-4 group disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <div
+                className="w-full h-16 rounded-lg mb-3 flex items-end p-2"
+                style={{ backgroundColor: t.brandColor }}
+              >
+                <div className="w-full space-y-1">
+                  <div className="h-1.5 bg-white/50 rounded-full w-3/4" />
+                  <div className="h-1 bg-white/30 rounded-full w-1/2" />
+                </div>
+              </div>
+              <p className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">{t.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t.description}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="text-center">
+          <button
+            onClick={onScratch}
+            disabled={applying}
+            className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors disabled:opacity-60"
+          >
+            {isReset ? "Cancel — keep current content" : "Start from scratch with generic defaults"}
+          </button>
+        </div>
+
+        {applying && (
+          <div className="flex items-center justify-center gap-2 mt-6 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Applying template…
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function WebsiteEditor() {
   const { activeBusiness } = useBusiness();
   const { toast } = useToast();
@@ -202,6 +344,12 @@ export default function WebsiteEditor() {
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
     return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
   });
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [pickerIsReset, setPickerIsReset] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<WebsiteTemplate | null>(null);
+  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const pickerShownRef = useRef(false);
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
@@ -231,6 +379,11 @@ export default function WebsiteEditor() {
       const sorted = [...(data.sections as Section[])].sort((a, b) => a.order - b.order);
       setLocalSections(sorted);
       setLocalSettings(data.settings as SiteSettings);
+      if (data.id === null && !pickerShownRef.current) {
+        pickerShownRef.current = true;
+        setShowTemplatePicker(true);
+        setPickerIsReset(false);
+      }
     },
   } as any);
 
@@ -496,6 +649,47 @@ export default function WebsiteEditor() {
     }
   }
 
+  async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
+    setApplyingTemplate(true);
+    try {
+      const appliedSections = t.sections.map(s => {
+        if (s.type === "footer" && bizInfo) {
+          return { ...s, content: { ...s.content, phone: bizInfo.phone ?? "", email: bizInfo.email ?? "", licenseNumber: bizInfo.licenseNumber ?? "", copyright: `© ${new Date().getFullYear()} ${bizInfo.name ?? ""}. All rights reserved.` } };
+        }
+        return s;
+      });
+      const savedSettings = { ...t.settings };
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await saveNow(savedSettings, appliedSections);
+      setLocalSections(appliedSections);
+      setLocalSettings(savedSettings);
+      isDirtyRef.current = false;
+      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+      setShowTemplatePicker(false);
+      setShowApplyConfirm(false);
+      setPendingTemplate(null);
+      toast({ title: `"${t.name}" template applied` });
+    } catch {
+      toast({ title: "Failed to apply template", variant: "destructive" });
+    } finally {
+      setApplyingTemplate(false);
+    }
+  }
+
+  function openResetPicker() {
+    setPickerIsReset(true);
+    setShowTemplatePicker(true);
+  }
+
+  function handleTemplatePickerSelect(t: WebsiteTemplate) {
+    if (pickerIsReset) {
+      setPendingTemplate(t);
+      setShowApplyConfirm(true);
+    } else {
+      handleApplyTemplate(t, activeBusiness ? { phone: (activeBusiness as any).phone, email: (activeBusiness as any).email, licenseNumber: (activeBusiness as any).licenseNumber, name: activeBusiness.name } : undefined);
+    }
+  }
+
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
 
   function renderSections() {
@@ -556,6 +750,34 @@ export default function WebsiteEditor() {
 
   return (
     <>
+    {showTemplatePicker && (
+      <TemplatePicker
+        businessName={activeBusiness?.name ?? "your business"}
+        isReset={pickerIsReset}
+        onSelect={handleTemplatePickerSelect}
+        onScratch={() => setShowTemplatePicker(false)}
+        applying={applyingTemplate}
+      />
+    )}
+    <AlertDialog open={showApplyConfirm} onOpenChange={v => { if (!v && !applyingTemplate) { setShowApplyConfirm(false); setPendingTemplate(null); } }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Apply "{pendingTemplate?.name}" template?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will overwrite all current sections, copy, and brand color with the template defaults. Your uploaded photos and logo will not be affected.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={applyingTemplate}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={applyingTemplate}
+            onClick={() => pendingTemplate && handleApplyTemplate(pendingTemplate, activeBusiness ? { phone: (activeBusiness as any).phone, email: (activeBusiness as any).email, licenseNumber: (activeBusiness as any).licenseNumber, name: activeBusiness.name } : undefined)}
+          >
+            {applyingTemplate ? "Applying…" : "Apply Template"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <AlertDialog open={showPublishConfirm} onOpenChange={setShowPublishConfirm}>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -699,6 +921,17 @@ export default function WebsiteEditor() {
                 />
               </label>
             </div>
+          </div>
+
+          {/* Apply template */}
+          <div className="border-t border-border p-3">
+            <button
+              onClick={openResetPicker}
+              className="flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted text-muted-foreground hover:text-foreground"
+            >
+              <LayoutTemplate className="w-3 h-3" />
+              Apply Template…
+            </button>
           </div>
 
           {/* Custom domain settings */}
