@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { Building2, Plus, ChevronRight, HardHat, Home, Layers, Briefcase, FileText, Pencil, Upload, X, ChevronUp, ChevronDown } from "lucide-react";
 import { useBusiness, type Business } from "@/contexts/BusinessContext";
 import { useGetDashboardStats } from "@workspace/api-client-react";
+import { FEATURE_OPTIONS } from "@/lib/featureOptions";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -69,6 +70,8 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [editToolsCustomized, setEditToolsCustomized] = useState(false);
+  const [editFeatures, setEditFeatures] = useState<string[]>([]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState("");
@@ -164,6 +167,9 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
       licenseNumber: b.licenseNumber ?? "",
       taxId: b.taxId ?? "",
     });
+    const isCustomized = Array.isArray(b.enabledFeatures);
+    setEditToolsCustomized(isCustomized);
+    setEditFeatures(isCustomized ? (b.enabledFeatures as string[]) : FEATURE_OPTIONS.map(f => f.key));
     setEditError("");
     revokeBlobPreview();
     setLogoPreview(null);
@@ -255,6 +261,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
           email: editForm.email || null,
           licenseNumber: editForm.licenseNumber || null,
           taxId: editForm.taxId || null,
+          enabledFeatures: editToolsCustomized ? editFeatures : null,
         }),
       });
       if (!res.ok) { const d = await res.json(); setEditError(d.error || "Failed to update business"); return; }
@@ -459,6 +466,47 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                         <input className={inp} placeholder="XX-XXXXXXX" value={editForm.taxId} onChange={e => setEF("taxId", e.target.value)} />
                       </div>
                     </div>
+                    {/* Tools section */}
+                    <div className="border-t border-border/50 pt-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs font-semibold text-muted-foreground">Tools &amp; Modules</p>
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editToolsCustomized}
+                            onChange={e => {
+                              setEditToolsCustomized(e.target.checked);
+                              if (e.target.checked && editFeatures.length === 0) {
+                                setEditFeatures(FEATURE_OPTIONS.map(f => f.key));
+                              }
+                            }}
+                            className="rounded border-border"
+                          />
+                          <span className="text-xs font-medium text-foreground">Customize for this business</span>
+                        </label>
+                      </div>
+                      {editToolsCustomized ? (
+                        <div className="grid grid-cols-2 gap-0.5 mt-1">
+                          {FEATURE_OPTIONS.map(f => (
+                            <label key={f.key} className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-lg hover:bg-muted/60 transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={editFeatures.includes(f.key)}
+                                onChange={e => {
+                                  if (e.target.checked) setEditFeatures(prev => [...prev, f.key]);
+                                  else setEditFeatures(prev => prev.filter(k => k !== f.key));
+                                }}
+                                className="rounded border-border"
+                              />
+                              <span className="text-xs font-medium">{f.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Using global defaults from Settings → Modules</p>
+                      )}
+                    </div>
+
                     <div className="flex gap-2 pt-1">
                       <button type="button" onClick={() => { setEditingBusiness(null); setEditError(""); }}
                         className="flex-1 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors">

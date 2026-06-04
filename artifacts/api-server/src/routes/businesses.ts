@@ -102,7 +102,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId } = req.body;
+    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (slug !== undefined) updates.slug = slug;
@@ -121,6 +121,9 @@ router.put("/:id", async (req, res) => {
     if (email !== undefined) updates.email = email;
     if (licenseNumber !== undefined) updates.licenseNumber = licenseNumber;
     if (taxId !== undefined) updates.taxId = taxId;
+    if ("enabledFeatures" in req.body) {
+      updates.enabledFeatures = Array.isArray(enabledFeatures) ? enabledFeatures : null;
+    }
     const [updated] = await db.update(businessesTable).set(updates).where(eq(businessesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Business not found" });
     res.json(updated);

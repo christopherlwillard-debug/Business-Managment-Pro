@@ -16,20 +16,9 @@ import {
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
 import { useToast } from "@/hooks/use-toast";
+import { FEATURE_OPTIONS } from "@/lib/featureOptions";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-const FEATURE_OPTIONS = [
-  { key: "jobs", label: "Jobs", desc: "Job management and tracking" },
-  { key: "invoices", label: "Invoices", desc: "Create and send invoices" },
-  { key: "expenses", label: "Expenses", desc: "Expense logging and receipts" },
-  { key: "mileage", label: "Mileage Tracking", desc: "IRS mileage deduction tracking" },
-  { key: "estimates", label: "Estimates & Bidding", desc: "Job estimator with line items" },
-  { key: "subcontractors", label: "Subcontractors", desc: "Sub management and portal" },
-  { key: "daily_logs", label: "Daily Logs", desc: "Field documentation" },
-  { key: "compliance", label: "Compliance Agent", desc: "1099 and license alerts" },
-  { key: "clients", label: "Clients", desc: "Client contact management" },
-];
 
 const PAYMENT_TERMS_OPTIONS = ["Due on Receipt", "Net 7", "Net 15", "Net 30", "Net 45", "Net 60"];
 
@@ -2143,7 +2132,7 @@ export default function Settings() {
                 <CardTitle className="font-display flex items-center gap-2">
                   <Settings2 className="w-5 h-5 text-primary" /> Feature Modules
                 </CardTitle>
-                <CardDescription>Enable or disable modules — disabled ones are hidden from the sidebar. Dashboard and Settings always show.</CardDescription>
+                <CardDescription>Global defaults — applied to any business that hasn't been configured independently. Dashboard and Settings always show. You can override these per-business from the Business Selector.</CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-3">
                 {FEATURE_OPTIONS.map(feature => (

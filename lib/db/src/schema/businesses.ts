@@ -1,4 +1,4 @@
-import { integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +17,7 @@ export const businessesTable = pgTable("businesses", {
   licenseNumber: text("license_number"),
   taxId: text("tax_id"),
   sortOrder: integer("sort_order").notNull().default(0),
+  enabledFeatures: jsonb("enabled_features"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

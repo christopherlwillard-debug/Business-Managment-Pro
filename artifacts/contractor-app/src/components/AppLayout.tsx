@@ -31,12 +31,21 @@ const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
 
 const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/people", "/accounting"];
 
+const BIZ_BADGE: Record<string, { dot: string; text: string; bg: string; border: string }> = {
+  general_contracting: { dot: "bg-blue-500",    text: "text-blue-700",    bg: "bg-blue-50 hover:bg-blue-100",       border: "border-blue-200"    },
+  asphalt_sealing:     { dot: "bg-amber-500",   text: "text-amber-700",   bg: "bg-amber-50 hover:bg-amber-100",     border: "border-amber-200"   },
+  real_estate:         { dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50 hover:bg-emerald-100", border: "border-emerald-200" },
+};
+const DEFAULT_BIZ_BADGE = { dot: "bg-muted-foreground/50", text: "text-muted-foreground", bg: "bg-muted/60 hover:bg-muted", border: "border-border" };
+
+const DEFAULT_FEATURES = ["invoices", "expenses", "mileage", "estimates", "subcontractors", "compliance", "clients"];
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { isDark, toggle: toggleTheme } = useTheme();
 
@@ -44,10 +53,27 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { canView, isOwner, companyName: ctxCompanyName, logoUrl: ctxLogoUrl } = useUserPermissions();
   const { data: settings } = useGetSettings();
 
-  const enabledFeatures: string[] = settings?.enabledFeatures ?? [
-    "invoices", "expenses", "mileage",
-    "estimates", "subcontractors", "compliance", "clients",
-  ];
+  const { activeBusiness, hasSelection, businesses, clearSelection } = useBusiness();
+
+  const globalFeatures: string[] = (settings?.enabledFeatures as string[] | undefined) ?? DEFAULT_FEATURES;
+
+  let effectiveFeatures: string[];
+  if (!hasSelection) {
+    effectiveFeatures = globalFeatures;
+  } else if (activeBusiness) {
+    effectiveFeatures = activeBusiness.enabledFeatures ?? globalFeatures;
+  } else {
+    if (businesses.length === 0) {
+      effectiveFeatures = globalFeatures;
+    } else {
+      const allSets = businesses.map(b => b.enabledFeatures ?? globalFeatures);
+      effectiveFeatures = [...new Set(allSets.flat())];
+    }
+  }
+
+  const bizBadge = activeBusiness
+    ? (BIZ_BADGE[activeBusiness.type] ?? DEFAULT_BIZ_BADGE)
+    : DEFAULT_BIZ_BADGE;
 
   interface NavItem {
     name: string;
@@ -89,7 +115,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       if (!hasSectionAccess) return false;
       return item.section !== null || item.altSection !== undefined;
     }
-    if (item.feature !== null && !enabledFeatures.includes(item.feature)) return false;
+    if (item.feature !== null && !effectiveFeatures.includes(item.feature)) return false;
     return true;
   });
 
@@ -106,8 +132,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     staleTime: 60_000,
     enabled: isOwner,
   });
-
-  const { activeBusiness, clearSelection } = useBusiness();
 
   const companyName = (isOwner ? settings?.companyName : ctxCompanyName) || ctxCompanyName || "BuildPro";
   const logoUrl = (isOwner ? settings?.logoUrl : ctxLogoUrl) ?? ctxLogoUrl ?? null;
@@ -217,6 +241,12 @@ export function AppLayout({ children }: AppLayoutProps) {
     return result;
   }
 
+  function openBusinessSwitcher() {
+    clearSelection();
+    setLocation("/");
+    setMobileMenuOpen(false);
+  }
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Mobile sidebar backdrop */}
@@ -251,14 +281,18 @@ export function AppLayout({ children }: AppLayoutProps) {
           </button>
         </div>
 
-        {/* Business switcher — only shown for owners */}
+        {/* Business switcher / context badge — only shown for owners */}
         {isOwner && (
           <div className="px-3 py-2 border-b border-primary-foreground/10">
             <button
-              onClick={() => { clearSelection(); setLocation("/"); setMobileMenuOpen(false); }}
+              onClick={openBusinessSwitcher}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/80 hover:bg-primary-foreground/10 hover:text-white transition-colors"
             >
-              <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-primary-foreground/50" />
+              {activeBusiness ? (
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${BIZ_BADGE[activeBusiness.type]?.dot ?? DEFAULT_BIZ_BADGE.dot}`} />
+              ) : (
+                <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-primary-foreground/50" />
+              )}
               <span className="truncate flex-1 text-left">{activeBusiness?.name ?? "All Businesses"}</span>
               <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-50" />
             </button>
@@ -308,23 +342,51 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Menu className="w-6 h-6" />
           </button>
 
-          {/* Mobile: show logo mark centered */}
-          <div className="lg:hidden absolute left-1/2 -translate-x-1/2">
-            {logoUrl && !logoImgError ? (
-              <img
-                src={`${base}${logoUrl}`}
-                className="w-8 h-8 rounded object-contain"
-                alt="Logo"
-                onError={() => setLogoImgError(true)}
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-display font-bold text-sm select-none">
-                {initials}
-              </div>
-            )}
-          </div>
+          {/* Mobile: business context badge (shown when a business is selected) */}
+          {isOwner && hasSelection ? (
+            <button
+              onClick={openBusinessSwitcher}
+              className={cn(
+                "lg:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors",
+                bizBadge.bg, bizBadge.text, bizBadge.border
+              )}
+            >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${bizBadge.dot}`} />
+              <span className="max-w-[120px] truncate">{activeBusiness?.name ?? "All Businesses"}</span>
+            </button>
+          ) : (
+            /* Mobile: show logo mark centered when no business context badge */
+            <div className="lg:hidden absolute left-1/2 -translate-x-1/2">
+              {logoUrl && !logoImgError ? (
+                <img
+                  src={`${base}${logoUrl}`}
+                  className="w-8 h-8 rounded object-contain"
+                  alt="Logo"
+                  onError={() => setLogoImgError(true)}
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-display font-bold text-sm select-none">
+                  {initials}
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className="flex-1 hidden lg:block" />
+          {/* Desktop: business context badge */}
+          {isOwner && hasSelection ? (
+            <button
+              onClick={openBusinessSwitcher}
+              className={cn(
+                "hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors",
+                bizBadge.bg, bizBadge.text, bizBadge.border
+              )}
+            >
+              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${bizBadge.dot}`} />
+              {activeBusiness?.name ?? "All Businesses"}
+            </button>
+          ) : (
+            <div className="flex-1 hidden lg:block" />
+          )}
 
           <Link href="/settings" className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm hover:bg-primary/20 transition-colors" title="Settings">
             {initials}
