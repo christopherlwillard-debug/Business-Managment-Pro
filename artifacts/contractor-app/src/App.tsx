@@ -35,6 +35,8 @@ const Banking = lazy(() => import("./pages/Banking"));
 const BidOpportunities = lazy(() => import("./pages/BidOpportunities"));
 const BusinessSelector = lazy(() => import("./pages/BusinessSelector"));
 const NotFound = lazy(() => import("./pages/not-found"));
+const WebsiteEditor = lazy(() => import("./pages/website/WebsiteEditor"));
+const PublicSite = lazy(() => import("./pages/website/PublicSite"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -302,6 +304,9 @@ function AdminApp() {
           <Route path="/address-book">
             <PermissionGuard ownerOnly><TabRedirect tab="contacts" /></PermissionGuard>
           </Route>
+          <Route path="/website">
+            <PermissionGuard ownerOnly><WebsiteEditor /></PermissionGuard>
+          </Route>
           <Route component={NotFound} />
         </Switch>
       </Suspense>
@@ -317,6 +322,7 @@ function Router() {
         <Route path="/portal/:token" component={SubcontractorPortal} />
         <Route path="/sub-login" component={SubLogin} />
         <Route path="/pay/:payToken" component={Pay} />
+        <Route path="/site/:slug" component={PublicSite} />
         <Route>
           <AdminApp />
         </Route>

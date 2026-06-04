@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   UsersRound,
   Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText,
-  Sun, Moon, Building2, ChevronDown,
+  Sun, Moon, Building2, ChevronDown, Globe,
   type LucideIcon,
 } from "lucide-react";
 import { useBusiness } from "@/contexts/BusinessContext";
@@ -105,6 +105,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Banking",               href: "/banking",              icon: Landmark,        feature: null,           section: null,       ownerOnly: true,  group: "finance" },
     { name: "Bid Opportunities",     href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },
     { name: "Accounting & Tax",      href: "/accounting",           icon: BookOpen,        feature: "invoices",     section: "invoices", group: "finance" },
+    { name: "Website",               href: "/website",              icon: Globe,           feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
     { name: "Settings",              href: "/settings",             icon: Settings,        feature: null,           section: null,       ownerOnly: true  },
   ];
 
