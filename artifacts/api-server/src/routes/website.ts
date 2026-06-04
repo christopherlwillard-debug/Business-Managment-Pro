@@ -208,7 +208,7 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
 
   const settings = config.settings as Record<string, unknown>;
   const logoObjectPath = settings.logoObjectPath as string | undefined;
-  if (!logoObjectPath?.startsWith("/objects/")) {
+  if (!logoObjectPath?.startsWith("/objects/uploads/website-logos/")) {
     return res.status(404).json({ error: "No logo" });
   }
 
@@ -277,6 +277,15 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     .returning({ id: prospectsTable.id });
 
   res.json({ success: true, prospectId: prospect.id });
+}));
+
+router.post("/upload-logo", wrapAsync(async (req, res) => {
+  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+  if (!name || !size || !contentType) {
+    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+  }
+  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-logos");
+  res.json({ uploadURL, objectPath });
 }));
 
 export { router as websiteRouter, publicRouter as websitePublicRouter };

@@ -127,6 +127,13 @@ export default function WebsiteEditor() {
 
   const bizId = activeBusiness?.id;
 
+  useEffect(() => {
+    setLocalSections(null);
+    setLocalSettings(null);
+    isDirtyRef.current = false;
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+  }, [bizId]);
+
   const { data: config, isLoading } = useQuery<WebsiteConfig>({
     queryKey: ["website-config", bizId],
     enabled: !!bizId,
@@ -136,11 +143,9 @@ export default function WebsiteEditor() {
       return res.json();
     },
     onSuccess: (data) => {
-      if (!localSections) {
-        const sorted = [...(data.sections as Section[])].sort((a, b) => a.order - b.order);
-        setLocalSections(sorted);
-      }
-      if (!localSettings) setLocalSettings(data.settings as SiteSettings);
+      const sorted = [...(data.sections as Section[])].sort((a, b) => a.order - b.order);
+      setLocalSections(sorted);
+      setLocalSettings(data.settings as SiteSettings);
     },
   } as any);
 
@@ -229,7 +234,7 @@ export default function WebsiteEditor() {
   async function handleLogoUpload(file: File) {
     setLogoUploading(true);
     try {
-      const urlRes = await fetch(`${BASE}/api/storage/uploads/request-url`, {
+      const urlRes = await fetch(`${BASE}/api/website/upload-logo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
