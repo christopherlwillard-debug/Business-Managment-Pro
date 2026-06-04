@@ -9,6 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
+  Monitor, Tablet, Smartphone,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -198,6 +199,14 @@ export default function WebsiteEditor() {
   const [aboutPhotoUploading, setAboutPhotoUploading] = useState(false);
   const [uploadingPortfolioPhotoIds, setUploadingPortfolioPhotoIds] = useState<Set<string>>(new Set());
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
+    return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
+  });
+
+  function changeViewport(v: "desktop" | "tablet" | "mobile") {
+    setViewport(v);
+    localStorage.setItem("website-editor-viewport", v);
+  }
   const isDirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -489,6 +498,44 @@ export default function WebsiteEditor() {
 
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
 
+  function renderSections() {
+    const enabled = sections.filter(s => s.enabled);
+    if (enabled.length === 0) {
+      return (
+        <div className="py-20 text-center text-muted-foreground text-sm">
+          Enable at least one section to preview your site.
+        </div>
+      );
+    }
+    return (
+      <>
+        {enabled.map(s => (
+          <div
+            key={s.id}
+            onClick={() => setActiveSection(s.id)}
+            className={`relative transition-all cursor-pointer ${
+              activeSection === s.id
+                ? "ring-2 ring-inset ring-primary/60"
+                : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
+            }`}
+          >
+            {activeSection === s.id && (
+              <div className="absolute top-1 left-1 z-10 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded pointer-events-none">
+                {SECTION_LABELS[s.type]}
+              </div>
+            )}
+            {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
+              onAboutPhotoUpload: handleAboutPhotoUpload,
+              isAboutPhotoUploading: aboutPhotoUploading,
+              onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
+              uploadingPortfolioPhotoIds,
+            })}
+          </div>
+        ))}
+      </>
+    );
+  }
+
   if (!activeBusiness) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
@@ -538,6 +585,29 @@ export default function WebsiteEditor() {
           <p className="text-xs text-muted-foreground">{activeBusiness.name}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Viewport toggle */}
+          <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
+            {([ 
+              { id: "desktop", Icon: Monitor, label: "Desktop" },
+              { id: "tablet",  Icon: Tablet,  label: "Tablet"  },
+              { id: "mobile",  Icon: Smartphone, label: "Mobile" },
+            ] as const).map(({ id, Icon, label }) => (
+              <button
+                key={id}
+                onClick={() => changeViewport(id)}
+                title={label}
+                className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  viewport === id
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">{label}</span>
+              </button>
+            ))}
+          </div>
+
           {isPublished && (
             <a
               href={publicUrl}
@@ -642,29 +712,43 @@ export default function WebsiteEditor() {
 
         {/* Canvas — live preview */}
         <div className="flex-1 overflow-y-auto bg-muted/30">
-          <div className="max-w-4xl mx-auto bg-white dark:bg-gray-900 shadow-lg my-4 rounded-xl overflow-hidden">
-            {sections.filter(s => s.enabled).map(s => (
-              <div
-                key={s.id}
-                onClick={() => setActiveSection(s.id)}
-                className={`relative transition-all ${activeSection === s.id ? "ring-2 ring-inset ring-primary/60" : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"} cursor-pointer`}
-              >
-                {activeSection === s.id && (
-                  <div className="absolute top-1 left-1 z-10 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded pointer-events-none">
-                    {SECTION_LABELS[s.type]}
-                  </div>
-                )}
-                {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
-                  onAboutPhotoUpload: handleAboutPhotoUpload,
-                  isAboutPhotoUploading: aboutPhotoUploading,
-                  onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
-                  uploadingPortfolioPhotoIds,
-                })}
+          <div className={`mx-auto my-6 transition-all duration-300 ${
+            viewport === "desktop" ? "max-w-4xl px-4" :
+            viewport === "tablet" ? "max-w-[800px] px-4" :
+            "max-w-[430px] px-3"
+          }`}>
+            {viewport === "mobile" ? (
+              /* Phone chrome */
+              <div className="bg-gray-800 rounded-[3rem] p-[10px] shadow-2xl border border-gray-700">
+                {/* Notch bar */}
+                <div className="flex items-center justify-center h-6 mb-1">
+                  <div className="w-20 h-1.5 bg-gray-600 rounded-full" />
+                </div>
+                <div className="rounded-[2.4rem] overflow-hidden bg-white dark:bg-gray-900 shadow-inner">
+                  {renderSections()}
+                </div>
+                {/* Home indicator */}
+                <div className="flex items-center justify-center h-6 mt-1">
+                  <div className="w-24 h-1 bg-gray-600 rounded-full" />
+                </div>
               </div>
-            ))}
-            {sections.filter(s => s.enabled).length === 0 && (
-              <div className="py-20 text-center text-muted-foreground text-sm">
-                Enable at least one section to preview your site.
+            ) : viewport === "tablet" ? (
+              /* Tablet chrome */
+              <div className="bg-gray-800 rounded-2xl p-2.5 shadow-xl border border-gray-700">
+                <div className="flex items-center justify-center h-4 mb-1">
+                  <div className="w-10 h-1 bg-gray-600 rounded-full" />
+                </div>
+                <div className="rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+                  {renderSections()}
+                </div>
+                <div className="flex items-center justify-center h-4 mt-1">
+                  <div className="w-10 h-1 bg-gray-600 rounded-full" />
+                </div>
+              </div>
+            ) : (
+              /* Desktop — existing card */
+              <div className="bg-white dark:bg-gray-900 shadow-lg rounded-xl overflow-hidden">
+                {renderSections()}
               </div>
             )}
           </div>
