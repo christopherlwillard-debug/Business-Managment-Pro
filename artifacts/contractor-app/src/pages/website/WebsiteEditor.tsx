@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink,
+  Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2,
 } from "lucide-react";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
@@ -116,6 +116,7 @@ export default function WebsiteEditor() {
   const [localSettings, setLocalSettings] = useState<SiteSettings | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const bizId = activeBusiness?.id;
 
@@ -203,6 +204,33 @@ export default function WebsiteEditor() {
 
   function updateContent(id: string, content: Record<string, unknown>) {
     setLocalSections(sections.map(s => s.id === id ? { ...s, content } : s));
+  }
+
+  async function handleLogoUpload(file: File) {
+    setLogoUploading(true);
+    try {
+      const urlRes = await fetch(`${BASE}/api/storage/uploads/request-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const serveUrl = `${BASE}/api/storage${objectPath}`;
+      setLocalSettings({ ...settings, logoUrl: serveUrl });
+      toast({ title: "Logo uploaded" });
+    } catch {
+      toast({ title: "Logo upload failed", variant: "destructive" });
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
@@ -312,14 +340,21 @@ export default function WebsiteEditor() {
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground block mb-1">Logo URL</label>
-              <input
-                type="text"
-                placeholder="https://…"
-                value={settings.logoUrl}
-                onChange={e => setLocalSettings({ ...settings, logoUrl: e.target.value })}
-                className="w-full text-xs border border-border rounded px-2 py-1 bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+              <label className="text-xs text-muted-foreground block mb-1">Logo</label>
+              {settings.logoUrl && (
+                <img src={settings.logoUrl} alt="Logo preview" className="w-full h-10 object-contain rounded border border-border mb-1 bg-muted/30" />
+              )}
+              <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${logoUploading ? "opacity-60 pointer-events-none" : ""}`}>
+                {logoUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+                {logoUploading ? "Uploading…" : settings.logoUrl ? "Replace Logo" : "Upload Logo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={logoUploading}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }}
+                />
+              </label>
             </div>
           </div>
         </div>
