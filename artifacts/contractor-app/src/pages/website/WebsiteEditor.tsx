@@ -21,12 +21,13 @@ import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
 import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
+import { PortfolioSection } from "./sections/PortfolioSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -57,6 +58,8 @@ function renderSection(
   extras?: {
     onAboutPhotoUpload?: (file: File) => Promise<void>;
     isAboutPhotoUploading?: boolean;
+    onPortfolioPhotoUpload?: (photoId: string, file: File) => Promise<void>;
+    uploadingPortfolioPhotoIds?: Set<string>;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any };
@@ -66,6 +69,13 @@ function renderSection(
     case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} />;
     case "contact": return <ContactFormSection {...props} />;
     case "footer":  return <FooterSection {...props} />;
+    case "portfolio": return (
+      <PortfolioSection
+        {...props}
+        onPhotoUpload={extras?.onPortfolioPhotoUpload}
+        uploadingPhotoIds={extras?.uploadingPortfolioPhotoIds}
+      />
+    );
     default: return null;
   }
 }
@@ -76,6 +86,7 @@ const SECTION_LABELS: Record<string, string> = {
   about: "About Us",
   contact: "Contact / Quote Form",
   footer: "Footer",
+  portfolio: "Portfolio / Gallery",
 };
 
 function SortableRow({
@@ -185,6 +196,7 @@ export default function WebsiteEditor() {
   const [showPublished, setShowPublished] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [aboutPhotoUploading, setAboutPhotoUploading] = useState(false);
+  const [uploadingPortfolioPhotoIds, setUploadingPortfolioPhotoIds] = useState<Set<string>>(new Set());
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const isDirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -401,6 +413,92 @@ export default function WebsiteEditor() {
     }
   }
 
+  async function handlePortfolioPhotoUpload(photoId: string, file: File) {
+    setUploadingPortfolioPhotoIds(prev => new Set(prev).add(photoId));
+    const blobUrl = URL.createObjectURL(file);
+    const sectionsAtStart = sections;
+    const settingsAtStart = settings;
+    isDirtyRef.current = true;
+    setLocalSections(sectionsAtStart.map(s =>
+      s.type === "portfolio"
+        ? {
+            ...s,
+            content: {
+              ...s.content,
+              photos: ((s.content.photos as any[]) ?? []).map((p: any) =>
+                p.id === photoId ? { ...p, photoUrl: blobUrl } : p
+              ),
+            },
+          }
+        : s
+    ));
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-portfolio-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const slug = activeBusiness!.slug;
+      const photoUuid = objectPath.split("/").pop()!;
+      const canonicalUrl = `${BASE}/api/public/site/${slug}/portfolio-photo/${photoUuid}`;
+      const savedSections = sectionsAtStart.map(s =>
+        s.type === "portfolio"
+          ? {
+              ...s,
+              content: {
+                ...s.content,
+                photos: ((s.content.photos as any[]) ?? []).map((p: any) =>
+                  p.id === photoId
+                    ? { ...p, photoObjectPath: objectPath, photoUrl: canonicalUrl }
+                    : p
+                ),
+              },
+            }
+          : s
+      );
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await saveNow(settingsAtStart, savedSections);
+      URL.revokeObjectURL(blobUrl);
+      isDirtyRef.current = false;
+      setLocalSections(savedSections.map(s =>
+        s.type === "portfolio"
+          ? {
+              ...s,
+              content: {
+                ...s.content,
+                photos: ((s.content.photos as any[]) ?? []).map((p: any) =>
+                  p.id === photoId
+                    ? { ...p, photoUrl: `${canonicalUrl}?v=${Date.now()}` }
+                    : p
+                ),
+              },
+            }
+          : s
+      ));
+      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+      toast({ title: "Photo uploaded" });
+    } catch {
+      URL.revokeObjectURL(blobUrl);
+      setLocalSections(sectionsAtStart);
+      toast({ title: "Photo upload failed", variant: "destructive" });
+    } finally {
+      setUploadingPortfolioPhotoIds(prev => {
+        const next = new Set(prev);
+        next.delete(photoId);
+        return next;
+      });
+    }
+  }
+
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
 
   if (!activeBusiness) {
@@ -568,7 +666,12 @@ export default function WebsiteEditor() {
                     {SECTION_LABELS[s.type]}
                   </div>
                 )}
-                {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), { onAboutPhotoUpload: handleAboutPhotoUpload, isAboutPhotoUploading: aboutPhotoUploading })}
+                {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
+                  onAboutPhotoUpload: handleAboutPhotoUpload,
+                  isAboutPhotoUploading: aboutPhotoUploading,
+                  onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
+                  uploadingPortfolioPhotoIds,
+                })}
               </div>
             ))}
             {sections.filter(s => s.enabled).length === 0 && (

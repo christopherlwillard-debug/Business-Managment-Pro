@@ -5,12 +5,13 @@ import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
 import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
+import { PortfolioSection } from "./sections/PortfolioSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -118,6 +119,7 @@ export default function PublicSite() {
             />
           );
           case "footer":  return <FooterSection key={section.id} {...props} />;
+          case "portfolio": return <PortfolioSection key={section.id} {...props} />;
           default: return null;
         }
       })}

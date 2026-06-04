@@ -64,10 +64,20 @@ function defaultSections() {
       },
     },
     {
+      id: "portfolio",
+      type: "portfolio",
+      enabled: true,
+      order: 4,
+      content: {
+        heading: "Our Work",
+        photos: [],
+      },
+    },
+    {
       id: "footer",
       type: "footer",
       enabled: true,
-      order: 4,
+      order: 5,
       content: {
         phone: "",
         email: "",
@@ -84,6 +94,22 @@ function defaultSettings() {
     fontFamily: "Inter",
     logoUrl: "",
   };
+}
+
+type SectionRow = { id: string; type: string; enabled: boolean; order: number; content: Record<string, unknown> };
+
+function normalizeSections(existing: SectionRow[]): SectionRow[] {
+  const defaults = defaultSections() as SectionRow[];
+  const result = [...existing];
+  const maxOrder = result.reduce((m, s) => Math.max(m, s.order ?? 0), -1);
+  let nextOrder = maxOrder + 1;
+  for (const def of defaults) {
+    const alreadyPresent = result.some(s => s.type === def.type);
+    if (!alreadyPresent) {
+      result.push({ ...def, order: nextOrder++, enabled: true });
+    }
+  }
+  return result;
 }
 
 router.get("/", wrapAsync(async (req, res) => {
@@ -122,7 +148,8 @@ router.get("/", wrapAsync(async (req, res) => {
     });
   }
 
-  res.json(config);
+  const normalizedSections = normalizeSections(config.sections as SectionRow[]);
+  res.json({ ...config, sections: normalizedSections });
 }));
 
 router.put("/", wrapAsync(async (req, res) => {
@@ -362,6 +389,54 @@ router.post("/upload-about-photo", wrapAsync(async (req, res) => {
   }
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-about-photos");
   res.json({ uploadURL, objectPath });
+}));
+
+router.post("/upload-portfolio-photo", wrapAsync(async (req, res) => {
+  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+  if (!name || !size || !contentType) {
+    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+  }
+  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-portfolio-photos");
+  res.json({ uploadURL, objectPath });
+}));
+
+publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res) => {
+  const { slug, photoUuid } = req.params;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, biz.id));
+
+  if (!config) return res.status(404).json({ error: "No website config" });
+
+  const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
+  const portfolioSection = sections.find(s => s.type === "portfolio");
+  const photos = (portfolioSection?.content?.photos as Array<{ photoObjectPath?: string }>) ?? [];
+  const expectedObjectPath = `/objects/uploads/website-portfolio-photos/${photoUuid}`;
+  const photo = photos.find(p => p.photoObjectPath === expectedObjectPath);
+
+  if (!photo?.photoObjectPath) {
+    return res.status(404).json({ error: "Photo not found" });
+  }
+
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(photo.photoObjectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Photo not found" });
+    throw err;
+  }
 }));
 
 export { router as websiteRouter, publicRouter as websitePublicRouter };
