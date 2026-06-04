@@ -8,7 +8,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import {
   CreditCard, RefreshCw, ExternalLink, AlertCircle,
-  TrendingUp, CheckCircle2, XCircle, Clock, Wifi, Users, Globe,
+  TrendingUp, CheckCircle2, XCircle, Clock, Wifi, Users, Globe, ListFilter,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -45,6 +45,36 @@ const RANGE_OPTIONS = [
   { label: "90 days", days: 90 },
   { label: "6 months", days: 180 },
 ];
+
+const TYPE_FILTER_OPTIONS = [
+  { value: "all",               label: "All" },
+  { value: "website_deposit",   label: "Website Deposits" },
+  { value: "invoice",           label: "Invoice Payments" },
+  { value: "quick_charge",      label: "Quick Charges" },
+  { value: "prospect_deposit",  label: "Prospect Deposits" },
+  { value: "estimate_deposit",  label: "Estimate Deposits" },
+  { value: "other",             label: "Other" },
+] as const;
+
+type TypeFilterValue = typeof TYPE_FILTER_OPTIONS[number]["value"];
+
+function matchesTypeFilter(tx: SquareTransaction, filter: TypeFilterValue): boolean {
+  if (filter === "all") return true;
+  const ref = tx.referenceId ?? "";
+  if (filter === "website_deposit")  return ref.startsWith("website_deposit_");
+  if (filter === "invoice")          return ref.startsWith("inv_");
+  if (filter === "quick_charge")     return ref.startsWith("quick_");
+  if (filter === "prospect_deposit") return ref.startsWith("prospect_");
+  if (filter === "estimate_deposit") return ref.startsWith("estimate_");
+  if (filter === "other") {
+    return !ref.startsWith("website_deposit_") &&
+           !ref.startsWith("inv_") &&
+           !ref.startsWith("quick_") &&
+           !ref.startsWith("prospect_") &&
+           !ref.startsWith("estimate_");
+  }
+  return true;
+}
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -165,6 +195,7 @@ function TransactionRow({ tx, matchedClientName }: { tx: SquareTransaction; matc
 
 export default function SquareTransactions() {
   const [days, setDays] = useState(30);
+  const [typeFilter, setTypeFilter] = useState<TypeFilterValue>("all");
   const { data: status } = useSquareStatus();
   const { data, isLoading, isError, refetch, isFetching } = useSquareLiveTransactions(days);
   const { data: clients = [] } = useListClients();
@@ -187,6 +218,20 @@ export default function SquareTransactions() {
 
   const summary = data?.summary;
   const transactions = data?.transactions ?? [];
+
+  const filteredTransactions = useMemo(
+    () => typeFilter === "all" ? transactions : transactions.filter(tx => matchesTypeFilter(tx, typeFilter)),
+    [transactions, typeFilter]
+  );
+
+  const filteredSummary = useMemo(() => {
+    if (typeFilter === "all") return null;
+    const completed = filteredTransactions.filter(t => t.status === "COMPLETED");
+    return {
+      totalCents: completed.reduce((sum, t) => sum + t.amountCents, 0),
+      completedCount: completed.length,
+    };
+  }, [filteredTransactions, typeFilter]);
 
   if (status && !status.connected) {
     return (
@@ -256,18 +301,24 @@ export default function SquareTransactions() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground mb-1">Total Collected</p>
-              <p className="text-2xl font-bold text-emerald-600">{formatCents(summary.totalCents)}</p>
-              <p className="text-xs text-muted-foreground mt-1">last {summary.days} days</p>
+              <p className="text-xs text-muted-foreground mb-1">
+                {filteredSummary ? "Filtered Total" : "Total Collected"}
+              </p>
+              <p className="text-2xl font-bold text-emerald-600">
+                {formatCents(filteredSummary?.totalCents ?? summary.totalCents)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {filteredSummary ? `of ${formatCents(summary.totalCents)} total` : `last ${summary.days} days`}
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground mb-1">Completed</p>
-              <p className="text-2xl font-bold">{summary.completedCount}</p>
+              <p className="text-2xl font-bold">{filteredSummary?.completedCount ?? summary.completedCount}</p>
               <p className="text-xs text-muted-foreground mt-1">payments</p>
             </CardContent>
           </Card>
@@ -275,13 +326,41 @@ export default function SquareTransactions() {
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground mb-1">Average</p>
               <p className="text-2xl font-bold">
-                {summary.completedCount > 0
-                  ? formatCents(Math.round(summary.totalCents / summary.completedCount))
-                  : "$0.00"}
+                {(() => {
+                  const cnt = filteredSummary?.completedCount ?? summary.completedCount;
+                  const tot = filteredSummary?.totalCents ?? summary.totalCents;
+                  return cnt > 0 ? formatCents(Math.round(tot / cnt)) : "$0.00";
+                })()}
               </p>
               <p className="text-xs text-muted-foreground mt-1">per payment</p>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {!isLoading && transactions.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <ListFilter className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+          <div className="flex flex-wrap gap-1.5">
+            {TYPE_FILTER_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setTypeFilter(opt.value)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                  typeFilter === opt.value
+                    ? "bg-amber-500 text-white border-amber-500"
+                    : "text-muted-foreground border-border hover:border-amber-400 hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+                {opt.value !== "all" && (
+                  <span className="ml-1 opacity-60">
+                    ({transactions.filter(tx => matchesTypeFilter(tx, opt.value)).length})
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -320,15 +399,36 @@ export default function SquareTransactions() {
           </CardContent>
         )}
 
-        {!isLoading && transactions.length > 0 && (
+        {!isLoading && transactions.length > 0 && filteredTransactions.length === 0 && (
+          <CardContent className="py-10 flex flex-col items-center gap-3 text-center">
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <ListFilter className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <p className="font-medium text-sm">No matching transactions</p>
+            <p className="text-xs text-muted-foreground">
+              No {TYPE_FILTER_OPTIONS.find(o => o.value === typeFilter)?.label.toLowerCase()} in the last {days} days.
+            </p>
+            <button
+              onClick={() => setTypeFilter("all")}
+              className="text-xs text-primary underline underline-offset-2"
+            >
+              Show all transactions
+            </button>
+          </CardContent>
+        )}
+
+        {!isLoading && filteredTransactions.length > 0 && (
           <div>
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
               <Wifi className="w-3.5 h-3.5 text-emerald-500" />
               <span className="text-xs text-muted-foreground">
-                {transactions.length} transaction{transactions.length !== 1 ? "s" : ""} · live from Square
+                {filteredTransactions.length === transactions.length
+                  ? `${transactions.length} transaction${transactions.length !== 1 ? "s" : ""} · live from Square`
+                  : `${filteredTransactions.length} of ${transactions.length} transactions · filtered`
+                }
               </span>
             </div>
-            {transactions.map((tx) => (
+            {filteredTransactions.map((tx) => (
               <TransactionRow key={tx.id ?? tx.createdAt} tx={tx} matchedClientName={getMatchedClient(tx)} />
             ))}
           </div>
