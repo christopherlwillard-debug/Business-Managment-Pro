@@ -1,8 +1,12 @@
 import { Router } from "express";
+import { Readable } from "stream";
 import { db } from "@workspace/db";
 import { websiteConfigsTable, businessesTable, prospectsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { wrapAsync } from "./guards";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+
+const objectStorageService = new ObjectStorageService();
 
 const router = Router();
 const publicRouter = Router();
@@ -188,6 +192,41 @@ router.post("/publish", wrapAsync(async (req, res) => {
     })
     .returning();
   res.json(created);
+}));
+
+publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
+  const { slug } = req.params;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, biz.id));
+
+  if (!config) return res.status(404).json({ error: "No website config" });
+
+  const settings = config.settings as Record<string, unknown>;
+  const logoObjectPath = settings.logoObjectPath as string | undefined;
+  if (!logoObjectPath?.startsWith("/objects/")) {
+    return res.status(404).json({ error: "No logo" });
+  }
+
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(logoObjectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Logo not found" });
+    throw err;
+  }
 }));
 
 publicRouter.get("/:slug", wrapAsync(async (req, res) => {

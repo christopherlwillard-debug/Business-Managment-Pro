@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
@@ -10,6 +10,10 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2,
 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 import { HeroSection } from "./sections/HeroSection";
@@ -117,6 +121,9 @@ export default function WebsiteEditor() {
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const isDirtyRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bizId = activeBusiness?.id;
 
@@ -162,6 +169,16 @@ export default function WebsiteEditor() {
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
 
+  useEffect(() => {
+    if (!isDirtyRef.current) return;
+    if (!bizId) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveMutation.mutate();
+    }, 2000);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [localSections, localSettings, bizId]);
+
   async function handlePublish() {
     setPublishing(true);
     try {
@@ -194,15 +211,18 @@ export default function WebsiteEditor() {
     if (over && active.id !== over.id) {
       const oldIdx = sections.findIndex(s => s.id === active.id);
       const newIdx = sections.findIndex(s => s.id === over.id);
+      isDirtyRef.current = true;
       setLocalSections(arrayMove(sections, oldIdx, newIdx));
     }
   }
 
   function toggleSection(id: string) {
+    isDirtyRef.current = true;
     setLocalSections(sections.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   }
 
   function updateContent(id: string, content: Record<string, unknown>) {
+    isDirtyRef.current = true;
     setLocalSections(sections.map(s => s.id === id ? { ...s, content } : s));
   }
 
@@ -223,8 +243,10 @@ export default function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const serveUrl = `${BASE}/api/storage${objectPath}`;
-      setLocalSettings({ ...settings, logoUrl: serveUrl });
+      const slug = activeBusiness!.slug;
+      const publicLogoUrl = `${BASE}/api/public/site/${slug}/logo`;
+      isDirtyRef.current = true;
+      setLocalSettings({ ...settings, logoObjectPath: objectPath, logoUrl: publicLogoUrl } as SiteSettings & { logoObjectPath: string });
       toast({ title: "Logo uploaded" });
     } catch {
       toast({ title: "Logo upload failed", variant: "destructive" });
@@ -254,6 +276,25 @@ export default function WebsiteEditor() {
   const isPublished = config?.published ?? false;
 
   return (
+    <>
+    <AlertDialog open={showPublishConfirm} onOpenChange={setShowPublishConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Publish Website?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Your site will be publicly visible at{" "}
+            <span className="font-medium text-foreground break-all">{publicUrl}</span>
+            . Anyone with the link will be able to see it.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => { setShowPublishConfirm(false); handlePublish(); }}>
+            Publish Now
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <div className="flex flex-col h-full">
       {/* Top bar */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-card gap-3 flex-wrap">
@@ -286,7 +327,7 @@ export default function WebsiteEditor() {
             Save Draft
           </button>
           <button
-            onClick={handlePublish}
+            onClick={() => setShowPublishConfirm(true)}
             disabled={publishing}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
@@ -335,7 +376,7 @@ export default function WebsiteEditor() {
               <input
                 type="color"
                 value={settings.brandColor}
-                onChange={e => setLocalSettings({ ...settings, brandColor: e.target.value })}
+                onChange={e => { isDirtyRef.current = true; setLocalSettings({ ...settings, brandColor: e.target.value }); }}
                 className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent"
               />
             </div>
@@ -385,5 +426,6 @@ export default function WebsiteEditor() {
         </div>
       </div>
     </div>
+    </>
   );
 }
