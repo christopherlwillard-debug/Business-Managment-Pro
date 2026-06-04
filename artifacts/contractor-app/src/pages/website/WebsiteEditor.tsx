@@ -24,12 +24,13 @@ import { AboutSection } from "./sections/AboutSection";
 import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
+import { DepositSection } from "./sections/DepositSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -79,6 +80,7 @@ function renderSection(
         uploadingPhotoIds={extras?.uploadingPortfolioPhotoIds}
       />
     );
+    case "deposit": return <DepositSection {...props} />;
     default: return null;
   }
 }
@@ -90,6 +92,7 @@ const SECTION_LABELS: Record<string, string> = {
   contact: "Contact / Quote Form",
   footer: "Footer",
   portfolio: "Portfolio / Gallery",
+  deposit: "Pay Deposit",
 };
 
 function SortableRow({

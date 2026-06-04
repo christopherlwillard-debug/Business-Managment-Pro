@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { CheckCircle, X } from "lucide-react";
 import { useParams } from "wouter";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
@@ -7,12 +8,13 @@ import { AboutSection } from "./sections/AboutSection";
 import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
+import { DepositSection } from "./sections/DepositSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -34,6 +36,8 @@ interface PublishedConfig {
 export default function PublicSite() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
+  const [paymentSuccessDismissed, setPaymentSuccessDismissed] = useState(false);
+  const paymentSuccess = new URLSearchParams(window.location.search).get("payment") === "success";
 
   const { data, isLoading, isError } = useQuery<PublishedConfig>({
     queryKey: ["public-site", slug ?? `__host__${window.location.host}`],
@@ -96,6 +100,22 @@ export default function PublicSite() {
 
   return (
     <div className="min-h-screen bg-white font-sans">
+      {/* Payment success banner */}
+      {paymentSuccess && !paymentSuccessDismissed && (
+        <div className="fixed top-0 inset-x-0 z-[60] flex items-center justify-between gap-3 bg-green-600 text-white px-4 py-3 text-sm font-medium shadow-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            Your deposit payment was received — thank you! We'll be in touch soon.
+          </div>
+          <button
+            onClick={() => setPaymentSuccessDismissed(true)}
+            className="flex-shrink-0 hover:opacity-80 transition-opacity"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       {/* Minimal nav bar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
@@ -129,6 +149,9 @@ export default function PublicSite() {
           );
           case "footer":  return <FooterSection key={section.id} {...props} />;
           case "portfolio": return <PortfolioSection key={section.id} {...props} />;
+          case "deposit": return (
+            <DepositSection key={section.id} {...props} businessSlug={resolvedSlug} />
+          );
           default: return null;
         }
       })}

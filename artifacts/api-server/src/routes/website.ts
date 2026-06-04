@@ -6,6 +6,7 @@ import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsT
 import { eq, and, sql, gte } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -91,6 +92,18 @@ function defaultSections() {
         copyright: "",
       },
     },
+    {
+      id: "deposit",
+      type: "deposit",
+      enabled: false,
+      order: 6,
+      content: {
+        heading: "Reserve Your Spot",
+        description: "Secure your project date with a deposit. Pay online in minutes.",
+        amount: 250,
+        buttonLabel: "Pay Deposit Now",
+      },
+    },
   ];
 }
 
@@ -129,7 +142,7 @@ function normalizeSections(existing: SectionRow[]): SectionRow[] {
   for (const def of defaults) {
     const alreadyPresent = result.some(s => s.type === def.type);
     if (!alreadyPresent) {
-      result.push({ ...def, order: nextOrder++, enabled: true });
+      result.push({ ...def, order: nextOrder++, enabled: def.enabled });
     }
   }
   return result;
@@ -412,6 +425,49 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     .returning({ id: prospectsTable.id });
 
   res.json({ success: true, prospectId: prospect.id });
+}));
+
+publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
+  const { slug } = req.params;
+
+  if (!isSquareConfigured()) {
+    return res.status(400).json({ error: "Payments are not configured for this site." });
+  }
+
+  const [biz] = await db
+    .select({ id: businessesTable.id, name: businessesTable.name })
+    .from(businessesTable)
+    .where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
+  if (!config) return res.status(404).json({ error: "Website not published" });
+
+  const sections = config.sections as Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>;
+  const depositSection = sections.find(s => s.type === "deposit" && s.enabled);
+  if (!depositSection) return res.status(404).json({ error: "Deposit section not found or not enabled" });
+
+  const amount = parseFloat(String(depositSection.content.amount ?? 0));
+  if (!amount || amount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+
+  const heading = (depositSection.content.heading as string) || "Deposit";
+  const amountCents = Math.round(amount * 100);
+
+  const { returnUrl } = req.body as { returnUrl?: string };
+  const redirectUrl = returnUrl ? `${returnUrl}?payment=success` : undefined;
+
+  const { url } = await createSquarePaymentLink({
+    amountCents,
+    currency: "USD",
+    productName: `${biz.name}: ${heading}`,
+    referenceId: `website_deposit_${slug}`,
+    redirectUrl,
+  });
+
+  res.json({ checkoutUrl: url });
 }));
 
 router.get("/analytics", wrapAsync(async (req, res) => {
