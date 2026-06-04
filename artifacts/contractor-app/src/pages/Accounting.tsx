@@ -3,7 +3,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import { useQuery } from "@tanstack/react-query";
 import {
   Printer, BarChart3, TrendingUp, FileText,
-  Calendar, FileSpreadsheet, FileCheck,
+  Calendar, FileSpreadsheet, FileCheck, BarChart2,
 } from "lucide-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -14,6 +14,7 @@ const ScheduleCTab    = lazy(() => import("./accounting/ScheduleCTab"));
 const TaxCalendarTab  = lazy(() => import("./accounting/TaxCalendarTab"));
 const ReconcileTab    = lazy(() => import("./accounting/ReconcileTab"));
 const YearEndReportTab = lazy(() => import("./accounting/YearEndReportTab"));
+const BenchmarksTab   = lazy(() => import("./accounting/BenchmarksTab"));
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -25,12 +26,12 @@ async function fetchAccounting(year: number, businessLine?: string) {
   return res.json();
 }
 
-type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile" | "year-end";
+type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile" | "year-end" | "benchmarks";
 
 function getInitialTab(): AccountingTab {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "reconcile" || tab === "year-end") return tab;
+  if (tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "reconcile" || tab === "year-end" || tab === "benchmarks") return tab;
   return "overview";
 }
 
@@ -97,6 +98,7 @@ export default function Accounting() {
           { key: "profit-loss" as const,   label: "Profit & Loss",                icon: TrendingUp },
           { key: "schedule-c" as const,    label: "Schedule C + Home Office",     icon: FileText },
           { key: "tax-calendar" as const,  label: "Tax Calendar & Compliance",    icon: Calendar },
+          { key: "benchmarks" as const,    label: "Benchmarks",                   icon: BarChart2 },
           ...(isOwner ? [{ key: "year-end" as const,   label: "Year-End Report",  icon: FileSpreadsheet }] : []),
           ...(isOwner ? [{ key: "reconcile" as const,  label: "Reconcile",        icon: FileCheck }] : []),
         ].map(({ key, label, icon: Icon }) => (
@@ -166,6 +168,14 @@ export default function Accounting() {
         <ErrorBoundary>
           <Suspense fallback={<TabSpinner />}>
             <ReconcileTab />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+
+      {activeTab === "benchmarks" && (
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <BenchmarksTab />
           </Suspense>
         </ErrorBoundary>
       )}

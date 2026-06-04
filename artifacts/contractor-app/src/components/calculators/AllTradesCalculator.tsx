@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
-import { X, Copy, Check, ChevronDown, ChevronRight, Plus, Trash2, Zap } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { X, Copy, Check, ChevronDown, ChevronRight, Plus, Trash2, Zap, Settings2 } from "lucide-react";
 
 // ─── Defaults type ─────────────────────────────────────────────────────────────
 
@@ -77,6 +77,7 @@ interface AllTradesCalculatorProps {
   onClose: () => void;
   onUseNumbers: (lines: DraftLine[], append: boolean) => void;
   calculatorDefaults?: Record<string, unknown> | null;
+  onSaveDefaults?: (defaults: Record<string, unknown>) => Promise<void>;
 }
 
 function fmt(n: number) {
@@ -1095,7 +1096,7 @@ function PunchListSection({ onTotalChange, defs }: { onTotalChange: (t: number, 
 
 // ─── Main AllTradesCalculator ──────────────────────────────────────────────────
 
-export function AllTradesCalculator({ onClose, onUseNumbers, calculatorDefaults }: AllTradesCalculatorProps) {
+export function AllTradesCalculator({ onClose, onUseNumbers, calculatorDefaults, onSaveDefaults }: AllTradesCalculatorProps) {
   const defs = mergeDefaults(calculatorDefaults);
 
   const [contractingOn, setContractingOn] = useState(false);
@@ -1114,6 +1115,46 @@ export function AllTradesCalculator({ onClose, onUseNumbers, calculatorDefaults 
 
   const [copied, setCopied]       = useState(false);
   const [appendMode, setAppendMode] = useState(true);
+
+  const [defaultRatesOpen, setDefaultRatesOpen] = useState(false);
+  const [editedRates, setEditedRates] = useState(() => ({
+    plumbingBase: defs.plumbing.baseCharge,
+    plumbingDrop: defs.plumbing.dropRate,
+    floorLabor: { ...defs.flooring.labor },
+    floorFull:  { ...defs.flooring.full },
+    floorMin:   defs.flooring.minimumCharge,
+    trim:   defs.trim.laborRate,
+    siding: defs.siding.laborRate,
+    drywall: defs.drywall.laborRate,
+    halfDay:  defs.punchList.halfDayPrice,
+    fullDay:  defs.punchList.fullDayPrice,
+    helperDay: defs.punchList.helperDayRate,
+  }));
+  const [ratesSaved, setRatesSaved] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleRatesSave(nextRates: typeof editedRates) {
+    if (!onSaveDefaults) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      await onSaveDefaults({
+        plumbing: { baseCharge: nextRates.plumbingBase, dropRate: nextRates.plumbingDrop },
+        flooring: { labor: nextRates.floorLabor, full: nextRates.floorFull, minimumCharge: nextRates.floorMin },
+        trim:    { laborRate: nextRates.trim },
+        siding:  { laborRate: nextRates.siding },
+        drywall: { laborRate: nextRates.drywall },
+        punchList: { halfDayPrice: nextRates.halfDay, fullDayPrice: nextRates.fullDay, helperDayRate: nextRates.helperDay },
+      });
+      setRatesSaved(true);
+      setTimeout(() => setRatesSaved(false), 2000);
+    }, 800);
+  }
+
+  function updateRate<K extends keyof typeof editedRates>(key: K, val: (typeof editedRates)[K]) {
+    const next = { ...editedRates, [key]: val };
+    setEditedRates(next);
+    scheduleRatesSave(next);
+  }
 
   const grandTotal =
     (contractingOn ? contractingTotal : 0) +
@@ -1208,6 +1249,124 @@ export function AllTradesCalculator({ onClose, onUseNumbers, calculatorDefaults 
             <PunchListSection onTotalChange={(t, l) => { setPunchTotal(t); setPunchLines(l); }} defs={defs} />
           </TradeSectionShell>
         </div>
+
+        {/* ── Default Rates Editor (inline, collapsed by default) ── */}
+        {onSaveDefaults && (
+          <div className="mt-4 rounded-xl border border-zinc-700 overflow-hidden">
+            <button type="button"
+              onClick={() => setDefaultRatesOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-zinc-800 hover:bg-zinc-750 transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Settings2 className="w-3.5 h-3.5 text-zinc-400" />
+                <span className="text-xs font-semibold text-zinc-300">Default Rates</span>
+                {ratesSaved && <span className="text-[10px] text-emerald-400 font-medium">✓ Saved</span>}
+              </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${defaultRatesOpen ? "rotate-180" : ""}`} />
+            </button>
+            {defaultRatesOpen && (
+              <div className="px-4 pt-3 pb-4 bg-zinc-900 space-y-4 text-xs">
+                {/* Plumbing */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Plumbing</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-zinc-400 mb-1">Base Charge</label>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                        <input type="number" min="0" step="25" value={editedRates.plumbingBase}
+                          onChange={e => updateRate("plumbingBase", parseFloat(e.target.value) || 0)}
+                          className="w-full pl-5 pr-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-right focus:outline-none focus:border-amber-500" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-zinc-400 mb-1">Per Drop</label>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                        <input type="number" min="0" step="5" value={editedRates.plumbingDrop}
+                          onChange={e => updateRate("plumbingDrop", parseFloat(e.target.value) || 0)}
+                          className="w-full pl-5 pr-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-right focus:outline-none focus:border-amber-500" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flooring */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Flooring ($/SF)</p>
+                  <div className="grid grid-cols-5 gap-1.5 text-[10px] text-zinc-500 mb-1">
+                    {Object.keys(editedRates.floorLabor).map(t => <span key={t} className="text-center">{t}</span>)}
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {Object.keys(editedRates.floorLabor).map(t => (
+                      <div key={t}>
+                        <label className="block text-zinc-500 text-[10px] mb-0.5">Labor</label>
+                        <input type="number" min="0" step="0.25" value={editedRates.floorLabor[t]}
+                          onChange={e => updateRate("floorLabor", { ...editedRates.floorLabor, [t]: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-1 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-200 text-right text-[10px] focus:outline-none focus:border-amber-500" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {Object.keys(editedRates.floorFull).map(t => (
+                      <div key={t}>
+                        <label className="block text-zinc-500 text-[10px] mb-0.5">Full</label>
+                        <input type="number" min="0" step="0.25" value={editedRates.floorFull[t]}
+                          onChange={e => updateRate("floorFull", { ...editedRates.floorFull, [t]: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-1 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-200 text-right text-[10px] focus:outline-none focus:border-amber-500" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-zinc-400 shrink-0">Min Charge</label>
+                    <div className="relative flex-1">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                      <input type="number" min="0" step="25" value={editedRates.floorMin}
+                        onChange={e => updateRate("floorMin", parseFloat(e.target.value) || 0)}
+                        className="w-full pl-5 pr-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-right focus:outline-none focus:border-amber-500" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contracting */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Contracting ($/unit)</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {([["trim", "Trim/LF"], ["siding", "Siding/SF"], ["drywall", "Drywall/SF"]] as const).map(([k, label]) => (
+                      <div key={k}>
+                        <label className="block text-zinc-400 mb-1">{label}</label>
+                        <div className="relative">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                          <input type="number" min="0" step="0.25" value={editedRates[k]}
+                            onChange={e => updateRate(k, parseFloat(e.target.value) || 0)}
+                            className="w-full pl-5 pr-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-right focus:outline-none focus:border-amber-500" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Punch List */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Punch List</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {([["halfDay", "Half Day"], ["fullDay", "Full Day"], ["helperDay", "Helper/Day"]] as const).map(([k, label]) => (
+                      <div key={k}>
+                        <label className="block text-zinc-400 mb-1">{label}</label>
+                        <div className="relative">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                          <input type="number" min="0" step="25" value={editedRates[k]}
+                            onChange={e => updateRate(k, parseFloat(e.target.value) || 0)}
+                            className="w-full pl-5 pr-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-right focus:outline-none focus:border-amber-500" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Sticky footer */}
         <div className="border-t border-zinc-800 px-4 py-3 shrink-0 space-y-3">

@@ -486,6 +486,16 @@ export function EstimateModal({
         <AllTradesCalculator
           onClose={() => setShowAllTradesCalc(false)}
           calculatorDefaults={s.calculatorDefaults ?? null}
+          onSaveDefaults={async (defaults) => {
+            const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+            await fetch(`${base}/api/settings`, {
+              method: "PUT",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ calculatorDefaults: defaults }),
+            });
+            qc.invalidateQueries({ queryKey: ["settings"] });
+          }}
           onUseNumbers={(calcLines, append) => {
             const mapped = calcLines.map(l => ({
               category: l.category,

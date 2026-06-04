@@ -10,8 +10,8 @@ import {
   X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
-  Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2, Calculator,
-  BarChart2, Edit2, Plus, ChevronDown, ChevronUp, TrendingUp, Home, Globe, Eye, EyeOff, Copy,
+  Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
+  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -64,13 +64,10 @@ const LOGO_SIZES = [
 ];
 
 const TABS = [
-  { key: "profile", label: "Business Profile", icon: Building2 },
-  { key: "branding", label: "Logo & Branding", icon: ImagePlus },
+  { key: "profile", label: "Business", icon: Building2 },
   { key: "invoice", label: "Invoice Defaults", icon: FileText },
   { key: "financial", label: "Financial", icon: DollarSign },
   { key: "mileage", label: "Mileage", icon: Navigation },
-  { key: "calculators", label: "Calculator Defaults", icon: Calculator },
-  { key: "benchmarks", label: "Job Benchmarks", icon: BarChart2 },
   { key: "modules", label: "Modules", icon: Settings2 },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "payments", label: "Payments", icon: Receipt },
@@ -79,29 +76,6 @@ const TABS = [
   { key: "integrations", label: "Wix Website", icon: Globe },
 ];
 
-const FLOORING_TYPES = ["Carpet", "Laminate", "LVP", "Hardwood", "Tile"] as const;
-
-interface PartialCalcDefaults {
-  plumbing?: { baseCharge?: number; dropRate?: number };
-  flooring?: { labor?: Record<string, number>; full?: Record<string, number>; minimumCharge?: number };
-  trim?: { laborRate?: number };
-  siding?: { laborRate?: number };
-  drywall?: { laborRate?: number };
-  punchList?: { halfDayPrice?: number; fullDayPrice?: number; helperDayRate?: number };
-}
-
-const DEFAULT_CALC_DEFAULTS = {
-  plumbing: { baseCharge: 1000, dropRate: 125 },
-  flooring: {
-    labor: { Carpet: 4.50, Laminate: 4.50, LVP: 4.50, Hardwood: 4.50, Tile: 6.00 },
-    full:  { Carpet: 5.00, Laminate: 6.50, LVP: 7.00, Hardwood: 11.50, Tile: 13.50 },
-    minimumCharge: 500,
-  },
-  trim:    { laborRate: 5.50 },
-  siding:  { laborRate: 2.00 },
-  drywall: { laborRate: 2.50 },
-  punchList: { halfDayPrice: 500, fullDayPrice: 1000, helperDayRate: 275 },
-};
 
 const PERMISSION_SECTIONS: { key: SectionKey; label: string }[] = [
   { key: "expenses", label: "Expenses" },
@@ -1225,202 +1199,7 @@ function SquareAppIdCard() {
 }
 
 // ─── Main Settings ────────────────────────────────────────────────────────────
-// ─── Calculator Defaults Panel (collapsible trade sections) ───────────────────
 
-type CalcDefaultsState = typeof DEFAULT_CALC_DEFAULTS;
-
-function CalcTradePanel({
-  title, subtitle, open, onToggle, children,
-}: {
-  title: string; subtitle: string; open: boolean; onToggle: () => void; children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden">
-      <button type="button" onClick={onToggle}
-        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-muted/30 transition-colors">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
-        </div>
-        <ChevronRight className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-      </button>
-      {open && (
-        <div className="px-5 pb-5 pt-1 border-t border-border/50">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CalcDefaultsPanel({
-  calcDefaults, setCalcDefaults, inp,
-}: {
-  calcDefaults: CalcDefaultsState;
-  setCalcDefaults: React.Dispatch<React.SetStateAction<CalcDefaultsState>>;
-  inp: string;
-}) {
-  const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({
-    plumbing: true, flooring: false, contracting: false, punchList: false,
-  });
-  function toggle(key: string) {
-    setOpenPanels(p => ({ ...p, [key]: !p[key] }));
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-        <p className="text-xs text-primary/90">
-          <strong>How it works:</strong> These rates load automatically every time Willard opens the All Trades Calculator.
-          Any rate can be overridden per-job using the Override toggle inside the calculator.
-        </p>
-      </div>
-
-      {/* Plumbing */}
-      <CalcTradePanel title="Plumbing" subtitle="Base charge + additional drop rate" open={!!openPanels.plumbing} onToggle={() => toggle("plumbing")}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Base Charge</label>
-            <p className="text-xs text-muted-foreground">Covers up to 2 drops</p>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7"} type="number" min="0" step="50" value={calcDefaults.plumbing.baseCharge}
-                onChange={e => setCalcDefaults(d => ({ ...d, plumbing: { ...d.plumbing, baseCharge: parseFloat(e.target.value) || 0 } }))} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Additional Drop Rate</label>
-            <p className="text-xs text-muted-foreground">Per drop beyond the first 2</p>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7 pr-14"} type="number" min="0" step="25" value={calcDefaults.plumbing.dropRate}
-                onChange={e => setCalcDefaults(d => ({ ...d, plumbing: { ...d.plumbing, dropRate: parseFloat(e.target.value) || 0 } }))} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">/drop</span>
-            </div>
-          </div>
-        </div>
-      </CalcTradePanel>
-
-      {/* Flooring */}
-      <CalcTradePanel title="Flooring" subtitle="Labor and full (materials + labor) rates per flooring type" open={!!openPanels.flooring} onToggle={() => toggle("flooring")}>
-        <div className="pt-4 space-y-5">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-muted-foreground uppercase tracking-wide">
-                  <th className="text-left font-semibold pb-3 pr-4">Type</th>
-                  <th className="text-right font-semibold pb-3 px-3">Labor Only ($/SF)</th>
-                  <th className="text-right font-semibold pb-3 pl-3">Materials + Labor ($/SF)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {FLOORING_TYPES.map(type => (
-                  <tr key={type}>
-                    <td className="py-2 pr-4 font-medium text-foreground">{type}</td>
-                    <td className="py-2 px-3">
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                        <input type="number" min="0" step="0.25"
-                          value={calcDefaults.flooring.labor[type]}
-                          onChange={e => setCalcDefaults(d => ({ ...d, flooring: { ...d.flooring, labor: { ...d.flooring.labor, [type]: parseFloat(e.target.value) || 0 } } }))}
-                          className="w-24 pl-5 pr-2 py-1.5 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/10 outline-none text-sm text-right transition-colors" />
-                      </div>
-                    </td>
-                    <td className="py-2 pl-3">
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                        <input type="number" min="0" step="0.25"
-                          value={calcDefaults.flooring.full[type]}
-                          onChange={e => setCalcDefaults(d => ({ ...d, flooring: { ...d.flooring, full: { ...d.flooring.full, [type]: parseFloat(e.target.value) || 0 } } }))}
-                          className="w-24 pl-5 pr-2 py-1.5 rounded-lg border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary/10 outline-none text-sm text-right transition-colors" />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="space-y-1.5 pt-2 border-t border-border/50">
-            <label className="text-sm font-semibold text-foreground">Minimum Charge</label>
-            <p className="text-xs text-muted-foreground">Calculator raises the total to this floor if SF × rate is lower.</p>
-            <div className="relative max-w-xs">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7"} type="number" min="0" step="50" value={calcDefaults.flooring.minimumCharge}
-                onChange={e => setCalcDefaults(d => ({ ...d, flooring: { ...d.flooring, minimumCharge: parseFloat(e.target.value) || 0 } }))} />
-            </div>
-          </div>
-        </div>
-      </CalcTradePanel>
-
-      {/* Trim / Siding / Drywall */}
-      <CalcTradePanel title="Contracting" subtitle="Labor rates for trim, siding, and drywall" open={!!openPanels.contracting} onToggle={() => toggle("contracting")}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Trim Labor Rate</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7 pr-10"} type="number" min="0" step="0.25" value={calcDefaults.trim.laborRate}
-                onChange={e => setCalcDefaults(d => ({ ...d, trim: { laborRate: parseFloat(e.target.value) || 0 } }))} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/LF</span>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Siding Labor Rate</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7 pr-9"} type="number" min="0" step="0.25" value={calcDefaults.siding.laborRate}
-                onChange={e => setCalcDefaults(d => ({ ...d, siding: { laborRate: parseFloat(e.target.value) || 0 } }))} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/SF</span>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Drywall Labor Rate</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7 pr-9"} type="number" min="0" step="0.25" value={calcDefaults.drywall.laborRate}
-                onChange={e => setCalcDefaults(d => ({ ...d, drywall: { laborRate: parseFloat(e.target.value) || 0 } }))} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/SF</span>
-            </div>
-          </div>
-        </div>
-      </CalcTradePanel>
-
-      {/* Punch List */}
-      <CalcTradePanel title="Punch List" subtitle="Half-day price, full-day price, and helper rate" open={!!openPanels.punchList} onToggle={() => toggle("punchList")}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Half-Day Price</label>
-            <p className="text-xs text-muted-foreground">Up to 4 hours</p>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7"} type="number" min="0" step="25" value={calcDefaults.punchList.halfDayPrice}
-                onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, halfDayPrice: parseFloat(e.target.value) || 0 } }))} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Full-Day Price</label>
-            <p className="text-xs text-muted-foreground">Up to 8 hours</p>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7"} type="number" min="0" step="25" value={calcDefaults.punchList.fullDayPrice}
-                onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, fullDayPrice: parseFloat(e.target.value) || 0 } }))} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-foreground">Helper Day Rate</label>
-            <p className="text-xs text-muted-foreground">Per helper per day</p>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input className={inp + " pl-7 pr-10"} type="number" min="0" step="25" value={calcDefaults.punchList.helperDayRate}
-                onChange={e => setCalcDefaults(d => ({ ...d, punchList: { ...d.punchList, helperDayRate: parseFloat(e.target.value) || 0 } }))} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/day</span>
-            </div>
-          </div>
-        </div>
-      </CalcTradePanel>
-    </div>
-  );
-}
 
 function BusinessProfileCard() {
   const { activeBusiness, refresh } = useBusiness();
@@ -1546,410 +1325,7 @@ function BusinessProfileCard() {
   );
 }
 
-type Benchmark = {
-  id: number;
-  jobType: string;
-  estimatedHours: number | null;
-  estimatedLaborCost: number | null;
-  estimatedMaterialCost: number | null;
-  notes: string | null;
-};
 
-type ActualRow = {
-  groupKey: string;
-  groupBy: string;
-  jobCount: number;
-  avgRevenue: number;
-  avgCost: number;
-  avgProfit: number;
-  avgDays: number | null;
-  jobs: { id: number; title: string; startDate: string | null; endDate: string | null }[];
-};
-
-type Actuals = { byJobType: ActualRow[]; byHomeModel: ActualRow[] };
-
-const EMPTY_BM = { jobType: "", estimatedHours: "", estimatedLaborCost: "", estimatedMaterialCost: "", notes: "" };
-
-function fmtMoney(n: number) {
-  return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-}
-
-function JobBenchmarksPanel() {
-  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const { toast } = useToast();
-  const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
-  const [actuals, setActuals] = useState<Actuals>({ byJobType: [], byHomeModel: [] });
-  const [loading, setLoading] = useState(true);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState(EMPTY_BM);
-  const [editForm, setEditForm] = useState(EMPTY_BM);
-  const [saving, setSaving] = useState(false);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const [bmRes, actRes] = await Promise.allSettled([
-        fetch(`${BASE_URL}/api/job-type-benchmarks`).then(r => r.json()),
-        fetch(`${BASE_URL}/api/job-type-benchmarks/actuals`).then(r => r.ok ? r.json() : null),
-      ]);
-      if (bmRes.status === "fulfilled") setBenchmarks(Array.isArray(bmRes.value) ? bmRes.value : []);
-      if (actRes.status === "fulfilled" && actRes.value) setActuals(actRes.value);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const actualsMap = useMemo(() => {
-    const m = new Map<string, ActualRow>();
-    for (const a of actuals.byJobType) m.set(a.groupKey.toLowerCase(), a);
-    return m;
-  }, [actuals]);
-
-  useEffect(() => { load(); }, []);
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.jobType.trim()) return;
-    setSaving(true);
-    try {
-      const r = await fetch(`${BASE_URL}/api/job-type-benchmarks`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobType: form.jobType,
-          estimatedHours: form.estimatedHours ? parseFloat(form.estimatedHours) : null,
-          estimatedLaborCost: form.estimatedLaborCost ? parseFloat(form.estimatedLaborCost) : null,
-          estimatedMaterialCost: form.estimatedMaterialCost ? parseFloat(form.estimatedMaterialCost) : null,
-          notes: form.notes || null,
-        }),
-      });
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error); }
-      await load();
-      setShowAdd(false);
-      setForm(EMPTY_BM);
-      toast({ title: "Benchmark added" });
-    } catch (err: unknown) {
-      toast({ title: (err as Error).message || "Failed to add benchmark", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleUpdate(id: number) {
-    setSaving(true);
-    try {
-      await fetch(`${BASE_URL}/api/job-type-benchmarks/${id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobType: editForm.jobType,
-          estimatedHours: editForm.estimatedHours ? parseFloat(editForm.estimatedHours) : null,
-          estimatedLaborCost: editForm.estimatedLaborCost ? parseFloat(editForm.estimatedLaborCost) : null,
-          estimatedMaterialCost: editForm.estimatedMaterialCost ? parseFloat(editForm.estimatedMaterialCost) : null,
-          notes: editForm.notes || null,
-        }),
-      });
-      await load();
-      setEditId(null);
-      toast({ title: "Benchmark updated" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete(id: number) {
-    await fetch(`${BASE_URL}/api/job-type-benchmarks/${id}`, { method: "DELETE" });
-    setBenchmarks(prev => prev.filter(b => b.id !== id));
-    toast({ title: "Benchmark removed" });
-  }
-
-  function startEdit(bm: Benchmark) {
-    setEditId(bm.id);
-    setEditForm({
-      jobType: bm.jobType,
-      estimatedHours: bm.estimatedHours != null ? String(bm.estimatedHours) : "",
-      estimatedLaborCost: bm.estimatedLaborCost != null ? String(bm.estimatedLaborCost) : "",
-      estimatedMaterialCost: bm.estimatedMaterialCost != null ? String(bm.estimatedMaterialCost) : "",
-      notes: bm.notes ?? "",
-    });
-  }
-
-  const fieldCls = "w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20";
-
-  function JobTypeAutocomplete({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-    const [suggestions, setSuggestions] = useState<string[]>([]);
-    const [open, setOpen] = useState(false);
-
-    useEffect(() => {
-      Promise.allSettled([
-        fetch(`${BASE_URL}/api/job-type-benchmarks/actuals`).then(r => r.ok ? r.json() : null),
-      ]).then(([actRes]) => {
-        const actuals = actRes.status === "fulfilled" ? actRes.value : null;
-        const jobTypes: string[] = actuals?.byJobType?.map((r: { groupKey: string }) => r.groupKey) ?? [];
-        const homeModels: string[] = actuals?.byHomeModel?.map((r: { groupKey: string }) => r.groupKey) ?? [];
-        setSuggestions(Array.from(new Set([...jobTypes, ...homeModels])).sort());
-      }).catch(() => {});
-    }, []);
-
-    const filtered = suggestions.filter(s =>
-      !value.trim() || s.toLowerCase().includes(value.toLowerCase())
-    );
-
-    return (
-      <div className="relative">
-        <label className="block text-xs font-medium mb-1">Job Type *</label>
-        <input
-          className={fieldCls}
-          value={value}
-          onChange={e => { onChange(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="e.g. Model Home, Spec Home, Flooring…"
-          required
-          autoComplete="off"
-        />
-        {open && filtered.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
-            {filtered.slice(0, 12).map(s => (
-              <button
-                key={s}
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors first:rounded-t-xl last:rounded-b-xl"
-                onMouseDown={() => { onChange(s); setOpen(false); }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function BmForm({ val, set, onSubmit, onCancel, submitLabel }: {
-    val: typeof EMPTY_BM;
-    set: React.Dispatch<React.SetStateAction<typeof EMPTY_BM>>;
-    onSubmit: (e: React.FormEvent) => void;
-    onCancel: () => void;
-    submitLabel: string;
-  }) {
-    return (
-      <form onSubmit={onSubmit} className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-        <JobTypeAutocomplete value={val.jobType} onChange={v => set(f => ({ ...f, jobType: v }))} />
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium mb-1">Est. Hours</label>
-            <input type="number" step="0.5" min="0" className={fieldCls} value={val.estimatedHours} onChange={e => set(f => ({ ...f, estimatedHours: e.target.value }))} placeholder="—" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1">Est. Labor $</label>
-            <input type="number" step="0.01" min="0" className={fieldCls} value={val.estimatedLaborCost} onChange={e => set(f => ({ ...f, estimatedLaborCost: e.target.value }))} placeholder="—" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1">Est. Materials $</label>
-            <input type="number" step="0.01" min="0" className={fieldCls} value={val.estimatedMaterialCost} onChange={e => set(f => ({ ...f, estimatedMaterialCost: e.target.value }))} placeholder="—" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1">Notes</label>
-          <input className={fieldCls} value={val.notes} onChange={e => set(f => ({ ...f, notes: e.target.value }))} placeholder="Any notes about this job type benchmark…" />
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button type="button" onClick={onCancel} className="flex-1 py-2 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors">Cancel</button>
-          <button type="submit" disabled={saving} className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">{saving ? "Saving…" : submitLabel}</button>
-        </div>
-      </form>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2"><BarChart2 className="w-4 h-4 text-primary" /> Job Type Benchmarks</CardTitle>
-            <CardDescription className="mt-1">Set estimated hours, labor, and material costs by job type to compare against actual performance.</CardDescription>
-          </div>
-          {!showAdd && (
-            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm">
-              <Plus className="w-4 h-4" /> Add
-            </button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {showAdd && (
-          <BmForm val={form} set={setForm} onSubmit={handleAdd} onCancel={() => { setShowAdd(false); setForm(EMPTY_BM); }} submitLabel="Add Benchmark" />
-        )}
-        {loading ? (
-          <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}</div>
-        ) : benchmarks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <BarChart2 className="w-10 h-10 text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground">No benchmarks yet — add one to start tracking estimated vs actual performance.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {benchmarks.map(bm => (
-              <div key={bm.id}>
-                {editId === bm.id ? (
-                  <BmForm val={editForm} set={setEditForm} onSubmit={e => { e.preventDefault(); handleUpdate(bm.id); }} onCancel={() => setEditId(null)} submitLabel="Save Changes" />
-                ) : (
-                  <div className="rounded-xl border border-border p-4 space-y-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-foreground">{bm.jobType}</p>
-                        <div className="flex flex-wrap gap-3 mt-1.5">
-                          {bm.estimatedHours != null && (
-                            <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{bm.estimatedHours}h</span> est.</span>
-                          )}
-                          {bm.estimatedLaborCost != null && (
-                            <span className="text-xs text-muted-foreground">Labor: <span className="font-medium text-foreground">{fmtMoney(bm.estimatedLaborCost)}</span></span>
-                          )}
-                          {bm.estimatedMaterialCost != null && (
-                            <span className="text-xs text-muted-foreground">Materials: <span className="font-medium text-foreground">{fmtMoney(bm.estimatedMaterialCost)}</span></span>
-                          )}
-                        </div>
-                        {bm.notes && <p className="text-xs text-muted-foreground mt-1">{bm.notes}</p>}
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <button onClick={() => startEdit(bm)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(bm.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Actuals from completed jobs */}
-                    {(() => {
-                      const act = actualsMap.get(bm.jobType.toLowerCase());
-                      if (!act) return (
-                        <p className="text-xs text-muted-foreground/60 italic">No completed jobs yet for this type.</p>
-                      );
-                      return (
-                        <div className="pt-2 border-t border-border/50">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                            Actuals — {act.jobCount} completed job{act.jobCount !== 1 ? "s" : ""}
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">Revenue {fmtMoney(act.avgRevenue)}</span>
-                            <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Cost {fmtMoney(act.avgCost)}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${act.avgProfit >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-                              Profit {fmtMoney(act.avgProfit)}
-                            </span>
-                            {act.avgDays != null && (
-                              <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-medium">{act.avgDays}d avg</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function HomeModelPerformancePanel() {
-  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const [actuals, setActuals] = useState<Actuals>({ byJobType: [], byHomeModel: [] });
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    fetch(`${BASE_URL}/api/job-type-benchmarks/actuals`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setActuals(data); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  function toggleExpand(key: string) {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  }
-
-  const rows = actuals.byHomeModel;
-
-  return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle className="flex items-center gap-2"><Home className="w-4 h-4 text-primary" /> Home Model Performance</CardTitle>
-          <CardDescription className="mt-1">
-            Actual averages from completed jobs, grouped by home model. Tag jobs with a Home Model to build this data over time.
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-14 rounded-xl bg-muted/40 animate-pulse" />)}</div>
-        ) : rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <Home className="w-10 h-10 text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground font-medium">No data yet</p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-xs">Tag jobs with a Home Model to start building your performance data. Complete those jobs to see averages here.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {rows.map(row => {
-              const isOpen = expanded.has(row.groupKey);
-              return (
-                <div key={row.groupKey} className="rounded-xl border border-border overflow-hidden">
-                  <button
-                    type="button"
-                    className="w-full flex items-center justify-between gap-3 p-4 hover:bg-muted/30 transition-colors text-left"
-                    onClick={() => toggleExpand(row.groupKey)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-foreground">{row.groupKey}</p>
-                      <div className="flex flex-wrap gap-2 mt-1.5">
-                        <span className="text-xs text-muted-foreground">{row.jobCount} job{row.jobCount !== 1 ? "s" : ""}</span>
-                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">~{fmtMoney(row.avgRevenue)} rev</span>
-                        <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">~{fmtMoney(row.avgCost)} cost</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${row.avgProfit >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-                          ~{fmtMoney(row.avgProfit)} profit
-                        </span>
-                        {row.avgDays != null && (
-                          <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full font-medium">~{row.avgDays}d</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0 text-muted-foreground">
-                      {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </div>
-                  </button>
-                  {isOpen && row.jobs.length > 0 && (
-                    <div className="border-t border-border/50 divide-y divide-border/30">
-                      {row.jobs.map(j => (
-                        <div key={j.id} className="px-4 py-2.5 flex items-center justify-between gap-3 bg-muted/10">
-                          <p className="text-sm text-foreground flex-1 min-w-0 truncate">{j.title}</p>
-                          {j.startDate && (
-                            <p className="text-xs text-muted-foreground flex-shrink-0">
-                              {j.startDate}{j.endDate && j.endDate !== j.startDate ? ` → ${j.endDate}` : ""}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -1994,8 +1370,6 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [testEmailState, setTestEmailState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [calcDefaults, setCalcDefaults] = useState(DEFAULT_CALC_DEFAULTS);
-
   useEffect(() => {
     if (settings && !seeded) {
       const s = settings as AppSettings & Record<string, unknown>;
@@ -2039,29 +1413,6 @@ export default function Settings() {
       });
       setFeatures(feat);
       setBottomNavHrefs(Array.isArray(s.bottomNavItems) ? s.bottomNavItems : DEFAULT_BOTTOM_NAV_HREFS);
-      const rawCalc = s.calculatorDefaults as PartialCalcDefaults | null | undefined;
-      if (rawCalc) {
-        const d = DEFAULT_CALC_DEFAULTS;
-        setCalcDefaults({
-          plumbing: {
-            baseCharge: rawCalc.plumbing?.baseCharge ?? d.plumbing.baseCharge,
-            dropRate:   rawCalc.plumbing?.dropRate   ?? d.plumbing.dropRate,
-          },
-          flooring: {
-            labor: { ...d.flooring.labor, ...(rawCalc.flooring?.labor ?? {}) },
-            full:  { ...d.flooring.full,  ...(rawCalc.flooring?.full  ?? {}) },
-            minimumCharge: rawCalc.flooring?.minimumCharge ?? d.flooring.minimumCharge,
-          },
-          trim:    { laborRate: rawCalc.trim?.laborRate    ?? d.trim.laborRate },
-          siding:  { laborRate: rawCalc.siding?.laborRate  ?? d.siding.laborRate },
-          drywall: { laborRate: rawCalc.drywall?.laborRate ?? d.drywall.laborRate },
-          punchList: {
-            halfDayPrice:  rawCalc.punchList?.halfDayPrice  ?? d.punchList.halfDayPrice,
-            fullDayPrice:  rawCalc.punchList?.fullDayPrice  ?? d.punchList.fullDayPrice,
-            helperDayRate: rawCalc.punchList?.helperDayRate ?? d.punchList.helperDayRate,
-          },
-        });
-      }
       setSeeded(true);
     }
   }, [settings, seeded]);
@@ -2109,7 +1460,7 @@ export default function Settings() {
           invoiceReminderDay1: parseInt(form.invoiceReminderDay1) || 7,
           invoiceReminderDay2: parseInt(form.invoiceReminderDay2) || 14,
           taxFilingFrequency: form.taxFilingFrequency || "quarterly",
-          calculatorDefaults: calcDefaults,
+
         } as Partial<AppSettings>,
       });
       queryClient.invalidateQueries();
@@ -2158,7 +1509,7 @@ export default function Settings() {
     <div className="max-w-3xl mx-auto pb-12">
       <div className="mb-6">
         <h1 className="text-3xl font-display font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage your business profile, branding, and app configuration.</p>
+        <p className="text-muted-foreground mt-1">Manage your business profile, logo, invoice defaults, and app configuration.</p>
       </div>
 
       {/* Tab bar */}
@@ -2345,12 +1696,8 @@ export default function Settings() {
 
             {/* Active Business Profile Card */}
             <BusinessProfileCard />
-          </>
-        )}
 
-        {/* ── Branding ── */}
-        {activeTab === "branding" && (
-          <>
+            {/* Branding — Logo & Invoice Placement */}
             <Card className="border-border/50 shadow-md bg-card">
               <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
                 <CardTitle className="font-display flex items-center gap-2">
@@ -2999,25 +2346,8 @@ export default function Settings() {
           </div>
         )}
 
-        {/* ── Calculator Defaults ── */}
-        {activeTab === "calculators" && (
-          <CalcDefaultsPanel
-            calcDefaults={calcDefaults}
-            setCalcDefaults={setCalcDefaults}
-            inp={inp}
-          />
-        )}
-
-        {/* ── Job Benchmarks ── */}
-        {activeTab === "benchmarks" && (
-          <div className="space-y-6">
-            <JobBenchmarksPanel />
-            <HomeModelPerformancePanel />
-          </div>
-        )}
-
-        {/* Save bar — hidden on tabs that manage their own data */}
-        <div className={`flex items-center justify-between gap-4 pt-4 border-t border-border ${activeTab === "benchmarks" ? "hidden" : ""}`}>
+        {/* Save bar */}
+        <div className="flex items-center justify-between gap-4 pt-4 border-t border-border">
           <div>
             {error && (
               <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
