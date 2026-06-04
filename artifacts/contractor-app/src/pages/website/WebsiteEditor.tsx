@@ -292,13 +292,13 @@ function TemplatePicker({
               className="text-left rounded-xl border-2 border-border hover:border-primary hover:shadow-md transition-all p-4 group disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <div
-                className="w-full h-16 rounded-lg mb-3 flex items-end p-2"
+                className="w-full h-20 rounded-lg mb-3 flex flex-col justify-center px-3 py-2"
                 style={{ backgroundColor: t.brandColor }}
               >
-                <div className="w-full space-y-1">
-                  <div className="h-1.5 bg-white/50 rounded-full w-3/4" />
-                  <div className="h-1 bg-white/30 rounded-full w-1/2" />
-                </div>
+                <p className="text-white font-bold text-[11px] leading-snug line-clamp-2">
+                  {(t.sections.find(s => s.type === "hero")?.content?.headline as string) ?? t.name}
+                </p>
+                <div className="mt-1.5 w-8 h-0.5 bg-white/40 rounded-full" />
               </div>
               <p className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">{t.name}</p>
               <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t.description}</p>
@@ -364,6 +364,7 @@ export default function WebsiteEditor() {
     setLocalSections(null);
     setLocalSettings(null);
     isDirtyRef.current = false;
+    pickerShownRef.current = false;
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
   }, [bizId]);
 
@@ -652,13 +653,26 @@ export default function WebsiteEditor() {
   async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
     setApplyingTemplate(true);
     try {
+      const existingAbout = sections.find(s => s.type === "about");
+      const existingPortfolio = sections.find(s => s.type === "portfolio");
+
       const appliedSections = t.sections.map(s => {
         if (s.type === "footer" && bizInfo) {
           return { ...s, content: { ...s.content, phone: bizInfo.phone ?? "", email: bizInfo.email ?? "", licenseNumber: bizInfo.licenseNumber ?? "", copyright: `© ${new Date().getFullYear()} ${bizInfo.name ?? ""}. All rights reserved.` } };
         }
+        if (s.type === "about" && existingAbout) {
+          return { ...s, content: { ...s.content, photoUrl: (existingAbout.content.photoUrl as string) ?? "", photoObjectPath: (existingAbout.content.photoObjectPath as string | undefined) } };
+        }
+        if (s.type === "portfolio" && existingPortfolio) {
+          return { ...s, content: { ...s.content, projects: existingPortfolio.content.projects ?? [] } };
+        }
         return s;
       });
-      const savedSettings = { ...t.settings };
+      const savedSettings: SiteSettings = {
+        ...t.settings,
+        logoUrl: settings.logoUrl || "",
+        ...(settings.logoObjectPath ? { logoObjectPath: settings.logoObjectPath } : {}),
+      };
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
       await saveNow(savedSettings, appliedSections);
       setLocalSections(appliedSections);
@@ -764,7 +778,7 @@ export default function WebsiteEditor() {
         <AlertDialogHeader>
           <AlertDialogTitle>Apply "{pendingTemplate?.name}" template?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will overwrite all current sections, copy, and brand color with the template defaults. Your uploaded photos and logo will not be affected.
+            This will replace your current copy, service items, and brand color with the template defaults. Your uploaded logo, about photo, and portfolio photos will be preserved.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
