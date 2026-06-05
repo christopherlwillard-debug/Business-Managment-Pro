@@ -1,0 +1,107 @@
+The current website builder is functional, but too much screen space is being used by editor controls instead of the website itself. The website canvas should be the primary focus of the interface.
+
+UI Improvements
+
+1. Combine Pages and Sections into a single Site Structure panel.
+
+Instead of showing separate Pages and Sections panels, create a unified hierarchy:
+
+Home
+
+* Header
+* Hero
+* About
+* Services
+* Gallery
+* Footer
+
+About
+
+* Header
+* Content
+* Team
+* Footer
+
+Services
+
+* Header
+* Service List
+* CTA
+* Footer
+
+This reduces visual clutter and makes site organization easier to understand.
+
+2. Make both sidebars collapsible.
+
+The left structure panel and right settings panel should be collapsible at any time.
+
+When collapsed, only a small icon remains visible.
+
+This allows users to maximize the website canvas when editing content.
+
+3. Make the right panel contextual.
+
+The settings panel should only display controls related to the currently selected item.
+
+Examples:
+
+Selecting a section shows section settings.
+
+Selecting a button shows button settings.
+
+Selecting an image shows image settings.
+
+Selecting a form shows form settings.
+
+Do not display unnecessary controls when nothing is selected.
+
+4. Add a full-screen editing mode.
+
+Create a Focus Mode that hides:
+
+* Left sidebar
+* Right sidebar
+* Unnecessary toolbars
+
+The website canvas should occupy most of the screen while editing.
+
+5. Add a full-screen preview mode.
+
+Preview mode should hide all editor controls and display only the website.
+
+This allows users to see exactly what visitors will see.
+
+6. Replace permanent section toolbars with hover controls.
+
+Current section controls consume valuable vertical space.
+
+Show section actions only when hovering over a section:
+
+* Add
+* Duplicate
+* Move
+* Delete
+* Settings
+
+Hide these controls when the section is not being interacted with.
+
+7. Increase canvas width.
+
+The website preview should occupy at least 70% of the available desktop screen width and as much space as possible when sidebars are collapsed.
+
+The editor should prioritize website visibility over administrative controls.
+
+8. Create a Focus Editing experience.
+
+When a section, row, column, or component is selected:
+
+* Highlight the selected item
+* Dim unrelated elements
+* Display only relevant editing controls
+* Reduce distractions
+
+The goal is to make editing feel closer to Wix, Squarespace, Framer, and ZenBusiness.
+
+Success Criteria
+
+The builder should feel visually focused, easy to navigate, and optimized for non-technical users. Users should spend most of their time looking at and editing the website itself, not navigating editor panels.
