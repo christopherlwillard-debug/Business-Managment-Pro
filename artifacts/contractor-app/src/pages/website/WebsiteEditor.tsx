@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigationBlocker } from "@/contexts/NavigationBlockerContext";
 import { useFontLoader, HEADING_FONTS, BODY_FONTS } from "./useFontLoader";
 import { WebsiteAnalytics } from "./WebsiteAnalytics";
 import { HeroSection } from "./sections/HeroSection";
@@ -307,6 +308,7 @@ export default function WebsiteEditor() {
   const { activeBusiness } = useBusiness();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { setBlocker } = useNavigationBlocker();
 
   const [activeSection, setActiveSection] = useState<string | null>("hero");
   const [localSections, setLocalSections] = useState<Section[] | null>(null);
@@ -356,6 +358,22 @@ export default function WebsiteEditor() {
     textEditSessionRef.current = { active: false, timer: null };
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
   }, [bizId]);
+
+  useEffect(() => {
+    setBlocker(() => isDirtyRef.current);
+    return () => setBlocker(null);
+  }, [setBlocker]);
+
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (isDirtyRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -440,6 +458,7 @@ export default function WebsiteEditor() {
       return res.json();
     },
     onSuccess: () => {
+      isDirtyRef.current = false;
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
       toast({ title: "Draft saved" });
     },

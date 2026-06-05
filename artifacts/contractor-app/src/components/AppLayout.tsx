@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useGetSettings } from "@workspace/api-client-react";
 import { useAuth } from "@workspace/replit-auth-web";
 import { useUserPermissions, type SectionKey } from "@/contexts/UserPermissions";
+import { useNavigationBlocker } from "@/contexts/NavigationBlockerContext";
 
 const BOTTOM_NAV_MAP: Record<string, { name: string; icon: LucideIcon }> = {
   "/jobs": { name: "Jobs", icon: Briefcase },
@@ -47,6 +48,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { guardNavigate } = useNavigationBlocker();
   const { isDark, toggle: toggleTheme } = useTheme();
 
   const { logout } = useAuth();
@@ -215,11 +217,18 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
       const isBids = item.href === "/bids";
+      const dest = item.href;
       result.push(
         <Link
           key={item.name}
           href={item.href}
-          onClick={() => setMobileMenuOpen(false)}
+          onClick={(e) => {
+            e.preventDefault();
+            guardNavigate(() => {
+              setMobileMenuOpen(false);
+              setLocation(dest);
+            });
+          }}
           className={cn(
             "flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group",
             isActive
@@ -250,9 +259,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   function openBusinessSwitcher() {
-    clearSelection();
-    setLocation("/");
-    setMobileMenuOpen(false);
+    guardNavigate(() => {
+      clearSelection();
+      setLocation("/");
+      setMobileMenuOpen(false);
+    });
   }
 
   return (
@@ -270,7 +281,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       )}>
         {/* Logo */}
         <div className="flex items-center justify-between h-16 px-4 bg-primary border-b border-primary-foreground/10 flex-shrink-0">
-          <Link href="/" className="flex items-center" onClick={() => setMobileMenuOpen(false)}>
+          <Link href="/" className="flex items-center" onClick={(e) => { e.preventDefault(); guardNavigate(() => { setMobileMenuOpen(false); setLocation("/"); }); }}>
             {logoUrl && !logoImgError ? (
               <img
                 src={`${base}${logoUrl}`}
@@ -396,7 +407,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <div className="flex-1 hidden lg:block" />
           )}
 
-          <Link href="/settings" className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm hover:bg-primary/20 transition-colors" title="Settings">
+          <Link href="/settings" className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm hover:bg-primary/20 transition-colors" title="Settings" onClick={(e) => { e.preventDefault(); guardNavigate(() => setLocation("/settings")); }}>
             {initials}
           </Link>
         </header>
@@ -419,12 +430,33 @@ export function AppLayout({ children }: AppLayoutProps) {
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border flex items-stretch shadow-lg">
         {bottomNavItems.map((item) => {
           const isActive = item.href !== "#" && (location === item.href || (item.href !== "/" && location.startsWith(item.href)));
-          const Element = item.action ? "button" : Link;
 
+          if (item.action) {
+            return (
+              <button
+                key={item.name}
+                type="button"
+                onClick={item.action}
+                className={cn(
+                  "flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold tracking-wide transition-colors",
+                  isActive ? "text-primary" : "text-muted-foreground"
+                )}
+              >
+                <item.icon className={cn("w-5 h-5", isActive ? "text-primary" : "text-muted-foreground")} />
+                {item.name}
+              </button>
+            );
+          }
+
+          const dest = item.href;
           return (
-            <Element
+            <Link
               key={item.name}
-              {...(item.action ? { onClick: item.action, type: "button" } : { href: item.href })}
+              href={item.href}
+              onClick={(e) => {
+                e.preventDefault();
+                guardNavigate(() => setLocation(dest));
+              }}
               className={cn(
                 "flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold tracking-wide transition-colors",
                 isActive ? "text-primary" : "text-muted-foreground"
@@ -432,7 +464,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             >
               <item.icon className={cn("w-5 h-5", isActive ? "text-primary" : "text-muted-foreground")} />
               {item.name}
-            </Element>
+            </Link>
           );
         })}
       </nav>

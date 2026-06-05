@@ -8,6 +8,7 @@ import { UserPermissionsProvider, useUserPermissions, type SectionKey } from "@/
 import { GoogleAuthProvider } from "@/contexts/GoogleAuth";
 import { PermissionGuard } from "./components/PermissionGuard";
 import { BusinessProvider, useBusiness } from "@/contexts/BusinessContext";
+import { NavigationBlockerProvider } from "@/contexts/NavigationBlockerContext";
 
 import { AppLayout } from "./components/AppLayout";
 
@@ -239,6 +240,7 @@ function AdminApp() {
   if (accessStatus === "rejected") return <AccessRejectedScreen />;
 
   return (
+    <NavigationBlockerProvider>
     <BusinessProvider>
     <AppLayout>
       <Suspense fallback={<PageLoader />}>
@@ -312,6 +314,7 @@ function AdminApp() {
       </Suspense>
     </AppLayout>
     </BusinessProvider>
+    </NavigationBlockerProvider>
   );
 }
 
