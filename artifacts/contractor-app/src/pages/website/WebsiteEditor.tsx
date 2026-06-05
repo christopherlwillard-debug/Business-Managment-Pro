@@ -25,6 +25,8 @@ import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
 import { DepositSection } from "./sections/DepositSection";
+import { type BlockStyle } from "./sections/BlockStyleWrapper";
+import { SectionStylePanel } from "./SectionStylePanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -34,6 +36,7 @@ interface Section {
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
+  blockStyle?: BlockStyle;
 }
 
 interface SiteSettings {
@@ -66,7 +69,7 @@ function renderSection(
     businessName?: string;
   }
 ) {
-  const props = { content: section.content as any, settings, isEditing, onChange: onChange as any };
+  const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
   switch (section.type) {
     case "hero":    return <HeroSection {...props} businessName={extras?.businessName} />;
     case "services": return <ServicesSection {...props} businessName={extras?.businessName} />;
@@ -356,6 +359,7 @@ export default function WebsiteEditor() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
   const pickerShownRef = useRef(false);
+  const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
@@ -474,6 +478,67 @@ export default function WebsiteEditor() {
   function updateContent(id: string, content: Record<string, unknown>) {
     isDirtyRef.current = true;
     setLocalSections(sections.map(s => s.id === id ? { ...s, content } : s));
+  }
+
+  function updateBlockStyle(id: string, blockStyle: BlockStyle) {
+    isDirtyRef.current = true;
+    setLocalSections(sections.map(s => s.id === id ? { ...s, blockStyle } : s));
+  }
+
+  async function handleSectionBgUpload(sectionId: string, file: File) {
+    setBgUploading(prev => ({ ...prev, [sectionId]: true }));
+    const blobUrl = URL.createObjectURL(file);
+    const sectionsAtStart = sections;
+    const settingsAtStart = settings;
+    isDirtyRef.current = true;
+    setLocalSections(sections.map(s =>
+      s.id === sectionId ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: blobUrl, bgType: "image" as const } } : s
+    ));
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-section-bg`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const slug = activeBusiness!.slug;
+      const bgUuid = objectPath.split("/").pop()!;
+      const canonicalUrl = `${BASE}/api/public/site/${slug}/section-bg/${bgUuid}`;
+      const savedSections = sectionsAtStart.map(s =>
+        s.id === sectionId
+          ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageObjectPath: objectPath, bgImageUrl: canonicalUrl, bgType: "image" as const } }
+          : s
+      );
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await saveNow(settingsAtStart, savedSections);
+      URL.revokeObjectURL(blobUrl);
+      isDirtyRef.current = false;
+      setLocalSections(savedSections.map(s =>
+        s.id === sectionId
+          ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: `${canonicalUrl}?v=${Date.now()}` } }
+          : s
+      ));
+      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+      toast({ title: "Background image uploaded" });
+    } catch {
+      URL.revokeObjectURL(blobUrl);
+      setLocalSections(sectionsAtStart);
+      toast({ title: "Upload failed", variant: "destructive" });
+    } finally {
+      setBgUploading(prev => {
+        const next = { ...prev };
+        delete next[sectionId];
+        return next;
+      });
+    }
   }
 
   async function saveNow(overrideSettings?: SiteSettings, overrideSections?: Section[]) {
@@ -1034,6 +1099,21 @@ export default function WebsiteEditor() {
             )}
           </div>
         </div>
+        {activeSection && activeTab === "editor" && (() => {
+          const sec = sections.find(s => s.id === activeSection);
+          return sec ? (
+            <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
+              <SectionStylePanel
+                sectionId={sec.id}
+                sectionType={sec.type}
+                blockStyle={sec.blockStyle ?? {}}
+                onChange={bs => updateBlockStyle(sec.id, bs)}
+                onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                isBgUploading={!!bgUploading[sec.id]}
+              />
+            </div>
+          ) : null;
+        })()}
         </>)}
       </div>
     </div>

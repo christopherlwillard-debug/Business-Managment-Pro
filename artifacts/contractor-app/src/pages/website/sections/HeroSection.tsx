@@ -1,3 +1,4 @@
+import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
 
 interface HeroContent {
@@ -13,9 +14,10 @@ interface HeroSectionProps {
   isEditing?: boolean;
   onChange?: (content: HeroContent) => void;
   businessName?: string;
+  blockStyle?: BlockStyle;
 }
 
-export function HeroSection({ content, settings, isEditing, onChange, businessName }: HeroSectionProps) {
+export function HeroSection({ content, settings, isEditing, onChange, businessName, blockStyle }: HeroSectionProps) {
   const bg = content.bgColor || settings.brandColor || "#1a1a2e";
   const biz = businessName ?? "a contractor business";
 
@@ -24,18 +26,12 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
   }
 
   return (
-    <div className="relative w-full py-20 px-6 text-white text-center" style={{ backgroundColor: bg }}>
-      {isEditing && (
-        <div className="absolute top-2 right-2 flex items-center gap-2 bg-black/40 rounded px-2 py-1">
-          <label className="text-xs text-white/70">BG Color</label>
-          <input
-            type="color"
-            value={content.bgColor || bg}
-            onChange={e => update({ bgColor: e.target.value })}
-            className="w-7 h-7 rounded cursor-pointer border-0 bg-transparent"
-          />
-        </div>
-      )}
+    <BlockStyleWrapper
+      wrapperClassName="w-full py-20 px-6 text-white text-center"
+      defaultBg={bg}
+      blockStyle={blockStyle}
+      isEditing={isEditing}
+    >
       {isEditing ? (
         <>
           <input
@@ -84,6 +80,6 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
           </a>
         </>
       )}
-    </div>
+    </BlockStyleWrapper>
   );
 }

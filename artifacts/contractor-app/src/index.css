@@ -186,6 +186,24 @@
   @page { size: letter portrait; margin: 0.6in; }
 }
 
+/* BlockStyle entrance animations */
+@keyframes bs-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes bs-slide-up {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes bs-slide-left {
+  from { opacity: 0; transform: translateX(-40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.bs-anim-hidden { opacity: 0; }
+.bs-anim-fade-in { animation: bs-fade-in 0.7s ease forwards; }
+.bs-anim-slide-up { animation: bs-slide-up 0.7s ease forwards; }
+.bs-anim-slide-left { animation: bs-slide-left 0.7s ease forwards; }
+
 /* Custom Scrollbar for a premium feel */
 ::-webkit-scrollbar {
   width: 8px;

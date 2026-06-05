@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Loader2, CreditCard, ShieldCheck } from "lucide-react";
+import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -17,9 +18,10 @@ interface DepositSectionProps {
   isEditing?: boolean;
   onChange?: (content: DepositContent) => void;
   businessSlug?: string;
+  blockStyle?: BlockStyle;
 }
 
-export function DepositSection({ content, settings, isEditing, onChange, businessSlug }: DepositSectionProps) {
+export function DepositSection({ content, settings, isEditing, onChange, businessSlug, blockStyle }: DepositSectionProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [customAmount, setCustomAmount] = useState<string>(String(content.amount ?? 250));
@@ -79,7 +81,11 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
 
   if (isEditing) {
     return (
-      <div className="py-12 px-6 bg-gray-50 dark:bg-gray-800/40">
+      <BlockStyleWrapper
+        wrapperClassName="py-12 px-6 bg-gray-50 dark:bg-gray-800/40"
+        blockStyle={blockStyle}
+        isEditing={isEditing}
+      >
         <div className="max-w-lg mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 space-y-4">
           <input
             className="text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none w-full"
@@ -146,12 +152,17 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
             </p>
           </div>
         </div>
-      </div>
+      </BlockStyleWrapper>
     );
   }
 
   return (
-    <div className="py-16 px-6 bg-gray-50 dark:bg-gray-900" id="deposit">
+    <BlockStyleWrapper
+      id="deposit"
+      wrapperClassName="py-16 px-6 bg-gray-50 dark:bg-gray-900"
+      blockStyle={blockStyle}
+      isEditing={isEditing}
+    >
       <div className="max-w-lg mx-auto">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-8 text-center">
           <div
@@ -185,7 +196,6 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
                     setError("");
                   }}
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-xl pl-7 pr-3 py-2.5 text-xl font-bold text-center bg-white dark:bg-gray-700 focus:outline-none focus:ring-2"
-                  style={{ focusRingColor: settings.brandColor } as React.CSSProperties}
                 />
               </div>
             </div>
@@ -223,6 +233,6 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
           </p>
         </div>
       </div>
-    </div>
+    </BlockStyleWrapper>
   );
 }

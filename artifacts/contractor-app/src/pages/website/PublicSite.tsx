@@ -9,6 +9,7 @@ import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
 import { DepositSection } from "./sections/DepositSection";
+import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -18,6 +19,7 @@ interface Section {
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
+  blockStyle?: BlockStyle;
 }
 
 interface SiteSettings {
@@ -100,7 +102,6 @@ export default function PublicSite() {
 
   return (
     <div className="min-h-screen bg-white font-sans">
-      {/* Payment success banner */}
       {paymentSuccess && !paymentSuccessDismissed && (
         <div className="fixed top-0 inset-x-0 z-[60] flex items-center justify-between gap-3 bg-green-600 text-white px-4 py-3 text-sm font-medium shadow-lg">
           <div className="flex items-center gap-2">
@@ -116,7 +117,6 @@ export default function PublicSite() {
           </button>
         </div>
       )}
-      {/* Minimal nav bar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           {settings.logoUrl && (
@@ -133,9 +133,8 @@ export default function PublicSite() {
         </a>
       </header>
 
-      {/* Sections */}
       {sorted.map(section => {
-        const props = { content: section.content as any, settings, isEditing: false };
+        const props = { content: section.content as any, settings, isEditing: false, blockStyle: section.blockStyle };
         switch (section.type) {
           case "hero":    return <HeroSection key={section.id} {...props} />;
           case "services": return <ServicesSection key={section.id} {...props} />;

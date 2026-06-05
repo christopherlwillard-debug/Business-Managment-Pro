@@ -1,4 +1,5 @@
 import { ImagePlus, Loader2 } from "lucide-react";
+import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
 
 interface AboutContent {
@@ -16,9 +17,10 @@ interface AboutSectionProps {
   onPhotoUpload?: (file: File) => Promise<void>;
   isPhotoUploading?: boolean;
   businessName?: string;
+  blockStyle?: BlockStyle;
 }
 
-export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading, businessName }: AboutSectionProps) {
+export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading, businessName, blockStyle }: AboutSectionProps) {
   const biz = businessName ?? "a contractor business";
 
   function update(patch: Partial<AboutContent>) {
@@ -26,7 +28,11 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
   }
 
   return (
-    <div className="py-16 px-6 bg-gray-50 dark:bg-gray-800">
+    <BlockStyleWrapper
+      wrapperClassName="py-16 px-6 bg-gray-50 dark:bg-gray-800"
+      blockStyle={blockStyle}
+      isEditing={isEditing}
+    >
       <div className="max-w-4xl mx-auto flex flex-col md:flex-row gap-10 items-center">
         <div className="flex-1">
           {isEditing ? (
@@ -91,6 +97,6 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
           )}
         </div>
       </div>
-    </div>
+    </BlockStyleWrapper>
   );
 }

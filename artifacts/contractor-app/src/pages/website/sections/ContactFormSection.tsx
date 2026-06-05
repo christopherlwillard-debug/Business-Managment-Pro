@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CheckCircle } from "lucide-react";
+import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
 interface ContactContent {
   heading: string;
@@ -13,9 +14,10 @@ interface ContactFormSectionProps {
   isEditing?: boolean;
   onChange?: (content: ContactContent) => void;
   onSubmit?: (data: { name: string; phone: string; email: string; serviceType: string; message: string }) => Promise<void>;
+  blockStyle?: BlockStyle;
 }
 
-export function ContactFormSection({ content, settings, isEditing, onChange, onSubmit }: ContactFormSectionProps) {
+export function ContactFormSection({ content, settings, isEditing, onChange, onSubmit, blockStyle }: ContactFormSectionProps) {
   const [form, setForm] = useState({ name: "", phone: "", email: "", serviceType: "", message: "" });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -44,7 +46,12 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
   }
 
   return (
-    <div id="contact" className="py-16 px-6 bg-white dark:bg-gray-900">
+    <BlockStyleWrapper
+      id="contact"
+      wrapperClassName="py-16 px-6 bg-white dark:bg-gray-900"
+      blockStyle={blockStyle}
+      isEditing={isEditing}
+    >
       <div className="max-w-2xl mx-auto">
         {isEditing ? (
           <>
@@ -145,6 +152,6 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
           </form>
         )}
       </div>
-    </div>
+    </BlockStyleWrapper>
   );
 }

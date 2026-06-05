@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
 
 interface ServiceItem {
@@ -18,9 +19,10 @@ interface ServicesSectionProps {
   isEditing?: boolean;
   onChange?: (content: ServicesContent) => void;
   businessName?: string;
+  blockStyle?: BlockStyle;
 }
 
-export function ServicesSection({ content, settings, isEditing, onChange, businessName }: ServicesSectionProps) {
+export function ServicesSection({ content, settings, isEditing, onChange, businessName, blockStyle }: ServicesSectionProps) {
   const biz = businessName ?? "a contractor business";
 
   function update(patch: Partial<ServicesContent>) {
@@ -40,7 +42,11 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
   }
 
   return (
-    <div className="py-16 px-6 bg-white dark:bg-gray-900">
+    <BlockStyleWrapper
+      wrapperClassName="py-16 px-6 bg-white dark:bg-gray-900"
+      blockStyle={blockStyle}
+      isEditing={isEditing}
+    >
       <div className="max-w-5xl mx-auto">
         {isEditing ? (
           <input
@@ -101,6 +107,6 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
           )}
         </div>
       </div>
-    </div>
+    </BlockStyleWrapper>
   );
 }

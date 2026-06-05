@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, GripVertical,
   ImagePlus, Loader2, Plus, Trash2, X,
 } from "lucide-react";
+import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
 export interface PortfolioPhoto {
   id: string;
@@ -49,6 +50,7 @@ interface PortfolioSectionProps {
   onChange?: (content: PortfolioContent) => void;
   onPhotoUpload?: (projectId: string, photoId: string, file: File) => Promise<void>;
   uploadingPhotoIds?: Set<string>;
+  blockStyle?: BlockStyle;
 }
 
 function SortablePhotoCard({
@@ -246,7 +248,6 @@ function ProjectEditPanel({
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-      {/* Project header */}
       <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-gray-700/60 border-b border-gray-200 dark:border-gray-700">
         <div className="flex flex-col gap-0.5">
           <button
@@ -301,7 +302,6 @@ function ProjectEditPanel({
         </button>
       </div>
 
-      {/* Photo grid */}
       {expanded && (
         <div className="p-4">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -342,6 +342,7 @@ export function PortfolioSection({
   onChange,
   onPhotoUpload,
   uploadingPhotoIds = new Set(),
+  blockStyle,
 }: PortfolioSectionProps) {
   const content = migrateContent(rawContent);
   const projects = content.projects;
@@ -376,7 +377,11 @@ export function PortfolioSection({
 
   if (isEditing) {
     return (
-      <div className="py-16 px-6 bg-white dark:bg-gray-900">
+      <BlockStyleWrapper
+        wrapperClassName="py-16 px-6 bg-white dark:bg-gray-900"
+        blockStyle={blockStyle}
+        isEditing={isEditing}
+      >
         <div className="max-w-5xl mx-auto">
           <input
             className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-6 w-full"
@@ -408,7 +413,7 @@ export function PortfolioSection({
             </button>
           </div>
         </div>
-      </div>
+      </BlockStyleWrapper>
     );
   }
 
@@ -429,13 +434,16 @@ export function PortfolioSection({
           onClose={() => setLightbox(null)}
         />
       )}
-      <div className="py-16 px-6 bg-gray-50 dark:bg-gray-900">
+      <BlockStyleWrapper
+        wrapperClassName="py-16 px-6 bg-gray-50 dark:bg-gray-900"
+        blockStyle={blockStyle}
+        isEditing={isEditing}
+      >
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-8 text-center">
             {content.heading}
           </h2>
 
-          {/* Tab bar — only when multiple projects */}
           {visibleProjects.length > 1 && (
             <div className="flex flex-wrap gap-2 justify-center mb-8">
               {visibleProjects.map((proj, i) => (
@@ -455,7 +463,6 @@ export function PortfolioSection({
             </div>
           )}
 
-          {/* Photos for active project */}
           {(() => {
             const proj = visibleProjects[safeTab];
             if (!proj) return null;
@@ -500,7 +507,7 @@ export function PortfolioSection({
             );
           })()}
         </div>
-      </div>
+      </BlockStyleWrapper>
     </>
   );
 }

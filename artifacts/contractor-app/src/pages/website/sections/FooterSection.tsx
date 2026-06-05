@@ -1,3 +1,5 @@
+import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
+
 interface FooterContent {
   phone: string;
   email: string;
@@ -10,9 +12,10 @@ interface FooterSectionProps {
   settings: { brandColor: string };
   isEditing?: boolean;
   onChange?: (content: FooterContent) => void;
+  blockStyle?: BlockStyle;
 }
 
-export function FooterSection({ content, settings, isEditing, onChange }: FooterSectionProps) {
+export function FooterSection({ content, settings, isEditing, onChange, blockStyle }: FooterSectionProps) {
   function update(patch: Partial<FooterContent>) {
     onChange?.({ ...content, ...patch });
   }
@@ -20,7 +23,12 @@ export function FooterSection({ content, settings, isEditing, onChange }: Footer
   const bg = settings.brandColor || "#1a1a2e";
 
   return (
-    <div className="py-10 px-6 text-white text-center" style={{ backgroundColor: bg }}>
+    <BlockStyleWrapper
+      wrapperClassName="py-10 px-6 text-white text-center"
+      defaultBg={bg}
+      blockStyle={blockStyle}
+      isEditing={isEditing}
+    >
       <div className="max-w-4xl mx-auto space-y-2">
         {isEditing ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left mb-4">
@@ -52,6 +60,6 @@ export function FooterSection({ content, settings, isEditing, onChange }: Footer
         )}
         <p className="text-xs text-white/40">{content.copyright || `© ${new Date().getFullYear()} All rights reserved.`}</p>
       </div>
-    </div>
+    </BlockStyleWrapper>
   );
 }
