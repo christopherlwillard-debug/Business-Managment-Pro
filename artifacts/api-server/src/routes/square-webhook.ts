@@ -110,6 +110,40 @@ async function handleSquarePayment(opts: {
     });
 
     console.log(`Website deposit payment ${squarePaymentId} recorded for site "${siteSlug}" — $${amountDollars}`);
+
+    // Try to link to an existing prospect by buyer email, then by name
+    let matchedProspectId: number | null = null;
+    if (buyerEmail) {
+      const [prospect] = await db
+        .select({ id: prospectsTable.id })
+        .from(prospectsTable)
+        .where(ilike(prospectsTable.contactEmail, buyerEmail.trim()))
+        .limit(1);
+      if (prospect) matchedProspectId = prospect.id;
+    }
+    if (matchedProspectId === null && buyerName) {
+      const [prospect] = await db
+        .select({ id: prospectsTable.id })
+        .from(prospectsTable)
+        .where(ilike(prospectsTable.contactName, buyerName.trim()))
+        .limit(1);
+      if (prospect) matchedProspectId = prospect.id;
+    }
+    if (matchedProspectId !== null) {
+      await db.update(prospectsTable)
+        .set({
+          depositPaidAt: paidAt,
+          ...(amountMoney !== null ? { depositPaidAmount: (amountMoney / 100).toFixed(2) } : {}),
+          updatedAt: paidAt,
+        })
+        .where(eq(prospectsTable.id, matchedProspectId));
+      await db.insert(prospectEventsTable).values({
+        prospectId: matchedProspectId,
+        type: "deposit_received",
+        newValue: amountMoney !== null ? (amountMoney / 100).toFixed(2) : null,
+      });
+      console.log(`Website deposit ${squarePaymentId} auto-linked to prospect ${matchedProspectId}`);
+    }
   }
 
   if (!recognized && squarePaymentId && amountMoney !== null) {

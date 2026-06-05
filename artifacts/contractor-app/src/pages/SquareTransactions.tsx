@@ -3,12 +3,13 @@ import {
   useSquareLiveTransactions,
   useSquareStatus,
   useListClients,
+  useListProspects,
   type SquareTransaction,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   CreditCard, RefreshCw, ExternalLink, AlertCircle,
-  TrendingUp, CheckCircle2, XCircle, Clock, Wifi, Users, Globe, ListFilter,
+  TrendingUp, CheckCircle2, XCircle, Clock, Wifi, Users, Globe, ListFilter, UserCheck,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -116,7 +117,7 @@ function getPaymentType(tx: SquareTransaction): { label: string; slug: string | 
   return null;
 }
 
-function TransactionRow({ tx, matchedClientName }: { tx: SquareTransaction; matchedClientName: string | null }) {
+function TransactionRow({ tx, matchedClientName, matchedProspectName }: { tx: SquareTransaction; matchedClientName: string | null; matchedProspectName: string | null }) {
   const cardLabel = tx.cardBrand ? (CARD_BRAND_LABELS[tx.cardBrand] ?? tx.cardBrand) : null;
   const sourceLabel = tx.sourceType ? (SOURCE_LABELS[tx.sourceType] ?? tx.sourceType) : null;
 
@@ -159,6 +160,12 @@ function TransactionRow({ tx, matchedClientName }: { tx: SquareTransaction; matc
               {matchedClientName}
             </span>
           )}
+          {matchedProspectName && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 border border-violet-200">
+              <UserCheck className="w-3 h-3" />
+              {matchedProspectName}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
           <span>{tx.createdAt ? formatDate(tx.createdAt) : "—"}</span>
@@ -199,6 +206,7 @@ export default function SquareTransactions() {
   const { data: status } = useSquareStatus();
   const { data, isLoading, isError, refetch, isFetching } = useSquareLiveTransactions(days);
   const { data: clients = [] } = useListClients();
+  const { data: prospects = [] } = useListProspects();
 
   const emailToClientName = useMemo(() => {
     const map = new Map<string, string>();
@@ -208,9 +216,37 @@ export default function SquareTransactions() {
     return map;
   }, [clients]);
 
+  const emailToProspectName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of prospects as any[]) {
+      if (p.contactEmail) map.set(p.contactEmail.toLowerCase().trim(), p.contactName ?? p.contactEmail);
+    }
+    return map;
+  }, [prospects]);
+
+  const nameToProspectName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of prospects as any[]) {
+      if (p.contactName) map.set(p.contactName.toLowerCase().trim(), p.contactName);
+    }
+    return map;
+  }, [prospects]);
+
   function getMatchedClient(tx: SquareTransaction): string | null {
     if (tx.buyerEmail) {
       const name = emailToClientName.get(tx.buyerEmail.toLowerCase().trim());
+      if (name) return name;
+    }
+    return null;
+  }
+
+  function getMatchedProspect(tx: SquareTransaction): string | null {
+    if (tx.buyerEmail) {
+      const name = emailToProspectName.get(tx.buyerEmail.toLowerCase().trim());
+      if (name) return name;
+    }
+    if (tx.cardholderName) {
+      const name = nameToProspectName.get(tx.cardholderName.toLowerCase().trim());
       if (name) return name;
     }
     return null;
@@ -429,7 +465,12 @@ export default function SquareTransactions() {
               </span>
             </div>
             {filteredTransactions.map((tx) => (
-              <TransactionRow key={tx.id ?? tx.createdAt} tx={tx} matchedClientName={getMatchedClient(tx)} />
+              <TransactionRow
+                key={tx.id ?? tx.createdAt}
+                tx={tx}
+                matchedClientName={getMatchedClient(tx)}
+                matchedProspectName={getMatchedProspect(tx)}
+              />
             ))}
           </div>
         )}
