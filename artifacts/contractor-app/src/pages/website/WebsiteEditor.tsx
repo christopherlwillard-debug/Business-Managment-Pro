@@ -475,19 +475,30 @@ export default function WebsiteEditor() {
       const rawSettings = data.settings as SiteSettings & { pages?: SitePage[] };
       const extraPages: SitePage[] = rawSettings.pages ?? [];
       const isNewSite = data.id === null;
-      const defaultExtraPages: SitePage[] = isNewSite && extraPages.length === 0
+      const shouldBootstrapDefaults = isNewSite && extraPages.length === 0;
+      const defaultExtraPages: SitePage[] = shouldBootstrapDefaults
         ? [
             { id: "page-about", name: "About", slug: "about", sections: [] },
             { id: "page-services", name: "Services", slug: "services", sections: [] },
             { id: "page-contact", name: "Contact", slug: "contact", sections: [] },
           ]
         : extraPages;
+      if (shouldBootstrapDefaults) {
+        const siteSlug = activeBusiness?.slug ?? "";
+        const defaultNavLinks = defaultExtraPages.map(p => ({
+          id: nanoid(), label: p.name, href: `/site/${siteSlug}/${p.slug}`, pageId: p.id,
+        }));
+        migrated = migrated.map(s => s.type === "header" ? {
+          ...s,
+          content: { ...s.content, navLinks: [...((s.content.navLinks as any[]) ?? []), ...defaultNavLinks] },
+        } : s);
+        isDirtyRef.current = true;
+      }
       const allPages: SitePage[] = [
         { id: "home", name: "Home", slug: "home", sections: migrated },
         ...defaultExtraPages,
       ];
       setLocalPages(allPages);
-      if (isNewSite && extraPages.length === 0) isDirtyRef.current = true;
       const cleanSettings = { ...rawSettings };
       delete (cleanSettings as any).pages;
       setLocalSettings(cleanSettings as SiteSettings);
@@ -1414,6 +1425,7 @@ export default function WebsiteEditor() {
           <AlertDialogTitle>Apply "{pendingTemplate?.name}" template?</AlertDialogTitle>
           <AlertDialogDescription>
             This will replace your current copy, service items, and brand color with the template defaults. Your uploaded logo, about photo, and portfolio photos will be preserved.
+            {pages.length > 1 && " Any additional pages you've added (About, Services, etc.) will be reset to a single Home page."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
