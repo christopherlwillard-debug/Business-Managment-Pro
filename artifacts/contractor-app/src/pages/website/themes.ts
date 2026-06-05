@@ -19,6 +19,8 @@ export interface SiteTheme {
   cardShadow: string;
   cardBorder: boolean;
   inputRadius: string;
+  headingSizeScale: "compact" | "regular" | "large" | "xl";
+  baseFontSize: "sm" | "base" | "lg";
 }
 
 export interface ThemeOverrides {
@@ -38,9 +40,27 @@ export interface ThemeOverrides {
   cardShadow?: string;
   cardBorder?: boolean;
   inputRadius?: string;
+  headingSizeScale?: "compact" | "regular" | "large" | "xl";
+  baseFontSize?: "sm" | "base" | "lg";
+  headerBgColor?: string;
+  headerTextColor?: string;
+  footerTextColor?: string;
 }
 
 export type ThemeColorOverrides = ThemeOverrides;
+
+export const HEADING_SCALES: Record<string, { h1: string; h2: string; h3: string }> = {
+  compact: { h1: "2rem", h2: "1.5rem", h3: "1.25rem" },
+  regular: { h1: "3rem", h2: "2rem", h3: "1.5rem" },
+  large: { h1: "3.5rem", h2: "2.5rem", h3: "1.75rem" },
+  xl: { h1: "4rem", h2: "3rem", h3: "2rem" },
+};
+
+export const BODY_SIZES: Record<string, string> = {
+  sm: "0.875rem",
+  base: "1rem",
+  lg: "1.125rem",
+};
 
 export const SITE_THEMES: SiteTheme[] = [
   {
@@ -64,6 +84,8 @@ export const SITE_THEMES: SiteTheme[] = [
     cardShadow: "0 1px 4px rgba(0,0,0,0.08)",
     cardBorder: false,
     inputRadius: "8px",
+    headingSizeScale: "regular",
+    baseFontSize: "base",
   },
   {
     id: "corporate",
@@ -86,6 +108,8 @@ export const SITE_THEMES: SiteTheme[] = [
     cardShadow: "none",
     cardBorder: true,
     inputRadius: "4px",
+    headingSizeScale: "regular",
+    baseFontSize: "base",
   },
   {
     id: "creative",
@@ -108,6 +132,8 @@ export const SITE_THEMES: SiteTheme[] = [
     cardShadow: "0 4px 20px rgba(124,58,237,0.14)",
     cardBorder: false,
     inputRadius: "8px",
+    headingSizeScale: "large",
+    baseFontSize: "base",
   },
   {
     id: "luxury",
@@ -130,6 +156,8 @@ export const SITE_THEMES: SiteTheme[] = [
     cardShadow: "none",
     cardBorder: true,
     inputRadius: "2px",
+    headingSizeScale: "large",
+    baseFontSize: "base",
   },
   {
     id: "minimal",
@@ -152,6 +180,8 @@ export const SITE_THEMES: SiteTheme[] = [
     cardShadow: "none",
     cardBorder: true,
     inputRadius: "0px",
+    headingSizeScale: "regular",
+    baseFontSize: "base",
   },
   {
     id: "bold",
@@ -174,6 +204,8 @@ export const SITE_THEMES: SiteTheme[] = [
     cardShadow: "0 4px 16px rgba(220,38,38,0.18)",
     cardBorder: false,
     inputRadius: "6px",
+    headingSizeScale: "xl",
+    baseFontSize: "lg",
   },
 ];
 
@@ -185,12 +217,19 @@ function resolveButtonShadow(v: boolean | undefined): string {
   return v ? "0 2px 8px rgba(0,0,0,0.15)" : "none";
 }
 
+function resolveHeadingScale(scale: string | undefined): { h1: string; h2: string; h3: string } | undefined {
+  return scale ? HEADING_SCALES[scale] : undefined;
+}
+
+function resolveBodySize(size: string | undefined): string | undefined {
+  return size ? BODY_SIZES[size] : undefined;
+}
+
 export function buildThemeCssVarBlock(
   themeId: string | undefined,
   overrides?: ThemeOverrides,
 ): string {
   const theme = themeId ? SITE_THEMES.find(t => t.id === themeId) : null;
-  if (!theme && !overrides) return "";
 
   const primary = overrides?.brandColor ?? theme?.brandColor;
   const secondary = overrides?.secondaryColor ?? theme?.secondaryColor;
@@ -208,6 +247,13 @@ export function buildThemeCssVarBlock(
   const cardShadow = overrides?.cardShadow ?? theme?.cardShadow;
   const cardBorderBool = overrides?.cardBorder !== undefined ? overrides.cardBorder : theme?.cardBorder;
   const inputRadius = overrides?.inputRadius ?? theme?.inputRadius;
+  const headingScale = resolveHeadingScale(overrides?.headingSizeScale ?? theme?.headingSizeScale);
+  const bodySize = resolveBodySize(overrides?.baseFontSize ?? theme?.baseFontSize);
+  const headerBg = overrides?.headerBgColor ?? theme?.bgColor;
+  const headerText = overrides?.headerTextColor ?? theme?.textColor;
+  const footerText = overrides?.footerTextColor ?? theme?.textColor;
+
+  if (!primary && !secondary && !bg && !headingFont && !btnRadius && !cardRadius) return "";
 
   const lines: string[] = [":root {"];
   if (primary) lines.push(`  --theme-primary: ${primary};`);
@@ -226,6 +272,15 @@ export function buildThemeCssVarBlock(
   if (cardShadow) lines.push(`  --theme-card-shadow: ${cardShadow};`);
   if (cardBorderBool !== undefined) lines.push(`  --theme-card-border: ${resolveCardBorder(cardBorderBool)};`);
   if (inputRadius) lines.push(`  --theme-input-radius: ${inputRadius};`);
+  if (headingScale) {
+    lines.push(`  --theme-h1-size: ${headingScale.h1};`);
+    lines.push(`  --theme-h2-size: ${headingScale.h2};`);
+    lines.push(`  --theme-h3-size: ${headingScale.h3};`);
+  }
+  if (bodySize) lines.push(`  --theme-body-size: ${bodySize};`);
+  if (headerBg) lines.push(`  --theme-header-bg: ${headerBg};`);
+  if (headerText) lines.push(`  --theme-header-text: ${headerText};`);
+  if (footerText) lines.push(`  --theme-footer-text: ${footerText};`);
   lines.push("}");
 
   if (bg) lines.push("body { background-color: var(--theme-bg); font-family: var(--theme-font-body, system-ui, sans-serif); }");
@@ -249,6 +304,8 @@ export function applyThemeCssVars(
       "--theme-btn-radius", "--theme-btn-font-weight", "--theme-btn-shadow",
       "--theme-card-radius", "--theme-card-shadow", "--theme-card-border",
       "--theme-input-radius",
+      "--theme-h1-size", "--theme-h2-size", "--theme-h3-size", "--theme-body-size",
+      "--theme-header-bg", "--theme-header-text", "--theme-footer-text",
     ];
     vars.forEach(v => root.style.removeProperty(v));
     return;
@@ -270,6 +327,11 @@ export function applyThemeCssVars(
   const cardShadow = overrides?.cardShadow ?? theme?.cardShadow;
   const cardBorderBool = overrides?.cardBorder !== undefined ? overrides.cardBorder : theme?.cardBorder;
   const inputRadius = overrides?.inputRadius ?? theme?.inputRadius;
+  const headingScale = resolveHeadingScale(overrides?.headingSizeScale ?? theme?.headingSizeScale);
+  const bodySize = resolveBodySize(overrides?.baseFontSize ?? theme?.baseFontSize);
+  const headerBg = overrides?.headerBgColor ?? undefined;
+  const headerTextColor = overrides?.headerTextColor ?? undefined;
+  const footerTextColor = overrides?.footerTextColor ?? undefined;
 
   function setOrRemove(varName: string, value: string | undefined) {
     if (value !== undefined) root.style.setProperty(varName, value);
@@ -292,4 +354,11 @@ export function applyThemeCssVars(
   setOrRemove("--theme-card-shadow", cardShadow);
   setOrRemove("--theme-card-border", cardBorderBool !== undefined ? resolveCardBorder(cardBorderBool) : undefined);
   setOrRemove("--theme-input-radius", inputRadius);
+  setOrRemove("--theme-h1-size", headingScale?.h1);
+  setOrRemove("--theme-h2-size", headingScale?.h2);
+  setOrRemove("--theme-h3-size", headingScale?.h3);
+  setOrRemove("--theme-body-size", bodySize);
+  setOrRemove("--theme-header-bg", headerBg);
+  setOrRemove("--theme-header-text", headerTextColor);
+  setOrRemove("--theme-footer-text", footerTextColor);
 }

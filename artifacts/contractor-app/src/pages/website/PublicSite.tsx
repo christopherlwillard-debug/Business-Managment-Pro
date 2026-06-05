@@ -58,6 +58,11 @@ interface SiteSettings {
   cardShadow?: string;
   cardBorder?: boolean;
   inputRadius?: string;
+  headingSizeScale?: "compact" | "regular" | "large" | "xl";
+  baseFontSize?: "sm" | "base" | "lg";
+  headerBgColor?: string;
+  headerTextColor?: string;
+  footerTextColor?: string;
   logoUrl: string;
   faviconUrl?: string;
   headerStyle?: "light" | "dark" | "transparent";
@@ -252,26 +257,29 @@ export default function PublicSite() {
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
           )}
-          {(settings.themeId || settings.brandColor) && (
-            <style>{buildThemeCssVarBlock(settings.themeId, {
-              brandColor: settings.brandColor,
-              secondaryColor: settings.secondaryColor,
-              accentColor: settings.accentColor,
-              bgColor: settings.bgColor,
-              surfaceColor: settings.surfaceColor,
-              textColor: settings.textColor,
-              textMutedColor: settings.textMutedColor,
-              headingFont: settings.headingFont,
-              bodyFont: settings.bodyFont,
-              buttonRadius: settings.buttonRadius,
-              buttonFontWeight: settings.buttonFontWeight,
-              buttonShadow: settings.buttonShadow,
-              cardRadius: settings.cardRadius,
-              cardShadow: settings.cardShadow,
-              cardBorder: settings.cardBorder,
-              inputRadius: settings.inputRadius,
-            })}</style>
-          )}
+          <style>{buildThemeCssVarBlock(settings.themeId, {
+            brandColor: settings.brandColor,
+            secondaryColor: settings.secondaryColor,
+            accentColor: settings.accentColor,
+            bgColor: settings.bgColor,
+            surfaceColor: settings.surfaceColor,
+            textColor: settings.textColor,
+            textMutedColor: settings.textMutedColor,
+            headingFont: settings.headingFont,
+            bodyFont: settings.bodyFont,
+            buttonRadius: settings.buttonRadius,
+            buttonFontWeight: settings.buttonFontWeight,
+            buttonShadow: settings.buttonShadow,
+            cardRadius: settings.cardRadius,
+            cardShadow: settings.cardShadow,
+            cardBorder: settings.cardBorder,
+            inputRadius: settings.inputRadius,
+            headingSizeScale: settings.headingSizeScale,
+            baseFontSize: settings.baseFontSize,
+            headerBgColor: settings.headerBgColor,
+            headerTextColor: settings.headerTextColor,
+            footerTextColor: settings.footerTextColor,
+          })}</style>
           {settings.faviconUrl && <link rel="icon" href={settings.faviconUrl} />}
         </>,
         document.head

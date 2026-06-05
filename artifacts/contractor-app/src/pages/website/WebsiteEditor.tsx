@@ -21,7 +21,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigationBlocker } from "@/contexts/NavigationBlockerContext";
 import { useFontLoader, HEADING_FONTS, BODY_FONTS } from "./useFontLoader";
-import { SITE_THEMES, type SiteTheme, applyThemeCssVars } from "./themes";
+import { SITE_THEMES, HEADING_SCALES, BODY_SIZES, type SiteTheme, applyThemeCssVars } from "./themes";
 import { WebsiteAnalytics } from "./WebsiteAnalytics";
 import { MediaLibrary } from "./MediaLibrary";
 import { HeroSection } from "./sections/HeroSection";
@@ -87,6 +87,11 @@ export interface SiteSettings {
   cardShadow?: string;
   cardBorder?: boolean;
   inputRadius?: string;
+  headingSizeScale?: "compact" | "regular" | "large" | "xl";
+  baseFontSize?: "sm" | "base" | "lg";
+  headerBgColor?: string;
+  headerTextColor?: string;
+  footerTextColor?: string;
   logoUrl: string;
   logoObjectPath?: string;
   faviconUrl?: string;
@@ -735,6 +740,11 @@ export default function WebsiteEditor() {
       cardShadow: settings.cardShadow,
       cardBorder: settings.cardBorder,
       inputRadius: settings.inputRadius,
+      headingSizeScale: settings.headingSizeScale,
+      baseFontSize: settings.baseFontSize,
+      headerBgColor: settings.headerBgColor,
+      headerTextColor: settings.headerTextColor,
+      footerTextColor: settings.footerTextColor,
     });
     return () => applyThemeCssVars(undefined);
   }, [
@@ -743,7 +753,8 @@ export default function WebsiteEditor() {
     settings.headingFont, settings.bodyFont,
     settings.buttonRadius, settings.buttonFontWeight, settings.buttonShadow,
     settings.cardRadius, settings.cardShadow, settings.cardBorder,
-    settings.inputRadius,
+    settings.inputRadius, settings.headingSizeScale, settings.baseFontSize,
+    settings.headerBgColor, settings.headerTextColor, settings.footerTextColor,
   ]);
 
   const saveMutation = useMutation({
@@ -899,6 +910,8 @@ export default function WebsiteEditor() {
       cardShadow: theme.cardShadow,
       cardBorder: theme.cardBorder,
       inputRadius: theme.inputRadius,
+      headingSizeScale: theme.headingSizeScale,
+      baseFontSize: theme.baseFontSize,
     });
   }
 
@@ -2550,6 +2563,17 @@ export default function WebsiteEditor() {
                     </div>
                   );
                 })}
+                {settings.themeId && (
+                  <button
+                    onClick={() => {
+                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
+                      if (t) patchSettings({ brandColor: t.brandColor, secondaryColor: t.secondaryColor, accentColor: t.accentColor, bgColor: t.bgColor, surfaceColor: t.surfaceColor, textColor: t.textColor, textMutedColor: t.textMutedColor });
+                    }}
+                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                  >
+                    Reset to theme defaults
+                  </button>
+                )}
               </div>
             </details>
 
@@ -2559,7 +2583,7 @@ export default function WebsiteEditor() {
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Typography</span>
                 <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
               </summary>
-              <div className="px-3 pb-3 space-y-1.5">
+              <div className="px-3 pb-3 space-y-2">
                 <div>
                   <label className="text-[10px] text-muted-foreground block mb-0.5">Headings</label>
                   <select
@@ -2580,6 +2604,60 @@ export default function WebsiteEditor() {
                     {BODY_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Heading Scale</label>
+                  <div className="flex gap-1">
+                    {(["compact", "regular", "large", "xl"] as const).map(scale => {
+                      const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                      const current = settings.headingSizeScale ?? activeTheme?.headingSizeScale ?? "regular";
+                      const sizes = HEADING_SCALES[scale];
+                      return (
+                        <button
+                          key={scale}
+                          onClick={() => patchSettings({ headingSizeScale: scale })}
+                          title={`H1: ${sizes.h1}, H2: ${sizes.h2}, H3: ${sizes.h3}`}
+                          className={`flex-1 py-1 text-[10px] rounded capitalize transition-colors ${current === scale ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {scale}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Base Font Size</label>
+                  <div className="flex gap-1">
+                    {([
+                      { label: "Small", value: "sm" as const },
+                      { label: "Regular", value: "base" as const },
+                      { label: "Large", value: "lg" as const },
+                    ]).map(({ label, value }) => {
+                      const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                      const current = settings.baseFontSize ?? activeTheme?.baseFontSize ?? "base";
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => patchSettings({ baseFontSize: value })}
+                          title={`Body: ${BODY_SIZES[value]}`}
+                          className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {settings.themeId && (
+                  <button
+                    onClick={() => {
+                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
+                      if (t) patchSettings({ headingFont: t.headingFont, bodyFont: t.bodyFont, headingSizeScale: t.headingSizeScale, baseFontSize: t.baseFontSize });
+                    }}
+                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                  >
+                    Reset to theme defaults
+                  </button>
+                )}
               </div>
             </details>
 
@@ -2649,6 +2727,17 @@ export default function WebsiteEditor() {
                     <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
                   </label>
                 </div>
+                {settings.themeId && (
+                  <button
+                    onClick={() => {
+                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
+                      if (t) patchSettings({ buttonRadius: t.buttonRadius, buttonFontWeight: t.buttonFontWeight, buttonShadow: t.buttonShadow });
+                    }}
+                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                  >
+                    Reset to theme defaults
+                  </button>
+                )}
               </div>
             </details>
 
@@ -2717,6 +2806,17 @@ export default function WebsiteEditor() {
                     <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
                   </label>
                 </div>
+                {settings.themeId && (
+                  <button
+                    onClick={() => {
+                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
+                      if (t) patchSettings({ cardRadius: t.cardRadius, cardShadow: t.cardShadow, cardBorder: t.cardBorder });
+                    }}
+                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                  >
+                    Reset to theme defaults
+                  </button>
+                )}
               </div>
             </details>
 
@@ -2726,28 +2826,41 @@ export default function WebsiteEditor() {
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Forms</span>
                 <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
               </summary>
-              <div className="px-3 pb-3">
-                <label className="text-[10px] text-muted-foreground block mb-1">Input Shape</label>
-                <div className="flex gap-1">
-                  {([
-                    { label: "Pill", value: "9999px" },
-                    { label: "Round", value: "8px" },
-                    { label: "Slight", value: "4px" },
-                    { label: "Sharp", value: "0px" },
-                  ] as const).map(({ label, value }) => {
-                    const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
-                    const current = settings.inputRadius ?? activeTheme?.inputRadius ?? "8px";
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => patchSettings({ inputRadius: value })}
-                        className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+              <div className="px-3 pb-3 space-y-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Input Shape</label>
+                  <div className="flex gap-1">
+                    {([
+                      { label: "Pill", value: "9999px" },
+                      { label: "Round", value: "8px" },
+                      { label: "Slight", value: "4px" },
+                      { label: "Sharp", value: "0px" },
+                    ] as const).map(({ label, value }) => {
+                      const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                      const current = settings.inputRadius ?? activeTheme?.inputRadius ?? "8px";
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => patchSettings({ inputRadius: value })}
+                          className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+                {settings.themeId && (
+                  <button
+                    onClick={() => {
+                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
+                      if (t) patchSettings({ inputRadius: t.inputRadius });
+                    }}
+                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                  >
+                    Reset to theme defaults
+                  </button>
+                )}
               </div>
             </details>
 
@@ -2785,6 +2898,41 @@ export default function WebsiteEditor() {
                     className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
                   />
                 </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground flex-1">Footer Text</label>
+                  <input
+                    type="color"
+                    value={settings.footerTextColor ?? "#ffffff"}
+                    onChange={e => patchSettings({ footerTextColor: e.target.value })}
+                    className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground flex-1">Header BG</label>
+                  <input
+                    type="color"
+                    value={settings.headerBgColor ?? settings.bgColor ?? "#ffffff"}
+                    onChange={e => patchSettings({ headerBgColor: e.target.value })}
+                    className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground flex-1">Header Text</label>
+                  <input
+                    type="color"
+                    value={settings.headerTextColor ?? settings.textColor ?? "#111111"}
+                    onChange={e => patchSettings({ headerTextColor: e.target.value })}
+                    className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </div>
+                {settings.themeId && (
+                  <button
+                    onClick={() => patchSettings({ footerBgColor: undefined, footerTextColor: undefined, headerBgColor: undefined, headerTextColor: undefined })}
+                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                  >
+                    Reset to theme defaults
+                  </button>
+                )}
               </div>
             </details>
 
