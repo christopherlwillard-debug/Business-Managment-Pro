@@ -155,6 +155,7 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
           {isEditing ? (
             <>
               <input
+                data-edit-field="heading"
                 className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-1 w-full"
                 style={textStyleToCSS(content.headingStyle)}
                 value={content.heading}
@@ -166,6 +167,7 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
                 onChange={s => update({ headingStyle: s })}
               />
               <textarea
+                data-edit-field="body"
                 className="text-gray-600 dark:text-gray-300 bg-transparent border border-gray-200 focus:border-blue-500 outline-none resize-none w-full rounded p-2 text-sm leading-relaxed mt-1"
                 style={textStyleToCSS(content.bodyStyle)}
                 value={content.body}
@@ -186,12 +188,14 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
           ) : (
             <>
               <h2
+                data-edit-field="heading"
                 className="text-3xl font-bold text-gray-900 dark:text-white mb-4"
                 style={textStyleToCSS(content.headingStyle)}
               >
                 {content.heading}
               </h2>
               <p
+                data-edit-field="body"
                 className="text-gray-600 dark:text-gray-300 leading-relaxed"
                 style={textStyleToCSS(content.bodyStyle)}
               >

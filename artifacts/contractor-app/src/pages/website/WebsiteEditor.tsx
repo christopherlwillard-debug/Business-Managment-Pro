@@ -370,9 +370,10 @@ export default function WebsiteEditor() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
-  const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | undefined>(undefined);
+  const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | null | undefined>(undefined);
   const pickerShownRef = useRef(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
+  const pendingFocusFieldRef = useRef<string | null>(null);
   const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
   const [faviconUploading, setFaviconUploading] = useState(false);
 
@@ -425,6 +426,26 @@ export default function WebsiteEditor() {
     if (!activeSection || !sidebarListRef.current) return;
     const el = sidebarListRef.current.querySelector(`[data-section-id="${activeSection}"]`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (!activeSection) return;
+    const field = pendingFocusFieldRef.current;
+    const timer = setTimeout(() => {
+      const sectionEl = document.querySelector(`[data-section-canvas-id="${activeSection}"]`);
+      if (!sectionEl) return;
+      let target: HTMLElement | null = null;
+      if (field) {
+        target = sectionEl.querySelector(`[data-edit-field="${field}"]`) as HTMLElement | null;
+        if (target && !["INPUT", "TEXTAREA"].includes(target.tagName)) target = null;
+      }
+      if (!target) {
+        target = sectionEl.querySelector("input, textarea") as HTMLElement | null;
+      }
+      if (target) (target as HTMLInputElement).focus();
+      pendingFocusFieldRef.current = null;
+    }, 30);
+    return () => clearTimeout(timer);
   }, [activeSection]);
 
   useEffect(() => {
@@ -1151,7 +1172,9 @@ export default function WebsiteEditor() {
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     const afterId = insertAfterSectionId;
-    if (afterId !== undefined) {
+    if (afterId === null) {
+      updatePageSections([newSection, ...sections].map((s, i) => ({ ...s, order: i })));
+    } else if (afterId !== undefined) {
       const idx = sections.findIndex(s => s.id === afterId);
       if (idx >= 0) {
         const inserted = [...sections.slice(0, idx + 1), newSection, ...sections.slice(idx + 1)];
@@ -1325,12 +1348,22 @@ export default function WebsiteEditor() {
       return (
         <div
           key={s.id}
+          data-section-canvas-id={s.id}
           className={`group/sec relative cursor-pointer ${
             isActive
               ? "ring-2 ring-inset ring-primary/60"
               : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
           }`}
-          onClick={e => { e.stopPropagation(); setActiveSection(s.id); }}
+          onClick={e => {
+            const tgt = e.target as HTMLElement;
+            if (isActive && tgt.closest("input, textarea, select, button, a[href], [role=button]")) return;
+            e.stopPropagation();
+            if (!isActive) {
+              const fieldEl = tgt.closest("[data-edit-field]") as HTMLElement | null;
+              pendingFocusFieldRef.current = fieldEl?.dataset.editField ?? null;
+              setActiveSection(s.id);
+            }
+          }}
         >
           {/* Active label badge */}
           {isActive && (
@@ -1374,6 +1407,17 @@ export default function WebsiteEditor() {
               ><Copy className="w-3.5 h-3.5" /></button>
               <button
                 type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setInsertAfterSectionId(s.id);
+                  setShowAddSection(true);
+                }}
+                title="Add section below"
+                className="p-1 rounded text-white hover:bg-white/20 transition-colors"
+              ><Plus className="w-3.5 h-3.5" /></button>
+              <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+              <button
+                type="button"
                 onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
                 title="Delete section"
                 className="p-1 rounded text-red-300 hover:bg-red-500/20 transition-colors"
@@ -1385,7 +1429,7 @@ export default function WebsiteEditor() {
       );
     }
 
-    function addBetween(afterSectionId: string | undefined, key: string) {
+    function addBetween(afterSectionId: string | null | undefined, key: string) {
       return (
         <div
           key={key}
@@ -1421,7 +1465,7 @@ export default function WebsiteEditor() {
           </div>
         )}
         {enabled.flatMap((s, idx) => [
-          addBetween(idx === 0 ? headerSec?.id : enabled[idx - 1]?.id, `ins-${idx}`),
+          addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : enabled[idx - 1]?.id, `ins-${idx}`),
           renderWrapped(s, { isFirst: idx === 0, isLast: idx === enabled.length - 1 }),
         ])}
         {enabled.length > 0 && addBetween(enabled[enabled.length - 1]?.id, "ins-end")}

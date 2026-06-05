@@ -49,6 +49,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         isEditing={isEditing}
       >
         <input
+          data-edit-field="headline"
           className="w-full text-center text-4xl font-bold bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
           style={headlineCSS}
           value={content.headline}
@@ -68,6 +69,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         />
         <div className="mb-4" />
         <input
+          data-edit-field="subheadline"
           className="w-full text-center text-lg bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
           style={subheadlineCSS}
           value={content.subheadline}
@@ -87,6 +89,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         />
         <div className="mb-6" />
         <input
+          data-edit-field="ctaLabel"
           className="inline-block text-sm font-semibold px-6 py-3 rounded-full bg-white/20 border border-white/40 focus:border-white outline-none text-center placeholder-white/40"
           value={content.ctaLabel}
           placeholder="Button label"
@@ -112,18 +115,21 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
       isEditing={isEditing}
     >
       <h1
+        data-edit-field="headline"
         className="text-4xl md:text-5xl font-bold mb-4 leading-tight"
         style={headlineCSS}
       >
         {content.headline}
       </h1>
       <p
+        data-edit-field="subheadline"
         className="text-lg md:text-xl text-white/80 mb-8 max-w-2xl mx-auto"
         style={subheadlineCSS}
       >
         {content.subheadline}
       </p>
       <a
+        data-edit-field="ctaLabel"
         href={ctaHref}
         target={ctaTarget}
         rel={ctaRel}

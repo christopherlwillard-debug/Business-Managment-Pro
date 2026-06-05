@@ -50,12 +50,13 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
       <div className="max-w-5xl mx-auto">
         {isEditing ? (
           <input
+            data-edit-field="heading"
             className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-10 w-full"
             value={content.heading}
             onChange={e => update({ heading: e.target.value })}
           />
         ) : (
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-10 text-center">{content.heading}</h2>
+          <h2 data-edit-field="heading" className="text-3xl font-bold text-gray-900 dark:text-white mb-10 text-center">{content.heading}</h2>
         )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {content.items.map(item => (
