@@ -9,7 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
-  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2,
+  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -331,6 +331,7 @@ export default function WebsiteEditor() {
   const [pendingTemplate, setPendingTemplate] = useState<WebsiteTemplate | null>(null);
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
+  const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
   const pickerShownRef = useRef(false);
   const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
@@ -554,6 +555,29 @@ export default function WebsiteEditor() {
     isDirtyRef.current = true;
     setLocalSections(newSections);
     setActiveSection(dup.id);
+  }
+
+  const CORE_SECTION_TYPES = new Set(["hero", "services", "about", "contact", "footer", "portfolio", "deposit"]);
+
+  function handleDeleteSectionClick(id: string) {
+    const sec = sections.find(s => s.id === id);
+    if (!sec) return;
+    if (CORE_SECTION_TYPES.has(sec.type)) {
+      setDeleteSectionConfirm(id);
+    } else {
+      doDeleteSection(id);
+    }
+  }
+
+  function doDeleteSection(id: string) {
+    const newSections = sections
+      .filter(s => s.id !== id)
+      .map((s, i) => ({ ...s, order: i }));
+    history.pushSnapshot({ sections, settings });
+    isDirtyRef.current = true;
+    setLocalSections(newSections);
+    setActiveSection(null);
+    setDeleteSectionConfirm(null);
   }
 
   async function handleSectionBgUpload(sectionId: string, file: File) {
@@ -1043,6 +1067,15 @@ export default function WebsiteEditor() {
                   <Copy className="w-3 h-3" />
                   Duplicate
                 </button>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
+                  title="Delete section"
+                  className="flex items-center gap-1 bg-destructive/90 text-destructive-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-destructive transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete
+                </button>
               </div>
             )}
             {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
@@ -1105,6 +1138,25 @@ export default function WebsiteEditor() {
             onClick={() => pendingTemplate && handleApplyTemplate(pendingTemplate, activeBusiness ? { phone: (activeBusiness as any).phone, email: (activeBusiness as any).email, licenseNumber: (activeBusiness as any).licenseNumber, name: activeBusiness.name } : undefined)}
           >
             {applyingTemplate ? "Applying…" : "Apply Template"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <AlertDialog open={!!deleteSectionConfirm} onOpenChange={v => { if (!v) setDeleteSectionConfirm(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete "{deleteSectionConfirm ? SECTION_LABELS[sections.find(s => s.id === deleteSectionConfirm)?.type ?? ""] ?? "Section" : "Section"}"?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This section will be removed from your website. You can recover it with Ctrl+Z (undo).
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => deleteSectionConfirm && doDeleteSection(deleteSectionConfirm)}
+          >
+            Delete Section
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
