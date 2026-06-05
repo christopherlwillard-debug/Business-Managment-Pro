@@ -1,0 +1,139 @@
+What Replit is telling you is actually useful.
+
+It isn’t saying “I can’t do those things.”
+
+It’s saying “I’m breaking the work into phases and deliberately not building those features in this ticket.”
+
+Looking at your screenshots:
+
+Phase 1
+
+✅ Section backgrounds
+✅ Background images
+✅ Gradients
+✅ Overlays
+✅ Padding and margins
+✅ Global theme system
+✅ Colors
+✅ Fonts
+✅ Favicon
+✅ Basic styling framework
+
+Phase 2
+
+🚧 Rich text editing
+🚧 Button customization
+🚧 Image controls
+🚧 Editable forms
+
+Phase 3
+
+🚧 Templates
+
+Still Missing
+
+❌ Multi-column layouts
+❌ Drag-and-drop columns
+❌ Undo/Redo
+❌ Advanced animations
+❌ Video backgrounds
+
+⸻
+
+The issue is that Replit Agent is acting like a project manager and scoping features out to keep each change manageable.
+
+Instead of asking:
+
+Add customization features
+
+Ask:
+
+Ignore previous project phases and scope limitations.
+
+Implement all currently out-of-scope features immediately.
+
+Specifically:
+
+1. Multi-column drag-and-drop layouts
+
+* 1 to 6 columns
+* Resizable column widths
+* Nest blocks inside columns
+* Mobile responsive stacking
+
+2. Form Builder
+
+* Add field
+* Delete field
+* Reorder field
+* Text input
+* Email
+* Phone
+* Dropdown
+* Checkbox
+* Radio buttons
+* Text area
+* Required toggle
+* Placeholder text
+* Submission storage
+* Email notifications
+
+3. Undo/Redo
+
+* Full editor history
+* Ctrl+Z
+* Ctrl+Shift+Z
+* Restore deleted sections
+
+4. Advanced Media
+
+* Video backgrounds
+* YouTube embeds
+* Image galleries
+* Before/After sliders
+
+5. Website Builder Enhancements
+
+* Duplicate section
+* Save reusable section
+* Global components
+* Layer manager
+* Navigator panel
+
+Do not create a new phase.
+Implement these features now using the existing architecture.
+
+⸻
+
+If I were building the product you’re describing, I’d actually push Replit toward these features next, in this order:
+
+Highest Priority
+
+1. Editable forms
+2. Image uploads
+3. Background images
+4. Multi-column layouts
+
+Without those, it still feels like a simple page editor.
+
+Second Priority
+
+5. Templates
+6. Theme system
+7. Reusable sections
+
+Third Priority
+
+8. Undo/redo
+9. Animations
+10. Video backgrounds
+
+Honestly, if you get:
+
+* editable forms,
+* background images,
+* column layouts,
+* templates,
+* and a global theme system,
+
+you’ll be about 80% of the way to a basic Wix/ZenBusiness competitor. The other stuff is nice, but those are the features users immediately notice.
