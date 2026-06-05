@@ -31,6 +31,7 @@ import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { useEditorHistory } from "./useEditorHistory";
+import { nanoid } from "nanoid";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -546,13 +547,13 @@ export default function WebsiteEditor() {
     const sec = sections.find(s => s.id === id);
     if (!sec) return;
     const idx = sections.indexOf(sec);
-    const newId = Math.random().toString(36).slice(2, 9);
-    const dup: Section = { ...JSON.parse(JSON.stringify(sec)), id: newId };
-    const newSections = [...sections.slice(0, idx + 1), dup, ...sections.slice(idx + 1)];
+    const dup: Section = { ...JSON.parse(JSON.stringify(sec)), id: nanoid() };
+    const inserted = [...sections.slice(0, idx + 1), dup, ...sections.slice(idx + 1)];
+    const newSections = inserted.map((s, i) => ({ ...s, order: i }));
     history.pushSnapshot({ sections, settings });
     isDirtyRef.current = true;
     setLocalSections(newSections);
-    setActiveSection(newId);
+    setActiveSection(dup.id);
   }
 
   async function handleSectionBgUpload(sectionId: string, file: File) {
@@ -560,6 +561,7 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
+    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSections(sections.map(s =>
       s.id === sectionId ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: blobUrl, bgType: "image" as const } } : s
@@ -630,6 +632,7 @@ export default function WebsiteEditor() {
     setLogoUploading(true);
     const blobUrl = URL.createObjectURL(file);
     const settingsAtStart = settings;
+    history.pushSnapshot({ sections, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSettings({ ...settingsAtStart, logoUrl: blobUrl } as SiteSettings);
     try {
@@ -670,6 +673,7 @@ export default function WebsiteEditor() {
     setFaviconUploading(true);
     const blobUrl = URL.createObjectURL(file);
     const settingsAtStart = settings;
+    history.pushSnapshot({ sections, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSettings({ ...settingsAtStart, faviconUrl: blobUrl });
     try {
@@ -711,6 +715,7 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
+    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSections(sectionsAtStart.map(s =>
       s.type === "about" ? { ...s, content: { ...s.content, photoUrl: blobUrl } } : s
@@ -790,6 +795,7 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
+    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSections(patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoUrl: blobUrl }));
     try {
@@ -837,6 +843,7 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
+    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSections(sectionsAtStart.map(s =>
       s.id === sectionId
