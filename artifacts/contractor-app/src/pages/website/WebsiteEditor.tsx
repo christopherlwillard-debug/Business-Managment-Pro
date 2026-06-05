@@ -45,6 +45,7 @@ import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
+import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
 import { useEditorHistory } from "./useEditorHistory";
 import { nanoid } from "nanoid";
 
@@ -311,6 +312,60 @@ function CustomDomainPanel({
 }
 
 
+function PageTemplatePicker({
+  onSelect,
+  onBlank,
+}: {
+  onSelect: (t: PageTemplate) => void;
+  onBlank: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 overflow-y-auto">
+      <div className="max-w-2xl w-full">
+        <div className="text-center mb-8">
+          <LayoutTemplate className="w-10 h-10 text-primary mx-auto mb-3" />
+          <h1 className="text-2xl font-bold text-foreground">Choose a page template</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Pick a starting point — every section is editable after selection.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {PAGE_TEMPLATES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => onSelect(t)}
+              className="text-left rounded-xl border-2 border-border hover:border-primary hover:shadow-md transition-all p-4 group"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">{t.emoji}</span>
+                <p className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">{t.name}</p>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3 leading-snug">{t.description}</p>
+              <div className="flex flex-wrap gap-1">
+                {t.sectionSummary.map((s, i) => (
+                  <span key={i} className="inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground rounded px-1.5 py-0.5">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div className="text-center space-y-2">
+          <button
+            onClick={onBlank}
+            className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+          >
+            Start with a blank page instead
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TemplatePicker({
   businessName,
   isReset,
@@ -421,6 +476,7 @@ export default function WebsiteEditor() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [pickerIsReset, setPickerIsReset] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState<WebsiteTemplate | null>(null);
+  const [showPageTemplatePicker, setShowPageTemplatePicker] = useState(false);
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
@@ -1416,10 +1472,10 @@ export default function WebsiteEditor() {
     } : p);
   }
 
-  function addPage(name: string, customSlug?: string) {
+  function addPage(name: string, customSlug?: string, prebuiltSections?: Section[]) {
     const slug = (customSlug ?? name).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
     const id = "page-" + Math.random().toString(36).slice(2, 9);
-    const newPage: SitePage = { id, name, slug, sections: [] };
+    const newPage: SitePage = { id, name, slug, sections: prebuiltSections ?? [] };
     const siteSlug = activeBusiness?.slug ?? "";
     const newLink = { id: nanoid(), label: name, href: `/site/${siteSlug}/${slug}`, pageId: id };
     history.pushSnapshot({ sections: pagesRef.current, settings });
@@ -1431,6 +1487,19 @@ export default function WebsiteEditor() {
     });
     setActivePageId(id);
     setActiveSection(null);
+  }
+
+  function addPageFromTemplate(tpl: PageTemplate) {
+    const sections: Section[] = tpl.sections().map((s, i) => ({
+      id: "s-" + Math.random().toString(36).slice(2, 9),
+      type: s.type,
+      enabled: s.enabled,
+      order: i,
+      content: s.content,
+      blockStyle: s.blockStyle as BlockStyle | undefined,
+    }));
+    addPage(tpl.name, tpl.defaultSlug, sections);
+    setShowPageTemplatePicker(false);
   }
 
   function deletePage(pageId: string) {
@@ -1726,6 +1795,12 @@ export default function WebsiteEditor() {
 
   return (
     <>
+    {showPageTemplatePicker && (
+      <PageTemplatePicker
+        onSelect={addPageFromTemplate}
+        onBlank={() => { setShowPageTemplatePicker(false); setShowAddPage(true); }}
+      />
+    )}
     {showTemplatePicker && (
       <TemplatePicker
         businessName={activeBusiness?.name ?? "your business"}
@@ -1967,7 +2042,7 @@ export default function WebsiteEditor() {
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Pages</p>
               <button
                 type="button"
-                onClick={() => setShowAddPage(v => !v)}
+                onClick={() => { setShowAddPage(false); setShowPageTemplatePicker(true); }}
                 className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 title="Add page"
               >
