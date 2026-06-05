@@ -497,8 +497,12 @@ export default function WebsiteEditor() {
   const pendingFocusFieldRef = useRef<string | null>(null);
   const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
   const [faviconUploading, setFaviconUploading] = useState(false);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(
+    () => localStorage.getItem("website-editor-left-collapsed") === "true"
+  );
+  const [rightCollapsed, setRightCollapsed] = useState(
+    () => localStorage.getItem("website-editor-right-collapsed") === "true"
+  );
   const [focusMode, setFocusMode] = useState(false);
   const preFocusSidebarState = useRef<{ left: boolean; right: boolean } | null>(null);
   const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
@@ -507,6 +511,15 @@ export default function WebsiteEditor() {
     setViewport(v);
     localStorage.setItem("website-editor-viewport", v);
   }
+
+  useEffect(() => {
+    localStorage.setItem("website-editor-left-collapsed", String(leftCollapsed));
+  }, [leftCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem("website-editor-right-collapsed", String(rightCollapsed));
+  }, [rightCollapsed]);
+
   const isDirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
