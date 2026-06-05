@@ -925,4 +925,20 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
   }
 }));
 
+router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
+  const { slug } = req.params;
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select()
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, biz.id));
+
+  if (!config) return res.status(404).json({ error: "No website config" });
+
+  const normalizedSections = normalizeSections(config.sections as SectionRow[]);
+  res.json({ ...config, sections: normalizedSections, businessName: biz.name, businessSlug: biz.slug });
+}));
+
 export { router as websiteRouter, publicRouter as websitePublicRouter };

@@ -97,10 +97,16 @@ export default function PublicSite() {
   const [paymentSuccessDismissed, setPaymentSuccessDismissed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const paymentSuccess = new URLSearchParams(window.location.search).get("payment") === "success";
+  const isDraftPreview = new URLSearchParams(window.location.search).get("draft") === "1";
 
   const { data, isLoading, isError } = useQuery<PublishedConfig>({
-    queryKey: ["public-site", slug ?? `__host__${window.location.host}`],
+    queryKey: ["public-site", slug ?? `__host__${window.location.host}`, isDraftPreview],
     queryFn: async () => {
+      if (isDraftPreview && slug) {
+        const res = await fetch(`${BASE}/api/website/preview-by-slug/${slug}`, { credentials: "include" });
+        if (!res.ok) throw new Error("Not found");
+        return res.json();
+      }
       if (slug) {
         const res = await fetch(`${BASE}/api/public/site/${slug}`);
         if (!res.ok) throw new Error("Not found");
@@ -118,10 +124,10 @@ export default function PublicSite() {
   const trackedRef = useRef(false);
   useEffect(() => {
     const s = data?.businessSlug;
-    if (!s || trackedRef.current) return;
+    if (!s || trackedRef.current || isDraftPreview) return;
     trackedRef.current = true;
     fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
-  }, [data?.businessSlug]);
+  }, [data?.businessSlug, isDraftPreview]);
 
   async function handleContactSubmit(formData: Record<string, unknown>) {
     const fieldValues = (formData.fieldValues ?? {}) as Record<string, string>;

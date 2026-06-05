@@ -11,7 +11,7 @@ import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette,
-  ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText,
+  ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -504,6 +504,7 @@ export default function WebsiteEditor() {
     () => localStorage.getItem("website-editor-right-collapsed") === "true"
   );
   const [focusMode, setFocusMode] = useState(false);
+  const [showFullscreenPreview, setShowFullscreenPreview] = useState(false);
   const preFocusSidebarState = useRef<{ left: boolean; right: boolean } | null>(null);
   const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
 
@@ -560,6 +561,15 @@ export default function WebsiteEditor() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!showFullscreenPreview) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowFullscreenPreview(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showFullscreenPreview]);
 
   useEffect(() => {
     if (!activeSection || !sidebarListRef.current) return;
@@ -1642,6 +1652,11 @@ export default function WebsiteEditor() {
   }
 
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
+  const previewUrl = activeBusiness
+    ? isPublished
+      ? publicUrl
+      : `${window.location.origin}${BASE}/site/${activeBusiness.slug}?draft=1`
+    : "";
 
   function renderSections() {
     const homePageSections = pages.find(p => p.id === "home")?.sections ?? sections;
@@ -1939,6 +1954,47 @@ export default function WebsiteEditor() {
         </div>
       </div>
     )}
+    {showFullscreenPreview && previewUrl && (
+      <div className="fixed inset-0 z-[100] flex flex-col bg-black">
+        <div className="flex items-center justify-between px-4 py-2 bg-black/80 backdrop-blur-sm border-b border-white/10 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-white/60" />
+            <span className="text-sm text-white/80 font-medium truncate max-w-sm">{publicUrl}</span>
+            {isPublished
+              ? <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-medium">Live</span>
+              : <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-medium">Draft preview</span>
+            }
+          </div>
+          <div className="flex items-center gap-2">
+            {isPublished && (
+              <a
+                href={publicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Open in tab</span>
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowFullscreenPreview(false)}
+              title="Close preview (Esc)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <X className="w-4 h-4" />
+              <span>Close</span>
+            </button>
+          </div>
+        </div>
+        <iframe
+          src={previewUrl}
+          className="flex-1 w-full border-0"
+          title="Site preview"
+        />
+      </div>
+    )}
     <div className="flex flex-col h-full">
       {/* Top bar — compact single row */}
       <div className="flex-shrink-0 flex items-center gap-2 px-3 border-b border-border bg-card h-12">
@@ -2045,13 +2101,12 @@ export default function WebsiteEditor() {
           {focusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
 
-        {/* Preview — open public site in new tab */}
-        {publicUrl && (
-          <a
-            href={publicUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={isPublished ? "Preview live site" : "Preview site (not yet published)"}
+        {/* Preview — full-screen overlay */}
+        {previewUrl && (
+          <button
+            type="button"
+            onClick={() => setShowFullscreenPreview(true)}
+            title={isPublished ? "Preview live site (full screen)" : "Preview site full screen (draft)"}
             className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
               isPublished
                 ? "border-green-500/40 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40"
@@ -2060,8 +2115,7 @@ export default function WebsiteEditor() {
           >
             <Eye className="w-3.5 h-3.5" />
             <span className="hidden md:inline">{isPublished ? "Live" : "Preview"}</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
+          </button>
         )}
         <button
           onClick={() => saveMutation.mutate()}
