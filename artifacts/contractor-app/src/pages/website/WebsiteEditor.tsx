@@ -9,7 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
-  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2,
+  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -544,6 +544,19 @@ export default function WebsiteEditor() {
     }
   }
 
+  function moveSection(id: string, direction: "up" | "down") {
+    const enabled = sections.filter(s => s.enabled);
+    const enabledIdx = enabled.findIndex(s => s.id === id);
+    if (direction === "up" && enabledIdx <= 0) return;
+    if (direction === "down" && enabledIdx >= enabled.length - 1) return;
+    const swapId = enabled[direction === "up" ? enabledIdx - 1 : enabledIdx + 1].id;
+    const idxA = sections.findIndex(s => s.id === id);
+    const idxB = sections.findIndex(s => s.id === swapId);
+    history.pushSnapshot({ sections, settings });
+    isDirtyRef.current = true;
+    setLocalSections(arrayMove(sections, idxA, idxB));
+  }
+
   function duplicateSection(id: string) {
     const sec = sections.find(s => s.id === id);
     if (!sec) return;
@@ -1053,11 +1066,34 @@ export default function WebsiteEditor() {
                 : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
             }`}
           >
-            {activeSection === s.id && (
+            {activeSection === s.id && (() => {
+              const enabledSections = sections.filter(sec => sec.enabled);
+              const enabledIdx = enabledSections.findIndex(sec => sec.id === s.id);
+              const isFirst = enabledIdx === 0;
+              const isLast = enabledIdx === enabledSections.length - 1;
+              return (
               <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5">
                 <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded">
                   {SECTION_LABELS[s.type]}
                 </span>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); moveSection(s.id, "up"); }}
+                  disabled={isFirst}
+                  title="Move up"
+                  className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isFirst ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
+                >
+                  <ChevronUp className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); moveSection(s.id, "down"); }}
+                  disabled={isLast}
+                  title="Move down"
+                  className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isLast ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </button>
                 <button
                   type="button"
                   onClick={e => { e.stopPropagation(); duplicateSection(s.id); }}
@@ -1077,7 +1113,8 @@ export default function WebsiteEditor() {
                   Delete
                 </button>
               </div>
-            )}
+              );
+            })()}
             {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
               onAboutPhotoUpload: handleAboutPhotoUpload,
               isAboutPhotoUploading: aboutPhotoUploading,
