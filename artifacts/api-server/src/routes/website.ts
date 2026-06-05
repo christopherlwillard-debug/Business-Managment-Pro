@@ -909,7 +909,15 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
   const { displayName, folderId } = req.body as { displayName?: string | null; folderId?: number | null };
   const updateValues: Record<string, unknown> = {};
   if (displayName !== undefined) updateValues.displayName = displayName || null;
-  if (folderId !== undefined) updateValues.folderId = folderId ?? null;
+  if (folderId !== undefined) {
+    if (folderId !== null) {
+      const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
+        .from(websiteMediaFoldersTable)
+        .where(and(eq(websiteMediaFoldersTable.id, folderId), eq(websiteMediaFoldersTable.businessId, businessId)));
+      if (!folder) return res.status(400).json({ error: "Invalid folder" });
+    }
+    updateValues.folderId = folderId ?? null;
+  }
   if (Object.keys(updateValues).length === 0) return res.status(400).json({ error: "Nothing to update" });
   const [updated] = await db
     .update(websiteMediaTable)
@@ -994,6 +1002,39 @@ router.get("/media/usage-counts", wrapAsync(async (req, res) => {
     counts[item.id] = count;
   }
   res.json(counts);
+}));
+
+// ── Media usage details (which sections use this image) ────────────────────
+
+router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const id = parseInt(req.params.id);
+  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
+
+  const [item] = await db.select({ url: websiteMediaTable.url })
+    .from(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
+  if (!item) return res.status(404).json({ error: "Not found" });
+
+  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  const locations: Array<{ sectionId: string; sectionType: string }> = [];
+  for (const config of configs) {
+    const sections = config.sections as Array<{ id: string; type: string; content: unknown }>;
+    if (Array.isArray(sections)) {
+      for (const section of sections) {
+        if (JSON.stringify(section.content ?? {}).includes(item.url)) {
+          locations.push({ sectionId: section.id, sectionType: section.type });
+        }
+      }
+    }
+    if (JSON.stringify(config.settings ?? {}).includes(item.url)) {
+      locations.push({ sectionId: "settings", sectionType: "settings" });
+    }
+  }
+  res.json({ locations, total: locations.length });
 }));
 
 // ── Media folders ──────────────────────────────────────────────────────────

@@ -2,10 +2,31 @@ import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ImagePlus, Loader2, Trash2, X, Check, Images, Search, LayoutGrid, List,
-  Folder, FolderPlus, FolderOpen, Pencil, AlertTriangle, RefreshCw,
+  Folder, FolderPlus, FolderOpen, Pencil, AlertTriangle, RefreshCw, MapPin,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const SECTION_LABELS: Record<string, string> = {
+  header: "Header",
+  hero: "Hero Banner",
+  services: "Services",
+  about: "About Us",
+  contact: "Contact Form",
+  footer: "Footer",
+  portfolio: "Portfolio",
+  deposit: "Pay Deposit",
+  columns: "Columns",
+  testimonials: "Testimonials",
+  faq: "FAQ",
+  cta: "CTA Banner",
+  stats: "Stats / Numbers",
+  content: "Content Block",
+  row: "Row",
+  text: "Text Block",
+  gallery: "Image Gallery",
+  settings: "Site settings (logo/favicon)",
+};
 
 interface MediaItem {
   id: number;
@@ -22,6 +43,11 @@ interface MediaFolder {
   name: string;
   createdAt: string;
   itemCount: number;
+}
+
+interface UsageLocation {
+  sectionId: string;
+  sectionType: string;
 }
 
 interface MediaLibraryProps {
@@ -55,7 +81,6 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   const [folderFilter, setFolderFilter] = useState<number | "all">("all");
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-
   const [detailItem, setDetailItem] = useState<MediaItem | null>(null);
 
   const [renamingId, setRenamingId] = useState<number | null>(null);
@@ -71,13 +96,18 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   const [replacing, setReplacing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
-  const [dragOver, setDragOver] = useState(false);
+
+  const [dragOverContent, setDragOverContent] = useState(false);
+  const [dragOverFolderId, setDragOverFolderId] = useState<number | "all" | null>(null);
+  const isDraggingMediaRef = useRef(false);
 
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   const [detailRenaming, setDetailRenaming] = useState(false);
   const [detailRenameValue, setDetailRenameValue] = useState("");
+
+  // ── Queries ───────────────────────────────────────────────────────────────
 
   const { data: items = [], isLoading } = useQuery<MediaItem[]>({
     queryKey: ["website-media", businessId],
@@ -109,13 +139,25 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     enabled: !!businessId,
   });
 
+  const { data: usageDetails, isLoading: isLoadingDetails } = useQuery<{ locations: UsageLocation[]; total: number }>({
+    queryKey: ["website-media-usage-details", businessId, detailItem?.id],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/website/media/${detailItem!.id}/usage-details?businessId=${businessId}`, { credentials: "include" });
+      if (!res.ok) return { locations: [], total: 0 };
+      return res.json();
+    },
+    enabled: !!detailItem && mode === "browse" && !!businessId,
+  });
+
+  // ── Filtering ─────────────────────────────────────────────────────────────
+
   const filteredItems = useMemo(() => {
     return items.filter(item => {
-      if (folderFilter !== "all" && item.folderId !== folderFilter) return false;
       if (search) {
-        const label = displayLabel(item).toLowerCase();
-        if (!label.includes(search.toLowerCase())) return false;
+        // When searching, ignore folder filter — cross-folder search
+        return displayLabel(item).toLowerCase().includes(search.toLowerCase());
       }
+      if (folderFilter !== "all" && item.folderId !== folderFilter) return false;
       return true;
     });
   }, [items, folderFilter, search]);
@@ -132,6 +174,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     qc.invalidateQueries({ queryKey: ["website-media-folders", businessId] });
     qc.invalidateQueries({ queryKey: ["website-media-usage", businessId] });
   }
+
+  // ── Upload / Replace ──────────────────────────────────────────────────────
 
   async function handleUpload(files: FileList | File[]) {
     const fileArr = Array.from(files).filter(f => f.type.startsWith("image/"));
@@ -179,11 +223,14 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         body: JSON.stringify({ newUrl, newObjectPath: objectPath, newFilename: file.name }),
       });
       invalidateAll();
+      qc.invalidateQueries({ queryKey: ["website-media-usage-details", businessId, target.id] });
       setDetailItem(null);
     } finally {
       setReplacing(false);
     }
   }
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -251,7 +298,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         body: JSON.stringify({ name }),
       });
       if (!res.ok) throw new Error("Failed");
-      return res.json() as Promise<MediaFolder>;
+      return res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["website-media-folders", businessId] });
@@ -287,6 +334,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     },
   });
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   function toggleSelect(id: number) {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -300,13 +349,35 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     localStorage.setItem("media-view-mode", m);
   }
 
-  const selectedWithUsage = Array.from(selectedIds).filter(id => (usageCounts[id] ?? 0) > 0).length;
+  function handleItemDragStart(itemId: number, e: React.DragEvent) {
+    isDraggingMediaRef.current = true;
+    e.dataTransfer.setData("x-media-id", itemId.toString());
+    e.dataTransfer.effectAllowed = "move";
+  }
 
-  const currentFolderName = folderFilter === "all" ? null : folders.find(f => f.id === folderFilter)?.name;
+  function handleItemDragEnd() {
+    isDraggingMediaRef.current = false;
+    setDragOverFolderId(null);
+  }
+
+  function handleFolderDrop(e: React.DragEvent, targetFolderId: number | null) {
+    e.preventDefault();
+    setDragOverFolderId(null);
+    const itemIdStr = e.dataTransfer.getData("x-media-id");
+    if (itemIdStr) {
+      const itemId = parseInt(itemIdStr);
+      moveMutation.mutate({ id: itemId, folderId: targetFolderId });
+    }
+  }
+
+  const selectedWithUsage = Array.from(selectedIds).filter(id => (usageCounts[id] ?? 0) > 0).length;
+  const currentFolderName = folderFilter === "all" ? null : folders.find(f => f.id === folderFilter)?.name ?? null;
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
         <Images className="w-4 h-4 text-primary flex-shrink-0" />
         <span className="text-sm font-semibold text-foreground flex-shrink-0">
@@ -317,7 +388,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
           <input
             type="text"
-            placeholder="Search…"
+            placeholder="Search all images…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-6 pr-3 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-primary"
@@ -326,18 +397,12 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
         <div className="flex items-center gap-1 flex-shrink-0">
           <div className="flex border border-border rounded-md overflow-hidden">
-            <button
-              onClick={() => changeViewMode("grid")}
-              className={`p-1 transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              title="Grid"
-            >
+            <button onClick={() => changeViewMode("grid")}
+              className={`p-1 transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} title="Grid">
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => changeViewMode("list")}
-              className={`p-1 transition-colors ${viewMode === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-              title="List"
-            >
+            <button onClick={() => changeViewMode("list")}
+              className={`p-1 transition-colors ${viewMode === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`} title="List">
               <List className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -350,14 +415,14 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           </label>
 
           {onClose && (
-            <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground" title="Close">
+            <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground">
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
       </div>
 
-      {/* ── Bulk action bar ── */}
+      {/* Bulk bar */}
       {selectedIds.size > 0 && (
         <div className="flex items-center justify-between px-4 py-1.5 bg-primary/10 border-b border-primary/20 flex-shrink-0">
           <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
@@ -367,10 +432,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                 <AlertTriangle className="w-3 h-3" />{selectedWithUsage} in use
               </span>
             )}
-            <button
-              onClick={() => setBulkDeleteConfirm(true)}
-              className="flex items-center gap-1 px-2 py-0.5 bg-destructive text-destructive-foreground text-[11px] font-medium rounded hover:opacity-90"
-            >
+            <button onClick={() => setBulkDeleteConfirm(true)}
+              className="flex items-center gap-1 px-2 py-0.5 bg-destructive text-destructive-foreground text-[11px] font-medium rounded hover:opacity-90">
               <Trash2 className="w-3 h-3" />Delete
             </button>
             <button onClick={() => setSelectedIds(new Set())} className="text-[11px] text-muted-foreground hover:text-foreground">
@@ -380,13 +443,18 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         </div>
       )}
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div className="flex flex-1 min-h-0">
         {/* Folder sidebar */}
         <div className="w-36 flex-shrink-0 border-r border-border overflow-y-auto bg-muted/15 flex flex-col py-1.5">
+          {/* "All images" — also a drop target to remove from folder */}
           <button
             onClick={() => setFolderFilter("all")}
-            className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs transition-colors ${folderFilter === "all" ? "text-primary font-semibold bg-primary/10 rounded-r-lg mr-1" : "text-foreground hover:bg-muted/50"}`}
+            onDragOver={e => { e.preventDefault(); if (isDraggingMediaRef.current) setDragOverFolderId("all"); }}
+            onDragLeave={() => setDragOverFolderId(null)}
+            onDrop={e => handleFolderDrop(e, null)}
+            className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs transition-colors rounded-r-sm mr-1
+              ${dragOverFolderId === "all" ? "bg-primary/20 text-primary" : folderFilter === "all" ? "text-primary font-semibold bg-primary/10" : "text-foreground hover:bg-muted/50"}`}
           >
             <Images className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
             <span className="flex-1 truncate">All images</span>
@@ -416,28 +484,28 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                 <button
                   onClick={() => setFolderFilter(folder.id)}
                   onDoubleClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
-                  className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs transition-colors ${folderFilter === folder.id ? "text-primary font-semibold bg-primary/10 rounded-r-lg mr-1" : "text-foreground hover:bg-muted/50"}`}
+                  onDragOver={e => { e.preventDefault(); if (isDraggingMediaRef.current) setDragOverFolderId(folder.id); }}
+                  onDragLeave={() => setDragOverFolderId(null)}
+                  onDrop={e => handleFolderDrop(e, folder.id)}
+                  className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs transition-colors rounded-r-sm mr-1
+                    ${dragOverFolderId === folder.id ? "bg-primary/25 text-primary scale-[1.01]" : folderFilter === folder.id ? "text-primary font-semibold bg-primary/10" : "text-foreground hover:bg-muted/50"}`}
                 >
-                  {folderFilter === folder.id
+                  {dragOverFolderId === folder.id
                     ? <FolderOpen className="w-3.5 h-3.5 flex-shrink-0 text-primary" />
-                    : <Folder className="w-3.5 h-3.5 flex-shrink-0 opacity-60" />}
+                    : folderFilter === folder.id
+                      ? <FolderOpen className="w-3.5 h-3.5 flex-shrink-0 text-primary" />
+                      : <Folder className="w-3.5 h-3.5 flex-shrink-0 opacity-60" />}
                   <span className="flex-1 truncate">{folder.name}</span>
                   <span className="text-[10px] text-muted-foreground tabular-nums">{folder.itemCount}</span>
                 </button>
               )}
-              <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
-                <button
-                  onClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary"
-                  title="Rename folder"
-                >
+              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0">
+                <button onClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary" title="Rename">
                   <Pencil className="w-2.5 h-2.5" />
                 </button>
-                <button
-                  onClick={() => deleteFolderMutation.mutate(folder.id)}
-                  className="p-0.5 rounded text-muted-foreground hover:text-destructive"
-                  title="Delete folder"
-                >
+                <button onClick={() => deleteFolderMutation.mutate(folder.id)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-destructive" title="Delete">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -471,16 +539,24 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           </div>
         </div>
 
-        {/* Main area */}
+        {/* Main grid/list + detail panel */}
         <div className="flex flex-1 min-w-0 min-h-0">
-          {/* Grid / List */}
           <div
-            className={`flex-1 overflow-y-auto p-2.5 relative ${dragOver ? "bg-primary/5" : ""}`}
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
-            onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files) handleUpload(e.dataTransfer.files); }}
+            className={`flex-1 overflow-y-auto p-2.5 relative transition-colors ${dragOverContent ? "bg-primary/5" : ""}`}
+            onDragOver={e => {
+              e.preventDefault();
+              if (!isDraggingMediaRef.current) setDragOverContent(true);
+            }}
+            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverContent(false); }}
+            onDrop={e => {
+              e.preventDefault();
+              setDragOverContent(false);
+              if (!isDraggingMediaRef.current && e.dataTransfer.files.length > 0) {
+                handleUpload(e.dataTransfer.files);
+              }
+            }}
           >
-            {dragOver && (
+            {dragOverContent && !isDraggingMediaRef.current && (
               <div className="absolute inset-1 border-2 border-dashed border-primary rounded-xl pointer-events-none flex items-center justify-center z-10">
                 <p className="text-primary text-sm font-medium">Drop to upload</p>
               </div>
@@ -517,6 +593,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                     onDeleteRequest={() => setDeleteConfirm(item.id)}
                     onDeleteCancel={() => setDeleteConfirm(null)}
                     onDelete={() => deleteMutation.mutate(item.id)}
+                    onDragStart={e => handleItemDragStart(item.id, e)}
+                    onDragEnd={handleItemDragEnd}
                   />
                 ))}
               </div>
@@ -545,6 +623,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                     onRenameCancel={() => setRenamingId(null)}
                     onDelete={() => deleteMutation.mutate(item.id)}
                     onMoveToFolder={folderId => moveMutation.mutate({ id: item.id, folderId })}
+                    onDragStart={e => handleItemDragStart(item.id, e)}
+                    onDragEnd={handleItemDragEnd}
                   />
                 ))}
               </div>
@@ -555,7 +635,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           {detailItem && mode === "browse" && (
             <DetailPanel
               item={detailItem}
-              usageCount={usageCounts[detailItem.id] ?? 0}
+              usageDetails={usageDetails ?? null}
+              isLoadingDetails={isLoadingDetails}
               folders={folders}
               replacing={replacing}
               detailRenaming={detailRenaming}
@@ -583,7 +664,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               <div className="flex items-start gap-2 mb-3 p-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
                 <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                  {selectedWithUsage} image{selectedWithUsage > 1 ? "s are" : " is"} currently used on your site. Deleting will remove them from this library but existing published pages will still show the image.
+                  {selectedWithUsage} image{selectedWithUsage > 1 ? "s are" : " is"} used on your site. Deleting removes them from the library but existing published pages will still show them.
                 </p>
               </div>
             )}
@@ -603,9 +684,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       )}
 
       {/* Hidden replace file input */}
-      <input
-        ref={replaceInputRef}
-        type="file" accept="image/*" className="sr-only"
+      <input ref={replaceInputRef} type="file" accept="image/*" className="sr-only"
         onChange={e => {
           if (e.target.files?.[0] && detailItem) handleReplace(e.target.files[0], detailItem);
           e.target.value = "";
@@ -634,7 +713,7 @@ function EmptyState({ hasItems, search, folderName, onUpload }: {
       <div className="flex flex-col items-center justify-center h-40 text-center text-muted-foreground">
         <Folder className="w-8 h-8 mb-2 opacity-20" />
         <p className="text-sm font-medium">"{folderName}" is empty</p>
-        <p className="text-xs mt-0.5">Upload images or move some here</p>
+        <p className="text-xs mt-0.5">Upload images here, or drag an image from the grid onto this folder</p>
       </div>
     );
   }
@@ -643,10 +722,7 @@ function EmptyState({ hasItems, search, folderName, onUpload }: {
       <Images className="w-12 h-12 mb-3 opacity-20" />
       <p className="text-sm font-medium">No images yet</p>
       <p className="text-xs mt-1 max-w-[200px] leading-relaxed">Upload images once, then reuse them anywhere on your site</p>
-      <button
-        onClick={onUpload}
-        className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-medium hover:bg-primary/5 transition-colors"
-      >
+      <button onClick={onUpload} className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-medium hover:bg-primary/5 transition-colors">
         <ImagePlus className="w-3 h-3" />Upload your first image
       </button>
     </div>
@@ -656,21 +732,27 @@ function EmptyState({ hasItems, search, folderName, onUpload }: {
 function UsageBadge({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <span className="inline-flex items-center px-1 py-0 rounded text-[9px] font-semibold bg-blue-500 text-white leading-4" title={`Used in ${count} place${count > 1 ? "s" : ""}`}>
+    <span className="inline-flex items-center px-1 py-0 rounded text-[9px] font-semibold bg-blue-500 text-white leading-4"
+      title={`Used in ${count} section${count > 1 ? "s" : ""}`}>
       {count}
     </span>
   );
 }
 
-function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, deleting, mode, onActivate, onToggleSelect, onDeleteRequest, onDeleteCancel, onDelete }: {
+function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, deleting, mode,
+  onActivate, onToggleSelect, onDeleteRequest, onDeleteCancel, onDelete, onDragStart, onDragEnd }: {
   item: MediaItem; usageCount: number; selected: boolean; isActive: boolean;
   isDeleteConfirm: boolean; deleting: boolean; mode: string;
   onActivate: () => void; onToggleSelect: () => void;
   onDeleteRequest: () => void; onDeleteCancel: () => void; onDelete: () => void;
+  onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   return (
     <div
-      className={`group relative rounded-lg overflow-hidden border bg-muted/30 aspect-square cursor-pointer transition-all
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`group relative rounded-lg overflow-hidden border bg-muted/30 aspect-square cursor-grab active:cursor-grabbing transition-all
         ${isActive ? "border-primary ring-1 ring-primary" : selected ? "border-primary/60" : "border-border hover:border-muted-foreground/50"}`}
     >
       {isDeleteConfirm ? (
@@ -689,7 +771,6 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
         </div>
       ) : (
         <>
-          {/* Checkbox */}
           <button
             onClick={e => { e.stopPropagation(); onToggleSelect(); }}
             className={`absolute top-1 left-1 z-10 w-4 h-4 rounded border flex items-center justify-center transition-all
@@ -698,14 +779,12 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
             {selected && <Check className="w-2.5 h-2.5 text-white" />}
           </button>
 
-          {/* Usage badge */}
           {usageCount > 0 && (
             <div className="absolute top-1 right-1 z-10">
               <UsageBadge count={usageCount} />
             </div>
           )}
 
-          {/* Delete button */}
           <button
             onClick={e => { e.stopPropagation(); onDeleteRequest(); }}
             className="absolute bottom-1 right-1 z-10 p-0.5 rounded bg-black/50 text-white/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -714,8 +793,8 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
             <Trash2 className="w-3 h-3" />
           </button>
 
-          <button type="button" className="absolute inset-0 w-full h-full" onClick={onActivate}>
-            <img src={item.url} alt={displayLabel(item)} className="w-full h-full object-cover" />
+          <button type="button" className={`absolute inset-0 w-full h-full cursor-${mode === "select" ? "pointer" : "grab"}`} onClick={onActivate}>
+            <img src={item.url} alt={displayLabel(item)} className="w-full h-full object-cover" draggable={false} />
             {mode === "select" && (
               <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/20 transition-colors flex items-center justify-center">
                 <Check className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-lg transition-opacity" />
@@ -733,7 +812,8 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
 }
 
 function ListItem({ item, usageCount, selected, isActive, renamingId, renameValue, renameRef, folders, mode,
-  onActivate, onToggleSelect, onStartRename, onRenameChange, onRenameCommit, onRenameCancel, onDelete, onMoveToFolder }: {
+  onActivate, onToggleSelect, onStartRename, onRenameChange, onRenameCommit, onRenameCancel, onDelete, onMoveToFolder,
+  onDragStart, onDragEnd }: {
   item: MediaItem; usageCount: number; selected: boolean; isActive: boolean;
   renamingId: number | null; renameValue: string; renameRef: React.RefObject<HTMLInputElement>;
   folders: MediaFolder[]; mode: string;
@@ -741,12 +821,15 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
   onStartRename: () => void; onRenameChange: (v: string) => void;
   onRenameCommit: () => void; onRenameCancel: () => void;
   onDelete: () => void; onMoveToFolder: (folderId: number | null) => void;
+  onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const isRenaming = renamingId === item.id;
-
   return (
     <div
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg group cursor-pointer transition-colors
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg group cursor-grab active:cursor-grabbing transition-colors
         ${isActive ? "bg-primary/8 border border-primary/30" : selected ? "bg-primary/5" : "hover:bg-muted/50"}`}
       onClick={onActivate}
     >
@@ -758,7 +841,7 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
       </button>
 
       <div className="w-8 h-8 rounded overflow-hidden border border-border flex-shrink-0 bg-muted">
-        <img src={item.url} alt="" className="w-full h-full object-cover" />
+        <img src={item.url} alt="" className="w-full h-full object-cover" draggable={false} />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -780,13 +863,12 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
 
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <UsageBadge count={usageCount} />
-
         {folders.length > 0 && (
-          <div className="relative" onClick={e => e.stopPropagation()}>
+          <div onClick={e => e.stopPropagation()}>
             <select
               value={item.folderId ?? ""}
               onChange={e => onMoveToFolder(e.target.value ? parseInt(e.target.value) : null)}
-              className="text-[10px] border border-border rounded px-1 py-0.5 bg-background text-muted-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary max-w-[80px] truncate"
+              className="text-[10px] border border-border rounded px-1 py-0.5 bg-background text-muted-foreground cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary max-w-[80px]"
               title="Move to folder"
             >
               <option value="">No folder</option>
@@ -794,11 +876,12 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
             </select>
           </div>
         )}
-
-        <button onClick={e => { e.stopPropagation(); onStartRename(); }} className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity" title="Rename">
+        <button onClick={e => { e.stopPropagation(); onStartRename(); }}
+          className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity" title="Rename">
           <Pencil className="w-3 h-3" />
         </button>
-        <button onClick={e => { e.stopPropagation(); onDelete(); }} className="p-1 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete">
+        <button onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="p-1 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete">
           <Trash2 className="w-3 h-3" />
         </button>
       </div>
@@ -806,31 +889,43 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
   );
 }
 
-function DetailPanel({ item, usageCount, folders, replacing, detailRenaming, detailRenameValue, isDeleting,
-  onClose, onStartRename, onRenameChange, onRenameCommit, onRenameCancel, onMoveToFolder, onDelete, onReplace }: {
-  item: MediaItem; usageCount: number; folders: MediaFolder[];
-  replacing: boolean; detailRenaming: boolean; detailRenameValue: string; isDeleting: boolean;
-  onClose: () => void; onStartRename: () => void; onRenameChange: (v: string) => void;
-  onRenameCommit: () => void; onRenameCancel: () => void;
+function DetailPanel({ item, usageDetails, isLoadingDetails, folders, replacing,
+  detailRenaming, detailRenameValue, isDeleting,
+  onClose, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
+  onMoveToFolder, onDelete, onReplace }: {
+  item: MediaItem;
+  usageDetails: { locations: UsageLocation[]; total: number } | null;
+  isLoadingDetails: boolean;
+  folders: MediaFolder[];
+  replacing: boolean;
+  detailRenaming: boolean;
+  detailRenameValue: string;
+  isDeleting: boolean;
+  onClose: () => void;
+  onStartRename: () => void;
+  onRenameChange: (v: string) => void;
+  onRenameCommit: () => void;
+  onRenameCancel: () => void;
   onMoveToFolder: (folderId: number | null) => void;
-  onDelete: () => void; onReplace: () => void;
+  onDelete: () => void;
+  onReplace: () => void;
 }) {
   return (
-    <div className="w-48 flex-shrink-0 border-l border-border overflow-y-auto bg-muted/10 flex flex-col">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+    <div className="w-52 flex-shrink-0 border-l border-border overflow-y-auto bg-muted/10 flex flex-col">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Details</p>
         <button onClick={onClose} className="p-0.5 rounded hover:bg-muted text-muted-foreground">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div className="p-2 border-b border-border/50">
+      <div className="p-2 border-b border-border/50 flex-shrink-0">
         <div className="aspect-square rounded-lg overflow-hidden bg-muted border border-border">
           <img src={item.url} alt={displayLabel(item)} className="w-full h-full object-cover" />
         </div>
       </div>
 
-      <div className="p-3 space-y-3 flex-1">
+      <div className="p-3 space-y-3 flex-1 overflow-y-auto">
         {/* Name */}
         <div>
           <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide mb-1">Name</p>
@@ -844,11 +939,7 @@ function DetailPanel({ item, usageCount, folders, replacing, detailRenaming, det
               className="w-full text-xs border border-primary rounded px-1.5 py-1 focus:outline-none bg-background"
             />
           ) : (
-            <button
-              onClick={onStartRename}
-              className="group/name flex items-center gap-1 w-full text-left"
-              title="Click to rename"
-            >
+            <button onClick={onStartRename} className="group/name flex items-center gap-1 w-full text-left" title="Click to rename">
               <p className="text-xs text-foreground font-medium break-all line-clamp-2 flex-1">{displayLabel(item)}</p>
               <Pencil className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0 opacity-0 group-hover/name:opacity-100 transition-opacity" />
             </button>
@@ -856,20 +947,34 @@ function DetailPanel({ item, usageCount, folders, replacing, detailRenaming, det
         </div>
 
         {/* Meta */}
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           <p className="text-[10px] text-muted-foreground">{formatSize(item.size)}</p>
           <p className="text-[10px] text-muted-foreground">{formatDate(item.uploadedAt)}</p>
         </div>
 
-        {/* Usage */}
+        {/* Usage locations */}
         <div>
-          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide mb-1">Usage</p>
-          {usageCount === 0 ? (
-            <p className="text-[11px] text-muted-foreground">Not used on site</p>
+          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide mb-1 flex items-center gap-1">
+            <MapPin className="w-2.5 h-2.5" />Used in
+          </p>
+          {isLoadingDetails ? (
+            <div className="flex items-center gap-1 py-1">
+              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+              <span className="text-[11px] text-muted-foreground">Checking…</span>
+            </div>
+          ) : !usageDetails || usageDetails.total === 0 ? (
+            <p className="text-[11px] text-muted-foreground italic">Not used on site</p>
           ) : (
-            <p className="text-[11px] text-foreground font-medium">
-              Used in <span className="text-primary">{usageCount}</span> place{usageCount > 1 ? "s" : ""}
-            </p>
+            <ul className="space-y-0.5">
+              {usageDetails.locations.map((loc, i) => (
+                <li key={i} className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                  <span className="text-[11px] text-foreground truncate">
+                    {SECTION_LABELS[loc.sectionType] ?? loc.sectionType}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 
@@ -890,20 +995,14 @@ function DetailPanel({ item, usageCount, folders, replacing, detailRenaming, det
       </div>
 
       {/* Actions */}
-      <div className="p-3 border-t border-border space-y-2">
-        <button
-          onClick={onReplace}
-          disabled={replacing}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-60"
-        >
+      <div className="p-3 border-t border-border space-y-2 flex-shrink-0">
+        <button onClick={onReplace} disabled={replacing}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-60">
           {replacing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           {replacing ? "Replacing…" : "Replace everywhere"}
         </button>
-        <button
-          onClick={onDelete}
-          disabled={isDeleting}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5 transition-colors disabled:opacity-60"
-        >
+        <button onClick={onDelete} disabled={isDeleting}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5 transition-colors disabled:opacity-60">
           {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
           Delete
         </button>
