@@ -10,7 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
-  Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid,
+  Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -38,6 +38,8 @@ import { ContentSection, defaultContentSectionData } from "./sections/ContentSec
 import { RowSection, defaultRowSectionData, type RowSectionData } from "./sections/RowSection";
 import { ComponentEditorPanel } from "./ComponentEditorPanel";
 import { RowEditorPanel } from "./RowEditorPanel";
+import { TextSection, defaultTextContent } from "./sections/TextSection";
+import { ImageGallerySection, defaultImageGalleryContent } from "./sections/ImageGallerySection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
@@ -48,7 +50,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -99,6 +101,8 @@ function renderSection(
     uploadingPortfolioPhotoIds?: Set<string>;
     onColumnImageUpload?: (sectionId: string, colId: string, blockId: string, file: File) => Promise<void>;
     uploadingColumnImageKeys?: Set<string>;
+    onGalleryImageUpload?: (sectionId: string, imageId: string, file: File) => Promise<void>;
+    uploadingGalleryImageIds?: Set<string>;
     businessName?: string;
     businessId?: number;
     sectionId?: string;
@@ -139,6 +143,16 @@ function renderSection(
     case "faq": return <FAQSection {...props} />;
     case "cta": return <CTASection {...props} />;
     case "stats": return <StatsSection {...props} />;
+    case "text": return <TextSection {...props} />;
+    case "gallery": return (
+      <ImageGallerySection
+        {...props}
+        onImageUpload={extras?.onGalleryImageUpload
+          ? (imageId, file) => extras.onGalleryImageUpload!(section.id, imageId, file)
+          : undefined}
+        uploadingImageIds={extras?.uploadingGalleryImageIds}
+      />
+    );
     case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} />;
     case "content": return (
       <ContentSection
@@ -175,6 +189,8 @@ const SECTION_LABELS: Record<string, string> = {
   stats: "Stats / Numbers",
   content: "Content Block",
   row: "Row",
+  text: "Text Block",
+  gallery: "Image Gallery",
 };
 
 const ADDABLE_SECTION_TYPES: Array<{
@@ -183,6 +199,9 @@ const ADDABLE_SECTION_TYPES: Array<{
   icon: React.ReactNode;
   allowMultiple?: boolean;
 }> = [
+  { type: "hero", label: "Hero Banner", icon: <ImagePlus className="w-4 h-4" />, allowMultiple: true },
+  { type: "text", label: "Text Block", icon: <AlignLeft className="w-4 h-4" />, allowMultiple: true },
+  { type: "gallery", label: "Image Gallery", icon: <Images className="w-4 h-4" />, allowMultiple: true },
   { type: "testimonials", label: "Testimonials", icon: <Star className="w-4 h-4" />, allowMultiple: true },
   { type: "faq", label: "FAQ", icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
   { type: "cta", label: "CTA Banner", icon: <Megaphone className="w-4 h-4" />, allowMultiple: true },
@@ -383,6 +402,7 @@ export default function WebsiteEditor() {
   const [aboutPhotoUploading, setAboutPhotoUploading] = useState(false);
   const [uploadingPortfolioPhotoIds, setUploadingPortfolioPhotoIds] = useState<Set<string>>(new Set());
   const [uploadingColumnImageKeys, setUploadingColumnImageKeys] = useState<Set<string>>(new Set());
+  const [uploadingGalleryImageIds, setUploadingGalleryImageIds] = useState<Set<string>>(new Set());
   const [showAddSection, setShowAddSection] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
@@ -1202,6 +1222,90 @@ export default function WebsiteEditor() {
     return `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
   }
 
+  async function handleGalleryImageUpload(sectionId: string, imageId: string, file: File) {
+    setUploadingGalleryImageIds(prev => new Set(prev).add(imageId));
+    const blobUrl = URL.createObjectURL(file);
+    const sectionsAtStart = sections;
+    const settingsAtStart = settings;
+    const pagesAtStart = pagesRef.current;
+    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    isDirtyRef.current = true;
+    updatePageSections(sectionsAtStart.map(s =>
+      s.id === sectionId
+        ? {
+            ...s,
+            content: {
+              ...s.content,
+              images: ((s.content.images as any[]) ?? []).map((img: any) =>
+                img.id === imageId ? { ...img, url: blobUrl } : img
+              ),
+            },
+          }
+        : s
+    ));
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const slug = activeBusiness!.slug;
+      const imgUuid = objectPath.split("/").pop()!;
+      const canonicalUrl = `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
+      const savedSections = sectionsAtStart.map(s =>
+        s.id === sectionId
+          ? {
+              ...s,
+              content: {
+                ...s.content,
+                images: ((s.content.images as any[]) ?? []).map((img: any) =>
+                  img.id === imageId ? { ...img, objectPath, url: canonicalUrl } : img
+                ),
+              },
+            }
+          : s
+      );
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await saveNow(settingsAtStart, savedSections);
+      URL.revokeObjectURL(blobUrl);
+      isDirtyRef.current = false;
+      updatePageSections(savedSections.map(s =>
+        s.id === sectionId
+          ? {
+              ...s,
+              content: {
+                ...s.content,
+                images: ((s.content.images as any[]) ?? []).map((img: any) =>
+                  img.id === imageId ? { ...img, url: `${canonicalUrl}?v=${Date.now()}` } : img
+                ),
+              },
+            }
+          : s
+      ));
+      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+      toast({ title: "Image uploaded" });
+    } catch {
+      URL.revokeObjectURL(blobUrl);
+      setLocalPages(pagesAtStart);
+      toast({ title: "Image upload failed", variant: "destructive" });
+    } finally {
+      setUploadingGalleryImageIds(prev => {
+        const next = new Set(prev);
+        next.delete(imageId);
+        return next;
+      });
+    }
+  }
+
   function addSection(type: Section["type"]) {
     const id = Math.random().toString(36).slice(2, 9);
     let content: Record<string, unknown> = {};
@@ -1219,6 +1323,17 @@ export default function WebsiteEditor() {
       content = defaultContentSectionData() as unknown as Record<string, unknown>;
     } else if (type === "row") {
       content = defaultRowSectionData() as unknown as Record<string, unknown>;
+    } else if (type === "text") {
+      content = defaultTextContent() as unknown as Record<string, unknown>;
+    } else if (type === "gallery") {
+      content = defaultImageGalleryContent() as unknown as Record<string, unknown>;
+    } else if (type === "hero") {
+      content = {
+        headline: "Your Page Title",
+        subheadline: "A brief description of this page.",
+        ctaLabel: "Learn More",
+        bgColor: settings.brandColor ?? "#1a1a2e",
+      } as Record<string, unknown>;
     }
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
     history.pushSnapshot({ sections: pagesRef.current, settings });
@@ -1390,6 +1505,8 @@ export default function WebsiteEditor() {
       uploadingPortfolioPhotoIds,
       onColumnImageUpload: handleColumnImageUpload,
       uploadingColumnImageKeys,
+      onGalleryImageUpload: handleGalleryImageUpload,
+      uploadingGalleryImageIds,
       businessName: activeBusiness?.name,
       businessId: activeBusiness?.id,
       siteSlug: activeBusiness?.slug,

@@ -17,13 +17,15 @@ import { CTASection } from "./sections/CTASection";
 import { StatsSection } from "./sections/StatsSection";
 import { ContentSection } from "./sections/ContentSection";
 import { RowSection } from "./sections/RowSection";
+import { TextSection } from "./sections/TextSection";
+import { ImageGallerySection } from "./sections/ImageGallerySection";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -80,6 +82,8 @@ function renderBodySection(
     case "stats":       return <StatsSection key={section.id} {...props} />;
     case "content":     return <ContentSection key={section.id} {...props} />;
     case "row":         return <RowSection key={section.id} {...props} />;
+    case "text":        return <TextSection key={section.id} {...props} />;
+    case "gallery":     return <ImageGallerySection key={section.id} {...props} />;
     default:            return null;
   }
 }
