@@ -2096,21 +2096,25 @@ export default function WebsiteEditor() {
           <MediaLibrary businessId={bizId!} />
         ) : (<>
         {/* Left panel — collapsible Site Structure + Brand */}
-        {focusMode ? null : leftCollapsed ? (
-          <div className="w-9 flex-shrink-0 border-r border-border bg-card flex flex-col items-center py-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setLeftCollapsed(false)}
-              title="Expand panel"
-              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ChevronsRight className="w-4 h-4" />
-            </button>
-            <Layers className="w-4 h-4 text-muted-foreground/40" />
-            <Palette className="w-4 h-4 text-muted-foreground/40" />
-          </div>
-        ) : (
-        <div className="w-60 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-hidden">
+        {focusMode ? null : (
+        <div
+          className="flex-shrink-0 border-r border-border bg-card flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out"
+          style={{ width: leftCollapsed ? '36px' : '240px' }}
+        >
+          {leftCollapsed ? (
+            <div className="flex flex-col items-center py-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setLeftCollapsed(false)}
+                title="Expand panel"
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+              <Layers className="w-4 h-4 text-muted-foreground/40" />
+              <Palette className="w-4 h-4 text-muted-foreground/40" />
+            </div>
+          ) : (<>
           {/* Panel header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Site Structure</p>
@@ -2549,6 +2553,8 @@ export default function WebsiteEditor() {
             onChange={domain => patchSettings({ customDomain: domain })}
             onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
           />
+        </>
+        )}
         </div>
         )}
 
@@ -2599,22 +2605,6 @@ export default function WebsiteEditor() {
           const sec = sections.find(s => s.id === activeSection);
           if (!sec || sec.type === "header") return null;
 
-          if (rightCollapsed) {
-            return (
-              <div className="w-9 flex-shrink-0 border-l border-border bg-card flex flex-col items-center py-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRightCollapsed(false)}
-                  title="Expand panel"
-                  className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <ChevronsLeft className="w-4 h-4" />
-                </button>
-                <Layers className="w-4 h-4 text-muted-foreground/40" />
-              </div>
-            );
-          }
-
           const rightCollapseBtn = (
             <button
               type="button"
@@ -2626,106 +2616,137 @@ export default function WebsiteEditor() {
             </button>
           );
 
-          if (
+          let panelContent: React.ReactNode;
+
+          if (rightCollapsed) {
+            panelContent = (
+              <div className="flex flex-col items-center py-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRightCollapsed(false)}
+                  title="Expand panel"
+                  className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+                <Layers className="w-4 h-4 text-muted-foreground/40" />
+              </div>
+            );
+          } else if (
             sec.type === "content" &&
             selectedComponentState?.sectionId === sec.id
           ) {
             const contentData = sec.content as { components?: Array<{ id: string; type: string; props: Record<string, unknown> }> };
             const selectedComp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
             if (selectedComp) {
-              return (
-                <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
-                  <div className="flex items-center justify-between px-3 pt-2 pb-0">
+              panelContent = (
+                <div className="flex flex-col overflow-hidden h-full">
+                  <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
                     {rightCollapseBtn}
                   </div>
-                  <ComponentEditorPanel
-                    component={selectedComp as any}
-                    onChange={updatedComp => {
-                      const newComponents = (contentData.components ?? []).map(c =>
-                        c.id === updatedComp.id ? updatedComp : c
-                      );
-                      updateContent(sec.id, { ...contentData, components: newComponents });
-                    }}
-                    onImageUpload={handleContentComponentImageUpload}
-                    onOpenMediaLibrary={openMediaLibrary}
-                  />
-                </div>
-              );
-            }
-          }
-
-          if (sec.type === "row") {
-            const rowData = sec.content as RowSectionData;
-            if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
-              const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
-              const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
-              if (selComp) {
-                return (
-                  <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
-                    <div className="flex items-center justify-between px-3 pt-2 pb-0">
-                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
-                      {rightCollapseBtn}
-                    </div>
+                  <div className="overflow-y-auto flex-1 min-h-0">
                     <ComponentEditorPanel
-                      component={selComp as any}
+                      component={selectedComp as any}
                       onChange={updatedComp => {
-                        const newCols = (rowData.columns ?? []).map(col =>
-                          col.id === selectedRowState.columnId
-                            ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
-                            : col
+                        const newComponents = (contentData.components ?? []).map(c =>
+                          c.id === updatedComp.id ? updatedComp : c
                         );
-                        updateContent(sec.id, { ...rowData, columns: newCols } as unknown as Record<string, unknown>);
+                        updateContent(sec.id, { ...contentData, components: newComponents });
                       }}
                       onImageUpload={handleContentComponentImageUpload}
                       onOpenMediaLibrary={openMediaLibrary}
                     />
                   </div>
+                </div>
+              );
+            }
+          } else if (sec.type === "row") {
+            const rowData = sec.content as RowSectionData;
+            if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
+              const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
+              const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
+              if (selComp) {
+                panelContent = (
+                  <div className="flex flex-col overflow-hidden h-full">
+                    <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
+                      {rightCollapseBtn}
+                    </div>
+                    <div className="overflow-y-auto flex-1 min-h-0">
+                      <ComponentEditorPanel
+                        component={selComp as any}
+                        onChange={updatedComp => {
+                          const newCols = (rowData.columns ?? []).map(col =>
+                            col.id === selectedRowState.columnId
+                              ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
+                              : col
+                          );
+                          updateContent(sec.id, { ...rowData, columns: newCols } as unknown as Record<string, unknown>);
+                        }}
+                        onImageUpload={handleContentComponentImageUpload}
+                        onOpenMediaLibrary={openMediaLibrary}
+                      />
+                    </div>
+                  </div>
                 );
               }
             }
-            return (
-              <div className="w-72 flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden">
+            if (!panelContent) {
+              panelContent = (
+                <div className="flex flex-col overflow-hidden h-full">
+                  <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Row</span>
+                    {rightCollapseBtn}
+                  </div>
+                  <RowEditorPanel
+                    data={rowData}
+                    onChange={newData => updateContent(sec.id, newData as unknown as Record<string, unknown>)}
+                  />
+                  <div className="flex-1 min-h-0">
+                    <SectionStylePanel
+                      sectionId={sec.id}
+                      sectionType="row"
+                      blockStyle={sec.blockStyle ?? {}}
+                      onChange={bs => updateBlockStyle(sec.id, bs)}
+                      onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                      isBgUploading={!!bgUploading[sec.id]}
+                      onOpenMediaLibrary={openMediaLibrary}
+                    />
+                  </div>
+                </div>
+              );
+            }
+          }
+
+          if (!panelContent) {
+            panelContent = (
+              <div className="flex flex-col overflow-y-auto h-full">
                 <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Row</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                    {SECTION_LABELS[sec.type] ?? "Section"}
+                  </span>
                   {rightCollapseBtn}
                 </div>
-                <RowEditorPanel
-                  data={rowData}
-                  onChange={newData => updateContent(sec.id, newData as unknown as Record<string, unknown>)}
+                <SectionStylePanel
+                  sectionId={sec.id}
+                  sectionType={sec.type}
+                  blockStyle={sec.blockStyle ?? {}}
+                  onChange={bs => updateBlockStyle(sec.id, bs)}
+                  onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                  isBgUploading={!!bgUploading[sec.id]}
+                  onOpenMediaLibrary={openMediaLibrary}
                 />
-                <div className="flex-1 min-h-0">
-                  <SectionStylePanel
-                    sectionId={sec.id}
-                    sectionType="row"
-                    blockStyle={sec.blockStyle ?? {}}
-                    onChange={bs => updateBlockStyle(sec.id, bs)}
-                    onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                    isBgUploading={!!bgUploading[sec.id]}
-                    onOpenMediaLibrary={openMediaLibrary}
-                  />
-                </div>
               </div>
             );
           }
 
           return (
-            <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
-              <div className="flex items-center justify-between px-3 pt-2 pb-0">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                  {SECTION_LABELS[sec.type] ?? "Section"}
-                </span>
-                {rightCollapseBtn}
-              </div>
-              <SectionStylePanel
-                sectionId={sec.id}
-                sectionType={sec.type}
-                blockStyle={sec.blockStyle ?? {}}
-                onChange={bs => updateBlockStyle(sec.id, bs)}
-                onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                isBgUploading={!!bgUploading[sec.id]}
-                onOpenMediaLibrary={openMediaLibrary}
-              />
+            <div
+              className="flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out"
+              style={{ width: rightCollapsed ? '36px' : '288px' }}
+            >
+              {panelContent}
             </div>
           );
         })()}
