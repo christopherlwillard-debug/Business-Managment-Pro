@@ -678,9 +678,13 @@ export default function WebsiteEditor() {
   useFontLoader(settings.headingFont, settings.bodyFont);
 
   useEffect(() => {
-    applyThemeCssVars(settings.themeId);
+    applyThemeCssVars(settings.themeId, {
+      brandColor: settings.brandColor,
+      secondaryColor: settings.secondaryColor,
+      accentColor: settings.accentColor,
+    });
     return () => applyThemeCssVars(undefined);
-  }, [settings.themeId]);
+  }, [settings.themeId, settings.brandColor, settings.secondaryColor, settings.accentColor]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

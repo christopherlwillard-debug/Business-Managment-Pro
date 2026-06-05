@@ -119,8 +119,12 @@ function HeaderPreviewBar({
           </span>
         )}
         <span
-          className="px-4 py-2 rounded-full text-sm font-semibold text-white cursor-pointer transition-opacity hover:opacity-90"
-          style={{ backgroundColor: settings.brandColor }}
+          className="px-4 py-2 text-sm text-white cursor-pointer transition-opacity hover:opacity-90"
+          style={{
+            backgroundColor: settings.brandColor,
+            borderRadius: "var(--theme-btn-radius, 9999px)",
+            fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+          }}
         >
           {ctaLabel}
         </span>

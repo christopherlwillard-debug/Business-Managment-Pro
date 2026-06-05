@@ -229,7 +229,11 @@ export default function PublicSite() {
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
           )}
           {settings.themeId && (
-            <style>{buildThemeCssVarBlock(settings.themeId)}</style>
+            <style>{buildThemeCssVarBlock(settings.themeId, {
+              brandColor: settings.brandColor,
+              secondaryColor: settings.secondaryColor,
+              accentColor: settings.accentColor,
+            })}</style>
           )}
           {settings.faviconUrl && <link rel="icon" href={settings.faviconUrl} />}
         </>,
@@ -295,8 +299,12 @@ export default function PublicSite() {
           )}
           <a
             href={ctaUrl}
-            className="px-4 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
-            style={{ backgroundColor: settings.brandColor }}
+            className="px-4 py-2 text-sm text-white transition-opacity hover:opacity-90"
+            style={{
+              backgroundColor: settings.brandColor,
+              borderRadius: "var(--theme-btn-radius, 9999px)",
+              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+            }}
           >
             {ctaLabel}
           </a>

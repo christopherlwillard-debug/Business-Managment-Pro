@@ -117,14 +117,19 @@ function renderBlock(
       const bClasses = buttonConfigToClasses(block.config);
       const bg = bStyle.backgroundColor ?? settings.accentColor ?? settings.brandColor;
       const color = bStyle.color ?? "white";
-      const radius = bStyle.borderRadius ?? "9999px";
+      const radius = bStyle.borderRadius ?? "var(--theme-btn-radius, 9999px)";
       return (
         <a
           href={block.config?.url || "#contact"}
           target={block.config?.newTab ? "_blank" : undefined}
           rel={block.config?.newTab ? "noopener noreferrer" : undefined}
-          className={`inline-block font-semibold transition-opacity hover:opacity-90 ${bClasses}`}
-          style={{ backgroundColor: bg, color, borderRadius: radius }}
+          className={`inline-block transition-opacity hover:opacity-90 ${bClasses}`}
+          style={{
+            backgroundColor: bg,
+            color,
+            borderRadius: radius,
+            fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+          }}
         >
           {block.label || "Click here"}
         </a>
