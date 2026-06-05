@@ -1,0 +1,110 @@
+Upgrade the website builder from a basic editor to a professional no-code website builder.
+
+Every section and element must have a settings panel when selected.
+
+Add customization options including:
+
+Section Settings
+
+* Background color
+* Background image upload
+* Background video
+* Gradient backgrounds
+* Overlay color and opacity
+* Section height controls
+* Margin controls
+* Padding controls
+* Border radius
+* Shadows
+* Animations
+
+Text Settings
+
+* Font family
+* Font size
+* Font weight
+* Line height
+* Letter spacing
+* Text color
+* Alignment
+* Text shadow
+
+Button Settings
+
+* Colors
+* Hover effects
+* Border radius
+* Size
+* Icons
+* Links
+* Open in new tab
+
+Image Settings
+
+* Crop
+* Resize
+* Border radius
+* Shadows
+* Alt text
+* Hover effects
+
+Form Builder
+
+* Add/remove fields
+* Text field
+* Email field
+* Phone field
+* Dropdown
+* Checkbox
+* Text area
+* Required field toggle
+* Custom labels
+* Custom placeholders
+* Email notification settings
+* Save submissions
+
+Global Website Settings
+
+* Brand colors
+* Typography system
+* Logo upload
+* Favicon upload
+* Header styles
+* Footer styles
+
+Page Builder Improvements
+
+* Drag-and-drop columns
+* Multi-column layouts
+* Responsive controls
+* Mobile editing mode
+* Tablet editing mode
+* Duplicate sections
+* Save reusable sections
+* Undo/redo
+* Layer panel
+
+Template System
+
+* Professionally designed templates
+* Contractor template
+* Manufactured home template
+* Plumbing template
+* Roofing template
+* HVAC template
+
+Use modern React component architecture and store all styling settings as JSON so every customization persists when saved.
+
+Then after that is working, I’d give it another prompt:
+
+Refactor the builder so every block uses a universal property system. All blocks should support backgrounds, spacing, animations, visibility settings, responsive settings, and custom CSS classes through the same shared configuration structure.
+
+That second prompt is important because it prevents you from having to add background controls, padding controls, etc. separately to every component in the future.
+
+Long term, what you really want is:
+
+* A Block Library (Hero, Gallery, Contact, Testimonials, FAQ, Pricing, Map, Reviews)
+* A Property Panel (edit everything)
+* A Theme System (change an entire site’s look with a few clicks)
+
+Once those three pieces exist, you’re much closer to a Wix-style builder than a basic drag-and-drop page editor.
