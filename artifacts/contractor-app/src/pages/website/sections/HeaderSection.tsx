@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Plus, Trash2, GripVertical, Phone, Menu } from "lucide-react";
 import { ButtonEditor, type ButtonConfig } from "./ButtonEditor";
 
@@ -132,8 +131,6 @@ export function HeaderSection({
   onChange,
   businessName,
 }: HeaderSectionProps) {
-  const [dragging, setDragging] = useState<string | null>(null);
-
   const navLinks = content.navLinks ?? [];
   const phone = content.phone ?? "";
   const ctaLabel = content.ctaLabel ?? "Get a Quote";

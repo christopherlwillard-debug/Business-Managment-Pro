@@ -155,8 +155,11 @@ export default function PublicSite() {
   const headerShadow = headerStyle === "transparent" ? "" : "shadow-sm";
   const mobileBg =
     headerStyle === "dark" ? "bg-gray-900" :
-    headerStyle === "transparent" ? "bg-white/95" :
+    headerStyle === "transparent" ? "bg-gray-900" :
     "bg-white";
+  const mobileText = (headerStyle === "dark" || headerStyle === "transparent") ? "text-white" : "text-gray-900";
+  const mobileSubText = (headerStyle === "dark" || headerStyle === "transparent") ? "text-white/70" : "text-gray-600";
+  const mobileBorder = (headerStyle === "dark" || headerStyle === "transparent") ? "border-gray-700" : "border-gray-100";
 
   const siteBodyStyle = settings.bodyFont
     ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
@@ -243,13 +246,13 @@ export default function PublicSite() {
 
       {/* Mobile nav drawer */}
       {mobileMenuOpen && navLinks.length > 0 && (
-        <div className={`md:hidden ${mobileBg} border-b ${headerBorder} px-6 py-4 space-y-3 shadow-md`}>
+        <div className={`md:hidden ${mobileBg} border-b ${mobileBorder} px-6 py-4 space-y-3 shadow-md`}>
           {navLinks.map(link => (
             <a
               key={link.id}
               href={link.href}
               onClick={() => setMobileMenuOpen(false)}
-              className={`block text-sm font-medium py-1 ${headerText} hover:opacity-70 transition-opacity`}
+              className={`block text-sm font-medium py-1 ${mobileText} hover:opacity-70 transition-opacity`}
             >
               {link.label}
             </a>
@@ -257,7 +260,7 @@ export default function PublicSite() {
           {headerPhone && (
             <a
               href={`tel:${headerPhone.replace(/\D/g, "")}`}
-              className={`block text-sm font-medium py-1 ${headerSubText}`}
+              className={`block text-sm font-medium py-1 ${mobileSubText}`}
             >
               {headerPhone}
             </a>
