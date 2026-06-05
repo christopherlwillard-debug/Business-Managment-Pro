@@ -10,7 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
-  Star, HelpCircle, Megaphone, Lock,
+  Star, HelpCircle, Megaphone, Lock, Layers,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -34,6 +34,8 @@ import { FAQSection, defaultFAQContent } from "./sections/FAQSection";
 import { CTASection, defaultCTAContent } from "./sections/CTASection";
 import { StatsSection, defaultStatsContent } from "./sections/StatsSection";
 import { HeaderSection, defaultHeaderContent } from "./sections/HeaderSection";
+import { ContentSection, defaultContentSectionData } from "./sections/ContentSection";
+import { ComponentEditorPanel } from "./ComponentEditorPanel";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
@@ -44,7 +46,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -100,6 +102,8 @@ function renderSection(
     sectionId?: string;
     siteSlug?: string;
     pages?: Array<{ id: string; name: string; slug: string }>;
+    selectedComponentId?: string | null;
+    onSelectComponent?: (id: string | null) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -131,6 +135,13 @@ function renderSection(
     case "cta": return <CTASection {...props} />;
     case "stats": return <StatsSection {...props} />;
     case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} />;
+    case "content": return (
+      <ContentSection
+        {...props}
+        selectedComponentId={extras?.selectedComponentId}
+        onSelectComponent={extras?.onSelectComponent}
+      />
+    );
     default: return null;
   }
 }
@@ -149,6 +160,7 @@ const SECTION_LABELS: Record<string, string> = {
   faq: "FAQ",
   cta: "CTA Banner",
   stats: "Stats / Numbers",
+  content: "Content Block",
 };
 
 const ADDABLE_SECTION_TYPES: Array<{
@@ -162,6 +174,7 @@ const ADDABLE_SECTION_TYPES: Array<{
   { type: "cta", label: "CTA Banner", icon: <Megaphone className="w-4 h-4" />, allowMultiple: true },
   { type: "stats", label: "Stats / Numbers", icon: <BarChart2 className="w-4 h-4" />, allowMultiple: true },
   { type: "columns", label: "Columns", icon: <Columns className="w-4 h-4" />, allowMultiple: true },
+  { type: "content", label: "Content Block", icon: <Layers className="w-4 h-4" />, allowMultiple: true },
 ];
 
 function SortableRow({
@@ -373,6 +386,7 @@ export default function WebsiteEditor() {
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
   const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | null | undefined>(undefined);
+  const [selectedComponentState, setSelectedComponentState] = useState<{ sectionId: string; componentId: string } | null>(null);
   const pickerShownRef = useRef(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const pendingFocusFieldRef = useRef<string | null>(null);
@@ -1169,6 +1183,8 @@ export default function WebsiteEditor() {
       content = defaultCTAContent() as unknown as Record<string, unknown>;
     } else if (type === "stats") {
       content = defaultStatsContent() as unknown as Record<string, unknown>;
+    } else if (type === "content") {
+      content = defaultContentSectionData() as unknown as Record<string, unknown>;
     }
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
     history.pushSnapshot({ sections: pagesRef.current, settings });
@@ -1428,7 +1444,17 @@ export default function WebsiteEditor() {
               ><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           )}
-          {renderSection(s, settings, isActive, content => updateContent(s.id, content), sectionExtras)}
+          {renderSection(s, settings, isActive, content => updateContent(s.id, content), {
+            ...sectionExtras,
+            selectedComponentId: selectedComponentState?.sectionId === s.id ? selectedComponentState.componentId : null,
+            onSelectComponent: (id: string | null) => {
+              if (id) {
+                setSelectedComponentState({ sectionId: s.id, componentId: id });
+              } else {
+                setSelectedComponentState(null);
+              }
+            },
+          })}
         </div>
       );
     }
@@ -2074,6 +2100,30 @@ export default function WebsiteEditor() {
         {activeSection && activeTab === "editor" && (() => {
           const sec = sections.find(s => s.id === activeSection);
           if (!sec || sec.type === "header") return null;
+
+          if (
+            sec.type === "content" &&
+            selectedComponentState?.sectionId === sec.id
+          ) {
+            const contentData = sec.content as { components?: Array<{ id: string; type: string; props: Record<string, unknown> }> };
+            const selectedComp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
+            if (selectedComp) {
+              return (
+                <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
+                  <ComponentEditorPanel
+                    component={selectedComp as any}
+                    onChange={updatedComp => {
+                      const newComponents = (contentData.components ?? []).map(c =>
+                        c.id === updatedComp.id ? updatedComp : c
+                      );
+                      updateContent(sec.id, { ...contentData, components: newComponents });
+                    }}
+                  />
+                </div>
+              );
+            }
+          }
+
           return (
             <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
               <SectionStylePanel

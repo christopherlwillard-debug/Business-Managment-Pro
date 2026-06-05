@@ -15,13 +15,14 @@ import { TestimonialsSection } from "./sections/TestimonialsSection";
 import { FAQSection } from "./sections/FAQSection";
 import { CTASection } from "./sections/CTASection";
 import { StatsSection } from "./sections/StatsSection";
+import { ContentSection } from "./sections/ContentSection";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -76,6 +77,7 @@ function renderBodySection(
     case "faq":         return <FAQSection key={section.id} {...props} />;
     case "cta":         return <CTASection key={section.id} {...props} />;
     case "stats":       return <StatsSection key={section.id} {...props} />;
+    case "content":     return <ContentSection key={section.id} {...props} />;
     default:            return null;
   }
 }
