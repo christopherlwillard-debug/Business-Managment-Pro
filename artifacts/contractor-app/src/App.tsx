@@ -336,6 +336,7 @@ function Router() {
         <Route path="/portal/:token" component={SubcontractorPortal} />
         <Route path="/sub-login" component={SubLogin} />
         <Route path="/pay/:payToken" component={Pay} />
+        <Route path="/site/:slug/:page" component={PublicSite} />
         <Route path="/site/:slug" component={PublicSite} />
         <Route>
           {onCustomDomain ? <PublicSite /> : <AdminApp />}

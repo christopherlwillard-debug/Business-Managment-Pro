@@ -51,6 +51,13 @@ interface Section {
   blockStyle?: BlockStyle;
 }
 
+export interface SitePage {
+  id: string;
+  name: string;
+  slug: string;
+  sections: Section[];
+}
+
 export interface SiteSettings {
   brandColor: string;
   secondaryColor?: string;
@@ -331,8 +338,13 @@ export default function WebsiteEditor() {
   const { setBlocker } = useNavigationBlocker();
 
   const [activeSection, setActiveSection] = useState<string | null>("hero");
-  const [localSections, setLocalSections] = useState<Section[] | null>(null);
+  const [localPages, setLocalPages] = useState<SitePage[] | null>(null);
   const [localSettings, setLocalSettings] = useState<SiteSettings | null>(null);
+  const [activePageId, setActivePageId] = useState<string>("home");
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [editingPageName, setEditingPageName] = useState("");
+  const [showAddPage, setShowAddPage] = useState(false);
+  const [newPageName, setNewPageName] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -341,9 +353,10 @@ export default function WebsiteEditor() {
   const [uploadingColumnImageKeys, setUploadingColumnImageKeys] = useState<Set<string>>(new Set());
   const [showAddSection, setShowAddSection] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
-  const history = useEditorHistory<Section, SiteSettings>();
-  const sectionsRef = useRef<Section[]>([]);
+  const history = useEditorHistory<SitePage, SiteSettings>();
+  const pagesRef = useRef<SitePage[]>([]);
   const settingsRef = useRef<SiteSettings>({ brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" });
+  const activePageIdRef = useRef<string>("home");
   const textEditSessionRef = useRef<{ active: boolean; timer: ReturnType<typeof setTimeout> | null }>({ active: false, timer: null });
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
     return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
@@ -369,8 +382,9 @@ export default function WebsiteEditor() {
   const bizId = activeBusiness?.id;
 
   useEffect(() => {
-    setLocalSections(null);
+    setLocalPages(null);
     setLocalSettings(null);
+    setActivePageId("home");
     isDirtyRef.current = false;
     pickerShownRef.current = false;
     history.reset();
@@ -409,18 +423,18 @@ export default function WebsiteEditor() {
       if (!ctrl) return;
       if (e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        const prev = history.undo({ sections: sectionsRef.current, settings: settingsRef.current });
+        const prev = history.undo({ sections: pagesRef.current, settings: settingsRef.current });
         if (prev) {
           isDirtyRef.current = true;
-          setLocalSections(prev.sections);
+          setLocalPages(prev.sections);
           setLocalSettings(prev.settings);
         }
       } else if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
         e.preventDefault();
-        const next = history.redo({ sections: sectionsRef.current, settings: settingsRef.current });
+        const next = history.redo({ sections: pagesRef.current, settings: settingsRef.current });
         if (next) {
           isDirtyRef.current = true;
-          setLocalSections(next.sections);
+          setLocalPages(next.sections);
           setLocalSettings(next.settings);
         }
       }
@@ -456,8 +470,16 @@ export default function WebsiteEditor() {
         migrated = [defHeader, ...migrated];
         isDirtyRef.current = true;
       }
-      setLocalSections(migrated);
-      setLocalSettings(data.settings as SiteSettings);
+      const rawSettings = data.settings as SiteSettings & { pages?: SitePage[] };
+      const extraPages: SitePage[] = rawSettings.pages ?? [];
+      const allPages: SitePage[] = [
+        { id: "home", name: "Home", slug: "home", sections: migrated },
+        ...extraPages,
+      ];
+      setLocalPages(allPages);
+      const cleanSettings = { ...rawSettings };
+      delete (cleanSettings as any).pages;
+      setLocalSettings(cleanSettings as SiteSettings);
       if (data.id === null && !pickerShownRef.current) {
         pickerShownRef.current = true;
         setShowTemplatePicker(true);
@@ -466,18 +488,35 @@ export default function WebsiteEditor() {
     },
   } as any);
 
-  const sections: Section[] = localSections ?? (config ? [...(config.sections as Section[])].sort((a, b) => a.order - b.order) : []);
+  const pages: SitePage[] = localPages ?? (config
+    ? [{ id: "home", name: "Home", slug: "home", sections: [...(config.sections as Section[])].sort((a, b) => a.order - b.order) }]
+    : [{ id: "home", name: "Home", slug: "home", sections: [] }]);
+  const activePage: SitePage = pages.find(p => p.id === activePageId) ?? pages[0] ?? { id: "home", name: "Home", slug: "home", sections: [] };
+  const sections: Section[] = activePage.sections;
   const settings: SiteSettings = localSettings ?? config?.settings ?? { brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" };
-  sectionsRef.current = sections;
+  pagesRef.current = pages;
   settingsRef.current = settings;
+  activePageIdRef.current = activePageId;
+
+  function updatePageSections(newSections: Section[]) {
+    setLocalPages(prev =>
+      prev ? prev.map(p => p.id === activePageId ? { ...p, sections: newSections } : p) : prev
+    );
+  }
 
   useFontLoader(settings.headingFont, settings.bodyFont);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const currentPages = pagesRef.current;
+      const homePage = currentPages.find(p => p.id === "home") ?? currentPages[0];
+      const additionalPages = currentPages.filter(p => p.id !== "home");
       const payload = {
-        sections: sections.map((s, i) => ({ ...s, order: i })),
-        settings,
+        sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
+        settings: {
+          ...settingsRef.current,
+          ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
+        },
       };
       const res = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
         method: "PUT",
@@ -504,14 +543,20 @@ export default function WebsiteEditor() {
       saveMutation.mutate();
     }, 2000);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [localSections, localSettings, bizId]);
+  }, [localPages, localSettings, bizId]);
 
   async function handlePublish() {
     setPublishing(true);
     try {
+      const currentPages = pagesRef.current;
+      const homePage = currentPages.find(p => p.id === "home") ?? currentPages[0];
+      const additionalPages = currentPages.filter(p => p.id !== "home");
       const payload = {
-        sections: sections.map((s, i) => ({ ...s, order: i })),
-        settings,
+        sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
+        settings: {
+          ...settingsRef.current,
+          ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
+        },
       };
       const res = await fetch(`${BASE}/api/website/publish?businessId=${bizId}`, {
         method: "POST",
@@ -536,24 +581,27 @@ export default function WebsiteEditor() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (over && active.id !== over.id) {
-      const oldIdx = sections.findIndex(s => s.id === active.id);
-      const newIdx = sections.findIndex(s => s.id === over.id);
-      history.pushSnapshot({ sections, settings });
+      const nonHeader = sections.filter(s => s.type !== "header");
+      const header = sections.find(s => s.type === "header");
+      const oldIdx = nonHeader.findIndex(s => s.id === active.id);
+      const newIdx = nonHeader.findIndex(s => s.id === over.id);
+      history.pushSnapshot({ sections: pagesRef.current, settings });
       isDirtyRef.current = true;
-      setLocalSections(arrayMove(sections, oldIdx, newIdx));
+      const reordered = arrayMove(nonHeader, oldIdx, newIdx);
+      updatePageSections(header ? [header, ...reordered] : reordered);
     }
   }
 
   function toggleSection(id: string) {
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalSections(sections.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+    updatePageSections(sections.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   }
 
   function updateContent(id: string, content: Record<string, unknown>) {
     if (!textEditSessionRef.current.active) {
       textEditSessionRef.current.active = true;
-      history.pushSnapshot({ sections, settings });
+      history.pushSnapshot({ sections: pagesRef.current, settings });
     }
     if (textEditSessionRef.current.timer) clearTimeout(textEditSessionRef.current.timer);
     textEditSessionRef.current.timer = setTimeout(() => {
@@ -561,35 +609,51 @@ export default function WebsiteEditor() {
       textEditSessionRef.current.timer = null;
     }, 1500);
     isDirtyRef.current = true;
-    setLocalSections(sections.map(s => s.id === id ? { ...s, content } : s));
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.sections.some(s => s.id === id)) {
+          return { ...p, sections: p.sections.map(s => s.id === id ? { ...s, content } : s) };
+        }
+        return p;
+      });
+    });
   }
 
   function updateBlockStyle(id: string, blockStyle: BlockStyle) {
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalSections(sections.map(s => s.id === id ? { ...s, blockStyle } : s));
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.sections.some(s => s.id === id)) {
+          return { ...p, sections: p.sections.map(s => s.id === id ? { ...s, blockStyle } : s) };
+        }
+        return p;
+      });
+    });
   }
 
   function patchSettings(patch: Partial<SiteSettings>) {
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalSettings({ ...settings, ...patch });
   }
 
   function handleUndo() {
-    const prev = history.undo({ sections, settings });
+    const prev = history.undo({ sections: pagesRef.current, settings });
     if (prev) {
       isDirtyRef.current = true;
-      setLocalSections(prev.sections);
+      setLocalPages(prev.sections);
       setLocalSettings(prev.settings);
     }
   }
 
   function handleRedo() {
-    const next = history.redo({ sections, settings });
+    const next = history.redo({ sections: pagesRef.current, settings });
     if (next) {
       isDirtyRef.current = true;
-      setLocalSections(next.sections);
+      setLocalPages(next.sections);
       setLocalSettings(next.settings);
     }
   }
@@ -602,9 +666,9 @@ export default function WebsiteEditor() {
     const swapId = enabled[direction === "up" ? enabledIdx - 1 : enabledIdx + 1].id;
     const idxA = sections.findIndex(s => s.id === id);
     const idxB = sections.findIndex(s => s.id === swapId);
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalSections(arrayMove(sections, idxA, idxB));
+    updatePageSections(arrayMove(sections, idxA, idxB));
   }
 
   function duplicateSection(id: string) {
@@ -614,9 +678,9 @@ export default function WebsiteEditor() {
     const dup: Section = { ...JSON.parse(JSON.stringify(sec)), id: nanoid() };
     const inserted = [...sections.slice(0, idx + 1), dup, ...sections.slice(idx + 1)];
     const newSections = inserted.map((s, i) => ({ ...s, order: i }));
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalSections(newSections);
+    updatePageSections(newSections);
     setActiveSection(dup.id);
   }
 
@@ -636,9 +700,9 @@ export default function WebsiteEditor() {
     const newSections = sections
       .filter(s => s.id !== id)
       .map((s, i) => ({ ...s, order: i }));
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalSections(newSections);
+    updatePageSections(newSections);
     setActiveSection(null);
     setDeleteSectionConfirm(null);
   }
@@ -648,9 +712,10 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
-    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
+    const pagesAtStart = pagesRef.current;
+    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
-    setLocalSections(sections.map(s =>
+    updatePageSections(sections.map(s =>
       s.id === sectionId ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: blobUrl, bgType: "image" as const } } : s
     ));
     try {
@@ -680,7 +745,7 @@ export default function WebsiteEditor() {
       await saveNow(settingsAtStart, savedSections);
       URL.revokeObjectURL(blobUrl);
       isDirtyRef.current = false;
-      setLocalSections(savedSections.map(s =>
+      updatePageSections(savedSections.map(s =>
         s.id === sectionId
           ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: `${canonicalUrl}?v=${Date.now()}` } }
           : s
@@ -689,7 +754,7 @@ export default function WebsiteEditor() {
       toast({ title: "Background image uploaded" });
     } catch {
       URL.revokeObjectURL(blobUrl);
-      setLocalSections(sectionsAtStart);
+      setLocalPages(pagesAtStart);
       toast({ title: "Upload failed", variant: "destructive" });
     } finally {
       setBgUploading(prev => {
@@ -701,9 +766,20 @@ export default function WebsiteEditor() {
   }
 
   async function saveNow(overrideSettings?: SiteSettings, overrideSections?: Section[]) {
+    const currentPageId = activePageIdRef.current;
+    const currentPages = pagesRef.current;
+    const allPages = overrideSections
+      ? currentPages.map(p => p.id === currentPageId ? { ...p, sections: overrideSections } : p)
+      : currentPages;
+    const homePage = allPages.find(p => p.id === "home") ?? allPages[0];
+    const additionalPages = allPages.filter(p => p.id !== "home");
+    const effectiveSettings = overrideSettings ?? settingsRef.current;
     const payload = {
-      sections: (overrideSections ?? sections).map((s, i) => ({ ...s, order: i })),
-      settings: overrideSettings ?? settings,
+      sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
+      settings: {
+        ...effectiveSettings,
+        ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
+      },
     };
     const res = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
       method: "PUT",
@@ -719,7 +795,7 @@ export default function WebsiteEditor() {
     setLogoUploading(true);
     const blobUrl = URL.createObjectURL(file);
     const settingsAtStart = settings;
-    history.pushSnapshot({ sections, settings: settingsAtStart });
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSettings({ ...settingsAtStart, logoUrl: blobUrl } as SiteSettings);
     try {
@@ -760,7 +836,7 @@ export default function WebsiteEditor() {
     setFaviconUploading(true);
     const blobUrl = URL.createObjectURL(file);
     const settingsAtStart = settings;
-    history.pushSnapshot({ sections, settings: settingsAtStart });
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsAtStart });
     isDirtyRef.current = true;
     setLocalSettings({ ...settingsAtStart, faviconUrl: blobUrl });
     try {
@@ -802,9 +878,10 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
-    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
+    const pagesAtStart = pagesRef.current;
+    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
-    setLocalSections(sectionsAtStart.map(s =>
+    updatePageSections(sectionsAtStart.map(s =>
       s.type === "about" ? { ...s, content: { ...s.content, photoUrl: blobUrl } } : s
     ));
     try {
@@ -833,7 +910,7 @@ export default function WebsiteEditor() {
       await saveNow(settingsAtStart, savedSections);
       URL.revokeObjectURL(blobUrl);
       isDirtyRef.current = false;
-      setLocalSections(savedSections.map(s =>
+      updatePageSections(savedSections.map(s =>
         s.type === "about"
           ? { ...s, content: { ...s.content, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
           : s
@@ -842,7 +919,7 @@ export default function WebsiteEditor() {
       toast({ title: "Photo uploaded" });
     } catch {
       URL.revokeObjectURL(blobUrl);
-      setLocalSections(sectionsAtStart);
+      setLocalPages(pagesAtStart);
       toast({ title: "Photo upload failed", variant: "destructive" });
     } finally {
       setAboutPhotoUploading(false);
@@ -882,9 +959,10 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
-    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
+    const pagesAtStart = pagesRef.current;
+    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
-    setLocalSections(patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoUrl: blobUrl }));
+    updatePageSections(patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoUrl: blobUrl }));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-portfolio-photo`, {
         method: "POST",
@@ -908,12 +986,12 @@ export default function WebsiteEditor() {
       await saveNow(settingsAtStart, savedSections);
       URL.revokeObjectURL(blobUrl);
       isDirtyRef.current = false;
-      setLocalSections(patchPortfolioPhoto(savedSections, projectId, photoId, { photoUrl: `${canonicalUrl}?v=${Date.now()}` }));
+      updatePageSections(patchPortfolioPhoto(savedSections, projectId, photoId, { photoUrl: `${canonicalUrl}?v=${Date.now()}` }));
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
       toast({ title: "Photo uploaded" });
     } catch {
       URL.revokeObjectURL(blobUrl);
-      setLocalSections(sectionsAtStart);
+      setLocalPages(pagesAtStart);
       toast({ title: "Photo upload failed", variant: "destructive" });
     } finally {
       setUploadingPortfolioPhotoIds(prev => {
@@ -930,9 +1008,10 @@ export default function WebsiteEditor() {
     const blobUrl = URL.createObjectURL(file);
     const sectionsAtStart = sections;
     const settingsAtStart = settings;
-    history.pushSnapshot({ sections: sectionsAtStart, settings: settingsAtStart });
+    const pagesAtStart = pagesRef.current;
+    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
     isDirtyRef.current = true;
-    setLocalSections(sectionsAtStart.map(s =>
+    updatePageSections(sectionsAtStart.map(s =>
       s.id === sectionId
         ? {
             ...s,
@@ -989,7 +1068,7 @@ export default function WebsiteEditor() {
       await saveNow(settingsAtStart, savedSections);
       URL.revokeObjectURL(blobUrl);
       isDirtyRef.current = false;
-      setLocalSections(savedSections.map(s =>
+      updatePageSections(savedSections.map(s =>
         s.id === sectionId
           ? {
               ...s,
@@ -1013,7 +1092,7 @@ export default function WebsiteEditor() {
       toast({ title: "Image uploaded" });
     } catch {
       URL.revokeObjectURL(blobUrl);
-      setLocalSections(sectionsAtStart);
+      setLocalPages(pagesAtStart);
       toast({ title: "Image upload failed", variant: "destructive" });
     } finally {
       setUploadingColumnImageKeys(prev => {
@@ -1039,15 +1118,50 @@ export default function WebsiteEditor() {
       content = defaultStatsContent() as unknown as Record<string, unknown>;
     }
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalSections([...sections, newSection]);
+    updatePageSections([...sections, newSection]);
     setActiveSection(id);
     setShowAddSection(false);
   }
 
+  function switchPage(pageId: string) {
+    if (pageId === activePageId) return;
+    setActivePageId(pageId);
+    setActiveSection(null);
+  }
+
+  function addPage(name: string) {
+    const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    const id = "page-" + Math.random().toString(36).slice(2, 9);
+    const newPage: SitePage = { id, name, slug, sections: [] };
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => [...(prev ?? pages), newPage]);
+    setActivePageId(id);
+    setActiveSection(null);
+  }
+
+  function deletePage(pageId: string) {
+    if (pageId === "home") return;
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => (prev ?? pages).filter(p => p.id !== pageId));
+    if (activePageId === pageId) {
+      setActivePageId("home");
+      setActiveSection(null);
+    }
+  }
+
+  function renamePage(pageId: string, name: string) {
+    const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => (prev ?? pages).map(p => p.id === pageId ? { ...p, name, slug } : p));
+  }
+
   async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
-    history.pushSnapshot({ sections, settings });
+    history.pushSnapshot({ sections: pagesRef.current, settings });
     setApplyingTemplate(true);
     try {
       const appliedSections = t.sections.map(s => {
@@ -1065,8 +1179,19 @@ export default function WebsiteEditor() {
         ...(settings.customDomain ? { customDomain: settings.customDomain } : {}),
       };
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(savedSettings, appliedSections);
-      setLocalSections(appliedSections);
+      const templatePayload = {
+        sections: appliedSections.map((s, i) => ({ ...s, order: i })),
+        settings: savedSettings,
+      };
+      const templateRes = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(templatePayload),
+      });
+      if (!templateRes.ok) throw new Error("Failed to apply template");
+      setLocalPages([{ id: "home", name: "Home", slug: "home", sections: appliedSections }]);
+      setActivePageId("home");
       setLocalSettings(savedSettings);
       isDirtyRef.current = false;
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
@@ -1098,7 +1223,8 @@ export default function WebsiteEditor() {
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
 
   function renderSections() {
-    const headerSec = sections.find(s => s.type === "header");
+    const homePageSections = pages.find(p => p.id === "home")?.sections ?? sections;
+    const headerSec = homePageSections.find(s => s.type === "header");
     const enabled = sections.filter(s => s.enabled && s.type !== "header");
     const previewBodyStyle = settings.bodyFont
       ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
@@ -1416,6 +1542,111 @@ export default function WebsiteEditor() {
         ) : (<>
         {/* Left panel — section list */}
         <div className="w-56 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-y-auto">
+          {/* Pages panel */}
+          <div className="px-3 py-2 border-b border-border">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Pages</p>
+              <button
+                type="button"
+                onClick={() => setShowAddPage(v => !v)}
+                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Add page"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add
+              </button>
+            </div>
+            {showAddPage && (
+              <div className="mt-1 flex gap-1 mb-1">
+                <input
+                  type="text"
+                  placeholder="Page name"
+                  value={newPageName}
+                  onChange={e => setNewPageName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newPageName.trim()) {
+                      addPage(newPageName.trim());
+                      setNewPageName("");
+                      setShowAddPage(false);
+                    }
+                    if (e.key === "Escape") { setShowAddPage(false); setNewPageName(""); }
+                  }}
+                  className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newPageName.trim()) {
+                      addPage(newPageName.trim());
+                      setNewPageName("");
+                      setShowAddPage(false);
+                    }
+                  }}
+                  className="px-2 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Add
+                </button>
+              </div>
+            )}
+            <div className="space-y-0.5 mt-0.5">
+              {pages.map(page => (
+                <div
+                  key={page.id}
+                  className={`group flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                    activePageId === page.id
+                      ? "bg-primary/10 border border-primary/30 text-primary"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                  onClick={() => switchPage(page.id)}
+                >
+                  {editingPageId === page.id ? (
+                    <input
+                      type="text"
+                      value={editingPageName}
+                      onChange={e => setEditingPageName(e.target.value)}
+                      onBlur={() => {
+                        if (editingPageName.trim()) renamePage(page.id, editingPageName.trim());
+                        setEditingPageId(null);
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          if (editingPageName.trim()) renamePage(page.id, editingPageName.trim());
+                          setEditingPageId(null);
+                        }
+                        if (e.key === "Escape") setEditingPageId(null);
+                      }}
+                      className="flex-1 text-xs bg-transparent border-b border-primary focus:outline-none min-w-0"
+                      autoFocus
+                      onClick={e => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="flex-1 text-xs font-medium truncate">{page.name}</span>
+                  )}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); setEditingPageId(page.id); setEditingPageName(page.name); }}
+                      className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+                      title="Rename"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                    </button>
+                    {page.id !== "home" && (
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); deletePage(page.id); }}
+                        className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                        title="Delete page"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="px-3 py-3 border-b border-border">
             <div className="flex items-center justify-between mb-0.5">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sections</p>
@@ -1451,7 +1682,7 @@ export default function WebsiteEditor() {
           <div className="p-2 space-y-0.5">
             {/* Header — locked, always first */}
             {(() => {
-              const hdr = sections.find(s => s.type === "header");
+              const hdr = (pages.find(p => p.id === "home")?.sections ?? sections).find(s => s.type === "header");
               if (!hdr) return null;
               return (
                 <div

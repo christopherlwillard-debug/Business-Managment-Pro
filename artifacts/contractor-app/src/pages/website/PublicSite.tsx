@@ -28,6 +28,13 @@ interface Section {
   blockStyle?: BlockStyle;
 }
 
+interface SitePage {
+  id: string;
+  name: string;
+  slug: string;
+  sections: Section[];
+}
+
 interface SiteSettings {
   brandColor: string;
   secondaryColor?: string;
@@ -39,6 +46,7 @@ interface SiteSettings {
   faviconUrl?: string;
   headerStyle?: "light" | "dark" | "transparent";
   footerBgColor?: string;
+  pages?: SitePage[];
 }
 
 interface PublishedConfig {
@@ -48,9 +56,34 @@ interface PublishedConfig {
   businessSlug: string;
 }
 
+function renderBodySection(
+  section: Section,
+  settings: SiteSettings,
+  resolvedSlug: string,
+  handleContactSubmit: (d: Record<string, unknown>) => Promise<void>
+) {
+  const props = { content: section.content as any, settings, isEditing: false, blockStyle: section.blockStyle };
+  switch (section.type) {
+    case "hero":        return <HeroSection key={section.id} {...props} />;
+    case "services":    return <ServicesSection key={section.id} {...props} />;
+    case "about":       return <AboutSection key={section.id} {...props} />;
+    case "contact":     return <ContactFormSection key={section.id} {...props} onSubmit={handleContactSubmit} />;
+    case "footer":      return <FooterSection key={section.id} {...props} />;
+    case "portfolio":   return <PortfolioSection key={section.id} {...props} />;
+    case "deposit":     return <DepositSection key={section.id} {...props} businessSlug={resolvedSlug} />;
+    case "columns":     return <ColumnsSection key={section.id} {...props} />;
+    case "testimonials": return <TestimonialsSection key={section.id} {...props} />;
+    case "faq":         return <FAQSection key={section.id} {...props} />;
+    case "cta":         return <CTASection key={section.id} {...props} />;
+    case "stats":       return <StatsSection key={section.id} {...props} />;
+    default:            return null;
+  }
+}
+
 export default function PublicSite() {
-  const params = useParams<{ slug: string }>();
+  const params = useParams<{ slug?: string; page?: string }>();
   const slug = params.slug;
+  const pageSlug = params.page;
   const [paymentSuccessDismissed, setPaymentSuccessDismissed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const paymentSuccess = new URLSearchParams(window.location.search).get("payment") === "success";
@@ -80,9 +113,9 @@ export default function PublicSite() {
     fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
   }, [data?.businessSlug]);
 
-  async function handleContactSubmit(data: Record<string, unknown>) {
-    const fieldValues = (data.fieldValues ?? {}) as Record<string, string>;
-    const labeledFields = (data.labeledValues ?? {}) as Record<string, string>;
+  async function handleContactSubmit(formData: Record<string, unknown>) {
+    const fieldValues = (formData.fieldValues ?? {}) as Record<string, string>;
+    const labeledFields = (formData.labeledValues ?? {}) as Record<string, string>;
     const res = await fetch(`${BASE}/api/public/site/${resolvedSlug}/contact`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -123,7 +156,19 @@ export default function PublicSite() {
   const sorted = [...sections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
 
   const headerSec = sorted.find(s => s.type === "header");
-  const bodySections = sorted.filter(s => s.type !== "header");
+  const homeBodySections = sorted.filter(s => s.type !== "header");
+
+  const additionalPages: SitePage[] = settings.pages ?? [];
+
+  let bodySections: Section[];
+  if (pageSlug) {
+    const targetPage = additionalPages.find(p => p.slug === pageSlug);
+    bodySections = targetPage
+      ? targetPage.sections.filter(s => s.enabled)
+      : homeBodySections;
+  } else {
+    bodySections = homeBodySections;
+  }
 
   const headerContent = headerSec?.content as any;
   const navLinks: Array<{ id: string; label: string; href: string }> = headerContent?.navLinks ?? [];
@@ -268,32 +313,9 @@ export default function PublicSite() {
         </div>
       )}
 
-      {bodySections.map(section => {
-        const props = { content: section.content as any, settings, isEditing: false, blockStyle: section.blockStyle };
-        switch (section.type) {
-          case "hero":    return <HeroSection key={section.id} {...props} />;
-          case "services": return <ServicesSection key={section.id} {...props} />;
-          case "about":   return <AboutSection key={section.id} {...props} />;
-          case "contact": return (
-            <ContactFormSection
-              key={section.id}
-              {...props}
-              onSubmit={handleContactSubmit}
-            />
-          );
-          case "footer":  return <FooterSection key={section.id} {...props} />;
-          case "portfolio": return <PortfolioSection key={section.id} {...props} />;
-          case "deposit": return (
-            <DepositSection key={section.id} {...props} businessSlug={resolvedSlug} />
-          );
-          case "columns": return <ColumnsSection key={section.id} {...props} />;
-          case "testimonials": return <TestimonialsSection key={section.id} {...props} />;
-          case "faq": return <FAQSection key={section.id} {...props} />;
-          case "cta": return <CTASection key={section.id} {...props} />;
-          case "stats": return <StatsSection key={section.id} {...props} />;
-          default: return null;
-        }
-      })}
+      {bodySections.map(section =>
+        renderBodySection(section, settings, resolvedSlug, handleContactSubmit)
+      )}
     </div>
   );
 }
