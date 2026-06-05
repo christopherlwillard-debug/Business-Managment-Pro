@@ -500,6 +500,7 @@ export default function WebsiteEditor() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const preFocusSidebarState = useRef<{ left: boolean; right: boolean } | null>(null);
   const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
@@ -2013,10 +2014,14 @@ export default function WebsiteEditor() {
           onClick={() => {
             if (focusMode) {
               setFocusMode(false);
+              if (preFocusSidebarState.current) {
+                setLeftCollapsed(preFocusSidebarState.current.left);
+                setRightCollapsed(preFocusSidebarState.current.right);
+                preFocusSidebarState.current = null;
+              }
             } else {
+              preFocusSidebarState.current = { left: leftCollapsed, right: rightCollapsed };
               setFocusMode(true);
-              setLeftCollapsed(false);
-              setRightCollapsed(false);
             }
           }}
           title={focusMode ? "Exit focus mode" : "Focus mode — hide panels"}
@@ -2027,16 +2032,21 @@ export default function WebsiteEditor() {
           {focusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
 
-        {isPublished && (
+        {/* Preview — open public site in new tab */}
+        {publicUrl && (
           <a
             href={publicUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-medium"
-            title="View live site"
+            title={isPublished ? "Preview live site" : "Preview site (not yet published)"}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+              isPublished
+                ? "border-green-500/40 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40"
+                : "border-border bg-muted/50 text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <CheckCircle className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Live</span>
+            <Eye className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">{isPublished ? "Live" : "Preview"}</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
