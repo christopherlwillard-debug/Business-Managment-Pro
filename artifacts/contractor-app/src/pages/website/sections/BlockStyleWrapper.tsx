@@ -107,8 +107,8 @@ export function BlockStyleWrapper({
 
   const shadowClass = bs.shadow && bs.shadow !== "none" ? (SHADOW_MAP[bs.shadow] ?? "") : "";
   const hideClasses = [
-    bs.hideOnMobile ? "max-sm:!hidden" : "",
-    bs.hideOnTablet ? "max-md:!hidden" : "",
+    bs.hideOnMobile ? "max-md:!hidden" : "",
+    bs.hideOnTablet ? "md:max-lg:!hidden" : "",
   ]
     .filter(Boolean)
     .join(" ");

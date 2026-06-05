@@ -314,6 +314,20 @@ export function SectionStylePanel({
                 onChange={(v) => patch({ paddingRight: v })}
               />
               <SliderRow
+                label="Margin Top"
+                value={bs.marginTop}
+                min={0}
+                max={200}
+                onChange={(v) => patch({ marginTop: v || undefined })}
+              />
+              <SliderRow
+                label="Margin Bottom"
+                value={bs.marginBottom}
+                min={0}
+                max={200}
+                onChange={(v) => patch({ marginBottom: v || undefined })}
+              />
+              <SliderRow
                 label="Min Height"
                 value={bs.minHeight}
                 min={0}

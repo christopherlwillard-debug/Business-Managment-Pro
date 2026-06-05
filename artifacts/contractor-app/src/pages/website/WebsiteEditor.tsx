@@ -378,6 +378,14 @@ export default function WebsiteEditor() {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
   }, [bizId]);
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setActiveSection(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const { data: config, isLoading } = useQuery<WebsiteConfig>({
     queryKey: ["website-config", bizId],
     enabled: !!bizId,
@@ -388,7 +396,13 @@ export default function WebsiteEditor() {
     },
     onSuccess: (data) => {
       const sorted = [...(data.sections as Section[])].sort((a, b) => a.order - b.order);
-      setLocalSections(sorted);
+      const migrated = sorted.map(s => {
+        if (s.type === "hero" && !s.blockStyle?.bgType && (s.content as any).bgColor) {
+          return { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgType: "color" as const, bgColor: (s.content as any).bgColor } };
+        }
+        return s;
+      });
+      setLocalSections(migrated);
       setLocalSettings(data.settings as SiteSettings);
       if (data.id === null && !pickerShownRef.current) {
         pickerShownRef.current = true;
@@ -791,7 +805,7 @@ export default function WebsiteEditor() {
         {enabled.map(s => (
           <div
             key={s.id}
-            onClick={() => setActiveSection(s.id)}
+            onClick={(e) => { e.stopPropagation(); setActiveSection(s.id); }}
             className={`relative transition-all cursor-pointer ${
               activeSection === s.id
                 ? "ring-2 ring-inset ring-primary/60"
@@ -1057,7 +1071,7 @@ export default function WebsiteEditor() {
         </div>
 
         {/* Canvas — live preview */}
-        <div className="flex-1 overflow-y-auto bg-muted/30">
+        <div className="flex-1 overflow-y-auto bg-muted/30" onClick={() => setActiveSection(null)}>
           <div className={`mx-auto my-6 transition-all duration-300 ${
             viewport === "desktop" ? "max-w-4xl px-4" :
             viewport === "tablet" ? "max-w-[800px] px-4" :
