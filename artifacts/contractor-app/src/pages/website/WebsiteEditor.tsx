@@ -335,44 +335,95 @@ function CustomDomainPanel({
 
 
 function PageTemplatePicker({
+  mode,
+  currentPageName,
   onSelect,
+  onApply,
   onBlank,
+  onClose,
 }: {
+  mode: "add" | "apply";
+  currentPageName?: string;
   onSelect: (t: PageTemplate) => void;
+  onApply: (t: PageTemplate) => void;
   onBlank: () => void;
+  onClose: () => void;
 }) {
+  const businessTemplates = PAGE_TEMPLATES.filter(t => t.category === "business");
+  const pageTemplates = PAGE_TEMPLATES.filter(t => t.category === "page");
+
+  function TemplateCard({ t }: { t: PageTemplate }) {
+    const handler = mode === "apply" ? () => onApply(t) : () => onSelect(t);
+    return (
+      <button
+        onClick={handler}
+        className="text-left rounded-xl border-2 border-border hover:border-primary hover:shadow-md transition-all p-4 group"
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-2xl">{t.emoji}</span>
+          <p className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">{t.name}</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3 leading-snug">{t.description}</p>
+        <div className="flex flex-wrap gap-1">
+          {t.sectionSummary.map((s, i) => (
+            <span key={i} className="inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground rounded px-1.5 py-0.5">
+              {s}
+            </span>
+          ))}
+        </div>
+      </button>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 overflow-y-auto">
-      <div className="max-w-2xl w-full">
-        <div className="text-center mb-8">
+    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center p-6 overflow-y-auto">
+      <div className="max-w-3xl w-full pt-8 pb-16">
+        <div className="text-center mb-8 relative">
+          <button
+            onClick={onClose}
+            className="absolute right-0 top-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
           <LayoutTemplate className="w-10 h-10 text-primary mx-auto mb-3" />
-          <h1 className="text-2xl font-bold text-foreground">Choose a page template</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Pick a starting point — every section is editable after selection.
-          </p>
+          {mode === "apply" ? (
+            <>
+              <h1 className="text-2xl font-bold text-foreground">Replace "{currentPageName}" with a template</h1>
+              <p className="text-muted-foreground mt-1 text-sm">
+                The current sections on this page will be replaced. Pick a template to start from.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-foreground">Choose a page template</h1>
+              <p className="text-muted-foreground mt-1 text-sm">
+                Pick a starting point — every section is fully editable after selection.
+              </p>
+            </>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          {PAGE_TEMPLATES.map(t => (
-            <button
-              key={t.id}
-              onClick={() => onSelect(t)}
-              className="text-left rounded-xl border-2 border-border hover:border-primary hover:shadow-md transition-all p-4 group"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">{t.emoji}</span>
-                <p className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">{t.name}</p>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3 leading-snug">{t.description}</p>
-              <div className="flex flex-wrap gap-1">
-                {t.sectionSummary.map((s, i) => (
-                  <span key={i} className="inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground rounded px-1.5 py-0.5">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </button>
-          ))}
+        {/* Business layouts */}
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">🏢 Business Layouts</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {businessTemplates.map(t => <TemplateCard key={t.id} t={t} />)}
+          </div>
+        </div>
+
+        {/* Page type templates */}
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">📄 Page Types</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {pageTemplates.map(t => <TemplateCard key={t.id} t={t} />)}
+          </div>
         </div>
 
         <div className="text-center space-y-2">
@@ -380,7 +431,7 @@ function PageTemplatePicker({
             onClick={onBlank}
             className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
           >
-            Start with a blank page instead
+            {mode === "apply" ? "Keep current sections (cancel)" : "Start with a blank page instead"}
           </button>
         </div>
       </div>
@@ -499,6 +550,9 @@ export default function WebsiteEditor() {
   const [pickerIsReset, setPickerIsReset] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState<WebsiteTemplate | null>(null);
   const [showPageTemplatePicker, setShowPageTemplatePicker] = useState(false);
+  const [pageTemplatePickerMode, setPageTemplatePickerMode] = useState<"add" | "apply">("add");
+  const [pendingApplyPageTemplate, setPendingApplyPageTemplate] = useState<PageTemplate | null>(null);
+  const [showApplyPageTemplateConfirm, setShowApplyPageTemplateConfirm] = useState(false);
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
@@ -1627,6 +1681,27 @@ export default function WebsiteEditor() {
     setShowPageTemplatePicker(false);
   }
 
+  function applyTemplateToCurrentPage(tpl: PageTemplate) {
+    const newSections: Section[] = tpl.sections().map((s, i) => ({
+      id: "s-" + Math.random().toString(36).slice(2, 9),
+      type: s.type,
+      enabled: s.enabled,
+      order: i,
+      content: s.content,
+      blockStyle: s.blockStyle as BlockStyle | undefined,
+    }));
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => {
+      const base = prev ?? pages;
+      return base.map(p => p.id === activePageId ? { ...p, sections: newSections } : p);
+    });
+    setActiveSection(null);
+    setShowPageTemplatePicker(false);
+    setShowApplyPageTemplateConfirm(false);
+    setPendingApplyPageTemplate(null);
+  }
+
   function deletePage(pageId: string) {
     if (pageId === "home") return;
     setDeletePageConfirm(pageId);
@@ -1927,8 +2002,12 @@ export default function WebsiteEditor() {
     <>
     {showPageTemplatePicker && (
       <PageTemplatePicker
+        mode={pageTemplatePickerMode}
+        currentPageName={pages.find(p => p.id === activePageId)?.name}
         onSelect={addPageFromTemplate}
-        onBlank={() => { setShowPageTemplatePicker(false); setShowAddPage(true); }}
+        onApply={tpl => { setPendingApplyPageTemplate(tpl); setShowApplyPageTemplateConfirm(true); }}
+        onBlank={() => { setShowPageTemplatePicker(false); if (pageTemplatePickerMode === "add") setShowAddPage(true); }}
+        onClose={() => setShowPageTemplatePicker(false)}
       />
     )}
     {showTemplatePicker && (
@@ -1994,6 +2073,22 @@ export default function WebsiteEditor() {
             onClick={() => deleteSectionConfirm && doDeleteSection(deleteSectionConfirm)}
           >
             Delete Section
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <AlertDialog open={showApplyPageTemplateConfirm} onOpenChange={v => { if (!v) { setShowApplyPageTemplateConfirm(false); setPendingApplyPageTemplate(null); } }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Replace page with "{pendingApplyPageTemplate?.name}" template?</AlertDialogTitle>
+          <AlertDialogDescription>
+            All current sections on "{pages.find(p => p.id === activePageId)?.name}" will be replaced with the template sections. You can undo this with Ctrl+Z.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => pendingApplyPageTemplate && applyTemplateToCurrentPage(pendingApplyPageTemplate)}>
+            Replace with Template
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -2249,7 +2344,7 @@ export default function WebsiteEditor() {
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => { setShowAddPage(false); setShowPageTemplatePicker(true); }}
+                onClick={() => { setShowAddPage(false); setPageTemplatePickerMode("add"); setShowPageTemplatePicker(true); }}
                 className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 title="Add page"
               >
@@ -2374,6 +2469,14 @@ export default function WebsiteEditor() {
                         title="Rename"
                       >
                         <Pencil className="w-2.5 h-2.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); switchPage(page.id); setPageTemplatePickerMode("apply"); setShowPageTemplatePicker(true); }}
+                        className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+                        title="Replace page with template"
+                      >
+                        <LayoutTemplate className="w-2.5 h-2.5" />
                       </button>
                       {page.id !== "home" && (
                         <button
