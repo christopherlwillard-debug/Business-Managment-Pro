@@ -9,7 +9,7 @@ interface FooterContent {
 
 interface FooterSectionProps {
   content: FooterContent;
-  settings: { brandColor: string };
+  settings: { brandColor: string; footerBgColor?: string };
   isEditing?: boolean;
   onChange?: (content: FooterContent) => void;
   blockStyle?: BlockStyle;
@@ -20,7 +20,7 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
     onChange?.({ ...content, ...patch });
   }
 
-  const bg = settings.brandColor || "#1a1a2e";
+  const bg = settings.footerBgColor || settings.brandColor || "#1a1a2e";
 
   return (
     <BlockStyleWrapper

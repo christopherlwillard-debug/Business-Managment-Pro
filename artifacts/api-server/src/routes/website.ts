@@ -683,6 +683,50 @@ router.post("/upload-section-bg", wrapAsync(async (req, res) => {
   res.json({ uploadURL, objectPath });
 }));
 
+router.post("/upload-favicon", wrapAsync(async (req, res) => {
+  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+  if (!name || !size || !contentType) {
+    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+  }
+  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-favicons");
+  res.json({ uploadURL, objectPath });
+}));
+
+publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
+  const { slug } = req.params;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, biz.id));
+
+  if (!config) return res.status(404).json({ error: "No website config" });
+
+  const settings = config.settings as Record<string, unknown>;
+  const faviconObjectPath = settings.faviconObjectPath as string | undefined;
+  if (!faviconObjectPath?.startsWith("/objects/uploads/website-favicons/")) {
+    return res.status(404).json({ error: "No favicon" });
+  }
+
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(faviconObjectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Favicon not found" });
+    throw err;
+  }
+}));
+
 publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
   const { slug, bgUuid } = req.params;
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));

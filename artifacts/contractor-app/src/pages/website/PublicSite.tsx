@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X } from "lucide-react";
 import { useParams } from "wouter";
+import { useFontLoader, injectFavicon } from "./useFontLoader";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -24,8 +25,15 @@ interface Section {
 
 interface SiteSettings {
   brandColor: string;
+  secondaryColor?: string;
+  accentColor?: string;
   fontFamily: string;
+  headingFont?: string;
+  bodyFont?: string;
   logoUrl: string;
+  faviconUrl?: string;
+  headerStyle?: "light" | "dark" | "transparent";
+  footerBgColor?: string;
 }
 
 interface PublishedConfig {
@@ -57,6 +65,12 @@ export default function PublicSite() {
   });
 
   const resolvedSlug = data?.businessSlug ?? slug ?? "";
+
+  useFontLoader(data?.settings.headingFont, data?.settings.bodyFont);
+
+  useEffect(() => {
+    injectFavicon(data?.settings.faviconUrl);
+  }, [data?.settings.faviconUrl]);
 
   const trackedRef = useRef(false);
   useEffect(() => {
@@ -108,8 +122,28 @@ export default function PublicSite() {
   const { sections, settings, businessName } = data;
   const sorted = [...sections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
 
+  const headerStyle = settings.headerStyle ?? "light";
+  const isDarkHeader = headerStyle === "dark" || headerStyle === "transparent";
+  const headerBg =
+    headerStyle === "dark" ? "bg-gray-900/95 backdrop-blur" :
+    headerStyle === "transparent" ? "bg-white/10 backdrop-blur-md" :
+    "bg-white/95 backdrop-blur";
+  const headerBorder =
+    headerStyle === "dark" ? "border-gray-700" :
+    headerStyle === "transparent" ? "border-white/10" :
+    "border-gray-100";
+  const headerText = isDarkHeader ? "text-white" : "text-gray-900";
+  const headerShadow = headerStyle === "transparent" ? "" : "shadow-sm";
+
+  const siteBodyStyle = settings.bodyFont
+    ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
+    : undefined;
+
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="min-h-screen bg-white" style={siteBodyStyle}>
+      {settings.headingFont && (
+        <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+      )}
       {paymentSuccess && !paymentSuccessDismissed && (
         <div className="fixed top-0 inset-x-0 z-[60] flex items-center justify-between gap-3 bg-green-600 text-white px-4 py-3 text-sm font-medium shadow-lg">
           <div className="flex items-center gap-2">
@@ -125,12 +159,12 @@ export default function PublicSite() {
           </button>
         </div>
       )}
-      <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100 px-6 py-3 flex items-center justify-between shadow-sm">
+      <header className={`sticky top-0 z-50 ${headerBg} border-b ${headerBorder} px-6 py-3 flex items-center justify-between ${headerShadow}`}>
         <div className="flex items-center gap-3">
           {settings.logoUrl && (
             <img src={settings.logoUrl} alt={businessName} className="h-8 w-auto object-contain" />
           )}
-          <span className="font-bold text-gray-900 text-sm md:text-base">{businessName}</span>
+          <span className={`font-bold text-sm md:text-base ${headerText}`}>{businessName}</span>
         </div>
         <a
           href="#contact"
