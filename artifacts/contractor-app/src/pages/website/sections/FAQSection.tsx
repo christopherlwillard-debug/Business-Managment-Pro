@@ -54,7 +54,7 @@ function FAQAccordionItem({ item, brandColor }: { item: FAQItem; brandColor: str
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-5 py-4 text-left bg-white hover:bg-gray-50 transition-colors"
       >
-        <span className="font-semibold text-gray-900 text-sm">{item.question}</span>
+        <span className="font-semibold text-sm" style={{ color: "var(--theme-text, #111827)" }}>{item.question}</span>
         <ChevronDown
           className={`w-5 h-5 flex-shrink-0 ml-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           style={{ color: brandColor }}
@@ -62,7 +62,7 @@ function FAQAccordionItem({ item, brandColor }: { item: FAQItem; brandColor: str
       </button>
       {open && (
         <div className="px-5 pb-4 bg-white">
-          <p className="text-gray-600 text-sm leading-relaxed">{item.answer}</p>
+          <p className="text-sm leading-relaxed" style={{ color: "var(--theme-text-muted, #4b5563)" }}>{item.answer}</p>
         </div>
       )}
     </div>
@@ -100,8 +100,8 @@ export function FAQSection({ content, settings, isEditing, onChange, blockStyle 
         <div className="max-w-2xl mx-auto">
           {content.heading && (
             <div className="text-center mb-10">
-              <h2 className="text-3xl font-bold text-gray-900">{content.heading}</h2>
-              {content.subheading && <p className="text-gray-500 mt-2 text-lg">{content.subheading}</p>}
+              <h2 className="text-3xl font-bold" style={{ color: "var(--theme-text, #111827)" }}>{content.heading}</h2>
+              {content.subheading && <p className="mt-2 text-lg" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{content.subheading}</p>}
             </div>
           )}
           <div className="space-y-3">

@@ -96,8 +96,8 @@ export function TestimonialsSection({ content, settings, isEditing, onChange, bl
         <div className="max-w-5xl mx-auto">
           {content.heading && (
             <div className="text-center mb-10">
-              <h2 className="text-3xl font-bold text-gray-900">{content.heading}</h2>
-              {content.subheading && <p className="text-gray-500 mt-2 text-lg">{content.subheading}</p>}
+              <h2 className="text-3xl font-bold" style={{ color: "var(--theme-text, #111827)" }}>{content.heading}</h2>
+              {content.subheading && <p className="mt-2 text-lg" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{content.subheading}</p>}
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -112,10 +112,10 @@ export function TestimonialsSection({ content, settings, isEditing, onChange, bl
                 }}
               >
                 <StarRow rating={t.rating} />
-                <p className="text-gray-700 text-sm leading-relaxed flex-1">"{t.quote}"</p>
+                <p className="text-sm leading-relaxed flex-1" style={{ color: "var(--theme-text-muted, #374151)" }}>"{t.quote}"</p>
                 <div>
-                  <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
-                  {t.location && <p className="text-xs text-gray-400">{t.location}</p>}
+                  <p className="font-semibold text-sm" style={{ color: "var(--theme-text, #111827)" }}>{t.name}</p>
+                  {t.location && <p className="text-xs" style={{ color: "var(--theme-text-muted, #9ca3af)" }}>{t.location}</p>}
                 </div>
               </div>
             ))}

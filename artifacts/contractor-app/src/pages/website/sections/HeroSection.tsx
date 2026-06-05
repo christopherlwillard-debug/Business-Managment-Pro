@@ -133,8 +133,13 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         href={ctaHref}
         target={ctaTarget}
         rel={ctaRel}
-        className={`inline-block font-semibold transition-opacity hover:opacity-90 ${ctaBtnClasses}`}
-        style={{ backgroundColor: ctaBg, color: ctaText, borderRadius: ctaBorderRadius }}
+        className={`inline-block transition-opacity hover:opacity-90 ${ctaBtnClasses}`}
+        style={{
+          backgroundColor: ctaBg,
+          color: ctaText,
+          borderRadius: ctaBorderRadius,
+          fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+        }}
       >
         {content.ctaLabel}
       </a>

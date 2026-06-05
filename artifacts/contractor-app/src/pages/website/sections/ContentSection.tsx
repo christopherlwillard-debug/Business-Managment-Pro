@@ -310,15 +310,16 @@ export function renderSiteComponent(
         >
           {p.imageUrl && <img src={p.imageUrl} alt="" className="w-full h-48 object-cover" />}
           <div className="p-5">
-            <h3 className="font-bold text-gray-900 text-lg mb-2">{p.title}</h3>
-            <p className="text-gray-600 text-sm mb-4">{p.body}</p>
+            <h3 className="font-bold text-lg mb-2" style={{ color: "var(--theme-text, #111827)" }}>{p.title}</h3>
+            <p className="text-sm mb-4" style={{ color: "var(--theme-text-muted, #4b5563)" }}>{p.body}</p>
             {p.ctaLabel && p.ctaUrl && (
               <a
                 href={p.ctaUrl}
-                className="inline-block px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                className="inline-block px-4 py-2 text-sm text-white transition-opacity hover:opacity-90"
                 style={{
                   backgroundColor: settings.accentColor ?? settings.brandColor,
                   borderRadius: "var(--theme-btn-radius, 9999px)",
+                  fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
                 }}
               >
                 {p.ctaLabel}
@@ -356,7 +357,7 @@ export function renderSiteComponent(
             border: "var(--theme-card-border, 1px solid #e5e7eb)",
           }}
         >
-          {p.heading && <h3 className="font-bold text-gray-900 text-lg mb-4">{p.heading}</h3>}
+          {p.heading && <h3 className="font-bold text-lg mb-4" style={{ color: "var(--theme-text, #111827)" }}>{p.heading}</h3>}
           <div className="space-y-3">
             {p.nameField    && <input type="text"  placeholder="Your Name"       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" readOnly />}
             {p.emailField   && <input type="email" placeholder="Email Address"   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" readOnly />}
@@ -365,10 +366,11 @@ export function renderSiteComponent(
           </div>
           <button
             type="button"
-            className="mt-4 px-6 py-2.5 text-sm font-semibold text-white w-full hover:opacity-90 transition-opacity"
+            className="mt-4 px-6 py-2.5 text-sm text-white w-full hover:opacity-90 transition-opacity"
             style={{
               backgroundColor: settings.accentColor ?? settings.brandColor,
               borderRadius: "var(--theme-btn-radius, 9999px)",
+              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
             }}
           >
             {p.submitLabel ?? "Send Message"}

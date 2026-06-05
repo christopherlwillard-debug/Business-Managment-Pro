@@ -177,7 +177,9 @@ export function buildThemeCssVarBlock(
     --theme-card-radius: ${theme.cardRadius};
     --theme-card-shadow: ${theme.cardShadow};
     --theme-card-border: ${cardBorderValue(theme)};
-  }`;
+  }
+  body { background-color: var(--theme-bg); font-family: var(--theme-font-body, system-ui, sans-serif); }
+  h1, h2, h3, h4, h5, h6 { font-family: var(--theme-font-heading, system-ui, sans-serif); }`;
 }
 
 export function applyThemeCssVars(

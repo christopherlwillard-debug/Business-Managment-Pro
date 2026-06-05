@@ -529,7 +529,7 @@ export function PortfolioSection({
             return (
               <div>
                 {visibleProjects.length === 1 && proj.name && proj.name !== "Featured Work" && (
-                  <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-6 text-center">{proj.name}</h3>
+                  <h3 className="text-xl font-semibold mb-6 text-center" style={{ color: "var(--theme-text-muted, #374151)" }}>{proj.name}</h3>
                 )}
                 {proj.description && (
                   <p className="text-gray-500 dark:text-gray-400 text-center mb-6 max-w-2xl mx-auto text-sm">{proj.description}</p>
