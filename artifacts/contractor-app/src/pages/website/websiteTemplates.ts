@@ -15,6 +15,27 @@ export interface WebsiteTemplate {
   }>;
 }
 
+function defaultHeaderSection(ctaLabel = "Get a Quote") {
+  return {
+    id: "header",
+    type: "header",
+    enabled: true,
+    order: -1,
+    content: {
+      navLinks: [
+        { id: "n1", label: "Services", href: "#services" },
+        { id: "n2", label: "About", href: "#about" },
+        { id: "n3", label: "Contact", href: "#contact" },
+        { id: "n4", label: "Portfolio", href: "#portfolio" },
+      ],
+      phone: "",
+      ctaLabel,
+      ctaConfig: { url: "#contact", borderRadius: "pill" },
+      sticky: true,
+    },
+  };
+}
+
 export const WEBSITE_TEMPLATES: WebsiteTemplate[] = [
   {
     id: "general-contracting",
@@ -23,6 +44,7 @@ export const WEBSITE_TEMPLATES: WebsiteTemplate[] = [
     brandColor: "#1e3a5f",
     settings: { brandColor: "#1e3a5f", secondaryColor: "#2563eb", accentColor: "#f59e0b", fontFamily: "Inter", headingFont: "Oswald", bodyFont: "Lato", logoUrl: "", headerStyle: "light", footerBgColor: "#1e3a5f" },
     sections: [
+      defaultHeaderSection("Get a Free Quote"),
       { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Built Right, Built to Last", subheadline: "Full-service general contracting for residential and commercial projects.", ctaLabel: "Get a Free Quote" } },
       { id: "services", type: "services", enabled: true, order: 1, content: { heading: "Our Services", items: [
         { id: "s1", title: "New Construction", description: "From ground-up homes to commercial build-outs — we handle every phase." },
@@ -60,6 +82,7 @@ export const WEBSITE_TEMPLATES: WebsiteTemplate[] = [
     brandColor: "#7f1d1d",
     settings: { brandColor: "#7f1d1d", secondaryColor: "#374151", accentColor: "#ef4444", fontFamily: "Inter", headingFont: "Montserrat", bodyFont: "Open Sans", logoUrl: "", headerStyle: "dark", footerBgColor: "#1f2937" },
     sections: [
+      defaultHeaderSection("Get a Free Inspection"),
       { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Roofing Done Right. Call Us First.", subheadline: "Storm damage, replacements, and emergency repairs — we respond fast and get it done right the first time.", ctaLabel: "Get a Free Inspection" } },
       { id: "services", type: "services", enabled: true, order: 1, content: { heading: "Roofing Services", items: [
         { id: "s1", title: "Roof Replacement", description: "Full tear-off and replacement with premium shingles, metal, or flat roofing systems — backed by warranty." },
@@ -79,6 +102,7 @@ export const WEBSITE_TEMPLATES: WebsiteTemplate[] = [
     brandColor: "#1d4ed8",
     settings: { brandColor: "#1d4ed8", secondaryColor: "#0ea5e9", accentColor: "#f97316", fontFamily: "Inter", headingFont: "Raleway", bodyFont: "Nunito", logoUrl: "", headerStyle: "light", footerBgColor: "#1e3a8a" },
     sections: [
+      defaultHeaderSection("Schedule Service"),
       { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Comfort in Every Season", subheadline: "Professional HVAC installation, repair, and maintenance for homes and businesses.", ctaLabel: "Schedule Service" } },
       { id: "services", type: "services", enabled: true, order: 1, content: { heading: "HVAC Services", items: [
         { id: "s1", title: "AC Installation & Repair", description: "Stay cool all summer with efficient AC systems, expert installation, and fast repair when you need it most." },
@@ -98,6 +122,7 @@ export const WEBSITE_TEMPLATES: WebsiteTemplate[] = [
     brandColor: "#0f766e",
     settings: { brandColor: "#0f766e", secondaryColor: "#0369a1", accentColor: "#fbbf24", fontFamily: "Inter", headingFont: "Montserrat", bodyFont: "Source Sans 3", logoUrl: "", headerStyle: "light", footerBgColor: "#134e4a" },
     sections: [
+      defaultHeaderSection("Call Now"),
       { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Plumbing You Can Count On — 24/7", subheadline: "From leaky faucets to full repiping — licensed plumbers available around the clock.", ctaLabel: "Call Now" } },
       { id: "services", type: "services", enabled: true, order: 1, content: { heading: "Plumbing Services", items: [
         { id: "s1", title: "Emergency Plumbing", description: "24/7 emergency response for burst pipes, major leaks, and sewer backups. We answer the phone — day and night." },
@@ -117,6 +142,7 @@ export const WEBSITE_TEMPLATES: WebsiteTemplate[] = [
     brandColor: "#166534",
     settings: { brandColor: "#166534", secondaryColor: "#15803d", accentColor: "#84cc16", fontFamily: "Inter", headingFont: "Playfair Display", bodyFont: "Merriweather", logoUrl: "", headerStyle: "transparent", footerBgColor: "#14532d" },
     sections: [
+      defaultHeaderSection("Get a Free Estimate"),
       { id: "hero", type: "hero", enabled: true, order: 0, content: { headline: "Beautiful Landscapes, Lasting Impressions", subheadline: "Professional lawn care, landscaping design, and outdoor services for homes and businesses.", ctaLabel: "Get a Free Estimate" } },
       { id: "services", type: "services", enabled: true, order: 1, content: { heading: "Our Services", items: [
         { id: "s1", title: "Lawn Maintenance", description: "Weekly or bi-weekly mowing, edging, trimming, and cleanup to keep your lawn looking its best all season." },

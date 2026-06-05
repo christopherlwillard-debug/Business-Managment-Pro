@@ -10,7 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
-  Star, HelpCircle, Megaphone,
+  Star, HelpCircle, Megaphone, Lock,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -33,6 +33,7 @@ import { TestimonialsSection, defaultTestimonialsContent } from "./sections/Test
 import { FAQSection, defaultFAQContent } from "./sections/FAQSection";
 import { CTASection, defaultCTAContent } from "./sections/CTASection";
 import { StatsSection, defaultStatsContent } from "./sections/StatsSection";
+import { HeaderSection, defaultHeaderContent } from "./sections/HeaderSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
@@ -43,7 +44,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -120,11 +121,13 @@ function renderSection(
     case "faq": return <FAQSection {...props} />;
     case "cta": return <CTASection {...props} />;
     case "stats": return <StatsSection {...props} />;
+    case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} />;
     default: return null;
   }
 }
 
 const SECTION_LABELS: Record<string, string> = {
+  header: "Header",
   hero: "Hero Banner",
   services: "Services",
   about: "About Us",
@@ -436,12 +439,23 @@ export default function WebsiteEditor() {
     },
     onSuccess: (data) => {
       const sorted = [...(data.sections as Section[])].sort((a, b) => a.order - b.order);
-      const migrated = sorted.map(s => {
+      let migrated = sorted.map(s => {
         if (s.type === "hero" && !s.blockStyle?.bgType && (s.content as any).bgColor) {
           return { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgType: "color" as const, bgColor: (s.content as any).bgColor } };
         }
         return s;
       });
+      if (!migrated.find(s => s.type === "header")) {
+        const defHeader: Section = {
+          id: "header-" + Math.random().toString(36).slice(2, 9),
+          type: "header",
+          enabled: true,
+          order: -1,
+          content: defaultHeaderContent() as unknown as Record<string, unknown>,
+        };
+        migrated = [defHeader, ...migrated];
+        isDirtyRef.current = true;
+      }
       setLocalSections(migrated);
       setLocalSettings(data.settings as SiteSettings);
       if (data.id === null && !pickerShownRef.current) {
@@ -581,7 +595,7 @@ export default function WebsiteEditor() {
   }
 
   function moveSection(id: string, direction: "up" | "down") {
-    const enabled = sections.filter(s => s.enabled);
+    const enabled = sections.filter(s => s.enabled && s.type !== "header");
     const enabledIdx = enabled.findIndex(s => s.id === id);
     if (direction === "up" && enabledIdx <= 0) return;
     if (direction === "down" && enabledIdx >= enabled.length - 1) return;
@@ -1084,93 +1098,110 @@ export default function WebsiteEditor() {
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
 
   function renderSections() {
-    const enabled = sections.filter(s => s.enabled);
-    if (enabled.length === 0) {
-      return (
-        <div className="py-20 text-center text-muted-foreground text-sm">
-          Enable at least one section to preview your site.
-        </div>
-      );
-    }
+    const headerSec = sections.find(s => s.type === "header");
+    const enabled = sections.filter(s => s.enabled && s.type !== "header");
     const previewBodyStyle = settings.bodyFont
       ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
       : undefined;
+
+    function renderClickableSection(s: Section, controls: React.ReactNode) {
+      return (
+        <div
+          key={s.id}
+          onClick={(e) => { e.stopPropagation(); setActiveSection(s.id); }}
+          className={`relative transition-all cursor-pointer ${
+            activeSection === s.id
+              ? "ring-2 ring-inset ring-primary/60"
+              : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
+          }`}
+        >
+          {activeSection === s.id && controls}
+          {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
+            onAboutPhotoUpload: handleAboutPhotoUpload,
+            isAboutPhotoUploading: aboutPhotoUploading,
+            onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
+            uploadingPortfolioPhotoIds,
+            onColumnImageUpload: handleColumnImageUpload,
+            uploadingColumnImageKeys,
+            businessName: activeBusiness?.name,
+            businessId: activeBusiness?.id,
+          })}
+        </div>
+      );
+    }
+
     return (
       <div style={previewBodyStyle}>
         {settings.headingFont && (
           <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
         )}
-        {enabled.map(s => (
-          <div
-            key={s.id}
-            onClick={(e) => { e.stopPropagation(); setActiveSection(s.id); }}
-            className={`relative transition-all cursor-pointer ${
-              activeSection === s.id
-                ? "ring-2 ring-inset ring-primary/60"
-                : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
-            }`}
-          >
-            {activeSection === s.id && (() => {
-              const enabledSections = sections.filter(sec => sec.enabled);
-              const enabledIdx = enabledSections.findIndex(sec => sec.id === s.id);
-              const isFirst = enabledIdx === 0;
-              const isLast = enabledIdx === enabledSections.length - 1;
-              return (
-              <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5">
-                <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded">
-                  {SECTION_LABELS[s.type]}
-                </span>
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); moveSection(s.id, "up"); }}
-                  disabled={isFirst}
-                  title="Move up"
-                  className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isFirst ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
-                >
-                  <ChevronUp className="w-3 h-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); moveSection(s.id, "down"); }}
-                  disabled={isLast}
-                  title="Move down"
-                  className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isLast ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
-                >
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); duplicateSection(s.id); }}
-                  title="Duplicate section"
-                  className="flex items-center gap-1 bg-primary/90 text-primary-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-primary transition-colors"
-                >
-                  <Copy className="w-3 h-3" />
-                  Duplicate
-                </button>
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
-                  title="Delete section"
-                  className="flex items-center gap-1 bg-destructive/90 text-destructive-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-destructive transition-colors"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Delete
-                </button>
-              </div>
-              );
-            })()}
-            {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
-              onAboutPhotoUpload: handleAboutPhotoUpload,
-              isAboutPhotoUploading: aboutPhotoUploading,
-              onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
-              uploadingPortfolioPhotoIds,
-              onColumnImageUpload: handleColumnImageUpload,
-              uploadingColumnImageKeys,
-              businessName: activeBusiness?.name,
-              businessId: activeBusiness?.id,
-            })}
+        {/* Header — always first, no move/delete/duplicate controls */}
+        {headerSec && renderClickableSection(headerSec, (
+          <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5">
+            <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+              <Lock className="w-2.5 h-2.5" />
+              Header
+            </span>
+            <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
+              Click to edit nav links & CTA
+            </span>
           </div>
         ))}
+        {/* Regular sections */}
+        {enabled.length === 0 && !headerSec && (
+          <div className="py-20 text-center text-muted-foreground text-sm">
+            Enable at least one section to preview your site.
+          </div>
+        )}
+        {enabled.map(s => {
+          const enabledSections = sections.filter(sec => sec.enabled && sec.type !== "header");
+          const enabledIdx = enabledSections.findIndex(sec => sec.id === s.id);
+          const isFirst = enabledIdx === 0;
+          const isLast = enabledIdx === enabledSections.length - 1;
+          return renderClickableSection(s, (
+            <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5">
+              <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded">
+                {SECTION_LABELS[s.type]}
+              </span>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); moveSection(s.id, "up"); }}
+                disabled={isFirst}
+                title="Move up"
+                className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isFirst ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
+              >
+                <ChevronUp className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); moveSection(s.id, "down"); }}
+                disabled={isLast}
+                title="Move down"
+                className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isLast ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
+              >
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); duplicateSection(s.id); }}
+                title="Duplicate section"
+                className="flex items-center gap-1 bg-primary/90 text-primary-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-primary transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+                Duplicate
+              </button>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
+                title="Delete section"
+                className="flex items-center gap-1 bg-destructive/90 text-destructive-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-destructive transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                Delete
+              </button>
+            </div>
+          ));
+        })}
       </div>
     );
   }
@@ -1418,9 +1449,26 @@ export default function WebsiteEditor() {
             <p className="text-[10px] text-muted-foreground">Drag to reorder</p>
           </div>
           <div className="p-2 space-y-0.5">
+            {/* Header — locked, always first */}
+            {(() => {
+              const hdr = sections.find(s => s.type === "header");
+              if (!hdr) return null;
+              return (
+                <div
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                    activeSection === hdr.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
+                  }`}
+                  onClick={() => setActiveSection(hdr.id)}
+                >
+                  <Lock className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
+                  <span className="flex-1 text-sm font-medium text-foreground">Header</span>
+                  <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
+                </div>
+              );
+            })()}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {sections.map(s => (
+              <SortableContext items={sections.filter(s => s.type !== "header").map(s => s.id)} strategy={verticalListSortingStrategy}>
+                {sections.filter(s => s.type !== "header").map(s => (
                   <SortableRow
                     key={s.id}
                     section={s}
@@ -1617,7 +1665,8 @@ export default function WebsiteEditor() {
         </div>
         {activeSection && activeTab === "editor" && (() => {
           const sec = sections.find(s => s.id === activeSection);
-          return sec ? (
+          if (!sec || sec.type === "header") return null;
+          return (
             <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
               <SectionStylePanel
                 sectionId={sec.id}
@@ -1628,7 +1677,7 @@ export default function WebsiteEditor() {
                 isBgUploading={!!bgUploading[sec.id]}
               />
             </div>
-          ) : null;
+          );
         })()}
         </>)}
       </div>

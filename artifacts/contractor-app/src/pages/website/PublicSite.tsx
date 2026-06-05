@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, X } from "lucide-react";
+import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams } from "wouter";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
@@ -21,7 +21,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -52,6 +52,7 @@ export default function PublicSite() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const [paymentSuccessDismissed, setPaymentSuccessDismissed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const paymentSuccess = new URLSearchParams(window.location.search).get("payment") === "success";
 
   const { data, isLoading, isError } = useQuery<PublishedConfig>({
@@ -121,6 +122,16 @@ export default function PublicSite() {
   const { sections, settings, businessName } = data;
   const sorted = [...sections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
 
+  const headerSec = sorted.find(s => s.type === "header");
+  const bodySections = sorted.filter(s => s.type !== "header");
+
+  const headerContent = headerSec?.content as any;
+  const navLinks: Array<{ id: string; label: string; href: string }> = headerContent?.navLinks ?? [];
+  const headerPhone: string = headerContent?.phone ?? "";
+  const ctaLabel: string = headerContent?.ctaLabel ?? "Get a Quote";
+  const ctaUrl: string = headerContent?.ctaConfig?.url ?? "#contact";
+  const isSticky: boolean = headerContent?.sticky ?? true;
+
   const GOOGLE_FONT_SET = new Set(["Oswald","Montserrat","Playfair Display","Raleway","Roboto Slab","Lato","Open Sans","Merriweather","Source Sans 3","Nunito"]);
   const googleFontFamilies = [settings.headingFont, settings.bodyFont]
     .filter((f): f is string => !!f && GOOGLE_FONT_SET.has(f))
@@ -140,7 +151,12 @@ export default function PublicSite() {
     headerStyle === "transparent" ? "border-white/10" :
     "border-gray-100";
   const headerText = isDarkHeader ? "text-white" : "text-gray-900";
+  const headerSubText = isDarkHeader ? "text-white/70" : "text-gray-600";
   const headerShadow = headerStyle === "transparent" ? "" : "shadow-sm";
+  const mobileBg =
+    headerStyle === "dark" ? "bg-gray-900" :
+    headerStyle === "transparent" ? "bg-white/95" :
+    "bg-white";
 
   const siteBodyStyle = settings.bodyFont
     ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
@@ -173,23 +189,83 @@ export default function PublicSite() {
           </button>
         </div>
       )}
-      <header className={`sticky top-0 z-50 ${headerBg} border-b ${headerBorder} px-6 py-3 flex items-center justify-between ${headerShadow}`}>
-        <div className="flex items-center gap-3">
+
+      {/* Dynamic site header */}
+      <header className={`${isSticky ? "sticky" : ""} top-0 z-50 ${headerBg} border-b ${headerBorder} px-6 py-3 flex items-center justify-between ${headerShadow}`}>
+        <div className="flex items-center gap-3 flex-shrink-0">
           {settings.logoUrl && (
             <img src={settings.logoUrl} alt={businessName} className="h-8 w-auto object-contain" />
           )}
           <span className={`font-bold text-sm md:text-base ${headerText}`}>{businessName}</span>
         </div>
-        <a
-          href="#contact"
-          className="px-4 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: settings.brandColor }}
-        >
-          Get a Quote
-        </a>
+
+        {navLinks.length > 0 && (
+          <nav className="hidden md:flex items-center gap-6">
+            {navLinks.map(link => (
+              <a
+                key={link.id}
+                href={link.href}
+                className={`text-sm font-medium transition-opacity hover:opacity-70 ${headerSubText}`}
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
+        )}
+
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {headerPhone && (
+            <a
+              href={`tel:${headerPhone.replace(/\D/g, "")}`}
+              className={`hidden md:block text-sm font-medium ${headerSubText} hover:opacity-80 transition-opacity`}
+            >
+              {headerPhone}
+            </a>
+          )}
+          <a
+            href={ctaUrl}
+            className="px-4 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: settings.brandColor }}
+          >
+            {ctaLabel}
+          </a>
+          {navLinks.length > 0 && (
+            <button
+              className={`md:hidden p-1 ${headerText}`}
+              onClick={() => setMobileMenuOpen(v => !v)}
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
+        </div>
       </header>
 
-      {sorted.map(section => {
+      {/* Mobile nav drawer */}
+      {mobileMenuOpen && navLinks.length > 0 && (
+        <div className={`md:hidden ${mobileBg} border-b ${headerBorder} px-6 py-4 space-y-3 shadow-md`}>
+          {navLinks.map(link => (
+            <a
+              key={link.id}
+              href={link.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block text-sm font-medium py-1 ${headerText} hover:opacity-70 transition-opacity`}
+            >
+              {link.label}
+            </a>
+          ))}
+          {headerPhone && (
+            <a
+              href={`tel:${headerPhone.replace(/\D/g, "")}`}
+              className={`block text-sm font-medium py-1 ${headerSubText}`}
+            >
+              {headerPhone}
+            </a>
+          )}
+        </div>
+      )}
+
+      {bodySections.map(section => {
         const props = { content: section.content as any, settings, isEditing: false, blockStyle: section.blockStyle };
         switch (section.type) {
           case "hero":    return <HeroSection key={section.id} {...props} />;
