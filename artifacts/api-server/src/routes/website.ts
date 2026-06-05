@@ -896,25 +896,20 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
     .from(websiteMediaTable)
     .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
   if (!item) return res.status(404).json({ error: "Not found" });
-  try {
-    await objectStorageService.deleteObject(item.objectPath);
-  } catch {
-    // best-effort delete from object storage
-  }
+  // Remove DB record only — intentionally keep the object in storage so any
+  // pages already referencing this URL continue to load correctly.
   await db.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
   res.json({ ok: true });
 }));
 
 publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
   const { uuid } = req.params;
-  const expectedObjectPath = `/objects/uploads/website-media/${uuid}`;
-  const [item] = await db
-    .select({ id: websiteMediaTable.id })
-    .from(websiteMediaTable)
-    .where(eq(websiteMediaTable.objectPath, expectedObjectPath));
-  if (!item) return res.status(404).json({ error: "Not found" });
+  // Serve directly from storage — no DB presence required so that deleting an
+  // image from the media library (which removes the DB row but NOT the object)
+  // does not break pages that still reference this URL.
+  const objectPath = `/objects/uploads/website-media/${uuid}`;
   try {
-    const objectFile = await objectStorageService.getObjectEntityFile(expectedObjectPath);
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));

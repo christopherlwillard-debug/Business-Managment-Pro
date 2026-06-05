@@ -234,13 +234,13 @@ export function ImageGallerySection({
                     onChange={e => handleFileChange(img.id, e)}
                   />
                 </label>
-                {onOpenMediaLibrary && !img.url && (
+                {onOpenMediaLibrary && (
                   <button
                     type="button"
                     onClick={() => onOpenMediaLibrary(url => updateImage(img.id, { url }))}
                     className="w-full text-[9px] text-white/40 hover:text-white/70 py-0.5 transition-colors"
                   >
-                    Library
+                    {img.url ? "Replace from Library" : "Library"}
                   </button>
                 )}
 

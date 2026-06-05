@@ -52,7 +52,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
         await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
         const uuid = objectPath.split("/").pop()!;
-        const url = `${BASE}/api/website/media-image/${uuid}`;
+        const url = `${BASE}/api/public/site/media-image/${uuid}`;
         await fetch(`${BASE}/api/website/media?businessId=${businessId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
