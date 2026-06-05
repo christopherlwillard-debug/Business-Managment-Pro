@@ -11,13 +11,17 @@ import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
 import { DepositSection } from "./sections/DepositSection";
 import { ColumnsSection } from "./sections/ColumnsSection";
+import { TestimonialsSection } from "./sections/TestimonialsSection";
+import { FAQSection } from "./sections/FAQSection";
+import { CTASection } from "./sections/CTASection";
+import { StatsSection } from "./sections/StatsSection";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -204,6 +208,10 @@ export default function PublicSite() {
             <DepositSection key={section.id} {...props} businessSlug={resolvedSlug} />
           );
           case "columns": return <ColumnsSection key={section.id} {...props} />;
+          case "testimonials": return <TestimonialsSection key={section.id} {...props} />;
+          case "faq": return <FAQSection key={section.id} {...props} />;
+          case "cta": return <CTASection key={section.id} {...props} />;
+          case "stats": return <StatsSection key={section.id} {...props} />;
           default: return null;
         }
       })}

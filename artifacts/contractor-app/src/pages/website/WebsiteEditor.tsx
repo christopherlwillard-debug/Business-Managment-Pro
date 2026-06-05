@@ -10,6 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
+  Star, HelpCircle, Megaphone,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -28,6 +29,10 @@ import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
 import { DepositSection } from "./sections/DepositSection";
 import { ColumnsSection, defaultColumnsContent, type ColumnsContent } from "./sections/ColumnsSection";
+import { TestimonialsSection, defaultTestimonialsContent } from "./sections/TestimonialsSection";
+import { FAQSection, defaultFAQContent } from "./sections/FAQSection";
+import { CTASection, defaultCTAContent } from "./sections/CTASection";
+import { StatsSection, defaultStatsContent } from "./sections/StatsSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
@@ -38,7 +43,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -111,6 +116,10 @@ function renderSection(
         uploadingImageKeys={extras?.uploadingColumnImageKeys}
       />
     );
+    case "testimonials": return <TestimonialsSection {...props} />;
+    case "faq": return <FAQSection {...props} />;
+    case "cta": return <CTASection {...props} />;
+    case "stats": return <StatsSection {...props} />;
     default: return null;
   }
 }
@@ -124,6 +133,10 @@ const SECTION_LABELS: Record<string, string> = {
   portfolio: "Portfolio / Gallery",
   deposit: "Pay Deposit",
   columns: "Columns",
+  testimonials: "Testimonials",
+  faq: "FAQ",
+  cta: "CTA Banner",
+  stats: "Stats / Numbers",
 };
 
 const ADDABLE_SECTION_TYPES: Array<{
@@ -132,6 +145,10 @@ const ADDABLE_SECTION_TYPES: Array<{
   icon: React.ReactNode;
   allowMultiple?: boolean;
 }> = [
+  { type: "testimonials", label: "Testimonials", icon: <Star className="w-4 h-4" />, allowMultiple: true },
+  { type: "faq", label: "FAQ", icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
+  { type: "cta", label: "CTA Banner", icon: <Megaphone className="w-4 h-4" />, allowMultiple: true },
+  { type: "stats", label: "Stats / Numbers", icon: <BarChart2 className="w-4 h-4" />, allowMultiple: true },
   { type: "columns", label: "Columns", icon: <Columns className="w-4 h-4" />, allowMultiple: true },
 ];
 
@@ -998,6 +1015,14 @@ export default function WebsiteEditor() {
     let content: Record<string, unknown> = {};
     if (type === "columns") {
       content = defaultColumnsContent() as unknown as Record<string, unknown>;
+    } else if (type === "testimonials") {
+      content = defaultTestimonialsContent() as unknown as Record<string, unknown>;
+    } else if (type === "faq") {
+      content = defaultFAQContent() as unknown as Record<string, unknown>;
+    } else if (type === "cta") {
+      content = defaultCTAContent() as unknown as Record<string, unknown>;
+    } else if (type === "stats") {
+      content = defaultStatsContent() as unknown as Record<string, unknown>;
     }
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
     history.pushSnapshot({ sections, settings });
