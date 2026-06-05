@@ -1355,9 +1355,9 @@ export default function WebsiteEditor() {
               : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
           }`}
           onClick={e => {
+            e.stopPropagation();
             const tgt = e.target as HTMLElement;
             if (isActive && tgt.closest("input, textarea, select, button, a[href], [role=button]")) return;
-            e.stopPropagation();
             if (!isActive) {
               const fieldEl = tgt.closest("[data-edit-field]") as HTMLElement | null;
               pendingFocusFieldRef.current = fieldEl?.dataset.editField ?? null;
