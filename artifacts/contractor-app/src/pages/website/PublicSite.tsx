@@ -62,7 +62,10 @@ interface SiteSettings {
   baseFontSize?: "sm" | "base" | "lg";
   headerBgColor?: string;
   headerTextColor?: string;
+  headerLinkColor?: string;
   footerTextColor?: string;
+  footerLinkColor?: string;
+  focusRingColor?: string;
   logoUrl: string;
   faviconUrl?: string;
   headerStyle?: "light" | "dark" | "transparent";
@@ -278,7 +281,10 @@ export default function PublicSite() {
             baseFontSize: settings.baseFontSize,
             headerBgColor: settings.headerBgColor,
             headerTextColor: settings.headerTextColor,
+            headerLinkColor: settings.headerLinkColor,
             footerTextColor: settings.footerTextColor,
+            footerLinkColor: settings.footerLinkColor,
+            focusRingColor: settings.focusRingColor,
           })}</style>
           {settings.faviconUrl && <link rel="icon" href={settings.faviconUrl} />}
         </>,

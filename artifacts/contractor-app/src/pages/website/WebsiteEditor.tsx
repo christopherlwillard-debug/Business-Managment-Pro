@@ -91,7 +91,10 @@ export interface SiteSettings {
   baseFontSize?: "sm" | "base" | "lg";
   headerBgColor?: string;
   headerTextColor?: string;
+  headerLinkColor?: string;
   footerTextColor?: string;
+  footerLinkColor?: string;
+  focusRingColor?: string;
   logoUrl: string;
   logoObjectPath?: string;
   faviconUrl?: string;
@@ -744,9 +747,24 @@ export default function WebsiteEditor() {
       baseFontSize: settings.baseFontSize,
       headerBgColor: settings.headerBgColor,
       headerTextColor: settings.headerTextColor,
+      headerLinkColor: settings.headerLinkColor,
       footerTextColor: settings.footerTextColor,
+      footerLinkColor: settings.footerLinkColor,
+      focusRingColor: settings.focusRingColor,
     });
-    return () => applyThemeCssVars(undefined);
+    const scale = settings.headingSizeScale ?? (settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId)?.headingSizeScale : undefined);
+    const bfSize = settings.baseFontSize ?? (settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId)?.baseFontSize : undefined);
+    const hs = scale ? HEADING_SCALES[scale] : undefined;
+    const bs = bfSize ? BODY_SIZES[bfSize] : undefined;
+    const fr = settings.focusRingColor;
+    let el = document.getElementById("__bp-theme-rules") as HTMLStyleElement | null;
+    if (!el) { el = document.createElement("style"); el.id = "__bp-theme-rules"; document.head.appendChild(el); }
+    let css = "";
+    if (hs) css += `h1{font-size:${hs.h1}!important}h2{font-size:${hs.h2}!important}h3{font-size:${hs.h3}!important}`;
+    if (bs) css += `body{font-size:${bs}}`;
+    if (fr) css += `input:focus,textarea:focus,select:focus{box-shadow:0 0 0 2px ${fr};outline:none}`;
+    el.textContent = css;
+    return () => { applyThemeCssVars(undefined); document.getElementById("__bp-theme-rules")?.remove(); };
   }, [
     settings.themeId, settings.brandColor, settings.secondaryColor, settings.accentColor,
     settings.bgColor, settings.surfaceColor, settings.textColor, settings.textMutedColor,
@@ -754,7 +772,8 @@ export default function WebsiteEditor() {
     settings.buttonRadius, settings.buttonFontWeight, settings.buttonShadow,
     settings.cardRadius, settings.cardShadow, settings.cardBorder,
     settings.inputRadius, settings.headingSizeScale, settings.baseFontSize,
-    settings.headerBgColor, settings.headerTextColor, settings.footerTextColor,
+    settings.headerBgColor, settings.headerTextColor, settings.headerLinkColor,
+    settings.footerTextColor, settings.footerLinkColor, settings.focusRingColor,
   ]);
 
   const saveMutation = useMutation({
@@ -2850,11 +2869,20 @@ export default function WebsiteEditor() {
                     })}
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground flex-1">Focus Ring</label>
+                  <input
+                    type="color"
+                    value={settings.focusRingColor ?? settings.brandColor ?? "#2563EB"}
+                    onChange={e => patchSettings({ focusRingColor: e.target.value })}
+                    className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </div>
                 {settings.themeId && (
                   <button
                     onClick={() => {
                       const t = SITE_THEMES.find(th => th.id === settings.themeId);
-                      if (t) patchSettings({ inputRadius: t.inputRadius });
+                      if (t) patchSettings({ inputRadius: t.inputRadius, focusRingColor: undefined });
                     }}
                     className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
                   >
@@ -2925,9 +2953,27 @@ export default function WebsiteEditor() {
                     className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
                   />
                 </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground flex-1">Header Links</label>
+                  <input
+                    type="color"
+                    value={settings.headerLinkColor ?? settings.textMutedColor ?? "#4b5563"}
+                    onChange={e => patchSettings({ headerLinkColor: e.target.value })}
+                    className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground flex-1">Footer Links</label>
+                  <input
+                    type="color"
+                    value={settings.footerLinkColor ?? "#ffffff"}
+                    onChange={e => patchSettings({ footerLinkColor: e.target.value })}
+                    className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
+                  />
+                </div>
                 {settings.themeId && (
                   <button
-                    onClick={() => patchSettings({ footerBgColor: undefined, footerTextColor: undefined, headerBgColor: undefined, headerTextColor: undefined })}
+                    onClick={() => patchSettings({ footerBgColor: undefined, footerTextColor: undefined, footerLinkColor: undefined, headerBgColor: undefined, headerTextColor: undefined, headerLinkColor: undefined })}
                     className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
                   >
                     Reset to theme defaults

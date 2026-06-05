@@ -67,27 +67,30 @@ function HeaderPreviewBar({
 }) {
   const headerStyle = settings.headerStyle ?? "light";
   const isDark = headerStyle === "dark" || headerStyle === "transparent";
-  const bgClass =
-    headerStyle === "dark"
-      ? "bg-gray-900"
-      : headerStyle === "transparent"
-      ? "bg-white/10 backdrop-blur-sm"
-      : "bg-white";
   const borderClass =
     headerStyle === "dark"
       ? "border-gray-700"
       : headerStyle === "transparent"
       ? "border-white/10"
       : "border-gray-100";
-  const textClass = isDark ? "text-white" : "text-gray-900";
-  const subTextClass = isDark ? "text-white/70" : "text-gray-600";
+  const transparentBgClass = headerStyle === "transparent" ? "bg-white/10 backdrop-blur-sm" : "";
+
+  const darkFallbackBg = headerStyle === "dark" ? "#111827" : "#ffffff";
+  const darkFallbackText = isDark ? "#ffffff" : "#111111";
+  const darkFallbackLink = isDark ? "rgba(255,255,255,0.7)" : "#4b5563";
 
   const navLinks = content.navLinks ?? [];
   const phone = content.phone ?? "";
   const ctaLabel = content.ctaLabel ?? "Get a Quote";
 
   return (
-    <div className={`px-6 py-3 flex items-center justify-between border-b ${bgClass} ${borderClass}`}>
+    <div
+      className={`px-6 py-3 flex items-center justify-between border-b ${transparentBgClass} ${borderClass}`}
+      style={{
+        backgroundColor: headerStyle !== "transparent" ? `var(--theme-header-bg, ${darkFallbackBg})` : undefined,
+        color: `var(--theme-header-text, ${darkFallbackText})`,
+      }}
+    >
       <div className="flex items-center gap-3 flex-shrink-0">
         {settings.logoUrl && (
           <img
@@ -96,7 +99,7 @@ function HeaderPreviewBar({
             className="h-8 w-auto object-contain"
           />
         )}
-        <span className={`font-bold text-sm ${textClass}`}>
+        <span className="font-bold text-sm" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
           {businessName ?? "Your Business"}
         </span>
       </div>
@@ -105,7 +108,8 @@ function HeaderPreviewBar({
         {navLinks.map((link) => (
           <span
             key={link.id}
-            className={`text-sm font-medium transition-opacity hover:opacity-80 cursor-pointer ${subTextClass}`}
+            className="text-sm font-medium transition-opacity hover:opacity-80 cursor-pointer"
+            style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
           >
             {link.label}
           </span>
@@ -114,7 +118,10 @@ function HeaderPreviewBar({
 
       <div className="flex items-center gap-3 flex-shrink-0">
         {phone && (
-          <span className={`hidden md:block text-sm font-medium ${subTextClass}`}>
+          <span
+            className="hidden md:block text-sm font-medium"
+            style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+          >
             {phone}
           </span>
         )}
@@ -129,7 +136,7 @@ function HeaderPreviewBar({
         >
           {ctaLabel}
         </span>
-        <span className={`md:hidden cursor-pointer ${textClass}`}>
+        <span className="md:hidden cursor-pointer" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
           <Menu className="w-5 h-5" />
         </span>
       </div>

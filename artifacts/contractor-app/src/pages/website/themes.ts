@@ -44,7 +44,10 @@ export interface ThemeOverrides {
   baseFontSize?: "sm" | "base" | "lg";
   headerBgColor?: string;
   headerTextColor?: string;
+  headerLinkColor?: string;
   footerTextColor?: string;
+  footerLinkColor?: string;
+  focusRingColor?: string;
 }
 
 export type ThemeColorOverrides = ThemeOverrides;
@@ -249,9 +252,12 @@ export function buildThemeCssVarBlock(
   const inputRadius = overrides?.inputRadius ?? theme?.inputRadius;
   const headingScale = resolveHeadingScale(overrides?.headingSizeScale ?? theme?.headingSizeScale);
   const bodySize = resolveBodySize(overrides?.baseFontSize ?? theme?.baseFontSize);
-  const headerBg = overrides?.headerBgColor ?? theme?.bgColor;
-  const headerText = overrides?.headerTextColor ?? theme?.textColor;
-  const footerText = overrides?.footerTextColor ?? theme?.textColor;
+  const headerBg = overrides?.headerBgColor;
+  const headerText = overrides?.headerTextColor;
+  const headerLink = overrides?.headerLinkColor;
+  const footerText = overrides?.footerTextColor;
+  const footerLink = overrides?.footerLinkColor;
+  const focusRing = overrides?.focusRingColor;
 
   if (!primary && !secondary && !bg && !headingFont && !btnRadius && !cardRadius) return "";
 
@@ -280,11 +286,21 @@ export function buildThemeCssVarBlock(
   if (bodySize) lines.push(`  --theme-body-size: ${bodySize};`);
   if (headerBg) lines.push(`  --theme-header-bg: ${headerBg};`);
   if (headerText) lines.push(`  --theme-header-text: ${headerText};`);
+  if (headerLink) lines.push(`  --theme-header-link: ${headerLink};`);
   if (footerText) lines.push(`  --theme-footer-text: ${footerText};`);
+  if (footerLink) lines.push(`  --theme-footer-link: ${footerLink};`);
+  if (focusRing) lines.push(`  --theme-focus-ring: ${focusRing};`);
   lines.push("}");
 
   if (bg) lines.push("body { background-color: var(--theme-bg); font-family: var(--theme-font-body, system-ui, sans-serif); }");
   if (headingFont) lines.push("h1, h2, h3, h4, h5, h6 { font-family: var(--theme-font-heading, system-ui, sans-serif); }");
+  if (headingScale) {
+    lines.push(`h1 { font-size: ${headingScale.h1} !important; }`);
+    lines.push(`h2 { font-size: ${headingScale.h2} !important; }`);
+    lines.push(`h3 { font-size: ${headingScale.h3} !important; }`);
+  }
+  if (bodySize) lines.push(`body { font-size: ${bodySize}; }`);
+  if (focusRing) lines.push(`input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 2px ${focusRing}; outline: none; }`);
 
   return lines.join("\n");
 }
@@ -305,7 +321,9 @@ export function applyThemeCssVars(
       "--theme-card-radius", "--theme-card-shadow", "--theme-card-border",
       "--theme-input-radius",
       "--theme-h1-size", "--theme-h2-size", "--theme-h3-size", "--theme-body-size",
-      "--theme-header-bg", "--theme-header-text", "--theme-footer-text",
+      "--theme-header-bg", "--theme-header-text", "--theme-header-link",
+      "--theme-footer-text", "--theme-footer-link",
+      "--theme-focus-ring",
     ];
     vars.forEach(v => root.style.removeProperty(v));
     return;
@@ -331,7 +349,10 @@ export function applyThemeCssVars(
   const bodySize = resolveBodySize(overrides?.baseFontSize ?? theme?.baseFontSize);
   const headerBg = overrides?.headerBgColor ?? undefined;
   const headerTextColor = overrides?.headerTextColor ?? undefined;
+  const headerLinkColor = overrides?.headerLinkColor ?? undefined;
   const footerTextColor = overrides?.footerTextColor ?? undefined;
+  const footerLinkColor = overrides?.footerLinkColor ?? undefined;
+  const focusRingColor = overrides?.focusRingColor ?? undefined;
 
   function setOrRemove(varName: string, value: string | undefined) {
     if (value !== undefined) root.style.setProperty(varName, value);
@@ -360,5 +381,8 @@ export function applyThemeCssVars(
   setOrRemove("--theme-body-size", bodySize);
   setOrRemove("--theme-header-bg", headerBg);
   setOrRemove("--theme-header-text", headerTextColor);
+  setOrRemove("--theme-header-link", headerLinkColor);
   setOrRemove("--theme-footer-text", footerTextColor);
+  setOrRemove("--theme-footer-link", footerLinkColor);
+  setOrRemove("--theme-focus-ring", focusRingColor);
 }
