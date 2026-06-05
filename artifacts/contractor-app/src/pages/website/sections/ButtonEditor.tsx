@@ -29,8 +29,9 @@ export function buttonConfigToStyle(cfg?: ButtonConfig): React.CSSProperties {
     color: cfg.textColor ?? undefined,
     borderRadius:
       cfg.borderRadius === "pill" ? "9999px" :
+      cfg.borderRadius === "rounded" ? "0.5rem" :
       cfg.borderRadius === "square" ? "4px" :
-      "0.5rem",
+      undefined,
   };
 }
 

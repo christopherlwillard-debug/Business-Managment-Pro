@@ -42,7 +42,13 @@ interface FAQSectionProps {
 function FAQAccordionItem({ item, brandColor }: { item: FAQItem; brandColor: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div
+      className="overflow-hidden"
+      style={{
+        border: "var(--theme-card-border, 1px solid #e5e7eb)",
+        borderRadius: "var(--theme-card-radius, 0.75rem)",
+      }}
+    >
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -50,7 +56,8 @@ function FAQAccordionItem({ item, brandColor }: { item: FAQItem; brandColor: str
       >
         <span className="font-semibold text-gray-900 text-sm">{item.question}</span>
         <ChevronDown
-          className={`w-5 h-5 text-gray-400 flex-shrink-0 ml-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          className={`w-5 h-5 flex-shrink-0 ml-3 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          style={{ color: brandColor }}
         />
       </button>
       {open && (

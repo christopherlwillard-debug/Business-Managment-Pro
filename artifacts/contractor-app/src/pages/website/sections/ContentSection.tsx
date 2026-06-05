@@ -295,7 +295,14 @@ export function renderSiteComponent(
     case "card": {
       const p = comp.props as CardCompProps;
       return (
-        <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm bg-white">
+        <div
+          className="overflow-hidden bg-white"
+          style={{
+            borderRadius: "var(--theme-card-radius, 0.75rem)",
+            border: "var(--theme-card-border, 1px solid #e5e7eb)",
+            boxShadow: "var(--theme-card-shadow, 0 1px 3px rgba(0,0,0,0.08))",
+          }}
+        >
           {p.imageUrl && <img src={p.imageUrl} alt="" className="w-full h-48 object-cover" />}
           <div className="p-5">
             <h3 className="font-bold text-gray-900 text-lg mb-2">{p.title}</h3>
@@ -303,8 +310,11 @@ export function renderSiteComponent(
             {p.ctaLabel && p.ctaUrl && (
               <a
                 href={p.ctaUrl}
-                className="inline-block px-4 py-2 rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: settings.accentColor ?? settings.brandColor }}
+                className="inline-block px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{
+                  backgroundColor: settings.accentColor ?? settings.brandColor,
+                  borderRadius: "var(--theme-btn-radius, 9999px)",
+                }}
               >
                 {p.ctaLabel}
               </a>
@@ -333,7 +343,14 @@ export function renderSiteComponent(
     case "form": {
       const p = comp.props as FormCompProps;
       return (
-        <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+        <div
+          className="p-6"
+          style={{
+            backgroundColor: "var(--theme-surface, #f9fafb)",
+            borderRadius: "var(--theme-card-radius, 0.75rem)",
+            border: "var(--theme-card-border, 1px solid #e5e7eb)",
+          }}
+        >
           {p.heading && <h3 className="font-bold text-gray-900 text-lg mb-4">{p.heading}</h3>}
           <div className="space-y-3">
             {p.nameField    && <input type="text"  placeholder="Your Name"       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" readOnly />}
@@ -343,8 +360,11 @@ export function renderSiteComponent(
           </div>
           <button
             type="button"
-            className="mt-4 px-6 py-2.5 rounded-full text-sm font-semibold text-white w-full hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: settings.accentColor ?? settings.brandColor }}
+            className="mt-4 px-6 py-2.5 text-sm font-semibold text-white w-full hover:opacity-90 transition-opacity"
+            style={{
+              backgroundColor: settings.accentColor ?? settings.brandColor,
+              borderRadius: "var(--theme-btn-radius, 9999px)",
+            }}
           >
             {p.submitLabel ?? "Send Message"}
           </button>

@@ -61,7 +61,7 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle 
                   style={{
                     backgroundColor: buttonConfigToStyle(content.primaryConfig).backgroundColor ?? "#fff",
                     color: buttonConfigToStyle(content.primaryConfig).color ?? settings.brandColor,
-                    borderRadius: buttonConfigToStyle(content.primaryConfig).borderRadius ?? "9999px",
+                    borderRadius: buttonConfigToStyle(content.primaryConfig).borderRadius ?? "var(--theme-btn-radius, 9999px)",
                   }}
                 >
                   {content.primaryLabel}
@@ -72,9 +72,9 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle 
                   href={content.secondaryConfig?.url || "#contact"}
                   target={content.secondaryConfig?.newTab ? "_blank" : undefined}
                   rel={content.secondaryConfig?.newTab ? "noopener noreferrer" : undefined}
-                  className={`inline-block font-semibold transition-opacity hover:opacity-90 border-2 border-white text-white px-6 py-3 rounded-full`}
+                  className={`inline-block font-semibold transition-opacity hover:opacity-90 border-2 border-white text-white px-6 py-3`}
                   style={{
-                    borderRadius: buttonConfigToStyle(content.secondaryConfig).borderRadius ?? "9999px",
+                    borderRadius: buttonConfigToStyle(content.secondaryConfig).borderRadius ?? "var(--theme-btn-radius, 9999px)",
                   }}
                 >
                   {content.secondaryLabel}
