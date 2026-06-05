@@ -345,6 +345,7 @@ export default function WebsiteEditor() {
   const [editingPageName, setEditingPageName] = useState("");
   const [showAddPage, setShowAddPage] = useState(false);
   const [newPageName, setNewPageName] = useState("");
+  const [deletePageConfirm, setDeletePageConfirm] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -1131,33 +1132,78 @@ export default function WebsiteEditor() {
     setActiveSection(null);
   }
 
+  function patchHomeHeaderNavLinks(allPages: SitePage[], updater: (links: any[]) => any[]): SitePage[] {
+    return allPages.map(p => p.id === "home" ? {
+      ...p,
+      sections: p.sections.map(s => s.type === "header" ? {
+        ...s,
+        content: { ...s.content, navLinks: updater((s.content.navLinks as any[]) ?? []) },
+      } : s),
+    } : p);
+  }
+
   function addPage(name: string) {
     const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
     const id = "page-" + Math.random().toString(36).slice(2, 9);
     const newPage: SitePage = { id, name, slug, sections: [] };
+    const siteSlug = activeBusiness?.slug ?? "";
+    const newLink = { id: nanoid(), label: name, href: `/site/${siteSlug}/${slug}` };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalPages(prev => [...(prev ?? pages), newPage]);
+    setLocalPages(prev => {
+      const base = prev ?? pages;
+      const withPage = [...base, newPage];
+      return patchHomeHeaderNavLinks(withPage, links => [...links, newLink]);
+    });
     setActivePageId(id);
     setActiveSection(null);
   }
 
   function deletePage(pageId: string) {
     if (pageId === "home") return;
+    setDeletePageConfirm(pageId);
+  }
+
+  function doDeletePage(pageId: string) {
+    const targetPage = pages.find(p => p.id === pageId);
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalPages(prev => (prev ?? pages).filter(p => p.id !== pageId));
+    setLocalPages(prev => {
+      const filtered = (prev ?? pages).filter(p => p.id !== pageId);
+      if (!targetPage) return filtered;
+      return patchHomeHeaderNavLinks(filtered, links =>
+        links.filter(link => {
+          const href: string = link.href ?? "";
+          return !href.endsWith(`/${targetPage.slug}`);
+        })
+      );
+    });
     if (activePageId === pageId) {
       setActivePageId("home");
       setActiveSection(null);
     }
+    setDeletePageConfirm(null);
   }
 
   function renamePage(pageId: string, name: string) {
+    const oldPage = pages.find(p => p.id === pageId);
+    const oldSlug = oldPage?.slug ?? "";
     const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    const siteSlug = activeBusiness?.slug ?? "";
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalPages(prev => (prev ?? pages).map(p => p.id === pageId ? { ...p, name, slug } : p));
+    setLocalPages(prev => {
+      const updated = (prev ?? pages).map(p => p.id === pageId ? { ...p, name, slug } : p);
+      return patchHomeHeaderNavLinks(updated, links =>
+        links.map(link => {
+          const href: string = link.href ?? "";
+          if (href.endsWith(`/${oldSlug}`) || href === `/site/${siteSlug}/${oldSlug}`) {
+            return { ...link, label: name, href: `/site/${siteSlug}/${slug}` };
+          }
+          return link;
+        })
+      );
+    });
   }
 
   async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
@@ -1376,6 +1422,25 @@ export default function WebsiteEditor() {
             onClick={() => pendingTemplate && handleApplyTemplate(pendingTemplate, activeBusiness ? { phone: (activeBusiness as any).phone, email: (activeBusiness as any).email, licenseNumber: (activeBusiness as any).licenseNumber, name: activeBusiness.name } : undefined)}
           >
             {applyingTemplate ? "Applying…" : "Apply Template"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <AlertDialog open={!!deletePageConfirm} onOpenChange={v => { if (!v) setDeletePageConfirm(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete "{deletePageConfirm ? pages.find(p => p.id === deletePageConfirm)?.name ?? "Page" : "Page"}"?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This page and all its sections will be removed. Its nav link will also be removed from the header. You can recover it with Ctrl+Z (undo).
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => deletePageConfirm && doDeletePage(deletePageConfirm)}
+          >
+            Delete Page
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
