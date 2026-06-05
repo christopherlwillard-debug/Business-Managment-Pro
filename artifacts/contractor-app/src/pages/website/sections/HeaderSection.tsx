@@ -1,4 +1,5 @@
-import { Plus, Trash2, GripVertical, Phone, Menu } from "lucide-react";
+import { useState } from "react";
+import { Plus, Trash2, GripVertical, Phone, Menu, FileText, ChevronDown } from "lucide-react";
 import { ButtonEditor, type ButtonConfig } from "./ButtonEditor";
 
 export interface NavLink {
@@ -13,6 +14,12 @@ export interface HeaderContent {
   ctaLabel?: string;
   ctaConfig?: ButtonConfig;
   sticky?: boolean;
+}
+
+export interface SitePageRef {
+  id: string;
+  name: string;
+  slug: string;
 }
 
 function uid() {
@@ -45,6 +52,8 @@ interface HeaderSectionProps {
   isEditing?: boolean;
   onChange?: (content: HeaderContent) => void;
   businessName?: string;
+  siteSlug?: string;
+  pages?: SitePageRef[];
 }
 
 function HeaderPreviewBar({
@@ -76,7 +85,6 @@ function HeaderPreviewBar({
   const navLinks = content.navLinks ?? [];
   const phone = content.phone ?? "";
   const ctaLabel = content.ctaLabel ?? "Get a Quote";
-  const ctaUrl = content.ctaConfig?.url ?? "#contact";
 
   return (
     <div className={`px-6 py-3 flex items-center justify-between border-b ${bgClass} ${borderClass}`}>
@@ -130,12 +138,18 @@ export function HeaderSection({
   isEditing,
   onChange,
   businessName,
+  siteSlug,
+  pages = [],
 }: HeaderSectionProps) {
   const navLinks = content.navLinks ?? [];
   const phone = content.phone ?? "";
   const ctaLabel = content.ctaLabel ?? "Get a Quote";
   const ctaConfig = content.ctaConfig;
   const sticky = content.sticky ?? true;
+
+  const [showPagesPicker, setShowPagesPicker] = useState(false);
+
+  const extraPages = pages.filter(p => p.id !== "home");
 
   function update(patch: Partial<HeaderContent>) {
     onChange?.({ ...content, ...patch });
@@ -145,9 +159,28 @@ export function HeaderSection({
     update({ navLinks: navLinks.map((l) => (l.id === id ? { ...l, ...patch } : l)) });
   }
 
-  function addNavLink() {
-    update({
-      navLinks: [...navLinks, { id: uid(), label: "New Page", href: "#" }],
+  function addNavLink(pageOption?: SitePageRef) {
+    if (pageOption && siteSlug) {
+      update({
+        navLinks: [...navLinks, {
+          id: uid(),
+          label: pageOption.name,
+          href: `/site/${siteSlug}/${pageOption.slug}`,
+        }],
+      });
+    } else {
+      update({
+        navLinks: [...navLinks, { id: uid(), label: "New Link", href: "#" }],
+      });
+    }
+    setShowPagesPicker(false);
+  }
+
+  function fillLinkFromPage(linkId: string, page: SitePageRef) {
+    if (!siteSlug) return;
+    updateNavLink(linkId, {
+      label: page.name,
+      href: `/site/${siteSlug}/${page.slug}`,
     });
   }
 
@@ -165,7 +198,6 @@ export function HeaderSection({
     <div>
       <HeaderPreviewBar content={content} settings={settings} businessName={businessName} />
 
-      {/* Edit panel */}
       <div
         className="bg-slate-900 border-t border-white/10 px-4 py-4 space-y-5"
         onClick={(e) => e.stopPropagation()}
@@ -178,41 +210,102 @@ export function HeaderSection({
         <div className="space-y-2">
           <p className="text-xs font-semibold text-white/70">Navigation Links</p>
           <div className="space-y-1.5">
-            {navLinks.map((link) => (
-              <div key={link.id} className="flex items-center gap-2">
-                <GripVertical className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />
-                <input
-                  type="text"
-                  value={link.label}
-                  onChange={(e) => updateNavLink(link.id, { label: e.target.value })}
-                  placeholder="Label"
-                  className="flex-1 min-w-0 text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
-                />
-                <input
-                  type="text"
-                  value={link.href}
-                  onChange={(e) => updateNavLink(link.id, { href: e.target.value })}
-                  placeholder="#section or /page"
-                  className="flex-1 min-w-0 text-xs bg-white/10 border border-white/20 text-white/70 placeholder-white/20 rounded px-2 py-1.5 outline-none focus:border-white/50"
-                />
+            {navLinks.map((link) => {
+              const isPageLink = link.href.startsWith("/site/");
+              return (
+                <div key={link.id} className="flex items-center gap-2">
+                  <GripVertical className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={link.label}
+                    onChange={(e) => updateNavLink(link.id, { label: e.target.value })}
+                    placeholder="Label"
+                    className="flex-1 min-w-0 text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
+                  />
+                  <div className="flex-1 min-w-0 flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={link.href}
+                      onChange={(e) => updateNavLink(link.id, { href: e.target.value })}
+                      placeholder="#section or /page"
+                      className={`flex-1 min-w-0 text-xs bg-white/10 border text-white/70 placeholder-white/20 rounded px-2 py-1.5 outline-none focus:border-white/50 ${
+                        isPageLink ? "border-primary/50 text-primary/80" : "border-white/20"
+                      }`}
+                    />
+                    {extraPages.length > 0 && (
+                      <div className="relative flex-shrink-0">
+                        <PageLinkPicker
+                          pages={extraPages}
+                          onSelect={(page) => fillLinkFromPage(link.id, page)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeNavLink(link.id)}
+                    className="p-1 text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors flex-shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add link — smart picker if pages exist */}
+          <div className="relative">
+            {extraPages.length > 0 ? (
+              <>
                 <button
                   type="button"
-                  onClick={() => removeNavLink(link.id)}
-                  className="p-1 text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors flex-shrink-0"
+                  onClick={() => setShowPagesPicker(v => !v)}
+                  className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5" />
+                  Add link
+                  <ChevronDown className="w-3 h-3" />
                 </button>
-              </div>
-            ))}
+                {showPagesPicker && (
+                  <div className="absolute top-full left-0 mt-1 z-30 bg-gray-800 border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[180px]">
+                    <div className="px-3 py-1.5 border-b border-white/10">
+                      <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wide">Your Pages</p>
+                    </div>
+                    {extraPages.map(page => (
+                      <button
+                        key={page.id}
+                        type="button"
+                        onClick={() => addNavLink(page)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white hover:bg-white/10 transition-colors"
+                      >
+                        <FileText className="w-3 h-3 text-primary/70 flex-shrink-0" />
+                        {page.name}
+                      </button>
+                    ))}
+                    <div className="border-t border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => addNavLink()}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white/60 hover:bg-white/10 transition-colors"
+                      >
+                        <Plus className="w-3 h-3 flex-shrink-0" />
+                        Custom link
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => addNavLink()}
+                className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add link
+              </button>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={addNavLink}
-            className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add link
-          </button>
         </div>
 
         {/* Phone number */}
@@ -262,6 +355,48 @@ export function HeaderSection({
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PageLinkPicker({
+  pages,
+  onSelect,
+}: {
+  pages: SitePageRef[];
+  onSelect: (page: SitePageRef) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        title="Fill from page"
+        onClick={() => setOpen(v => !v)}
+        className="p-1.5 text-white/30 hover:text-primary hover:bg-primary/10 rounded transition-colors"
+      >
+        <FileText className="w-3 h-3" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute top-full right-0 mt-1 z-30 bg-gray-800 border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[140px]">
+            <div className="px-2.5 py-1.5 border-b border-white/10">
+              <p className="text-[9px] text-white/40 font-semibold uppercase tracking-wide">Fill from page</p>
+            </div>
+            {pages.map(page => (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => { onSelect(page); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-white hover:bg-white/10 transition-colors"
+              >
+                {page.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

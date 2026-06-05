@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
-import { useParams } from "wouter";
+import { useParams, Link } from "wouter";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -250,13 +250,23 @@ export default function PublicSite() {
         {navLinks.length > 0 && (
           <nav className="hidden md:flex items-center gap-6">
             {navLinks.map(link => (
-              <a
-                key={link.id}
-                href={link.href}
-                className={`text-sm font-medium transition-opacity hover:opacity-70 ${headerSubText}`}
-              >
-                {link.label}
-              </a>
+              link.href.startsWith("/") ? (
+                <Link
+                  key={link.id}
+                  href={link.href}
+                  className={`text-sm font-medium transition-opacity hover:opacity-70 ${headerSubText}`}
+                >
+                  {link.label}
+                </Link>
+              ) : (
+                <a
+                  key={link.id}
+                  href={link.href}
+                  className={`text-sm font-medium transition-opacity hover:opacity-70 ${headerSubText}`}
+                >
+                  {link.label}
+                </a>
+              )
             ))}
           </nav>
         )}
@@ -293,14 +303,25 @@ export default function PublicSite() {
       {mobileMenuOpen && navLinks.length > 0 && (
         <div className={`md:hidden ${mobileBg} border-b ${mobileBorder} px-6 py-4 space-y-3 shadow-md`}>
           {navLinks.map(link => (
-            <a
-              key={link.id}
-              href={link.href}
-              onClick={() => setMobileMenuOpen(false)}
-              className={`block text-sm font-medium py-1 ${mobileText} hover:opacity-70 transition-opacity`}
-            >
-              {link.label}
-            </a>
+            link.href.startsWith("/") ? (
+              <Link
+                key={link.id}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block text-sm font-medium py-1 ${mobileText} hover:opacity-70 transition-opacity`}
+              >
+                {link.label}
+              </Link>
+            ) : (
+              <a
+                key={link.id}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block text-sm font-medium py-1 ${mobileText} hover:opacity-70 transition-opacity`}
+              >
+                {link.label}
+              </a>
+            )
           ))}
           {headerPhone && (
             <a

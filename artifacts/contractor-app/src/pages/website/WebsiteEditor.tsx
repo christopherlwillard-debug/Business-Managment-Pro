@@ -98,6 +98,8 @@ function renderSection(
     businessName?: string;
     businessId?: number;
     sectionId?: string;
+    siteSlug?: string;
+    pages?: Array<{ id: string; name: string; slug: string }>;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -128,7 +130,7 @@ function renderSection(
     case "faq": return <FAQSection {...props} />;
     case "cta": return <CTASection {...props} />;
     case "stats": return <StatsSection {...props} />;
-    case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} />;
+    case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} />;
     default: return null;
   }
 }
@@ -1340,6 +1342,8 @@ export default function WebsiteEditor() {
       uploadingColumnImageKeys,
       businessName: activeBusiness?.name,
       businessId: activeBusiness?.id,
+      siteSlug: activeBusiness?.slug,
+      pages: pages.filter(p => p.id !== "home").map(p => ({ id: p.id, name: p.name, slug: p.slug })),
     };
 
     function renderWrapped(s: Section, opts: { isHeader?: boolean; isFirst?: boolean; isLast?: boolean }) {
