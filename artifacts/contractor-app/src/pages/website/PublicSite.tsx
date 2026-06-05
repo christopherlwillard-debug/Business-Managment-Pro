@@ -307,12 +307,21 @@ export default function PublicSite() {
       )}
 
       {/* Dynamic site header */}
-      <header className={`${isSticky ? "sticky" : ""} top-0 z-50 ${headerBg} border-b ${headerBorder} px-6 py-3 flex items-center justify-between ${headerShadow}`}>
+      <header
+        className={`${isSticky ? "sticky" : ""} top-0 z-50 ${headerStyle === "transparent" ? "bg-white/10 backdrop-blur-md" : ""} border-b ${headerBorder} px-6 py-3 flex items-center justify-between ${headerShadow}`}
+        style={{
+          backgroundColor: headerStyle !== "transparent" ? `var(--theme-header-bg, ${headerStyle === "dark" ? "rgba(17,24,39,0.95)" : "rgba(255,255,255,0.95)"})` : undefined,
+          color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})`,
+        }}
+      >
         <div className="flex items-center gap-3 flex-shrink-0">
           {settings.logoUrl && (
             <img src={settings.logoUrl} alt={businessName} className="h-8 w-auto object-contain" />
           )}
-          <span className={`font-bold text-sm md:text-base ${headerText}`}>{businessName}</span>
+          <span
+            className="font-bold text-sm md:text-base"
+            style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
+          >{businessName}</span>
         </div>
 
         {navLinks.length > 0 && (
@@ -322,7 +331,8 @@ export default function PublicSite() {
                 <Link
                   key={link.id}
                   href={link.href}
-                  className={`text-sm font-medium transition-opacity hover:opacity-70 ${headerSubText}`}
+                  className="text-sm font-medium transition-opacity hover:opacity-70"
+                  style={{ color: `var(--theme-header-link, ${isDarkHeader ? "rgba(255,255,255,0.7)" : "#4b5563"})` }}
                 >
                   {link.label}
                 </Link>
@@ -330,7 +340,8 @@ export default function PublicSite() {
                 <a
                   key={link.id}
                   href={link.href}
-                  className={`text-sm font-medium transition-opacity hover:opacity-70 ${headerSubText}`}
+                  className="text-sm font-medium transition-opacity hover:opacity-70"
+                  style={{ color: `var(--theme-header-link, ${isDarkHeader ? "rgba(255,255,255,0.7)" : "#4b5563"})` }}
                 >
                   {link.label}
                 </a>
@@ -343,7 +354,8 @@ export default function PublicSite() {
           {headerPhone && (
             <a
               href={`tel:${headerPhone.replace(/\D/g, "")}`}
-              className={`hidden md:block text-sm font-medium ${headerSubText} hover:opacity-80 transition-opacity`}
+              className="hidden md:block text-sm font-medium hover:opacity-80 transition-opacity"
+              style={{ color: `var(--theme-header-link, ${isDarkHeader ? "rgba(255,255,255,0.7)" : "#4b5563"})` }}
             >
               {headerPhone}
             </a>
@@ -355,13 +367,15 @@ export default function PublicSite() {
               backgroundColor: settings.brandColor,
               borderRadius: "var(--theme-btn-radius, 9999px)",
               fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+              boxShadow: "var(--theme-btn-shadow, none)",
             }}
           >
             {ctaLabel}
           </a>
           {navLinks.length > 0 && (
             <button
-              className={`md:hidden p-1 ${headerText}`}
+              className="md:hidden p-1"
+              style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
               onClick={() => setMobileMenuOpen(v => !v)}
               aria-label="Toggle menu"
             >
@@ -373,14 +387,18 @@ export default function PublicSite() {
 
       {/* Mobile nav drawer */}
       {mobileMenuOpen && navLinks.length > 0 && (
-        <div className={`md:hidden ${mobileBg} border-b ${mobileBorder} px-6 py-4 space-y-3 shadow-md`}>
+        <div
+          className={`md:hidden border-b ${mobileBorder} px-6 py-4 space-y-3 shadow-md`}
+          style={{ backgroundColor: `var(--theme-header-bg, ${isDarkHeader ? "#111827" : "#ffffff"})` }}
+        >
           {navLinks.map(link => (
             link.href.startsWith("/") ? (
               <Link
                 key={link.id}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`block text-sm font-medium py-1 ${mobileText} hover:opacity-70 transition-opacity`}
+                className="block text-sm font-medium py-1 hover:opacity-70 transition-opacity"
+                style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
               >
                 {link.label}
               </Link>
@@ -389,7 +407,8 @@ export default function PublicSite() {
                 key={link.id}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`block text-sm font-medium py-1 ${mobileText} hover:opacity-70 transition-opacity`}
+                className="block text-sm font-medium py-1 hover:opacity-70 transition-opacity"
+                style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
               >
                 {link.label}
               </a>
@@ -398,7 +417,8 @@ export default function PublicSite() {
           {headerPhone && (
             <a
               href={`tel:${headerPhone.replace(/\D/g, "")}`}
-              className={`block text-sm font-medium py-1 ${mobileSubText}`}
+              className="block text-sm font-medium py-1"
+              style={{ color: `var(--theme-header-link, ${isDarkHeader ? "rgba(255,255,255,0.7)" : "#4b5563"})` }}
             >
               {headerPhone}
             </a>
