@@ -1170,6 +1170,22 @@ export default function WebsiteEditor() {
     }
   }
 
+  async function handleContentComponentImageUpload(file: File): Promise<string> {
+    const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    });
+    if (!urlRes.ok) throw new Error("Failed to get upload URL");
+    const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+    const uploadRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+    if (!uploadRes.ok) throw new Error("Upload failed");
+    const slug = activeBusiness!.slug;
+    const imgUuid = objectPath.split("/").pop()!;
+    return `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
+  }
+
   function addSection(type: Section["type"]) {
     const id = Math.random().toString(36).slice(2, 9);
     let content: Record<string, unknown> = {};
@@ -2118,6 +2134,7 @@ export default function WebsiteEditor() {
                       );
                       updateContent(sec.id, { ...contentData, components: newComponents });
                     }}
+                    onImageUpload={handleContentComponentImageUpload}
                   />
                 </div>
               );

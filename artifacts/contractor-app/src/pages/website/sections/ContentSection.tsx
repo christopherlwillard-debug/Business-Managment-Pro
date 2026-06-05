@@ -185,20 +185,22 @@ export function renderSiteComponent(
       const sizes: Record<number, string> = { 1: "text-4xl", 2: "text-3xl", 3: "text-2xl", 4: "text-xl" };
       return (
         <Tag
-          style={{ textAlign: p.align ?? "left", ...textStyleToCSS(p.style) }}
+          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", ...textStyleToCSS(p.style) }}
           className={`font-bold text-gray-900 ${sizes[p.level ?? 2] ?? "text-3xl"} leading-tight`}
-          dangerouslySetInnerHTML={{ __html: p.text.replace(/\n/g, "<br/>") }}
-        />
+        >
+          {p.text}
+        </Tag>
       );
     }
     case "paragraph": {
       const p = comp.props as ParagraphProps;
       return (
         <p
-          style={{ textAlign: p.align ?? "left", ...textStyleToCSS(p.style) }}
+          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", ...textStyleToCSS(p.style) }}
           className="text-gray-700 leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: p.text.replace(/\n/g, "<br/>") }}
-        />
+        >
+          {p.text}
+        </p>
       );
     }
     case "button": {
