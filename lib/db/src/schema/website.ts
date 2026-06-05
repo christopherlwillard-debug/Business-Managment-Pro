@@ -38,6 +38,16 @@ export const websiteFormSubmissionsTable = pgTable("website_form_submissions", {
 export type WebsiteFormSubmission = typeof websiteFormSubmissionsTable.$inferSelect;
 export type InsertWebsiteFormSubmission = typeof websiteFormSubmissionsTable.$inferInsert;
 
+export const websiteMediaFoldersTable = pgTable("website_media_folders", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type WebsiteMediaFolder = typeof websiteMediaFoldersTable.$inferSelect;
+export type InsertWebsiteMediaFolder = typeof websiteMediaFoldersTable.$inferInsert;
+
 export const websiteMediaTable = pgTable("website_media", {
   id: serial("id").primaryKey(),
   businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
@@ -46,6 +56,8 @@ export const websiteMediaTable = pgTable("website_media", {
   url: varchar("url", { length: 512 }).notNull(),
   size: integer("size").notNull().default(0),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  folderId: integer("folder_id").references(() => websiteMediaFoldersTable.id, { onDelete: "set null" }),
+  displayName: varchar("display_name", { length: 255 }),
 });
 
 export type WebsiteMedia = typeof websiteMediaTable.$inferSelect;

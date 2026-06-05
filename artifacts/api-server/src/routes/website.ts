@@ -2,8 +2,8 @@ import { Router } from "express";
 import { Readable } from "stream";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable } from "@workspace/db/schema";
-import { eq, and, sql, gte, desc } from "drizzle-orm";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable } from "@workspace/db/schema";
+import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
@@ -878,11 +878,11 @@ router.post("/media/upload-url", wrapAsync(async (req, res) => {
 router.post("/media", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { filename, objectPath, url, size } = req.body as { filename: string; objectPath: string; url: string; size: number };
+  const { filename, objectPath, url, size, folderId } = req.body as { filename: string; objectPath: string; url: string; size: number; folderId?: number | null };
   if (!filename || !objectPath || !url) return res.status(400).json({ error: "Missing fields" });
   const [item] = await db
     .insert(websiteMediaTable)
-    .values({ businessId, filename, objectPath, url, size: size ?? 0 })
+    .values({ businessId, filename, objectPath, url, size: size ?? 0, folderId: folderId ?? null })
     .returning();
   res.json(item);
 }));
@@ -896,9 +896,164 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
     .from(websiteMediaTable)
     .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
   if (!item) return res.status(404).json({ error: "Not found" });
-  // Remove DB record only — intentionally keep the object in storage so any
-  // pages already referencing this URL continue to load correctly.
   await db.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
+  res.json({ ok: true });
+}));
+
+// ── Media PATCH (rename / move to folder) ──────────────────────────────────
+
+router.patch("/media/:id", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const id = parseInt(req.params.id);
+  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
+  const { displayName, folderId } = req.body as { displayName?: string | null; folderId?: number | null };
+  const updateValues: Record<string, unknown> = {};
+  if (displayName !== undefined) updateValues.displayName = displayName || null;
+  if (folderId !== undefined) updateValues.folderId = folderId ?? null;
+  if (Object.keys(updateValues).length === 0) return res.status(400).json({ error: "Nothing to update" });
+  const [updated] = await db
+    .update(websiteMediaTable)
+    .set(updateValues as any)
+    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Not found" });
+  res.json(updated);
+}));
+
+// ── Media replace-everywhere ────────────────────────────────────────────────
+
+router.post("/media/:id/replace", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const id = parseInt(req.params.id);
+  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
+  const { newUrl, newObjectPath, newFilename } = req.body as { newUrl: string; newObjectPath: string; newFilename: string };
+  if (!newUrl || !newObjectPath) return res.status(400).json({ error: "newUrl and newObjectPath required" });
+
+  const [item] = await db.select().from(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
+  if (!item) return res.status(404).json({ error: "Not found" });
+
+  const oldUrl = item.url;
+  const configs = await db.select().from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  let replacedInConfigs = 0;
+  for (const config of configs) {
+    const sectionsJson = JSON.stringify(config.sections);
+    const settingsJson = JSON.stringify(config.settings);
+    const newSectionsJson = sectionsJson.split(oldUrl).join(newUrl);
+    const newSettingsJson = settingsJson.split(oldUrl).join(newUrl);
+    if (newSectionsJson !== sectionsJson || newSettingsJson !== settingsJson) {
+      await db.update(websiteConfigsTable)
+        .set({ sections: JSON.parse(newSectionsJson) as any, settings: JSON.parse(newSettingsJson) as any, updatedAt: new Date() })
+        .where(eq(websiteConfigsTable.id, config.id));
+      replacedInConfigs++;
+    }
+  }
+
+  const [updated] = await db.update(websiteMediaTable)
+    .set({ url: newUrl, objectPath: newObjectPath, filename: newFilename ?? item.filename })
+    .where(eq(websiteMediaTable.id, id))
+    .returning();
+
+  res.json({ ok: true, replacedInConfigs, item: updated });
+}));
+
+// ── Media bulk delete ──────────────────────────────────────────────────────
+
+router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+  const { ids } = req.body as { ids: number[] };
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
+  await db.delete(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
+  res.json({ ok: true, deleted: ids.length });
+}));
+
+// ── Media usage counts ─────────────────────────────────────────────────────
+
+router.get("/media/usage-counts", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+
+  const items = await db.select({ id: websiteMediaTable.id, url: websiteMediaTable.url })
+    .from(websiteMediaTable)
+    .where(eq(websiteMediaTable.businessId, businessId));
+
+  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  const configBlob = JSON.stringify(configs);
+  const counts: Record<number, number> = {};
+  for (const item of items) {
+    let count = 0;
+    let pos = 0;
+    while ((pos = configBlob.indexOf(item.url, pos)) !== -1) { count++; pos++; }
+    counts[item.id] = count;
+  }
+  res.json(counts);
+}));
+
+// ── Media folders ──────────────────────────────────────────────────────────
+
+router.get("/media/folders", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+
+  const folderRows = await db.select().from(websiteMediaFoldersTable)
+    .where(eq(websiteMediaFoldersTable.businessId, businessId))
+    .orderBy(websiteMediaFoldersTable.createdAt);
+
+  const countRows = await db
+    .select({ folderId: websiteMediaTable.folderId, count: sql<number>`count(*)::int` })
+    .from(websiteMediaTable)
+    .where(eq(websiteMediaTable.businessId, businessId))
+    .groupBy(websiteMediaTable.folderId);
+
+  const countMap: Record<number, number> = {};
+  for (const row of countRows) {
+    if (row.folderId) countMap[row.folderId] = row.count;
+  }
+
+  res.json(folderRows.map(f => ({ ...f, itemCount: countMap[f.id] ?? 0 })));
+}));
+
+router.post("/media/folders", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+  const { name } = req.body as { name: string };
+  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const [folder] = await db.insert(websiteMediaFoldersTable)
+    .values({ businessId, name: name.trim() })
+    .returning();
+  res.json({ ...folder, itemCount: 0 });
+}));
+
+router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const folderId = parseInt(req.params.folderId);
+  if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
+  const { name } = req.body as { name: string };
+  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const [updated] = await db.update(websiteMediaFoldersTable)
+    .set({ name: name.trim() })
+    .where(and(eq(websiteMediaFoldersTable.id, folderId), eq(websiteMediaFoldersTable.businessId, businessId)))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Not found" });
+  res.json(updated);
+}));
+
+router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const folderId = parseInt(req.params.folderId);
+  if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
+  await db.update(websiteMediaTable)
+    .set({ folderId: null })
+    .where(and(eq(websiteMediaTable.folderId, folderId), eq(websiteMediaTable.businessId, businessId)));
+  await db.delete(websiteMediaFoldersTable)
+    .where(and(eq(websiteMediaFoldersTable.id, folderId), eq(websiteMediaFoldersTable.businessId, businessId)));
   res.json({ ok: true });
 }));
 
