@@ -9,7 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
-  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns,
+  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -30,6 +30,7 @@ import { ColumnsSection, defaultColumnsContent, type ColumnsContent } from "./se
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
+import { useEditorHistory } from "./useEditorHistory";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -317,6 +318,10 @@ export default function WebsiteEditor() {
   const [uploadingColumnImageKeys, setUploadingColumnImageKeys] = useState<Set<string>>(new Set());
   const [showAddSection, setShowAddSection] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const history = useEditorHistory<Section, SiteSettings>();
+  const sectionsRef = useRef<Section[]>([]);
+  const settingsRef = useRef<SiteSettings>({ brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" });
+  const textEditSessionRef = useRef<{ active: boolean; timer: ReturnType<typeof setTimeout> | null }>({ active: false, timer: null });
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
     return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
   });
@@ -355,6 +360,32 @@ export default function WebsiteEditor() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl) return;
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        const prev = history.undo({ sections: sectionsRef.current, settings: settingsRef.current });
+        if (prev) {
+          isDirtyRef.current = true;
+          setLocalSections(prev.sections);
+          setLocalSettings(prev.settings);
+        }
+      } else if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
+        e.preventDefault();
+        const next = history.redo({ sections: sectionsRef.current, settings: settingsRef.current });
+        if (next) {
+          isDirtyRef.current = true;
+          setLocalSections(next.sections);
+          setLocalSettings(next.settings);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const { data: config, isLoading } = useQuery<WebsiteConfig>({
     queryKey: ["website-config", bizId],
     enabled: !!bizId,
@@ -383,6 +414,8 @@ export default function WebsiteEditor() {
 
   const sections: Section[] = localSections ?? (config ? [...(config.sections as Section[])].sort((a, b) => a.order - b.order) : []);
   const settings: SiteSettings = localSettings ?? config?.settings ?? { brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" };
+  sectionsRef.current = sections;
+  settingsRef.current = settings;
 
   useFontLoader(settings.headingFont, settings.bodyFont);
 
@@ -450,24 +483,73 @@ export default function WebsiteEditor() {
     if (over && active.id !== over.id) {
       const oldIdx = sections.findIndex(s => s.id === active.id);
       const newIdx = sections.findIndex(s => s.id === over.id);
+      history.pushSnapshot({ sections, settings });
       isDirtyRef.current = true;
       setLocalSections(arrayMove(sections, oldIdx, newIdx));
     }
   }
 
   function toggleSection(id: string) {
+    history.pushSnapshot({ sections, settings });
     isDirtyRef.current = true;
     setLocalSections(sections.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   }
 
   function updateContent(id: string, content: Record<string, unknown>) {
+    if (!textEditSessionRef.current.active) {
+      textEditSessionRef.current.active = true;
+      history.pushSnapshot({ sections, settings });
+    }
+    if (textEditSessionRef.current.timer) clearTimeout(textEditSessionRef.current.timer);
+    textEditSessionRef.current.timer = setTimeout(() => {
+      textEditSessionRef.current.active = false;
+      textEditSessionRef.current.timer = null;
+    }, 1500);
     isDirtyRef.current = true;
     setLocalSections(sections.map(s => s.id === id ? { ...s, content } : s));
   }
 
   function updateBlockStyle(id: string, blockStyle: BlockStyle) {
+    history.pushSnapshot({ sections, settings });
     isDirtyRef.current = true;
     setLocalSections(sections.map(s => s.id === id ? { ...s, blockStyle } : s));
+  }
+
+  function patchSettings(patch: Partial<SiteSettings>) {
+    history.pushSnapshot({ sections, settings });
+    isDirtyRef.current = true;
+    setLocalSettings({ ...settings, ...patch });
+  }
+
+  function handleUndo() {
+    const prev = history.undo({ sections, settings });
+    if (prev) {
+      isDirtyRef.current = true;
+      setLocalSections(prev.sections);
+      setLocalSettings(prev.settings);
+    }
+  }
+
+  function handleRedo() {
+    const next = history.redo({ sections, settings });
+    if (next) {
+      isDirtyRef.current = true;
+      setLocalSections(next.sections);
+      setLocalSettings(next.settings);
+    }
+  }
+
+  function duplicateSection(id: string) {
+    const sec = sections.find(s => s.id === id);
+    if (!sec) return;
+    const idx = sections.indexOf(sec);
+    const newId = Math.random().toString(36).slice(2, 9);
+    const dup: Section = { ...JSON.parse(JSON.stringify(sec)), id: newId };
+    const newSections = [...sections.slice(0, idx + 1), dup, ...sections.slice(idx + 1)];
+    history.pushSnapshot({ sections, settings });
+    isDirtyRef.current = true;
+    setLocalSections(newSections);
+    setActiveSection(newId);
   }
 
   async function handleSectionBgUpload(sectionId: string, file: File) {
@@ -852,6 +934,7 @@ export default function WebsiteEditor() {
       content = defaultColumnsContent() as unknown as Record<string, unknown>;
     }
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
+    history.pushSnapshot({ sections, settings });
     isDirtyRef.current = true;
     setLocalSections([...sections, newSection]);
     setActiveSection(id);
@@ -859,6 +942,7 @@ export default function WebsiteEditor() {
   }
 
   async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
+    history.pushSnapshot({ sections, settings });
     setApplyingTemplate(true);
     try {
       const appliedSections = t.sections.map(s => {
@@ -936,8 +1020,19 @@ export default function WebsiteEditor() {
             }`}
           >
             {activeSection === s.id && (
-              <div className="absolute top-1 left-1 z-10 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded pointer-events-none">
-                {SECTION_LABELS[s.type]}
+              <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5">
+                <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded">
+                  {SECTION_LABELS[s.type]}
+                </span>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); duplicateSection(s.id); }}
+                  title="Duplicate section"
+                  className="flex items-center gap-1 bg-primary/90 text-primary-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-primary transition-colors"
+                >
+                  <Copy className="w-3 h-3" />
+                  Duplicate
+                </button>
               </div>
             )}
             {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
@@ -1057,6 +1152,28 @@ export default function WebsiteEditor() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Undo / Redo */}
+          <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={!history.canUndo}
+              title="Undo (Ctrl+Z)"
+              className={`flex items-center px-2.5 py-1.5 transition-colors ${!history.canUndo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleRedo}
+              disabled={!history.canRedo}
+              title="Redo (Ctrl+Shift+Z)"
+              className={`flex items-center px-2.5 py-1.5 transition-colors ${!history.canRedo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Viewport toggle */}
           <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
             {([ 
@@ -1190,7 +1307,7 @@ export default function WebsiteEditor() {
                   <input
                     type="color"
                     value={(settings as Record<string, string>)[key] ?? "#888888"}
-                    onChange={e => { isDirtyRef.current = true; setLocalSettings({ ...settings, [key]: e.target.value }); }}
+                    onChange={e => patchSettings({ [key]: e.target.value })}
                     className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
                   />
                 </div>
@@ -1204,7 +1321,7 @@ export default function WebsiteEditor() {
                 <label className="text-[10px] text-muted-foreground block mb-0.5">Headings</label>
                 <select
                   value={settings.headingFont ?? "Inter"}
-                  onChange={e => { isDirtyRef.current = true; setLocalSettings({ ...settings, headingFont: e.target.value }); }}
+                  onChange={e => patchSettings({ headingFont: e.target.value })}
                   className="w-full text-xs border border-border rounded px-1.5 py-1 bg-background"
                 >
                   {HEADING_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
@@ -1214,7 +1331,7 @@ export default function WebsiteEditor() {
                 <label className="text-[10px] text-muted-foreground block mb-0.5">Body text</label>
                 <select
                   value={settings.bodyFont ?? "Inter"}
-                  onChange={e => { isDirtyRef.current = true; setLocalSettings({ ...settings, bodyFont: e.target.value }); }}
+                  onChange={e => patchSettings({ bodyFont: e.target.value })}
                   className="w-full text-xs border border-border rounded px-1.5 py-1 bg-background"
                 >
                   {BODY_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
@@ -1229,7 +1346,7 @@ export default function WebsiteEditor() {
                 {(["light", "dark", "transparent"] as const).map(s => (
                   <button
                     key={s}
-                    onClick={() => { isDirtyRef.current = true; setLocalSettings({ ...settings, headerStyle: s }); }}
+                    onClick={() => patchSettings({ headerStyle: s })}
                     className={`flex-1 text-[10px] py-1 rounded border transition-colors ${
                       (settings.headerStyle ?? "light") === s
                         ? "border-primary bg-primary/10 text-primary font-medium"
@@ -1248,7 +1365,7 @@ export default function WebsiteEditor() {
               <input
                 type="color"
                 value={settings.footerBgColor ?? settings.brandColor}
-                onChange={e => { isDirtyRef.current = true; setLocalSettings({ ...settings, footerBgColor: e.target.value }); }}
+                onChange={e => patchSettings({ footerBgColor: e.target.value })}
                 className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
               />
             </div>
@@ -1307,7 +1424,7 @@ export default function WebsiteEditor() {
           <CustomDomainPanel
             customDomain={settings.customDomain ?? ""}
             appHost={window.location.host}
-            onChange={domain => { isDirtyRef.current = true; setLocalSettings({ ...settings, customDomain: domain }); }}
+            onChange={domain => patchSettings({ customDomain: domain })}
             onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
           />
         </div>
