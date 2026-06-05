@@ -894,8 +894,14 @@ export default function WebsiteEditor() {
         </div>
       );
     }
+    const previewBodyStyle = settings.bodyFont
+      ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
+      : undefined;
     return (
-      <>
+      <div style={previewBodyStyle}>
+        {settings.headingFont && (
+          <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+        )}
         {enabled.map(s => (
           <div
             key={s.id}
@@ -921,7 +927,7 @@ export default function WebsiteEditor() {
             })}
           </div>
         ))}
-      </>
+      </div>
     );
   }
 

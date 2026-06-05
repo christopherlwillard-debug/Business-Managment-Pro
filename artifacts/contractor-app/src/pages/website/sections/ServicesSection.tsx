@@ -90,7 +90,7 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
                   <div className="w-10 h-10 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: (settings.accentColor ?? settings.brandColor) + "20" }}>
                     <div className="w-5 h-5 rounded-sm" style={{ backgroundColor: settings.accentColor ?? settings.brandColor }} />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2">{item.title}</h3>
+                  <h3 className="font-semibold mb-2" style={{ color: settings.secondaryColor || "#111827" }}>{item.title}</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-300">{item.description}</p>
                 </>
               )}

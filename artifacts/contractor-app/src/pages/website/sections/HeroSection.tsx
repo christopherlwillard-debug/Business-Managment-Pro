@@ -15,7 +15,7 @@ interface HeroContent {
 
 interface HeroSectionProps {
   content: HeroContent;
-  settings: { brandColor: string; logoUrl?: string };
+  settings: { brandColor: string; accentColor?: string; secondaryColor?: string; logoUrl?: string };
   isEditing?: boolean;
   onChange?: (content: HeroContent) => void;
   businessName?: string;
@@ -34,8 +34,8 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
   const ctaBtnStyle = buttonConfigToStyle(ctaBtn);
   const ctaBtnClasses = buttonConfigToClasses(ctaBtn);
   const ctaBorderRadius = ctaBtnStyle.borderRadius ?? "9999px";
-  const ctaBg = ctaBtnStyle.backgroundColor ?? "white";
-  const ctaText = ctaBtnStyle.color ?? bg;
+  const ctaBg = ctaBtnStyle.backgroundColor ?? settings.accentColor ?? "white";
+  const ctaText = ctaBtnStyle.color ?? (settings.accentColor ? "white" : bg);
 
   const headlineCSS = textStyleToCSS(content.headlineStyle);
   const subheadlineCSS = textStyleToCSS(content.subheadlineStyle);

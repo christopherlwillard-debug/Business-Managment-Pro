@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X } from "lucide-react";
 import { useParams } from "wouter";
-import { useFontLoader, injectFavicon } from "./useFontLoader";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -66,12 +66,6 @@ export default function PublicSite() {
 
   const resolvedSlug = data?.businessSlug ?? slug ?? "";
 
-  useFontLoader(data?.settings.headingFont, data?.settings.bodyFont);
-
-  useEffect(() => {
-    injectFavicon(data?.settings.faviconUrl);
-  }, [data?.settings.faviconUrl]);
-
   const trackedRef = useRef(false);
   useEffect(() => {
     const s = data?.businessSlug;
@@ -122,6 +116,14 @@ export default function PublicSite() {
   const { sections, settings, businessName } = data;
   const sorted = [...sections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
 
+  const GOOGLE_FONT_SET = new Set(["Oswald","Montserrat","Playfair Display","Raleway","Roboto Slab","Lato","Open Sans","Merriweather","Source Sans 3","Nunito"]);
+  const googleFontFamilies = [settings.headingFont, settings.bodyFont]
+    .filter((f): f is string => !!f && GOOGLE_FONT_SET.has(f))
+    .filter((v, i, a) => a.indexOf(v) === i);
+  const googleFontsHref = googleFontFamilies.length > 0
+    ? `https://fonts.googleapis.com/css2?${googleFontFamilies.map(f => `family=${encodeURIComponent(f)}:wght@400;500;600;700`).join("&")}&display=swap`
+    : null;
+
   const headerStyle = settings.headerStyle ?? "light";
   const isDarkHeader = headerStyle === "dark" || headerStyle === "transparent";
   const headerBg =
@@ -141,8 +143,15 @@ export default function PublicSite() {
 
   return (
     <div className="min-h-screen bg-white" style={siteBodyStyle}>
-      {settings.headingFont && (
-        <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+      {createPortal(
+        <>
+          {googleFontsHref && <link rel="stylesheet" href={googleFontsHref} />}
+          {settings.headingFont && (
+            <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+          )}
+          {settings.faviconUrl && <link rel="icon" href={settings.faviconUrl} />}
+        </>,
+        document.head
       )}
       {paymentSuccess && !paymentSuccessDismissed && (
         <div className="fixed top-0 inset-x-0 z-[60] flex items-center justify-between gap-3 bg-green-600 text-white px-4 py-3 text-sm font-medium shadow-lg">
