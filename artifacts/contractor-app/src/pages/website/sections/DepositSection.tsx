@@ -164,14 +164,21 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
       isEditing={isEditing}
     >
       <div className="max-w-lg mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-8 text-center">
+        <div
+          className="bg-white p-8 text-center"
+          style={{
+            borderRadius: "var(--theme-card-radius, 1rem)",
+            boxShadow: "var(--theme-card-shadow, 0 4px 12px rgba(0,0,0,0.10))",
+            border: "var(--theme-card-border, 1px solid #f3f4f6)",
+          }}
+        >
           <div
             className="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center"
             style={{ backgroundColor: settings.brandColor + "22" }}
           >
             <CreditCard className="w-6 h-6" style={{ color: settings.brandColor }} />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+          <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--theme-text, #111827)" }}>
             {content.heading || "Reserve Your Spot"}
           </h2>
           {content.description && (
@@ -212,8 +219,12 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
           <button
             onClick={handlePayNow}
             disabled={loading || !businessSlug}
-            className="w-full py-4 rounded-xl text-white font-semibold text-lg transition-opacity hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
-            style={{ backgroundColor: settings.brandColor }}
+            className="w-full py-4 text-white text-lg transition-opacity hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
+            style={{
+              backgroundColor: settings.brandColor,
+              borderRadius: "var(--theme-btn-radius, 0.75rem)",
+              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+            }}
           >
             {loading ? (
               <>

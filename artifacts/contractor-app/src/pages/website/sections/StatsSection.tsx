@@ -68,8 +68,8 @@ export function StatsSection({ content, settings, isEditing, onChange, blockStyl
         <div className="max-w-5xl mx-auto">
           {content.heading && (
             <div className="text-center mb-10">
-              <h2 className="text-3xl font-bold text-gray-900">{content.heading}</h2>
-              {content.subheading && <p className="text-gray-500 mt-2">{content.subheading}</p>}
+              <h2 className="text-3xl font-bold" style={{ color: "var(--theme-text, #111827)" }}>{content.heading}</h2>
+              {content.subheading && <p className="mt-2" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{content.subheading}</p>}
             </div>
           )}
           <div className={`grid grid-cols-2 ${colClass} gap-6`}>
@@ -81,7 +81,7 @@ export function StatsSection({ content, settings, isEditing, onChange, blockStyl
                 >
                   {stat.value}
                 </div>
-                <div className="text-gray-600 text-sm font-medium uppercase tracking-wide">{stat.label}</div>
+                <div className="text-sm font-medium uppercase tracking-wide" style={{ color: "var(--theme-text-muted, #4b5563)" }}>{stat.label}</div>
               </div>
             ))}
           </div>

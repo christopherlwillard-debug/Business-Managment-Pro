@@ -267,14 +267,14 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
         ) : (
           <>
             <h2
-              className="text-3xl font-bold text-gray-900 dark:text-white mb-2 text-center"
-              style={textStyleToCSS(content.headingStyle)}
+              className="text-3xl font-bold mb-2 text-center"
+              style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
             >
               {content.heading}
             </h2>
             <p
-              className="text-gray-500 dark:text-gray-400 text-center mb-8"
-              style={textStyleToCSS(content.subheadingStyle)}
+              className="text-center mb-8"
+              style={{ color: "var(--theme-text-muted, #6b7280)", ...textStyleToCSS(content.subheadingStyle) }}
             >
               {content.subheading}
             </p>
@@ -298,8 +298,12 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-3 rounded-lg font-semibold text-white text-sm transition-opacity hover:opacity-90 disabled:opacity-60"
-                style={{ backgroundColor: settings.brandColor }}
+                className="w-full py-3 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{
+                  backgroundColor: settings.brandColor,
+                  borderRadius: "var(--theme-btn-radius, 9999px)",
+                  fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                }}
               >
                 {submitting ? "Sending…" : "Send Request"}
               </button>

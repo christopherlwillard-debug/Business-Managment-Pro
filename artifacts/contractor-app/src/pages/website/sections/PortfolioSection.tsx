@@ -498,7 +498,7 @@ export function PortfolioSection({
         isEditing={isEditing}
       >
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-8 text-center">
+          <h2 className="text-3xl font-bold mb-8 text-center" style={{ color: "var(--theme-text, #111827)" }}>
             {content.heading}
           </h2>
 
@@ -508,12 +508,14 @@ export function PortfolioSection({
                 <button
                   key={proj.id}
                   onClick={() => setActiveTab(i)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  className={`px-4 py-2 text-sm font-medium transition-colors ${
                     safeTab === i
-                      ? "text-white shadow-sm"
-                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                      ? "text-white"
+                      : "bg-white text-gray-600 border border-gray-200 hover:border-gray-300"
                   }`}
-                  style={safeTab === i ? { backgroundColor: settings.brandColor } : {}}
+                  style={safeTab === i
+                    ? { backgroundColor: settings.brandColor, borderRadius: "var(--theme-btn-radius, 9999px)" }
+                    : { borderRadius: "var(--theme-btn-radius, 9999px)" }}
                 >
                   {proj.name}
                 </button>
@@ -536,8 +538,12 @@ export function PortfolioSection({
                   {proj.photos.map((photo, photoIdx) => (
                     <div
                       key={photo.id}
-                      className={`break-inside-avoid overflow-hidden border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer group ${photo.settings?.shadow ? PHOTO_SHADOW_CLASSES[photo.settings.shadow] : "shadow-sm"}`}
-                      style={{ borderRadius: photo.settings?.borderRadius !== undefined ? `${photo.settings.borderRadius}px` : "0.75rem" }}
+                      className="break-inside-avoid overflow-hidden bg-white cursor-pointer group"
+                      style={{
+                        border: "var(--theme-card-border, 1px solid #f3f4f6)",
+                        borderRadius: photo.settings?.borderRadius !== undefined ? `${photo.settings.borderRadius}px` : "var(--theme-card-radius, 0.75rem)",
+                        boxShadow: photo.settings?.shadow ? undefined : "var(--theme-card-shadow, 0 1px 3px rgba(0,0,0,0.08))",
+                      }}
                       onClick={() => setLightbox({ photos: proj.photos, index: photoIdx })}
                     >
                       <div className="relative">

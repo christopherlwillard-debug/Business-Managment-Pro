@@ -189,15 +189,15 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
             <>
               <h2
                 data-edit-field="heading"
-                className="text-3xl font-bold text-gray-900 dark:text-white mb-4"
-                style={textStyleToCSS(content.headingStyle)}
+                className="text-3xl font-bold mb-4"
+                style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
               >
                 {content.heading}
               </h2>
               <p
                 data-edit-field="body"
-                className="text-gray-600 dark:text-gray-300 leading-relaxed"
-                style={textStyleToCSS(content.bodyStyle)}
+                className="leading-relaxed"
+                style={{ color: "var(--theme-text-muted, #4b5563)", ...textStyleToCSS(content.bodyStyle) }}
               >
                 {content.body}
               </p>

@@ -105,17 +105,24 @@ export function ImageGallerySection({
           {(content.heading || content.subheading) && (
             <div className="text-center mb-10">
               {content.heading && (
-                <h2 className="text-3xl md:text-4xl font-bold text-gray-900">{content.heading}</h2>
+                <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "var(--theme-text, #111827)" }}>{content.heading}</h2>
               )}
               {content.subheading && (
-                <p className="text-gray-500 mt-2 text-lg">{content.subheading}</p>
+                <p className="mt-2 text-lg" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{content.subheading}</p>
               )}
             </div>
           )}
           {visibleImages.length > 0 && (
             <div className={`grid ${colClass} gap-4`}>
               {visibleImages.map(img => (
-                <div key={img.id} className="group overflow-hidden rounded-xl shadow-sm">
+                <div
+                  key={img.id}
+                  className="group overflow-hidden"
+                  style={{
+                    borderRadius: "var(--theme-card-radius, 0.75rem)",
+                    boxShadow: "var(--theme-card-shadow, 0 1px 3px rgba(0,0,0,0.08))",
+                  }}
+                >
                   <div className={`${aspectClass} overflow-hidden bg-gray-100`}>
                     <img
                       src={img.url}
