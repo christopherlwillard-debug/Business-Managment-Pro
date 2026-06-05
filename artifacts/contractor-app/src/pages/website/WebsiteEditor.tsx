@@ -345,6 +345,7 @@ export default function WebsiteEditor() {
   const [editingPageName, setEditingPageName] = useState("");
   const [showAddPage, setShowAddPage] = useState(false);
   const [newPageName, setNewPageName] = useState("");
+  const [newPageSlug, setNewPageSlug] = useState("");
   const [deletePageConfirm, setDeletePageConfirm] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
@@ -473,15 +474,24 @@ export default function WebsiteEditor() {
       }
       const rawSettings = data.settings as SiteSettings & { pages?: SitePage[] };
       const extraPages: SitePage[] = rawSettings.pages ?? [];
+      const isNewSite = data.id === null;
+      const defaultExtraPages: SitePage[] = isNewSite && extraPages.length === 0
+        ? [
+            { id: "page-about", name: "About", slug: "about", sections: [] },
+            { id: "page-services", name: "Services", slug: "services", sections: [] },
+            { id: "page-contact", name: "Contact", slug: "contact", sections: [] },
+          ]
+        : extraPages;
       const allPages: SitePage[] = [
         { id: "home", name: "Home", slug: "home", sections: migrated },
-        ...extraPages,
+        ...defaultExtraPages,
       ];
       setLocalPages(allPages);
+      if (isNewSite && extraPages.length === 0) isDirtyRef.current = true;
       const cleanSettings = { ...rawSettings };
       delete (cleanSettings as any).pages;
       setLocalSettings(cleanSettings as SiteSettings);
-      if (data.id === null && !pickerShownRef.current) {
+      if (isNewSite && !pickerShownRef.current) {
         pickerShownRef.current = true;
         setShowTemplatePicker(true);
         setPickerIsReset(false);
@@ -1142,12 +1152,12 @@ export default function WebsiteEditor() {
     } : p);
   }
 
-  function addPage(name: string) {
-    const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+  function addPage(name: string, customSlug?: string) {
+    const slug = (customSlug ?? name).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
     const id = "page-" + Math.random().toString(36).slice(2, 9);
     const newPage: SitePage = { id, name, slug, sections: [] };
     const siteSlug = activeBusiness?.slug ?? "";
-    const newLink = { id: nanoid(), label: name, href: `/site/${siteSlug}/${slug}` };
+    const newLink = { id: nanoid(), label: name, href: `/site/${siteSlug}/${slug}`, pageId: id };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalPages(prev => {
@@ -1165,17 +1175,12 @@ export default function WebsiteEditor() {
   }
 
   function doDeletePage(pageId: string) {
-    const targetPage = pages.find(p => p.id === pageId);
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalPages(prev => {
       const filtered = (prev ?? pages).filter(p => p.id !== pageId);
-      if (!targetPage) return filtered;
       return patchHomeHeaderNavLinks(filtered, links =>
-        links.filter(link => {
-          const href: string = link.href ?? "";
-          return !href.endsWith(`/${targetPage.slug}`);
-        })
+        links.filter(link => (link as any).pageId !== pageId)
       );
     });
     if (activePageId === pageId) {
@@ -1186,8 +1191,6 @@ export default function WebsiteEditor() {
   }
 
   function renamePage(pageId: string, name: string) {
-    const oldPage = pages.find(p => p.id === pageId);
-    const oldSlug = oldPage?.slug ?? "";
     const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
     const siteSlug = activeBusiness?.slug ?? "";
     history.pushSnapshot({ sections: pagesRef.current, settings });
@@ -1195,13 +1198,11 @@ export default function WebsiteEditor() {
     setLocalPages(prev => {
       const updated = (prev ?? pages).map(p => p.id === pageId ? { ...p, name, slug } : p);
       return patchHomeHeaderNavLinks(updated, links =>
-        links.map(link => {
-          const href: string = link.href ?? "";
-          if (href.endsWith(`/${oldSlug}`) || href === `/site/${siteSlug}/${oldSlug}`) {
-            return { ...link, label: name, href: `/site/${siteSlug}/${slug}` };
-          }
-          return link;
-        })
+        links.map(link =>
+          (link as any).pageId === pageId
+            ? { ...link, label: name, href: `/site/${siteSlug}/${slug}` }
+            : link
+        )
       );
     });
   }
@@ -1622,36 +1623,46 @@ export default function WebsiteEditor() {
               </button>
             </div>
             {showAddPage && (
-              <div className="mt-1 flex gap-1 mb-1">
+              <div className="mt-1 mb-1 space-y-1">
                 <input
                   type="text"
-                  placeholder="Page name"
+                  placeholder="Page name (e.g. About)"
                   value={newPageName}
-                  onChange={e => setNewPageName(e.target.value)}
+                  onChange={e => {
+                    setNewPageName(e.target.value);
+                    setNewPageSlug(e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
+                  }}
                   onKeyDown={e => {
                     if (e.key === "Enter" && newPageName.trim()) {
-                      addPage(newPageName.trim());
-                      setNewPageName("");
-                      setShowAddPage(false);
+                      addPage(newPageName.trim(), newPageSlug.trim() || undefined);
+                      setNewPageName(""); setNewPageSlug(""); setShowAddPage(false);
                     }
-                    if (e.key === "Escape") { setShowAddPage(false); setNewPageName(""); }
+                    if (e.key === "Escape") { setShowAddPage(false); setNewPageName(""); setNewPageSlug(""); }
                   }}
-                  className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                   autoFocus
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (newPageName.trim()) {
-                      addPage(newPageName.trim());
-                      setNewPageName("");
-                      setShowAddPage(false);
-                    }
-                  }}
-                  className="px-2 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  Add
-                </button>
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    placeholder="url-slug"
+                    value={newPageSlug}
+                    onChange={e => setNewPageSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                    className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newPageName.trim()) {
+                        addPage(newPageName.trim(), newPageSlug.trim() || undefined);
+                        setNewPageName(""); setNewPageSlug(""); setShowAddPage(false);
+                      }
+                    }}
+                    className="px-2 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
             )}
             <div className="space-y-0.5 mt-0.5">
