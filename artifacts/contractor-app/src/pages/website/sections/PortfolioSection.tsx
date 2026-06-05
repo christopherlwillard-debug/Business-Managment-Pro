@@ -77,6 +77,7 @@ function SortablePhotoCard({
   onPhotoUpload,
   onUrlChange,
   onCaptionChange,
+  onSettingsChange,
 }: {
   photo: PortfolioPhoto;
   isUploading: boolean;
