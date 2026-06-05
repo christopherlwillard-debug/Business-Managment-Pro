@@ -60,7 +60,16 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
         )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {content.items.map(item => (
-            <div key={item.id} className="relative bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border border-gray-100 dark:border-gray-700">
+            <div
+              key={item.id}
+              className="relative p-6"
+              style={{
+                backgroundColor: "var(--theme-surface, #f9fafb)",
+                borderRadius: "var(--theme-card-radius, 0.75rem)",
+                boxShadow: "var(--theme-card-shadow, none)",
+                border: "var(--theme-card-border, 1px solid #f3f4f6)",
+              }}
+            >
               {isEditing ? (
                 <>
                   <button

@@ -10,7 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
-  Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images,
+  Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -20,6 +20,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigationBlocker } from "@/contexts/NavigationBlockerContext";
 import { useFontLoader, HEADING_FONTS, BODY_FONTS } from "./useFontLoader";
+import { SITE_THEMES, type SiteTheme, applyThemeCssVars } from "./themes";
 import { WebsiteAnalytics } from "./WebsiteAnalytics";
 import { MediaLibrary } from "./MediaLibrary";
 import { HeroSection } from "./sections/HeroSection";
@@ -81,6 +82,7 @@ export interface SiteSettings {
   customDomain?: string;
   headerStyle?: "light" | "dark" | "transparent";
   footerBgColor?: string;
+  themeId?: string;
 }
 
 interface WebsiteConfig {
@@ -675,6 +677,11 @@ export default function WebsiteEditor() {
 
   useFontLoader(settings.headingFont, settings.bodyFont);
 
+  useEffect(() => {
+    applyThemeCssVars(settings.themeId);
+    return () => applyThemeCssVars(undefined);
+  }, [settings.themeId]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const currentPages = pagesRef.current;
@@ -807,6 +814,17 @@ export default function WebsiteEditor() {
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalSettings({ ...settings, ...patch });
+  }
+
+  function applyTheme(theme: SiteTheme) {
+    patchSettings({
+      themeId: theme.id,
+      brandColor: theme.brandColor,
+      secondaryColor: theme.secondaryColor,
+      accentColor: theme.accentColor,
+      headingFont: theme.headingFont,
+      bodyFont: theme.bodyFont,
+    });
   }
 
   function handleUndo() {
@@ -2259,6 +2277,49 @@ export default function WebsiteEditor() {
           {/* Brand settings */}
           <div className="border-t border-border p-3 space-y-3">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Brand</p>
+
+            {/* Theme picker */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Palette className="w-3 h-3 text-muted-foreground" />
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Theme</p>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {SITE_THEMES.map(theme => (
+                  <button
+                    key={theme.id}
+                    onClick={() => applyTheme(theme)}
+                    title={`${theme.name}: ${theme.description}`}
+                    className={`rounded-lg overflow-hidden border-2 transition-all text-left ${
+                      settings.themeId === theme.id
+                        ? "border-primary shadow-sm"
+                        : "border-transparent hover:border-muted-foreground/40"
+                    }`}
+                  >
+                    <div className="h-7 w-full" style={{ backgroundColor: theme.brandColor }} />
+                    <div className="h-1.5 w-full" style={{ backgroundColor: theme.secondaryColor }} />
+                    <div className="h-1 w-full" style={{ backgroundColor: theme.accentColor }} />
+                    <div className="px-1 py-0.5 bg-muted/40">
+                      <p className="text-[9px] font-medium text-foreground truncate">{theme.name}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {settings.themeId ? (
+                <p className="text-[9px] text-muted-foreground leading-relaxed">
+                  {SITE_THEMES.find(t => t.id === settings.themeId)?.description}
+                  {" · "}
+                  <button
+                    onClick={() => patchSettings({ themeId: undefined })}
+                    className="underline hover:text-foreground transition-colors"
+                  >
+                    Clear
+                  </button>
+                </p>
+              ) : (
+                <p className="text-[9px] text-muted-foreground">Pick a theme to instantly apply fonts &amp; colors.</p>
+              )}
+            </div>
 
             {/* Colors */}
             <div className="space-y-1.5">

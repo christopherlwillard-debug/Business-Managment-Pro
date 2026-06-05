@@ -33,7 +33,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
   const ctaBtn = content.ctaButton ?? {};
   const ctaBtnStyle = buttonConfigToStyle(ctaBtn);
   const ctaBtnClasses = buttonConfigToClasses(ctaBtn);
-  const ctaBorderRadius = ctaBtnStyle.borderRadius ?? "9999px";
+  const ctaBorderRadius = ctaBtnStyle.borderRadius ?? "var(--theme-btn-radius, 9999px)";
   const ctaBg = ctaBtnStyle.backgroundColor ?? settings.accentColor ?? "white";
   const ctaText = ctaBtnStyle.color ?? (settings.accentColor ? "white" : bg);
 

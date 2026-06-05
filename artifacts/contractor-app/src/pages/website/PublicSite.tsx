@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams, Link } from "wouter";
+import { buildThemeCssVarBlock } from "./themes";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -51,6 +52,7 @@ interface SiteSettings {
   headerStyle?: "light" | "dark" | "transparent";
   footerBgColor?: string;
   pages?: SitePage[];
+  themeId?: string;
 }
 
 interface PublishedConfig {
@@ -225,6 +227,9 @@ export default function PublicSite() {
           {googleFontsHref && <link rel="stylesheet" href={googleFontsHref} />}
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+          )}
+          {settings.themeId && (
+            <style>{buildThemeCssVarBlock(settings.themeId)}</style>
           )}
           {settings.faviconUrl && <link rel="icon" href={settings.faviconUrl} />}
         </>,

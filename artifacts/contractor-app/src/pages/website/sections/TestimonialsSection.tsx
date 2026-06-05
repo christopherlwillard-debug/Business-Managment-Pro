@@ -102,7 +102,15 @@ export function TestimonialsSection({ content, settings, isEditing, onChange, bl
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map(t => (
-              <div key={t.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col gap-3">
+              <div
+                key={t.id}
+                className="flex flex-col gap-3 p-6 bg-white"
+                style={{
+                  borderRadius: "var(--theme-card-radius, 1rem)",
+                  boxShadow: "var(--theme-card-shadow, 0 1px 3px rgba(0,0,0,0.08))",
+                  border: "var(--theme-card-border, 1px solid #f3f4f6)",
+                }}
+              >
                 <StarRow rating={t.rating} />
                 <p className="text-gray-700 text-sm leading-relaxed flex-1">"{t.quote}"</p>
                 <div>
