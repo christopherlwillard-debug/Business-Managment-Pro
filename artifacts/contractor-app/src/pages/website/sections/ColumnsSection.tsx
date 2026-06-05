@@ -129,6 +129,7 @@ function renderBlock(
             color,
             borderRadius: radius,
             fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+            boxShadow: "var(--theme-btn-shadow, none)",
           }}
         >
           {block.label || "Click here"}

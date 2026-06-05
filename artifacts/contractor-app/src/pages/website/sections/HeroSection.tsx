@@ -139,6 +139,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
           color: ctaText,
           borderRadius: ctaBorderRadius,
           fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+          boxShadow: "var(--theme-btn-shadow, none)",
         }}
       >
         {content.ctaLabel}

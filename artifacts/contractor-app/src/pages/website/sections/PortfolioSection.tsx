@@ -514,7 +514,7 @@ export function PortfolioSection({
                       : "bg-white text-gray-600 border border-gray-200 hover:border-gray-300"
                   }`}
                   style={safeTab === i
-                    ? { backgroundColor: settings.brandColor, borderRadius: "var(--theme-btn-radius, 9999px)" }
+                    ? { backgroundColor: settings.brandColor, borderRadius: "var(--theme-btn-radius, 9999px)", boxShadow: "var(--theme-btn-shadow, none)" }
                     : { borderRadius: "var(--theme-btn-radius, 9999px)" }}
                 >
                   {proj.name}

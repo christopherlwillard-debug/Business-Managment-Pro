@@ -2582,17 +2582,15 @@ export default function WebsiteEditor() {
                     </div>
                   );
                 })}
-                {settings.themeId && (
-                  <button
-                    onClick={() => {
-                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
-                      if (t) patchSettings({ brandColor: t.brandColor, secondaryColor: t.secondaryColor, accentColor: t.accentColor, bgColor: t.bgColor, surfaceColor: t.surfaceColor, textColor: t.textColor, textMutedColor: t.textMutedColor });
-                    }}
-                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
-                  >
-                    Reset to theme defaults
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    const t = settings.themeId ? SITE_THEMES.find(th => th.id === settings.themeId) : undefined;
+                    patchSettings({ secondaryColor: t?.secondaryColor, accentColor: t?.accentColor, bgColor: t?.bgColor, surfaceColor: t?.surfaceColor, textColor: t?.textColor, textMutedColor: t?.textMutedColor, ...(t ? { brandColor: t.brandColor } : {}) });
+                  }}
+                  className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  Reset to defaults
+                </button>
               </div>
             </details>
 
@@ -2666,17 +2664,15 @@ export default function WebsiteEditor() {
                     })}
                   </div>
                 </div>
-                {settings.themeId && (
-                  <button
-                    onClick={() => {
-                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
-                      if (t) patchSettings({ headingFont: t.headingFont, bodyFont: t.bodyFont, headingSizeScale: t.headingSizeScale, baseFontSize: t.baseFontSize });
-                    }}
-                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
-                  >
-                    Reset to theme defaults
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    const t = settings.themeId ? SITE_THEMES.find(th => th.id === settings.themeId) : undefined;
+                    patchSettings({ headingFont: t?.headingFont, bodyFont: t?.bodyFont, headingSizeScale: t?.headingSizeScale, baseFontSize: t?.baseFontSize });
+                  }}
+                  className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  Reset to defaults
+                </button>
               </div>
             </details>
 
@@ -2746,17 +2742,15 @@ export default function WebsiteEditor() {
                     <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
                   </label>
                 </div>
-                {settings.themeId && (
-                  <button
-                    onClick={() => {
-                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
-                      if (t) patchSettings({ buttonRadius: t.buttonRadius, buttonFontWeight: t.buttonFontWeight, buttonShadow: t.buttonShadow });
-                    }}
-                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
-                  >
-                    Reset to theme defaults
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    const t = settings.themeId ? SITE_THEMES.find(th => th.id === settings.themeId) : undefined;
+                    patchSettings({ buttonRadius: t?.buttonRadius, buttonFontWeight: t?.buttonFontWeight, buttonShadow: t?.buttonShadow });
+                  }}
+                  className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  Reset to defaults
+                </button>
               </div>
             </details>
 
@@ -2825,17 +2819,15 @@ export default function WebsiteEditor() {
                     <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
                   </label>
                 </div>
-                {settings.themeId && (
-                  <button
-                    onClick={() => {
-                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
-                      if (t) patchSettings({ cardRadius: t.cardRadius, cardShadow: t.cardShadow, cardBorder: t.cardBorder });
-                    }}
-                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
-                  >
-                    Reset to theme defaults
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    const t = settings.themeId ? SITE_THEMES.find(th => th.id === settings.themeId) : undefined;
+                    patchSettings({ cardRadius: t?.cardRadius, cardShadow: t?.cardShadow, cardBorder: t?.cardBorder });
+                  }}
+                  className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  Reset to defaults
+                </button>
               </div>
             </details>
 
@@ -2878,17 +2870,15 @@ export default function WebsiteEditor() {
                     className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
                   />
                 </div>
-                {settings.themeId && (
-                  <button
-                    onClick={() => {
-                      const t = SITE_THEMES.find(th => th.id === settings.themeId);
-                      if (t) patchSettings({ inputRadius: t.inputRadius, focusRingColor: undefined });
-                    }}
-                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
-                  >
-                    Reset to theme defaults
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    const t = settings.themeId ? SITE_THEMES.find(th => th.id === settings.themeId) : undefined;
+                    patchSettings({ inputRadius: t?.inputRadius, focusRingColor: undefined });
+                  }}
+                  className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  Reset to defaults
+                </button>
               </div>
             </details>
 
@@ -2971,14 +2961,12 @@ export default function WebsiteEditor() {
                     className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
                   />
                 </div>
-                {settings.themeId && (
-                  <button
-                    onClick={() => patchSettings({ footerBgColor: undefined, footerTextColor: undefined, footerLinkColor: undefined, headerBgColor: undefined, headerTextColor: undefined, headerLinkColor: undefined })}
-                    className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
-                  >
-                    Reset to theme defaults
-                  </button>
-                )}
+                <button
+                  onClick={() => patchSettings({ footerBgColor: undefined, footerTextColor: undefined, footerLinkColor: undefined, headerBgColor: undefined, headerTextColor: undefined, headerLinkColor: undefined })}
+                  className="text-[9px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  Reset to defaults
+                </button>
               </div>
             </details>
 

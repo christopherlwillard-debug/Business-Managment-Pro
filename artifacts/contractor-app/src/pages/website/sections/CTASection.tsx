@@ -76,6 +76,7 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle 
                   className={`inline-block font-semibold transition-opacity hover:opacity-90 border-2 border-white text-white px-6 py-3`}
                   style={{
                     borderRadius: buttonConfigToStyle(content.secondaryConfig).borderRadius ?? "var(--theme-btn-radius, 9999px)",
+                    boxShadow: "var(--theme-btn-shadow, none)",
                   }}
                 >
                   {content.secondaryLabel}

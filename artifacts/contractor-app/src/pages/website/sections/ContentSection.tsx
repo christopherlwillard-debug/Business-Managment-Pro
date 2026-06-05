@@ -222,6 +222,7 @@ export function renderSiteComponent(
               color,
               borderRadius: radius,
               fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+              boxShadow: "var(--theme-btn-shadow, none)",
             }}
           >
             {p.label || "Click here"}
@@ -320,6 +321,7 @@ export function renderSiteComponent(
                   backgroundColor: settings.accentColor ?? settings.brandColor,
                   borderRadius: "var(--theme-btn-radius, 9999px)",
                   fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                  boxShadow: "var(--theme-btn-shadow, none)",
                 }}
               >
                 {p.ctaLabel}
@@ -371,6 +373,7 @@ export function renderSiteComponent(
               backgroundColor: settings.accentColor ?? settings.brandColor,
               borderRadius: "var(--theme-btn-radius, 9999px)",
               fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+              boxShadow: "var(--theme-btn-shadow, none)",
             }}
           >
             {p.submitLabel ?? "Send Message"}
