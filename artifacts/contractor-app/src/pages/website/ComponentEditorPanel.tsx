@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, Images } from "lucide-react";
 import type {
   SiteComponent, HeadingProps, ParagraphProps, ButtonCompProps, ImageCompProps,
   DividerCompProps, IconCompProps, VideoCompProps, CardCompProps, TestimonialCompProps,
@@ -12,6 +12,7 @@ interface ComponentEditorPanelProps {
   component: SiteComponent;
   onChange: (comp: SiteComponent) => void;
   onImageUpload?: (file: File) => Promise<string>;
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -65,7 +66,7 @@ function textArea(value: string, onChange: (v: string) => void, rows = 4) {
   );
 }
 
-export function ComponentEditorPanel({ component, onChange, onImageUpload }: ComponentEditorPanelProps) {
+export function ComponentEditorPanel({ component, onChange, onImageUpload, onOpenMediaLibrary }: ComponentEditorPanelProps) {
   const [uploading, setUploading] = useState(false);
   const p = component.props;
 
@@ -151,6 +152,18 @@ export function ComponentEditorPanel({ component, onChange, onImageUpload }: Com
                       }}
                     />
                   </label>
+                </Field>
+              )}
+              {onOpenMediaLibrary && (
+                <Field label="Library">
+                  <button
+                    type="button"
+                    onClick={() => onOpenMediaLibrary(url => set({ url }))}
+                    className="flex items-center gap-1.5 w-full text-xs border border-border rounded px-2 py-2 cursor-pointer hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                  >
+                    <Images className="w-3 h-3" />
+                    Choose from Library
+                  </button>
                 </Field>
               )}
               <Field label="Image URL">{textInput(pp.url ?? "", v => set({ url: v }), "https://…")}</Field>

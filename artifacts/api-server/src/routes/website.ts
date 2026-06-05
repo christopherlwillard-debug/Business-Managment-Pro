@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Readable } from "stream";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable } from "@workspace/db/schema";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable } from "@workspace/db/schema";
 import { eq, and, sql, gte, desc } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
@@ -851,6 +851,81 @@ publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res)
     }
   } catch (err) {
     if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Photo not found" });
+    throw err;
+  }
+}));
+
+// ── Media Library ──────────────────────────────────────────────────────────────
+
+router.get("/media", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+  const items = await db
+    .select()
+    .from(websiteMediaTable)
+    .where(eq(websiteMediaTable.businessId, businessId))
+    .orderBy(desc(websiteMediaTable.uploadedAt));
+  res.json(items);
+}));
+
+router.post("/media/upload-url", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-media");
+  res.json({ uploadURL, objectPath });
+}));
+
+router.post("/media", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+  const { filename, objectPath, url, size } = req.body as { filename: string; objectPath: string; url: string; size: number };
+  if (!filename || !objectPath || !url) return res.status(400).json({ error: "Missing fields" });
+  const [item] = await db
+    .insert(websiteMediaTable)
+    .values({ businessId, filename, objectPath, url, size: size ?? 0 })
+    .returning();
+  res.json(item);
+}));
+
+router.delete("/media/:id", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const id = parseInt(req.params.id);
+  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
+  const [item] = await db
+    .select()
+    .from(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
+  if (!item) return res.status(404).json({ error: "Not found" });
+  try {
+    await objectStorageService.deleteObject(item.objectPath);
+  } catch {
+    // best-effort delete from object storage
+  }
+  await db.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
+  res.json({ ok: true });
+}));
+
+publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
+  const { uuid } = req.params;
+  const expectedObjectPath = `/objects/uploads/website-media/${uuid}`;
+  const [item] = await db
+    .select({ id: websiteMediaTable.id })
+    .from(websiteMediaTable)
+    .where(eq(websiteMediaTable.objectPath, expectedObjectPath));
+  if (!item) return res.status(404).json({ error: "Not found" });
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(expectedObjectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Image not found" });
     throw err;
   }
 }));

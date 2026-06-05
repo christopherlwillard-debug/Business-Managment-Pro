@@ -42,6 +42,7 @@ interface ImageGallerySectionProps {
   onImageUpload?: (imageId: string, file: File) => Promise<void>;
   uploadingImageIds?: Set<string>;
   blockStyle?: BlockStyle;
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
 }
 
 const ASPECT_MAP: Record<string, string> = {
@@ -64,6 +65,7 @@ export function ImageGallerySection({
   onImageUpload,
   uploadingImageIds,
   blockStyle,
+  onOpenMediaLibrary,
 }: ImageGallerySectionProps) {
   const images = content.images ?? [];
   const columns = content.columns ?? 3;
@@ -232,6 +234,15 @@ export function ImageGallerySection({
                     onChange={e => handleFileChange(img.id, e)}
                   />
                 </label>
+                {onOpenMediaLibrary && !img.url && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenMediaLibrary(url => updateImage(img.id, { url }))}
+                    className="w-full text-[9px] text-white/40 hover:text-white/70 py-0.5 transition-colors"
+                  >
+                    Library
+                  </button>
+                )}
 
                 <div className="p-2">
                   <input

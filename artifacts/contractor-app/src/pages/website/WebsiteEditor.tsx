@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigationBlocker } from "@/contexts/NavigationBlockerContext";
 import { useFontLoader, HEADING_FONTS, BODY_FONTS } from "./useFontLoader";
 import { WebsiteAnalytics } from "./WebsiteAnalytics";
+import { MediaLibrary } from "./MediaLibrary";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -114,6 +115,7 @@ function renderSection(
     selectedRowColumnId?: string | null;
     selectedRowComponentId?: string | null;
     onSelectRowComponent?: (columnId: string, componentId: string | null) => void;
+    onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -152,6 +154,7 @@ function renderSection(
           ? (imageId, file) => extras.onGalleryImageUpload!(section.id, imageId, file)
           : undefined}
         uploadingImageIds={extras?.uploadingGalleryImageIds}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
     case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} />;
@@ -421,7 +424,12 @@ export default function WebsiteEditor() {
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
+  const [activeTab, setActiveTab] = useState<"editor" | "analytics" | "media">("editor");
+  const [mediaPickerState, setMediaPickerState] = useState<{ onSelect: (url: string) => void } | null>(null);
+
+  function openMediaLibrary(onSelect: (url: string) => void) {
+    setMediaPickerState({ onSelect });
+  }
   const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | null | undefined>(undefined);
   const [selectedComponentState, setSelectedComponentState] = useState<{ sectionId: string; componentId: string } | null>(null);
   const [selectedRowState, setSelectedRowState] = useState<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
@@ -1546,6 +1554,7 @@ export default function WebsiteEditor() {
       businessId: activeBusiness?.id,
       siteSlug: activeBusiness?.slug,
       pages: pages.filter(p => p.id !== "home").map(p => ({ id: p.id, name: p.name, slug: p.slug })),
+      onOpenMediaLibrary: openMediaLibrary,
     };
 
     function renderWrapped(s: Section, opts: { isHeader?: boolean; isFirst?: boolean; isLast?: boolean }) {
@@ -1802,6 +1811,18 @@ export default function WebsiteEditor() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    {mediaPickerState && bizId && (
+      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
+        <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden border border-border">
+          <MediaLibrary
+            businessId={bizId}
+            mode="select"
+            onSelect={url => { mediaPickerState.onSelect(url); setMediaPickerState(null); }}
+            onClose={() => setMediaPickerState(null)}
+          />
+        </div>
+      </div>
+    )}
     <div className="flex flex-col h-full">
       {/* Top bar */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-card gap-3 flex-wrap">
@@ -1822,6 +1843,17 @@ export default function WebsiteEditor() {
             >
               <Pencil className="w-3 h-3" />
               Editor
+            </button>
+            <button
+              onClick={() => setActiveTab("media")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                activeTab === "media"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Images className="w-3 h-3" />
+              Media
             </button>
             <button
               onClick={() => setActiveTab("analytics")}
@@ -1924,6 +1956,8 @@ export default function WebsiteEditor() {
       <div className="flex-1 flex overflow-hidden">
         {activeTab === "analytics" ? (
           <WebsiteAnalytics businessId={bizId!} />
+        ) : activeTab === "media" ? (
+          <MediaLibrary businessId={bizId!} />
         ) : (<>
         {/* Left panel — section list */}
         <div className="w-56 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-y-auto">
@@ -2351,6 +2385,7 @@ export default function WebsiteEditor() {
                       updateContent(sec.id, { ...contentData, components: newComponents });
                     }}
                     onImageUpload={handleContentComponentImageUpload}
+                    onOpenMediaLibrary={openMediaLibrary}
                   />
                 </div>
               );
@@ -2376,6 +2411,7 @@ export default function WebsiteEditor() {
                         updateContent(sec.id, { ...rowData, columns: newCols } as unknown as Record<string, unknown>);
                       }}
                       onImageUpload={handleContentComponentImageUpload}
+                      onOpenMediaLibrary={openMediaLibrary}
                     />
                   </div>
                 );
@@ -2395,6 +2431,7 @@ export default function WebsiteEditor() {
                     onChange={bs => updateBlockStyle(sec.id, bs)}
                     onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                     isBgUploading={!!bgUploading[sec.id]}
+                    onOpenMediaLibrary={openMediaLibrary}
                   />
                 </div>
               </div>
@@ -2410,6 +2447,7 @@ export default function WebsiteEditor() {
                 onChange={bs => updateBlockStyle(sec.id, bs)}
                 onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                 isBgUploading={!!bgUploading[sec.id]}
+                onOpenMediaLibrary={openMediaLibrary}
               />
             </div>
           );

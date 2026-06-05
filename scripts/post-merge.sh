@@ -625,3 +625,21 @@ pool.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS job_sub_hours_id integ
   .then(() => { console.log('expenses.job_sub_hours_id ensured'); pool.end(); })
   .catch(e => { console.error('job_sub_hours_id migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Idempotent migration: create website_media table for media library
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS website_media (
+    id SERIAL PRIMARY KEY,
+    business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    object_path VARCHAR(512) NOT NULL,
+    url VARCHAR(512) NOT NULL,
+    size INTEGER NOT NULL DEFAULT 0,
+    uploaded_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )
+\`).then(() => { console.log('website_media table ensured'); pool.end(); })
+  .catch(e => { console.error('website_media migration error:', e.message); pool.end(); process.exit(1); });
+")
