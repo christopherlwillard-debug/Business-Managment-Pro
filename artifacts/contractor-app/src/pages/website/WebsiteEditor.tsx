@@ -10,7 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
-  Star, HelpCircle, Megaphone, Lock, Layers,
+  Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -35,7 +35,9 @@ import { CTASection, defaultCTAContent } from "./sections/CTASection";
 import { StatsSection, defaultStatsContent } from "./sections/StatsSection";
 import { HeaderSection, defaultHeaderContent } from "./sections/HeaderSection";
 import { ContentSection, defaultContentSectionData } from "./sections/ContentSection";
+import { RowSection, defaultRowSectionData, type RowSectionData } from "./sections/RowSection";
 import { ComponentEditorPanel } from "./ComponentEditorPanel";
+import { RowEditorPanel } from "./RowEditorPanel";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
@@ -46,7 +48,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -104,6 +106,9 @@ function renderSection(
     pages?: Array<{ id: string; name: string; slug: string }>;
     selectedComponentId?: string | null;
     onSelectComponent?: (id: string | null) => void;
+    selectedRowColumnId?: string | null;
+    selectedRowComponentId?: string | null;
+    onSelectRowComponent?: (columnId: string, componentId: string | null) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -142,6 +147,14 @@ function renderSection(
         onSelectComponent={extras?.onSelectComponent}
       />
     );
+    case "row": return (
+      <RowSection
+        {...props}
+        selectedColumnId={extras?.selectedRowColumnId}
+        selectedComponentId={extras?.selectedRowComponentId}
+        onSelectRowComponent={extras?.onSelectRowComponent}
+      />
+    );
     default: return null;
   }
 }
@@ -161,6 +174,7 @@ const SECTION_LABELS: Record<string, string> = {
   cta: "CTA Banner",
   stats: "Stats / Numbers",
   content: "Content Block",
+  row: "Row",
 };
 
 const ADDABLE_SECTION_TYPES: Array<{
@@ -175,6 +189,7 @@ const ADDABLE_SECTION_TYPES: Array<{
   { type: "stats", label: "Stats / Numbers", icon: <BarChart2 className="w-4 h-4" />, allowMultiple: true },
   { type: "columns", label: "Columns", icon: <Columns className="w-4 h-4" />, allowMultiple: true },
   { type: "content", label: "Content Block", icon: <Layers className="w-4 h-4" />, allowMultiple: true },
+  { type: "row", label: "Row", icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
 ];
 
 function SortableRow({
@@ -387,6 +402,7 @@ export default function WebsiteEditor() {
   const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
   const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | null | undefined>(undefined);
   const [selectedComponentState, setSelectedComponentState] = useState<{ sectionId: string; componentId: string } | null>(null);
+  const [selectedRowState, setSelectedRowState] = useState<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
   const pickerShownRef = useRef(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const pendingFocusFieldRef = useRef<string | null>(null);
@@ -1201,6 +1217,8 @@ export default function WebsiteEditor() {
       content = defaultStatsContent() as unknown as Record<string, unknown>;
     } else if (type === "content") {
       content = defaultContentSectionData() as unknown as Record<string, unknown>;
+    } else if (type === "row") {
+      content = defaultRowSectionData() as unknown as Record<string, unknown>;
     }
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
     history.pushSnapshot({ sections: pagesRef.current, settings });
@@ -1469,6 +1487,14 @@ export default function WebsiteEditor() {
               } else {
                 setSelectedComponentState(null);
               }
+            },
+            selectedRowColumnId: selectedRowState?.sectionId === s.id ? selectedRowState.columnId : null,
+            selectedRowComponentId: selectedRowState?.sectionId === s.id ? (selectedRowState.componentId ?? null) : null,
+            onSelectRowComponent: (colId: string, compId: string | null) => {
+              setSelectedRowState(compId
+                ? { sectionId: s.id, columnId: colId, componentId: compId }
+                : { sectionId: s.id, columnId: colId }
+              );
             },
           })}
         </div>
@@ -2139,6 +2165,50 @@ export default function WebsiteEditor() {
                 </div>
               );
             }
+          }
+
+          if (sec.type === "row") {
+            const rowData = sec.content as RowSectionData;
+            if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
+              const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
+              const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
+              if (selComp) {
+                return (
+                  <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
+                    <ComponentEditorPanel
+                      component={selComp as any}
+                      onChange={updatedComp => {
+                        const newCols = (rowData.columns ?? []).map(col =>
+                          col.id === selectedRowState.columnId
+                            ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
+                            : col
+                        );
+                        updateContent(sec.id, { ...rowData, columns: newCols } as unknown as Record<string, unknown>);
+                      }}
+                      onImageUpload={handleContentComponentImageUpload}
+                    />
+                  </div>
+                );
+              }
+            }
+            return (
+              <div className="w-72 flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden">
+                <RowEditorPanel
+                  data={rowData}
+                  onChange={newData => updateContent(sec.id, newData as unknown as Record<string, unknown>)}
+                />
+                <div className="flex-1 min-h-0">
+                  <SectionStylePanel
+                    sectionId={sec.id}
+                    sectionType="row"
+                    blockStyle={sec.blockStyle ?? {}}
+                    onChange={bs => updateBlockStyle(sec.id, bs)}
+                    onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                    isBgUploading={!!bgUploading[sec.id]}
+                  />
+                </div>
+              </div>
+            );
           }
 
           return (

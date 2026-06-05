@@ -66,6 +66,7 @@ const SECTION_LABELS: Record<string, string> = {
   portfolio: "Portfolio / Gallery",
   deposit: "Pay Deposit",
   content: "Content Block",
+  row: "Row",
 };
 
 export function SectionStylePanel({
