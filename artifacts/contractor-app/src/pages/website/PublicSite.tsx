@@ -66,13 +66,21 @@ export default function PublicSite() {
     fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
   }, [data?.businessSlug]);
 
-  async function handleContactSubmit(formData: {
-    name: string; phone: string; email: string; serviceType: string; message: string;
-  }) {
+  async function handleContactSubmit(data: Record<string, unknown>) {
+    const fieldValues = (data.fieldValues ?? {}) as Record<string, string>;
+    const labeledFields = (data.labeledValues ?? {}) as Record<string, string>;
     const res = await fetch(`${BASE}/api/public/site/${resolvedSlug}/contact`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
+      body: JSON.stringify({
+        fieldValues,
+        labeledFields,
+        name: fieldValues.name,
+        phone: fieldValues.phone,
+        email: fieldValues.email,
+        serviceType: fieldValues.serviceType,
+        message: fieldValues.message,
+      }),
     });
     if (!res.ok) throw new Error("Submission failed");
   }

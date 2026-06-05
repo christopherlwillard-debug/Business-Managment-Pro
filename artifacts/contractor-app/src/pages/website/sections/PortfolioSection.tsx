@@ -12,11 +12,27 @@ import {
 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
+export interface PhotoSettings {
+  borderRadius?: number;
+  shadow?: "none" | "sm" | "md" | "lg" | "xl";
+  alt?: string;
+  objectFit?: "cover" | "contain";
+}
+
+const PHOTO_SHADOW_CLASSES: Record<string, string> = {
+  none: "shadow-none",
+  sm: "shadow-sm",
+  md: "shadow-md",
+  lg: "shadow-lg",
+  xl: "shadow-xl",
+};
+
 export interface PortfolioPhoto {
   id: string;
   photoUrl: string;
   photoObjectPath?: string;
   caption?: string;
+  settings?: PhotoSettings;
 }
 
 export interface PortfolioProject {
@@ -69,7 +85,14 @@ function SortablePhotoCard({
   onPhotoUpload?: (file: File) => Promise<void>;
   onUrlChange: (url: string) => void;
   onCaptionChange: (caption: string) => void;
+  onSettingsChange?: (settings: PhotoSettings) => void;
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const ps = photo.settings ?? {};
+  const shadows = ["none", "sm", "md", "lg", "xl"] as const;
+  function patchSettings(p: Partial<PhotoSettings>) {
+    onSettingsChange?.({ ...ps, ...p });
+  }
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -136,6 +159,39 @@ function SortablePhotoCard({
           placeholder="Caption (optional)"
           onChange={e => onCaptionChange(e.target.value)}
         />
+        {onSettingsChange && (
+          <div className="mt-0.5 rounded border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button type="button" onClick={() => setSettingsOpen(v => !v)} className="w-full flex items-center justify-between px-2 py-1 text-[10px] font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              <span>Image Settings</span>
+              {settingsOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            {settingsOpen && (
+              <div className="px-2 pb-2 space-y-1.5 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <div>
+                  <label className="text-[9px] text-gray-500 block mt-1.5 mb-0.5">Radius: {ps.borderRadius ?? 12}px</label>
+                  <input type="range" min={0} max={50} value={ps.borderRadius ?? 12} onChange={e => patchSettings({ borderRadius: parseInt(e.target.value) })} className="w-full h-1.5 accent-blue-500" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-gray-500 block mb-0.5">Shadow</label>
+                  <div className="flex gap-0.5">
+                    {shadows.map(s => (
+                      <button key={s} type="button" onClick={() => patchSettings({ shadow: s })} className={`flex-1 text-[8px] py-0.5 rounded border capitalize ${(ps.shadow ?? "none") === s ? "bg-blue-500 text-white border-blue-500" : "border-gray-200 dark:border-gray-600 text-gray-400 hover:border-blue-300"}`}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[9px] text-gray-500 block mb-0.5">Object Fit</label>
+                  <div className="flex gap-0.5">
+                    {(["cover", "contain"] as const).map(f => (
+                      <button key={f} type="button" onClick={() => patchSettings({ objectFit: f })} className={`flex-1 text-[9px] py-0.5 rounded border capitalize ${(ps.objectFit ?? "cover") === f ? "bg-blue-500 text-white border-blue-500" : "border-gray-200 dark:border-gray-600 text-gray-400 hover:border-blue-300"}`}>{f}</button>
+                    ))}
+                  </div>
+                </div>
+                <input value={ps.alt ?? ""} onChange={e => patchSettings({ alt: e.target.value || undefined })} placeholder="Alt text…" className="w-full text-[10px] border border-gray-200 dark:border-gray-600 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 outline-none focus:border-blue-500 text-gray-700 dark:text-gray-300 placeholder-gray-400" />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -317,6 +373,7 @@ function ProjectEditPanel({
                     onPhotoUpload={onPhotoUpload ? (file) => onPhotoUpload(photo.id, file) : undefined}
                     onUrlChange={url => updatePhoto(photo.id, { photoUrl: url, photoObjectPath: undefined })}
                     onCaptionChange={caption => updatePhoto(photo.id, { caption })}
+                    onSettingsChange={settings => updatePhoto(photo.id, { settings })}
                   />
                 ))}
                 <button
@@ -478,14 +535,16 @@ export function PortfolioSection({
                   {proj.photos.map((photo, photoIdx) => (
                     <div
                       key={photo.id}
-                      className="break-inside-avoid rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer group"
+                      className={`break-inside-avoid overflow-hidden border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer group ${photo.settings?.shadow ? PHOTO_SHADOW_CLASSES[photo.settings.shadow] : "shadow-sm"}`}
+                      style={{ borderRadius: photo.settings?.borderRadius !== undefined ? `${photo.settings.borderRadius}px` : "0.75rem" }}
                       onClick={() => setLightbox({ photos: proj.photos, index: photoIdx })}
                     >
                       <div className="relative">
                         <img
                           src={photo.photoUrl}
-                          alt={photo.caption || "Portfolio photo"}
-                          className="w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                          alt={photo.settings?.alt || photo.caption || "Portfolio photo"}
+                          className="w-full transition-transform duration-300 group-hover:scale-[1.02]"
+                          style={{ objectFit: photo.settings?.objectFit ?? "cover" }}
                           loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 flex items-center justify-center">

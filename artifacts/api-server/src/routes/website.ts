@@ -2,11 +2,12 @@ import { Router } from "express";
 import { Readable } from "stream";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable } from "@workspace/db/schema";
-import { eq, and, sql, gte } from "drizzle-orm";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable } from "@workspace/db/schema";
+import { eq, and, sql, gte, desc } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
+import { sendEmail } from "../lib/sendEmail";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -397,32 +398,86 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
   const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
-  const { name, phone, email, serviceType, message } = req.body as {
+  const { name, phone, email, serviceType, message, fieldValues, labeledFields } = req.body as {
     name?: string; phone?: string; email?: string; serviceType?: string; message?: string;
+    fieldValues?: Record<string, string>;
+    labeledFields?: Record<string, string>;
   };
 
-  if (!name && !phone && !email) {
-    return res.status(400).json({ error: "At least one contact field (name, phone, or email) is required" });
+  const normName = name ?? fieldValues?.name;
+  const normPhone = phone ?? fieldValues?.phone;
+  const normEmail = email ?? fieldValues?.email;
+  const normServiceType = serviceType ?? fieldValues?.serviceType;
+  const normMessage = message ?? fieldValues?.message;
+
+  const submissionFields: Record<string, string> =
+    labeledFields && Object.keys(labeledFields).length > 0
+      ? labeledFields
+      : Object.fromEntries(
+          ([
+            normName ? ["Full Name", normName] : null,
+            normPhone ? ["Phone", normPhone] : null,
+            normEmail ? ["Email", normEmail] : null,
+            normServiceType ? ["Service", normServiceType] : null,
+            normMessage ? ["Message", normMessage] : null,
+          ] as Array<[string, string] | null>).filter(Boolean) as [string, string][]
+        );
+
+  if (Object.keys(submissionFields).length === 0) {
+    return res.status(400).json({ error: "At least one contact field is required" });
   }
 
+  await db.insert(websiteFormSubmissionsTable).values({
+    businessId: biz.id,
+    siteSlug: slug,
+    fields: submissionFields as Record<string, unknown>,
+  });
+
   const notes = [
-    serviceType ? `Service: ${serviceType}` : null,
-    message ? `Message: ${message}` : null,
+    normServiceType ? `Service: ${normServiceType}` : null,
+    normMessage ? `Message: ${normMessage}` : null,
   ].filter(Boolean).join("\n");
 
   const [prospect] = await db
     .insert(prospectsTable)
     .values({
       address: "Website Lead",
-      contactName: name ?? null,
-      contactPhone: phone ?? null,
-      contactEmail: email ?? null,
+      contactName: normName ?? null,
+      contactPhone: normPhone ?? null,
+      contactEmail: normEmail ?? null,
       notes: notes || null,
       status: "cold",
       source: "website",
       businessLine: biz.slug,
     })
     .returning({ id: prospectsTable.id });
+
+  try {
+    const [config] = await db
+      .select({ sections: websiteConfigsTable.sections })
+      .from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, biz.id));
+    const sections = (config?.sections ?? []) as Array<{ type: string; content: Record<string, unknown> }>;
+    const contactSection = sections.find(s => s.type === "contact");
+    const notifEmail = contactSection?.content?.notificationEmail as string | undefined;
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (notifEmail && EMAIL_RE.test(notifEmail)) {
+      const rows = Object.entries(submissionFields)
+        .map(([k, v]) => `<tr><td style="padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #f3f4f6;">${k}</td><td style="padding:6px 10px;color:#6b7280;border-bottom:1px solid #f3f4f6;">${v}</td></tr>`)
+        .join("");
+      await sendEmail({
+        to: notifEmail,
+        subject: `New Form Submission — ${slug}`,
+        html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;">
+          <h2 style="color:#1a1a2e;margin-bottom:4px;">New Contact Form Submission</h2>
+          <p style="color:#6b7280;font-size:14px;margin-bottom:16px;">Someone filled out your website contact form.</p>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">${rows}</table>
+        </div>`,
+      });
+    }
+  } catch {
+    // Email errors must not fail the submission
+  }
 
   res.json({ success: true, prospectId: prospect.id });
 }));
@@ -500,6 +555,20 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   });
 
   res.json({ checkoutUrl: url });
+}));
+
+router.get("/form-submissions", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+  const subs = await db
+    .select()
+    .from(websiteFormSubmissionsTable)
+    .where(eq(websiteFormSubmissionsTable.businessId, businessId))
+    .orderBy(desc(websiteFormSubmissionsTable.submittedAt))
+    .limit(20);
+  res.json(subs);
 }));
 
 router.get("/analytics", wrapAsync(async (req, res) => {

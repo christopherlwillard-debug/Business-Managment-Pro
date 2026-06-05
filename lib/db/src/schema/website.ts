@@ -26,3 +26,14 @@ export const websiteConfigsTable = pgTable("website_configs", {
 
 export type WebsiteConfig = typeof websiteConfigsTable.$inferSelect;
 export type InsertWebsiteConfig = typeof websiteConfigsTable.$inferInsert;
+
+export const websiteFormSubmissionsTable = pgTable("website_form_submissions", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  siteSlug: varchar("site_slug", { length: 100 }).notNull(),
+  fields: jsonb("fields").notNull().default({}),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+});
+
+export type WebsiteFormSubmission = typeof websiteFormSubmissionsTable.$inferSelect;
+export type InsertWebsiteFormSubmission = typeof websiteFormSubmissionsTable.$inferInsert;

@@ -1,12 +1,32 @@
-import { ImagePlus, Loader2 } from "lucide-react";
+import React, { useState } from "react";
+import { ImagePlus, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
+import { TextStyleToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
+
+const SHADOW_CLASSES: Record<string, string> = {
+  none: "shadow-none",
+  sm: "shadow-sm",
+  md: "shadow-md",
+  lg: "shadow-lg",
+  xl: "shadow-xl",
+};
+
+interface PhotoSettings {
+  borderRadius?: number;
+  shadow?: "none" | "sm" | "md" | "lg" | "xl";
+  alt?: string;
+  objectFit?: "cover" | "contain";
+}
 
 interface AboutContent {
   heading: string;
   body: string;
   photoUrl?: string;
   photoObjectPath?: string;
+  headingStyle?: TextStyle;
+  bodyStyle?: TextStyle;
+  photoSettings?: PhotoSettings;
 }
 
 interface AboutSectionProps {
@@ -20,12 +40,109 @@ interface AboutSectionProps {
   blockStyle?: BlockStyle;
 }
 
+function PhotoSettingsPanel({
+  settings: ps = {},
+  onChange,
+}: {
+  settings?: PhotoSettings;
+  onChange: (s: PhotoSettings) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  function patch(p: Partial<PhotoSettings>) {
+    onChange({ ...ps, ...p });
+  }
+  const shadows = ["none", "sm", "md", "lg", "xl"] as const;
+  return (
+    <div className="mt-1.5 rounded border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+      >
+        <span>Photo Settings</span>
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {open && (
+        <div className="px-2.5 pb-2.5 space-y-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          <div>
+            <label className="text-[10px] text-gray-500 block mt-2 mb-1">Border radius: {ps.borderRadius ?? 12}px</label>
+            <input
+              type="range"
+              min={0}
+              max={50}
+              value={ps.borderRadius ?? 12}
+              onChange={e => patch({ borderRadius: parseInt(e.target.value) })}
+              className="w-full h-1.5 accent-blue-500"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-gray-500 block mb-1">Shadow</label>
+            <div className="flex gap-1">
+              {shadows.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => patch({ shadow: s })}
+                  className={`flex-1 text-[9px] py-1 rounded border transition-colors capitalize ${
+                    (ps.shadow ?? "md") === s
+                      ? "bg-blue-500 border-blue-500 text-white"
+                      : "border-gray-200 dark:border-gray-600 text-gray-500 hover:border-blue-300"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-gray-500 block mb-1">Object fit</label>
+            <div className="flex gap-1">
+              {(["cover", "contain"] as const).map(f => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => patch({ objectFit: f })}
+                  className={`flex-1 text-[10px] py-1 rounded border transition-colors capitalize ${
+                    (ps.objectFit ?? "cover") === f
+                      ? "bg-blue-500 border-blue-500 text-white"
+                      : "border-gray-200 dark:border-gray-600 text-gray-500 hover:border-blue-300"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-gray-500 block mb-1">Alt text</label>
+            <input
+              value={ps.alt ?? ""}
+              onChange={e => patch({ alt: e.target.value || undefined })}
+              placeholder="Describe the photo…"
+              className="w-full text-xs border border-gray-200 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 outline-none focus:border-blue-500 text-gray-700 dark:text-gray-300 placeholder-gray-400"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading, businessName, blockStyle }: AboutSectionProps) {
   const biz = businessName ?? "a contractor business";
+  const ps = content.photoSettings ?? {};
 
   function update(patch: Partial<AboutContent>) {
     onChange?.({ ...content, ...patch });
   }
+
+  const photoStyle: React.CSSProperties = {
+    borderRadius: `${ps.borderRadius ?? 12}px`,
+    objectFit: ps.objectFit ?? "cover",
+  };
+
+  const shadowClass = SHADOW_CLASSES[ps.shadow ?? "md"] ?? "shadow-md";
+  const photoAlt = ps.alt || "About";
 
   return (
     <BlockStyleWrapper
@@ -38,15 +155,27 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
           {isEditing ? (
             <>
               <input
-                className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-4 w-full"
+                className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-1 w-full"
+                style={textStyleToCSS(content.headingStyle)}
                 value={content.heading}
                 onChange={e => update({ heading: e.target.value })}
               />
+              <TextStyleToolbar
+                dark={false}
+                style={content.headingStyle}
+                onChange={s => update({ headingStyle: s })}
+              />
               <textarea
-                className="text-gray-600 dark:text-gray-300 bg-transparent border border-gray-200 focus:border-blue-500 outline-none resize-none w-full rounded p-2 text-sm leading-relaxed"
+                className="text-gray-600 dark:text-gray-300 bg-transparent border border-gray-200 focus:border-blue-500 outline-none resize-none w-full rounded p-2 text-sm leading-relaxed mt-1"
+                style={textStyleToCSS(content.bodyStyle)}
                 value={content.body}
                 rows={6}
                 onChange={e => update({ body: e.target.value })}
+              />
+              <TextStyleToolbar
+                dark={false}
+                style={content.bodyStyle}
+                onChange={s => update({ bodyStyle: s })}
               />
               <AiCopyPopover
                 label="About body"
@@ -56,14 +185,30 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
             </>
           ) : (
             <>
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">{content.heading}</h2>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed">{content.body}</p>
+              <h2
+                className="text-3xl font-bold text-gray-900 dark:text-white mb-4"
+                style={textStyleToCSS(content.headingStyle)}
+              >
+                {content.heading}
+              </h2>
+              <p
+                className="text-gray-600 dark:text-gray-300 leading-relaxed"
+                style={textStyleToCSS(content.bodyStyle)}
+              >
+                {content.body}
+              </p>
             </>
           )}
         </div>
+
         <div className="w-full md:w-72 flex-shrink-0">
           {content.photoUrl ? (
-            <img src={content.photoUrl} alt="About" className="w-full h-56 object-cover rounded-xl shadow-md" />
+            <img
+              src={content.photoUrl}
+              alt={photoAlt}
+              className={`w-full h-56 ${shadowClass}`}
+              style={photoStyle}
+            />
           ) : (
             <div
               className="w-full h-56 rounded-xl flex items-center justify-center text-white/60 text-sm font-medium"
@@ -92,6 +237,10 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
                 value={content.photoUrl ?? ""}
                 placeholder="Or paste a photo URL"
                 onChange={e => update({ photoUrl: e.target.value, photoObjectPath: undefined })}
+              />
+              <PhotoSettingsPanel
+                settings={content.photoSettings}
+                onChange={s => update({ photoSettings: s })}
               />
             </div>
           )}
