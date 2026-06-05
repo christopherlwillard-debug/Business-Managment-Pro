@@ -9,7 +9,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
-  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil,
+  Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -26,6 +26,7 @@ import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
 import { DepositSection } from "./sections/DepositSection";
+import { ColumnsSection, defaultColumnsContent, type ColumnsContent } from "./sections/ColumnsSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
@@ -34,7 +35,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -76,8 +77,11 @@ function renderSection(
     isAboutPhotoUploading?: boolean;
     onPortfolioPhotoUpload?: (projectId: string, photoId: string, file: File) => Promise<void>;
     uploadingPortfolioPhotoIds?: Set<string>;
+    onColumnImageUpload?: (sectionId: string, colId: string, blockId: string, file: File) => Promise<void>;
+    uploadingColumnImageKeys?: Set<string>;
     businessName?: string;
     businessId?: number;
+    sectionId?: string;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -95,6 +99,15 @@ function renderSection(
       />
     );
     case "deposit": return <DepositSection {...props} />;
+    case "columns": return (
+      <ColumnsSection
+        {...props}
+        onImageUpload={extras?.onColumnImageUpload
+          ? (colId, blockId, file) => extras.onColumnImageUpload!(section.id, colId, blockId, file)
+          : undefined}
+        uploadingImageKeys={extras?.uploadingColumnImageKeys}
+      />
+    );
     default: return null;
   }
 }
@@ -107,7 +120,17 @@ const SECTION_LABELS: Record<string, string> = {
   footer: "Footer",
   portfolio: "Portfolio / Gallery",
   deposit: "Pay Deposit",
+  columns: "Columns",
 };
+
+const ADDABLE_SECTION_TYPES: Array<{
+  type: Section["type"];
+  label: string;
+  icon: React.ReactNode;
+  allowMultiple?: boolean;
+}> = [
+  { type: "columns", label: "Columns", icon: <Columns className="w-4 h-4" />, allowMultiple: true },
+];
 
 function SortableRow({
   section,
@@ -291,6 +314,8 @@ export default function WebsiteEditor() {
   const [logoUploading, setLogoUploading] = useState(false);
   const [aboutPhotoUploading, setAboutPhotoUploading] = useState(false);
   const [uploadingPortfolioPhotoIds, setUploadingPortfolioPhotoIds] = useState<Set<string>>(new Set());
+  const [uploadingColumnImageKeys, setUploadingColumnImageKeys] = useState<Set<string>>(new Set());
+  const [showAddSection, setShowAddSection] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
     return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
@@ -721,6 +746,118 @@ export default function WebsiteEditor() {
     }
   }
 
+  async function handleColumnImageUpload(sectionId: string, colId: string, blockId: string, file: File) {
+    const key = `${colId}:${blockId}`;
+    setUploadingColumnImageKeys(prev => new Set(prev).add(key));
+    const blobUrl = URL.createObjectURL(file);
+    const sectionsAtStart = sections;
+    const settingsAtStart = settings;
+    isDirtyRef.current = true;
+    setLocalSections(sectionsAtStart.map(s =>
+      s.id === sectionId
+        ? {
+            ...s,
+            content: {
+              ...s.content,
+              columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
+                col.id === colId
+                  ? { ...col, blocks: (col.blocks ?? []).map((b: any) => b.id === blockId ? { ...b, url: blobUrl } : b) }
+                  : col
+              ),
+            },
+          }
+        : s
+    ));
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const slug = activeBusiness!.slug;
+      const imgUuid = objectPath.split("/").pop()!;
+      const canonicalUrl = `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
+      const savedSections = sectionsAtStart.map(s =>
+        s.id === sectionId
+          ? {
+              ...s,
+              content: {
+                ...s.content,
+                columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
+                  col.id === colId
+                    ? {
+                        ...col,
+                        blocks: (col.blocks ?? []).map((b: any) =>
+                          b.id === blockId ? { ...b, objectPath, url: canonicalUrl } : b
+                        ),
+                      }
+                    : col
+                ),
+              },
+            }
+          : s
+      );
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await saveNow(settingsAtStart, savedSections);
+      URL.revokeObjectURL(blobUrl);
+      isDirtyRef.current = false;
+      setLocalSections(savedSections.map(s =>
+        s.id === sectionId
+          ? {
+              ...s,
+              content: {
+                ...s.content,
+                columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
+                  col.id === colId
+                    ? {
+                        ...col,
+                        blocks: (col.blocks ?? []).map((b: any) =>
+                          b.id === blockId ? { ...b, url: `${canonicalUrl}?v=${Date.now()}` } : b
+                        ),
+                      }
+                    : col
+                ),
+              },
+            }
+          : s
+      ));
+      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+      toast({ title: "Image uploaded" });
+    } catch {
+      URL.revokeObjectURL(blobUrl);
+      setLocalSections(sectionsAtStart);
+      toast({ title: "Image upload failed", variant: "destructive" });
+    } finally {
+      setUploadingColumnImageKeys(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
+  function addSection(type: Section["type"]) {
+    const id = Math.random().toString(36).slice(2, 9);
+    let content: Record<string, unknown> = {};
+    if (type === "columns") {
+      content = defaultColumnsContent() as unknown as Record<string, unknown>;
+    }
+    const newSection: Section = { id, type, enabled: true, order: sections.length, content };
+    isDirtyRef.current = true;
+    setLocalSections([...sections, newSection]);
+    setActiveSection(id);
+    setShowAddSection(false);
+  }
+
   async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
     setApplyingTemplate(true);
     try {
@@ -808,6 +945,8 @@ export default function WebsiteEditor() {
               isAboutPhotoUploading: aboutPhotoUploading,
               onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
               uploadingPortfolioPhotoIds,
+              onColumnImageUpload: handleColumnImageUpload,
+              uploadingColumnImageKeys,
               businessName: activeBusiness?.name,
               businessId: activeBusiness?.id,
             })}
@@ -987,8 +1126,36 @@ export default function WebsiteEditor() {
         {/* Left panel — section list */}
         <div className="w-56 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-y-auto">
           <div className="px-3 py-3 border-b border-border">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sections</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Drag to reorder</p>
+            <div className="flex items-center justify-between mb-0.5">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sections</p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAddSection(v => !v)}
+                  title="Add section"
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add
+                </button>
+                {showAddSection && (
+                  <div className="absolute right-0 top-full mt-1 z-30 w-44 bg-popover border border-border rounded-lg shadow-lg py-1 text-sm">
+                    {ADDABLE_SECTION_TYPES.map(opt => (
+                      <button
+                        key={opt.type}
+                        type="button"
+                        onClick={() => addSection(opt.type)}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                      >
+                        {opt.icon}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Drag to reorder</p>
           </div>
           <div className="p-2 space-y-0.5">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

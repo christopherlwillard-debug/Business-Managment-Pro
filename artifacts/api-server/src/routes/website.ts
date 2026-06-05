@@ -683,6 +683,15 @@ router.post("/upload-section-bg", wrapAsync(async (req, res) => {
   res.json({ uploadURL, objectPath });
 }));
 
+router.post("/upload-column-image", wrapAsync(async (req, res) => {
+  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+  if (!name || !size || !contentType) {
+    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+  }
+  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-column-images");
+  res.json({ uploadURL, objectPath });
+}));
+
 router.post("/upload-favicon", wrapAsync(async (req, res) => {
   const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
   if (!name || !size || !contentType) {
@@ -742,6 +751,45 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
   const expectedObjectPath = `/objects/uploads/website-section-bgs/${bgUuid}`;
   const sections = config.sections as Array<{ blockStyle?: { bgImageObjectPath?: string } }>;
   const found = sections.some(s => s.blockStyle?.bgImageObjectPath === expectedObjectPath);
+  if (!found) return res.status(404).json({ error: "Image not found" });
+
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(expectedObjectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Image not found" });
+    throw err;
+  }
+}));
+
+publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
+  const { slug, imgUuid } = req.params;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, biz.id));
+
+  if (!config) return res.status(404).json({ error: "No website config" });
+
+  const expectedObjectPath = `/objects/uploads/website-column-images/${imgUuid}`;
+  const sections = config.sections as Array<{ type: string; content: Record<string, unknown> }>;
+  const found = sections
+    .filter(s => s.type === "columns")
+    .some(s => {
+      const cols = (s.content?.columns as Array<{ blocks: Array<{ objectPath?: string }> }>) ?? [];
+      return cols.some(col => col.blocks?.some(b => b.objectPath === expectedObjectPath));
+    });
   if (!found) return res.status(404).json({ error: "Image not found" });
 
   try {

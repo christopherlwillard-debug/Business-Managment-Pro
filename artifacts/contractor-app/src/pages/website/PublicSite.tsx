@@ -10,13 +10,14 @@ import { ContactFormSection } from "./sections/ContactFormSection";
 import { FooterSection } from "./sections/FooterSection";
 import { PortfolioSection } from "./sections/PortfolioSection";
 import { DepositSection } from "./sections/DepositSection";
+import { ColumnsSection } from "./sections/ColumnsSection";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit";
+  type: "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -202,6 +203,7 @@ export default function PublicSite() {
           case "deposit": return (
             <DepositSection key={section.id} {...props} businessSlug={resolvedSlug} />
           );
+          case "columns": return <ColumnsSection key={section.id} {...props} />;
           default: return null;
         }
       })}
