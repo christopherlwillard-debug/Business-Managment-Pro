@@ -349,6 +349,9 @@ export default function WebsiteEditor() {
     setLocalSettings(null);
     isDirtyRef.current = false;
     pickerShownRef.current = false;
+    history.reset();
+    if (textEditSessionRef.current.timer) { clearTimeout(textEditSessionRef.current.timer); }
+    textEditSessionRef.current = { active: false, timer: null };
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
   }, [bizId]);
 

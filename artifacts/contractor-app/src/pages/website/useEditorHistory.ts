@@ -45,5 +45,12 @@ export function useEditorHistory<TSection, TSettings>() {
     return next;
   }
 
-  return { pushSnapshot, undo, redo, canUndo, canRedo };
+  function reset() {
+    pastRef.current = [];
+    futureRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+  }
+
+  return { pushSnapshot, undo, redo, canUndo, canRedo, reset };
 }
