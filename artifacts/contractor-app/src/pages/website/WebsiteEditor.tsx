@@ -370,7 +370,9 @@ export default function WebsiteEditor() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
+  const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | undefined>(undefined);
   const pickerShownRef = useRef(false);
+  const sidebarListRef = useRef<HTMLDivElement>(null);
   const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
   const [faviconUploading, setFaviconUploading] = useState(false);
 
@@ -418,6 +420,12 @@ export default function WebsiteEditor() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!activeSection || !sidebarListRef.current) return;
+    const el = sidebarListRef.current.querySelector(`[data-section-id="${activeSection}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activeSection]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -1142,9 +1150,21 @@ export default function WebsiteEditor() {
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    updatePageSections([...sections, newSection]);
+    const afterId = insertAfterSectionId;
+    if (afterId !== undefined) {
+      const idx = sections.findIndex(s => s.id === afterId);
+      if (idx >= 0) {
+        const inserted = [...sections.slice(0, idx + 1), newSection, ...sections.slice(idx + 1)];
+        updatePageSections(inserted.map((s, i) => ({ ...s, order: i })));
+      } else {
+        updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+      }
+    } else {
+      updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+    }
     setActiveSection(id);
     setShowAddSection(false);
+    setInsertAfterSectionId(undefined);
   }
 
   function switchPage(pageId: string) {
@@ -1288,28 +1308,103 @@ export default function WebsiteEditor() {
       ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
       : undefined;
 
-    function renderClickableSection(s: Section, controls: React.ReactNode) {
+    const sectionExtras = {
+      onAboutPhotoUpload: handleAboutPhotoUpload,
+      isAboutPhotoUploading: aboutPhotoUploading,
+      onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
+      uploadingPortfolioPhotoIds,
+      onColumnImageUpload: handleColumnImageUpload,
+      uploadingColumnImageKeys,
+      businessName: activeBusiness?.name,
+      businessId: activeBusiness?.id,
+    };
+
+    function renderWrapped(s: Section, opts: { isHeader?: boolean; isFirst?: boolean; isLast?: boolean }) {
+      const isActive = activeSection === s.id;
+      const { isHeader = false, isFirst = false, isLast = false } = opts;
       return (
         <div
           key={s.id}
-          onClick={(e) => { e.stopPropagation(); setActiveSection(s.id); }}
-          className={`relative transition-all cursor-pointer ${
-            activeSection === s.id
+          className={`group/sec relative cursor-pointer ${
+            isActive
               ? "ring-2 ring-inset ring-primary/60"
               : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
           }`}
+          onClick={e => { e.stopPropagation(); setActiveSection(s.id); }}
         >
-          {activeSection === s.id && controls}
-          {renderSection(s, settings, activeSection === s.id, (content) => updateContent(s.id, content), {
-            onAboutPhotoUpload: handleAboutPhotoUpload,
-            isAboutPhotoUploading: aboutPhotoUploading,
-            onPortfolioPhotoUpload: handlePortfolioPhotoUpload,
-            uploadingPortfolioPhotoIds,
-            onColumnImageUpload: handleColumnImageUpload,
-            uploadingColumnImageKeys,
-            businessName: activeBusiness?.name,
-            businessId: activeBusiness?.id,
-          })}
+          {/* Active label badge */}
+          {isActive && (
+            <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">
+              <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                {isHeader && <Lock className="w-2.5 h-2.5" />}
+                {isHeader ? "Header" : SECTION_LABELS[s.type]}
+              </span>
+              {isHeader && (
+                <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
+                  Edit nav &amp; CTA
+                </span>
+              )}
+            </div>
+          )}
+          {/* Floating action bar — visible on hover or when active (non-header only) */}
+          {!isHeader && (
+            <div className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity ${
+              isActive ? "opacity-100" : "opacity-0 group-hover/sec:opacity-100"
+            }`}>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); moveSection(s.id, "up"); }}
+                disabled={isFirst}
+                title="Move up"
+                className={`p-1 rounded text-white transition-colors ${isFirst ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"}`}
+              ><ChevronUp className="w-3.5 h-3.5" /></button>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); moveSection(s.id, "down"); }}
+                disabled={isLast}
+                title="Move down"
+                className={`p-1 rounded text-white transition-colors ${isLast ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"}`}
+              ><ChevronDown className="w-3.5 h-3.5" /></button>
+              <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); duplicateSection(s.id); }}
+                title="Duplicate section"
+                className="p-1 rounded text-white hover:bg-white/20 transition-colors"
+              ><Copy className="w-3.5 h-3.5" /></button>
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
+                title="Delete section"
+                className="p-1 rounded text-red-300 hover:bg-red-500/20 transition-colors"
+              ><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          )}
+          {renderSection(s, settings, isActive, content => updateContent(s.id, content), sectionExtras)}
+        </div>
+      );
+    }
+
+    function addBetween(afterSectionId: string | undefined, key: string) {
+      return (
+        <div
+          key={key}
+          className="group/ins relative h-6 flex items-center justify-center z-20"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-px bg-primary/0 group-hover/ins:bg-primary/40 transition-colors pointer-events-none" />
+          <button
+            type="button"
+            title="Add section here"
+            className="relative z-10 w-5 h-5 rounded-full bg-primary text-primary-foreground shadow-md opacity-0 group-hover/ins:opacity-100 transition-opacity hover:scale-110 flex items-center justify-center"
+            onClick={e => {
+              e.stopPropagation();
+              setInsertAfterSectionId(afterSectionId);
+              setShowAddSection(true);
+            }}
+          >
+            <Plus className="w-3 h-3" />
+          </button>
         </div>
       );
     }
@@ -1319,73 +1414,17 @@ export default function WebsiteEditor() {
         {settings.headingFont && (
           <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
         )}
-        {/* Header — always first, no move/delete/duplicate controls */}
-        {headerSec && renderClickableSection(headerSec, (
-          <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5">
-            <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-              <Lock className="w-2.5 h-2.5" />
-              Header
-            </span>
-            <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
-              Click to edit nav links & CTA
-            </span>
-          </div>
-        ))}
-        {/* Regular sections */}
+        {headerSec && renderWrapped(headerSec, { isHeader: true })}
         {enabled.length === 0 && !headerSec && (
           <div className="py-20 text-center text-muted-foreground text-sm">
             Enable at least one section to preview your site.
           </div>
         )}
-        {enabled.map(s => {
-          const enabledSections = sections.filter(sec => sec.enabled && sec.type !== "header");
-          const enabledIdx = enabledSections.findIndex(sec => sec.id === s.id);
-          const isFirst = enabledIdx === 0;
-          const isLast = enabledIdx === enabledSections.length - 1;
-          return renderClickableSection(s, (
-            <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5">
-              <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded">
-                {SECTION_LABELS[s.type]}
-              </span>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); moveSection(s.id, "up"); }}
-                disabled={isFirst}
-                title="Move up"
-                className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isFirst ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
-              >
-                <ChevronUp className="w-3 h-3" />
-              </button>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); moveSection(s.id, "down"); }}
-                disabled={isLast}
-                title="Move down"
-                className={`flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${isLast ? "bg-primary/40 text-primary-foreground/40 cursor-not-allowed" : "bg-primary/90 text-primary-foreground hover:bg-primary"}`}
-              >
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); duplicateSection(s.id); }}
-                title="Duplicate section"
-                className="flex items-center gap-1 bg-primary/90 text-primary-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-primary transition-colors"
-              >
-                <Copy className="w-3 h-3" />
-                Duplicate
-              </button>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
-                title="Delete section"
-                className="flex items-center gap-1 bg-destructive/90 text-destructive-foreground text-[10px] font-medium px-2 py-0.5 rounded hover:bg-destructive transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                Delete
-              </button>
-            </div>
-          ));
-        })}
+        {enabled.flatMap((s, idx) => [
+          addBetween(idx === 0 ? headerSec?.id : enabled[idx - 1]?.id, `ins-${idx}`),
+          renderWrapped(s, { isFirst: idx === 0, isLast: idx === enabled.length - 1 }),
+        ])}
+        {enabled.length > 0 && addBetween(enabled[enabled.length - 1]?.id, "ins-end")}
       </div>
     );
   }
@@ -1741,7 +1780,7 @@ export default function WebsiteEditor() {
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setShowAddSection(v => !v)}
+                  onClick={() => { setInsertAfterSectionId(undefined); setShowAddSection(v => !v); }}
                   title="Add section"
                   className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
@@ -1767,13 +1806,14 @@ export default function WebsiteEditor() {
             </div>
             <p className="text-[10px] text-muted-foreground">Drag to reorder</p>
           </div>
-          <div className="p-2 space-y-0.5">
+          <div ref={sidebarListRef} className="p-2 space-y-0.5">
             {/* Header — locked, always first */}
             {(() => {
               const hdr = (pages.find(p => p.id === "home")?.sections ?? sections).find(s => s.type === "header");
               if (!hdr) return null;
               return (
                 <div
+                  data-section-id={hdr.id}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
                     activeSection === hdr.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
                   }`}
@@ -1788,13 +1828,14 @@ export default function WebsiteEditor() {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={sections.filter(s => s.type !== "header").map(s => s.id)} strategy={verticalListSortingStrategy}>
                 {sections.filter(s => s.type !== "header").map(s => (
-                  <SortableRow
-                    key={s.id}
-                    section={s}
-                    active={activeSection === s.id}
-                    onToggle={() => toggleSection(s.id)}
-                    onActivate={() => setActiveSection(s.id)}
-                  />
+                  <div key={s.id} data-section-id={s.id}>
+                    <SortableRow
+                      section={s}
+                      active={activeSection === s.id}
+                      onToggle={() => toggleSection(s.id)}
+                      onActivate={() => setActiveSection(s.id)}
+                    />
+                  </div>
                 ))}
               </SortableContext>
             </DndContext>
