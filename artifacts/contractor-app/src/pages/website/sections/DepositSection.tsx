@@ -224,6 +224,7 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
               backgroundColor: settings.brandColor,
               borderRadius: "var(--theme-btn-radius, 0.75rem)",
               fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+              boxShadow: "var(--theme-btn-shadow, none)",
             }}
           >
             {loading ? (

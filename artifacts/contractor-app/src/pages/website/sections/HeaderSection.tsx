@@ -124,6 +124,7 @@ function HeaderPreviewBar({
             backgroundColor: settings.brandColor,
             borderRadius: "var(--theme-btn-radius, 9999px)",
             fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+            boxShadow: "var(--theme-btn-shadow, none)",
           }}
         >
           {ctaLabel}

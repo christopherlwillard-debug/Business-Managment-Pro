@@ -73,9 +73,20 @@ export interface SiteSettings {
   brandColor: string;
   secondaryColor?: string;
   accentColor?: string;
+  bgColor?: string;
+  surfaceColor?: string;
+  textColor?: string;
+  textMutedColor?: string;
   fontFamily: string;
   headingFont?: string;
   bodyFont?: string;
+  buttonRadius?: string;
+  buttonFontWeight?: string;
+  buttonShadow?: boolean;
+  cardRadius?: string;
+  cardShadow?: string;
+  cardBorder?: boolean;
+  inputRadius?: string;
   logoUrl: string;
   logoObjectPath?: string;
   faviconUrl?: string;
@@ -711,9 +722,29 @@ export default function WebsiteEditor() {
       brandColor: settings.brandColor,
       secondaryColor: settings.secondaryColor,
       accentColor: settings.accentColor,
+      bgColor: settings.bgColor,
+      surfaceColor: settings.surfaceColor,
+      textColor: settings.textColor,
+      textMutedColor: settings.textMutedColor,
+      headingFont: settings.headingFont,
+      bodyFont: settings.bodyFont,
+      buttonRadius: settings.buttonRadius,
+      buttonFontWeight: settings.buttonFontWeight,
+      buttonShadow: settings.buttonShadow,
+      cardRadius: settings.cardRadius,
+      cardShadow: settings.cardShadow,
+      cardBorder: settings.cardBorder,
+      inputRadius: settings.inputRadius,
     });
     return () => applyThemeCssVars(undefined);
-  }, [settings.themeId, settings.brandColor, settings.secondaryColor, settings.accentColor]);
+  }, [
+    settings.themeId, settings.brandColor, settings.secondaryColor, settings.accentColor,
+    settings.bgColor, settings.surfaceColor, settings.textColor, settings.textMutedColor,
+    settings.headingFont, settings.bodyFont,
+    settings.buttonRadius, settings.buttonFontWeight, settings.buttonShadow,
+    settings.cardRadius, settings.cardShadow, settings.cardBorder,
+    settings.inputRadius,
+  ]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -855,8 +886,19 @@ export default function WebsiteEditor() {
       brandColor: theme.brandColor,
       secondaryColor: theme.secondaryColor,
       accentColor: theme.accentColor,
+      bgColor: theme.bgColor,
+      surfaceColor: theme.surfaceColor,
+      textColor: theme.textColor,
+      textMutedColor: theme.textMutedColor,
       headingFont: theme.headingFont,
       bodyFont: theme.bodyFont,
+      buttonRadius: theme.buttonRadius,
+      buttonFontWeight: theme.buttonFontWeight,
+      buttonShadow: theme.buttonShadow,
+      cardRadius: theme.cardRadius,
+      cardShadow: theme.cardShadow,
+      cardBorder: theme.cardBorder,
+      inputRadius: theme.inputRadius,
     });
   }
 
@@ -2427,166 +2469,369 @@ export default function WebsiteEditor() {
             })}
           </div>
 
-          {/* Brand settings */}
-          <div className="border-t border-border p-3 space-y-3">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Brand</p>
+          {/* Theme Designer */}
+          <div className="border-t border-border">
 
-            {/* Theme picker */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Palette className="w-3 h-3 text-muted-foreground" />
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Theme</p>
+            {/* Presets */}
+            <details className="group" open>
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <Palette className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Theme Presets</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3 space-y-2">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {SITE_THEMES.map(theme => (
+                    <button
+                      key={theme.id}
+                      onClick={() => applyTheme(theme)}
+                      title={`${theme.name}: ${theme.description}`}
+                      className={`rounded-lg overflow-hidden border-2 transition-all text-left ${
+                        settings.themeId === theme.id
+                          ? "border-primary shadow-sm"
+                          : "border-transparent hover:border-muted-foreground/40"
+                      }`}
+                    >
+                      <div className="h-7 w-full" style={{ backgroundColor: theme.brandColor }} />
+                      <div className="h-1.5 w-full" style={{ backgroundColor: theme.secondaryColor }} />
+                      <div className="h-1 w-full" style={{ backgroundColor: theme.accentColor }} />
+                      <div className="px-1 py-0.5 bg-muted/40">
+                        <p className="text-[9px] font-medium text-foreground truncate">{theme.name}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {settings.themeId ? (
+                  <p className="text-[9px] text-muted-foreground leading-relaxed">
+                    {SITE_THEMES.find(t => t.id === settings.themeId)?.description}
+                    {" · "}
+                    <button
+                      onClick={() => patchSettings({ themeId: undefined })}
+                      className="underline hover:text-foreground transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </p>
+                ) : (
+                  <p className="text-[9px] text-muted-foreground">Pick a theme to instantly apply fonts &amp; colors.</p>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {SITE_THEMES.map(theme => (
-                  <button
-                    key={theme.id}
-                    onClick={() => applyTheme(theme)}
-                    title={`${theme.name}: ${theme.description}`}
-                    className={`rounded-lg overflow-hidden border-2 transition-all text-left ${
-                      settings.themeId === theme.id
-                        ? "border-primary shadow-sm"
-                        : "border-transparent hover:border-muted-foreground/40"
-                    }`}
-                  >
-                    <div className="h-7 w-full" style={{ backgroundColor: theme.brandColor }} />
-                    <div className="h-1.5 w-full" style={{ backgroundColor: theme.secondaryColor }} />
-                    <div className="h-1 w-full" style={{ backgroundColor: theme.accentColor }} />
-                    <div className="px-1 py-0.5 bg-muted/40">
-                      <p className="text-[9px] font-medium text-foreground truncate">{theme.name}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {settings.themeId ? (
-                <p className="text-[9px] text-muted-foreground leading-relaxed">
-                  {SITE_THEMES.find(t => t.id === settings.themeId)?.description}
-                  {" · "}
-                  <button
-                    onClick={() => patchSettings({ themeId: undefined })}
-                    className="underline hover:text-foreground transition-colors"
-                  >
-                    Clear
-                  </button>
-                </p>
-              ) : (
-                <p className="text-[9px] text-muted-foreground">Pick a theme to instantly apply fonts &amp; colors.</p>
-              )}
-            </div>
+            </details>
 
             {/* Colors */}
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Colors</p>
-              {([
-                { label: "Primary", key: "brandColor" },
-                { label: "Secondary", key: "secondaryColor" },
-                { label: "Accent", key: "accentColor" },
-              ] as const).map(({ label, key }) => (
-                <div key={key} className="flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground flex-1">{label}</label>
+            <details className="group border-t border-border" open>
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Colors</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3 space-y-1.5">
+                {([
+                  { label: "Primary", key: "brandColor" },
+                  { label: "Secondary", key: "secondaryColor" },
+                  { label: "Accent", key: "accentColor" },
+                  { label: "Background", key: "bgColor" },
+                  { label: "Surface", key: "surfaceColor" },
+                  { label: "Text", key: "textColor" },
+                  { label: "Muted text", key: "textMutedColor" },
+                ] as const).map(({ label, key }) => {
+                  const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                  const effectiveVal = (settings as Record<string, unknown>)[key] as string | undefined
+                    ?? (activeTheme as Record<string, unknown> | undefined)?.[key] as string | undefined
+                    ?? "#888888";
+                  return (
+                    <div key={key} className="flex items-center gap-2">
+                      <label className="text-xs text-muted-foreground flex-1 min-w-0 truncate">{label}</label>
+                      <input
+                        type="color"
+                        value={effectiveVal}
+                        onChange={e => patchSettings({ [key]: e.target.value })}
+                        className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent flex-shrink-0"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+
+            {/* Typography */}
+            <details className="group border-t border-border" open>
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Typography</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3 space-y-1.5">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Headings</label>
+                  <select
+                    value={settings.headingFont ?? "Inter"}
+                    onChange={e => patchSettings({ headingFont: e.target.value })}
+                    className="w-full text-xs border border-border rounded px-1.5 py-1 bg-background"
+                  >
+                    {HEADING_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Body text</label>
+                  <select
+                    value={settings.bodyFont ?? "Inter"}
+                    onChange={e => patchSettings({ bodyFont: e.target.value })}
+                    className="w-full text-xs border border-border rounded px-1.5 py-1 bg-background"
+                  >
+                    {BODY_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+              </div>
+            </details>
+
+            {/* Buttons */}
+            <details className="group border-t border-border">
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Buttons</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3 space-y-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Shape</label>
+                  <div className="flex gap-1">
+                    {([
+                      { label: "Pill", value: "9999px" },
+                      { label: "Round", value: "8px" },
+                      { label: "Slight", value: "4px" },
+                      { label: "Sharp", value: "0px" },
+                    ] as const).map(({ label, value }) => {
+                      const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                      const current = settings.buttonRadius ?? activeTheme?.buttonRadius ?? "9999px";
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => patchSettings({ buttonRadius: value })}
+                          className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Weight</label>
+                  <div className="flex gap-1">
+                    {([
+                      { label: "400", value: "400" },
+                      { label: "500", value: "500" },
+                      { label: "600", value: "600" },
+                      { label: "700", value: "700" },
+                    ] as const).map(({ label, value }) => {
+                      const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                      const current = settings.buttonFontWeight ?? activeTheme?.buttonFontWeight ?? "600";
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => patchSettings({ buttonFontWeight: value })}
+                          style={{ fontWeight: value as React.CSSProperties["fontWeight"] }}
+                          className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-muted-foreground">Shadow</label>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={settings.buttonShadow ?? (settings.themeId ? (SITE_THEMES.find(t => t.id === settings.themeId)?.buttonShadow ?? false) : false)}
+                      onChange={e => patchSettings({ buttonShadow: e.target.checked })}
+                    />
+                    <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            {/* Cards */}
+            <details className="group border-t border-border">
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Cards</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3 space-y-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Radius</label>
+                  <div className="flex gap-1">
+                    {([
+                      { label: "Large", value: "16px" },
+                      { label: "Med", value: "8px" },
+                      { label: "Small", value: "4px" },
+                      { label: "None", value: "0px" },
+                    ] as const).map(({ label, value }) => {
+                      const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                      const current = settings.cardRadius ?? activeTheme?.cardRadius ?? "8px";
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => patchSettings({ cardRadius: value })}
+                          className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Shadow</label>
+                  <div className="flex gap-1">
+                    {([
+                      { label: "None", value: "none" },
+                      { label: "Soft", value: "0 1px 4px rgba(0,0,0,0.08)" },
+                      { label: "Med", value: "0 4px 12px rgba(0,0,0,0.12)" },
+                      { label: "Strong", value: "0 8px 24px rgba(0,0,0,0.18)" },
+                    ] as const).map(({ label, value }) => {
+                      const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                      const current = settings.cardShadow ?? activeTheme?.cardShadow ?? "none";
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => patchSettings({ cardShadow: value })}
+                          className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-muted-foreground">Border</label>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={settings.cardBorder ?? (settings.themeId ? (SITE_THEMES.find(t => t.id === settings.themeId)?.cardBorder ?? false) : false)}
+                      onChange={e => patchSettings({ cardBorder: e.target.checked })}
+                    />
+                    <div className="w-8 h-4 bg-muted rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            {/* Forms */}
+            <details className="group border-t border-border">
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Forms</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3">
+                <label className="text-[10px] text-muted-foreground block mb-1">Input Shape</label>
+                <div className="flex gap-1">
+                  {([
+                    { label: "Pill", value: "9999px" },
+                    { label: "Round", value: "8px" },
+                    { label: "Slight", value: "4px" },
+                    { label: "Sharp", value: "0px" },
+                  ] as const).map(({ label, value }) => {
+                    const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
+                    const current = settings.inputRadius ?? activeTheme?.inputRadius ?? "8px";
+                    return (
+                      <button
+                        key={value}
+                        onClick={() => patchSettings({ inputRadius: value })}
+                        className={`flex-1 py-1 text-[10px] rounded transition-colors ${current === value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </details>
+
+            {/* Layout */}
+            <details className="group border-t border-border">
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Layout</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3 space-y-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Header Style</label>
+                  <div className="flex gap-1">
+                    {(["light", "dark", "transparent"] as const).map(s => (
+                      <button
+                        key={s}
+                        onClick={() => patchSettings({ headerStyle: s })}
+                        className={`flex-1 text-[10px] py-1 rounded border transition-colors ${
+                          (settings.headerStyle ?? "light") === s
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border text-muted-foreground hover:border-muted-foreground"
+                        }`}
+                      >
+                        {s[0].toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-muted-foreground flex-1">Footer BG</label>
                   <input
                     type="color"
-                    value={(settings as Record<string, string>)[key] ?? "#888888"}
-                    onChange={e => patchSettings({ [key]: e.target.value })}
+                    value={settings.footerBgColor ?? settings.brandColor}
+                    onChange={e => patchSettings({ footerBgColor: e.target.value })}
                     className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
                   />
                 </div>
-              ))}
-            </div>
-
-            {/* Fonts */}
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Fonts</p>
-              <div>
-                <label className="text-[10px] text-muted-foreground block mb-0.5">Headings</label>
-                <select
-                  value={settings.headingFont ?? "Inter"}
-                  onChange={e => patchSettings({ headingFont: e.target.value })}
-                  className="w-full text-xs border border-border rounded px-1.5 py-1 bg-background"
-                >
-                  {HEADING_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
               </div>
-              <div>
-                <label className="text-[10px] text-muted-foreground block mb-0.5">Body text</label>
-                <select
-                  value={settings.bodyFont ?? "Inter"}
-                  onChange={e => patchSettings({ bodyFont: e.target.value })}
-                  className="w-full text-xs border border-border rounded px-1.5 py-1 bg-background"
-                >
-                  {BODY_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
+            </details>
+
+            {/* Assets */}
+            <details className="group border-t border-border">
+              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Assets</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
+              </summary>
+              <div className="px-3 pb-3 space-y-3">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Logo</label>
+                  {settings.logoUrl && (
+                    <img src={settings.logoUrl} alt="Logo preview" className="w-full h-10 object-contain rounded border border-border mb-1 bg-muted/30" />
+                  )}
+                  <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${logoUploading ? "opacity-60 pointer-events-none" : ""}`}>
+                    {logoUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+                    {logoUploading ? "Uploading…" : settings.logoUrl ? "Replace Logo" : "Upload Logo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      disabled={logoUploading}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }}
+                    />
+                  </label>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Favicon</label>
+                  {settings.faviconUrl && (
+                    <img src={settings.faviconUrl} alt="Favicon" className="w-8 h-8 object-contain rounded border border-border mb-1 bg-muted/30" />
+                  )}
+                  <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${faviconUploading ? "opacity-60 pointer-events-none" : ""}`}>
+                    {faviconUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+                    {faviconUploading ? "Uploading…" : settings.faviconUrl ? "Replace Favicon" : "Upload Favicon"}
+                    <input
+                      type="file"
+                      accept="image/png,image/x-icon,image/svg+xml,image/jpeg"
+                      className="sr-only"
+                      disabled={faviconUploading}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleFaviconUpload(f); e.target.value = ""; }}
+                    />
+                  </label>
+                </div>
               </div>
-            </div>
+            </details>
 
-            {/* Header style */}
-            <div className="space-y-1">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Header Style</p>
-              <div className="flex gap-1">
-                {(["light", "dark", "transparent"] as const).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => patchSettings({ headerStyle: s })}
-                    className={`flex-1 text-[10px] py-1 rounded border transition-colors ${
-                      (settings.headerStyle ?? "light") === s
-                        ? "border-primary bg-primary/10 text-primary font-medium"
-                        : "border-border text-muted-foreground hover:border-muted-foreground"
-                    }`}
-                  >
-                    {s[0].toUpperCase() + s.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Footer background color */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground flex-1">Footer BG</label>
-              <input
-                type="color"
-                value={settings.footerBgColor ?? settings.brandColor}
-                onChange={e => patchSettings({ footerBgColor: e.target.value })}
-                className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
-              />
-            </div>
-
-            {/* Logo */}
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Logo</label>
-              {settings.logoUrl && (
-                <img src={settings.logoUrl} alt="Logo preview" className="w-full h-10 object-contain rounded border border-border mb-1 bg-muted/30" />
-              )}
-              <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${logoUploading ? "opacity-60 pointer-events-none" : ""}`}>
-                {logoUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
-                {logoUploading ? "Uploading…" : settings.logoUrl ? "Replace Logo" : "Upload Logo"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  disabled={logoUploading}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }}
-                />
-              </label>
-            </div>
-
-            {/* Favicon */}
-            <div>
-              <label className="text-xs text-muted-foreground block mb-1">Favicon</label>
-              {settings.faviconUrl && (
-                <img src={settings.faviconUrl} alt="Favicon" className="w-8 h-8 object-contain rounded border border-border mb-1 bg-muted/30" />
-              )}
-              <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted ${faviconUploading ? "opacity-60 pointer-events-none" : ""}`}>
-                {faviconUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
-                {faviconUploading ? "Uploading…" : settings.faviconUrl ? "Replace Favicon" : "Upload Favicon"}
-                <input
-                  type="file"
-                  accept="image/png,image/x-icon,image/svg+xml,image/jpeg"
-                  className="sr-only"
-                  disabled={faviconUploading}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFaviconUpload(f); e.target.value = ""; }}
-                />
-              </label>
-            </div>
           </div>
 
           {/* Apply template */}

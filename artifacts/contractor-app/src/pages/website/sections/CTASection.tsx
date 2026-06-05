@@ -62,6 +62,7 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle 
                     backgroundColor: buttonConfigToStyle(content.primaryConfig).backgroundColor ?? "#fff",
                     color: buttonConfigToStyle(content.primaryConfig).color ?? settings.brandColor,
                     borderRadius: buttonConfigToStyle(content.primaryConfig).borderRadius ?? "var(--theme-btn-radius, 9999px)",
+                    boxShadow: "var(--theme-btn-shadow, none)",
                   }}
                 >
                   {content.primaryLabel}

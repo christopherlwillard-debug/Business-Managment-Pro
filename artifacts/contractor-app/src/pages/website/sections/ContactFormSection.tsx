@@ -33,13 +33,15 @@ function renderFieldInput(
   brandColor: string,
   disabled: boolean
 ) {
-  const baseClass = "w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 text-sm";
+  const baseClass = "w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 text-sm";
+  const inputStyle = { borderRadius: "var(--theme-input-radius, 0.5rem)" };
   switch (field.type) {
     case "textarea":
       return (
         <textarea
           rows={4}
           className={`${baseClass} resize-none`}
+          style={inputStyle}
           placeholder={field.placeholder ?? ""}
           value={value}
           required={field.required}
@@ -51,6 +53,7 @@ function renderFieldInput(
       return (
         <select
           className={baseClass}
+          style={inputStyle}
           value={value}
           required={field.required}
           disabled={disabled}
@@ -81,6 +84,7 @@ function renderFieldInput(
         <input
           type={field.type === "email" ? "email" : field.type === "phone" ? "tel" : "text"}
           className={baseClass}
+          style={inputStyle}
           placeholder={field.placeholder ?? ""}
           value={value}
           required={field.required}
@@ -303,6 +307,7 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
                   backgroundColor: settings.brandColor,
                   borderRadius: "var(--theme-btn-radius, 9999px)",
                   fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                  boxShadow: "var(--theme-btn-shadow, none)",
                 }}
               >
                 {submitting ? "Sending…" : "Send Request"}

@@ -14,16 +14,33 @@ export interface SiteTheme {
   textMutedColor: string;
   buttonRadius: string;
   buttonFontWeight: string;
+  buttonShadow: boolean;
   cardRadius: string;
   cardShadow: string;
   cardBorder: boolean;
+  inputRadius: string;
 }
 
-export interface ThemeColorOverrides {
+export interface ThemeOverrides {
   brandColor?: string;
   secondaryColor?: string;
   accentColor?: string;
+  bgColor?: string;
+  surfaceColor?: string;
+  textColor?: string;
+  textMutedColor?: string;
+  headingFont?: string;
+  bodyFont?: string;
+  buttonRadius?: string;
+  buttonFontWeight?: string;
+  buttonShadow?: boolean;
+  cardRadius?: string;
+  cardShadow?: string;
+  cardBorder?: boolean;
+  inputRadius?: string;
 }
+
+export type ThemeColorOverrides = ThemeOverrides;
 
 export const SITE_THEMES: SiteTheme[] = [
   {
@@ -42,9 +59,11 @@ export const SITE_THEMES: SiteTheme[] = [
     textMutedColor: "#64748b",
     buttonRadius: "9999px",
     buttonFontWeight: "600",
+    buttonShadow: false,
     cardRadius: "12px",
     cardShadow: "0 1px 4px rgba(0,0,0,0.08)",
     cardBorder: false,
+    inputRadius: "8px",
   },
   {
     id: "corporate",
@@ -62,9 +81,11 @@ export const SITE_THEMES: SiteTheme[] = [
     textMutedColor: "#64748b",
     buttonRadius: "4px",
     buttonFontWeight: "700",
+    buttonShadow: false,
     cardRadius: "6px",
     cardShadow: "none",
     cardBorder: true,
+    inputRadius: "4px",
   },
   {
     id: "creative",
@@ -82,9 +103,11 @@ export const SITE_THEMES: SiteTheme[] = [
     textMutedColor: "#6b7280",
     buttonRadius: "8px",
     buttonFontWeight: "600",
+    buttonShadow: true,
     cardRadius: "16px",
     cardShadow: "0 4px 20px rgba(124,58,237,0.14)",
     cardBorder: false,
+    inputRadius: "8px",
   },
   {
     id: "luxury",
@@ -102,9 +125,11 @@ export const SITE_THEMES: SiteTheme[] = [
     textMutedColor: "#8a7560",
     buttonRadius: "2px",
     buttonFontWeight: "500",
+    buttonShadow: false,
     cardRadius: "4px",
     cardShadow: "none",
     cardBorder: true,
+    inputRadius: "2px",
   },
   {
     id: "minimal",
@@ -122,9 +147,11 @@ export const SITE_THEMES: SiteTheme[] = [
     textMutedColor: "#777777",
     buttonRadius: "0px",
     buttonFontWeight: "600",
+    buttonShadow: false,
     cardRadius: "0px",
     cardShadow: "none",
     cardBorder: true,
+    inputRadius: "0px",
   },
   {
     id: "bold",
@@ -142,78 +169,127 @@ export const SITE_THEMES: SiteTheme[] = [
     textMutedColor: "#6b7280",
     buttonRadius: "6px",
     buttonFontWeight: "700",
+    buttonShadow: true,
     cardRadius: "8px",
     cardShadow: "0 4px 16px rgba(220,38,38,0.18)",
     cardBorder: false,
+    inputRadius: "6px",
   },
 ];
 
-function cardBorderValue(theme: SiteTheme): string {
-  return theme.cardBorder ? "1px solid #e5e7eb" : "none";
+function resolveCardBorder(v: boolean | undefined): string {
+  return v ? "1px solid #e5e7eb" : "none";
+}
+
+function resolveButtonShadow(v: boolean | undefined): string {
+  return v ? "0 2px 8px rgba(0,0,0,0.15)" : "none";
 }
 
 export function buildThemeCssVarBlock(
   themeId: string | undefined,
-  overrides?: ThemeColorOverrides,
+  overrides?: ThemeOverrides,
 ): string {
-  if (!themeId) return "";
-  const theme = SITE_THEMES.find(t => t.id === themeId);
-  if (!theme) return "";
-  const primary = overrides?.brandColor ?? theme.brandColor;
-  const secondary = overrides?.secondaryColor ?? theme.secondaryColor;
-  const accent = overrides?.accentColor ?? theme.accentColor;
-  return `:root {
-    --theme-primary: ${primary};
-    --theme-secondary: ${secondary};
-    --theme-accent: ${accent};
-    --theme-bg: ${theme.bgColor};
-    --theme-surface: ${theme.surfaceColor};
-    --theme-text: ${theme.textColor};
-    --theme-text-muted: ${theme.textMutedColor};
-    --theme-font-heading: '${theme.headingFont}', system-ui, sans-serif;
-    --theme-font-body: '${theme.bodyFont}', system-ui, sans-serif;
-    --theme-btn-radius: ${theme.buttonRadius};
-    --theme-btn-font-weight: ${theme.buttonFontWeight};
-    --theme-card-radius: ${theme.cardRadius};
-    --theme-card-shadow: ${theme.cardShadow};
-    --theme-card-border: ${cardBorderValue(theme)};
-  }
-  body { background-color: var(--theme-bg); font-family: var(--theme-font-body, system-ui, sans-serif); }
-  h1, h2, h3, h4, h5, h6 { font-family: var(--theme-font-heading, system-ui, sans-serif); }`;
+  const theme = themeId ? SITE_THEMES.find(t => t.id === themeId) : null;
+  if (!theme && !overrides) return "";
+
+  const primary = overrides?.brandColor ?? theme?.brandColor;
+  const secondary = overrides?.secondaryColor ?? theme?.secondaryColor;
+  const accent = overrides?.accentColor ?? theme?.accentColor;
+  const bg = overrides?.bgColor ?? theme?.bgColor;
+  const surface = overrides?.surfaceColor ?? theme?.surfaceColor;
+  const text = overrides?.textColor ?? theme?.textColor;
+  const textMuted = overrides?.textMutedColor ?? theme?.textMutedColor;
+  const headingFont = overrides?.headingFont ?? theme?.headingFont;
+  const bodyFont = overrides?.bodyFont ?? theme?.bodyFont;
+  const btnRadius = overrides?.buttonRadius ?? theme?.buttonRadius;
+  const btnFontWeight = overrides?.buttonFontWeight ?? theme?.buttonFontWeight;
+  const btnShadowBool = overrides?.buttonShadow !== undefined ? overrides.buttonShadow : theme?.buttonShadow;
+  const cardRadius = overrides?.cardRadius ?? theme?.cardRadius;
+  const cardShadow = overrides?.cardShadow ?? theme?.cardShadow;
+  const cardBorderBool = overrides?.cardBorder !== undefined ? overrides.cardBorder : theme?.cardBorder;
+  const inputRadius = overrides?.inputRadius ?? theme?.inputRadius;
+
+  const lines: string[] = [":root {"];
+  if (primary) lines.push(`  --theme-primary: ${primary};`);
+  if (secondary) lines.push(`  --theme-secondary: ${secondary};`);
+  if (accent) lines.push(`  --theme-accent: ${accent};`);
+  if (bg) lines.push(`  --theme-bg: ${bg};`);
+  if (surface) lines.push(`  --theme-surface: ${surface};`);
+  if (text) lines.push(`  --theme-text: ${text};`);
+  if (textMuted) lines.push(`  --theme-text-muted: ${textMuted};`);
+  if (headingFont) lines.push(`  --theme-font-heading: '${headingFont}', system-ui, sans-serif;`);
+  if (bodyFont) lines.push(`  --theme-font-body: '${bodyFont}', system-ui, sans-serif;`);
+  if (btnRadius) lines.push(`  --theme-btn-radius: ${btnRadius};`);
+  if (btnFontWeight) lines.push(`  --theme-btn-font-weight: ${btnFontWeight};`);
+  if (btnShadowBool !== undefined) lines.push(`  --theme-btn-shadow: ${resolveButtonShadow(btnShadowBool)};`);
+  if (cardRadius) lines.push(`  --theme-card-radius: ${cardRadius};`);
+  if (cardShadow) lines.push(`  --theme-card-shadow: ${cardShadow};`);
+  if (cardBorderBool !== undefined) lines.push(`  --theme-card-border: ${resolveCardBorder(cardBorderBool)};`);
+  if (inputRadius) lines.push(`  --theme-input-radius: ${inputRadius};`);
+  lines.push("}");
+
+  if (bg) lines.push("body { background-color: var(--theme-bg); font-family: var(--theme-font-body, system-ui, sans-serif); }");
+  if (headingFont) lines.push("h1, h2, h3, h4, h5, h6 { font-family: var(--theme-font-heading, system-ui, sans-serif); }");
+
+  return lines.join("\n");
 }
 
 export function applyThemeCssVars(
   themeId: string | undefined,
-  overrides?: ThemeColorOverrides,
+  overrides?: ThemeOverrides,
 ): void {
   const theme = themeId ? SITE_THEMES.find(t => t.id === themeId) : null;
   const root = document.documentElement;
-  if (theme) {
-    const primary = overrides?.brandColor ?? theme.brandColor;
-    const secondary = overrides?.secondaryColor ?? theme.secondaryColor;
-    const accent = overrides?.accentColor ?? theme.accentColor;
-    root.style.setProperty("--theme-primary", primary);
-    root.style.setProperty("--theme-secondary", secondary);
-    root.style.setProperty("--theme-accent", accent);
-    root.style.setProperty("--theme-bg", theme.bgColor);
-    root.style.setProperty("--theme-surface", theme.surfaceColor);
-    root.style.setProperty("--theme-text", theme.textColor);
-    root.style.setProperty("--theme-text-muted", theme.textMutedColor);
-    root.style.setProperty("--theme-font-heading", `'${theme.headingFont}', system-ui, sans-serif`);
-    root.style.setProperty("--theme-font-body", `'${theme.bodyFont}', system-ui, sans-serif`);
-    root.style.setProperty("--theme-btn-radius", theme.buttonRadius);
-    root.style.setProperty("--theme-btn-font-weight", theme.buttonFontWeight);
-    root.style.setProperty("--theme-card-radius", theme.cardRadius);
-    root.style.setProperty("--theme-card-shadow", theme.cardShadow);
-    root.style.setProperty("--theme-card-border", cardBorderValue(theme));
-  } else {
+
+  if (!theme && !overrides) {
     const vars = [
       "--theme-primary", "--theme-secondary", "--theme-accent",
       "--theme-bg", "--theme-surface", "--theme-text", "--theme-text-muted",
       "--theme-font-heading", "--theme-font-body",
-      "--theme-btn-radius", "--theme-btn-font-weight",
+      "--theme-btn-radius", "--theme-btn-font-weight", "--theme-btn-shadow",
       "--theme-card-radius", "--theme-card-shadow", "--theme-card-border",
+      "--theme-input-radius",
     ];
     vars.forEach(v => root.style.removeProperty(v));
+    return;
   }
+
+  const primary = overrides?.brandColor ?? theme?.brandColor;
+  const secondary = overrides?.secondaryColor ?? theme?.secondaryColor;
+  const accent = overrides?.accentColor ?? theme?.accentColor;
+  const bg = overrides?.bgColor ?? theme?.bgColor;
+  const surface = overrides?.surfaceColor ?? theme?.surfaceColor;
+  const text = overrides?.textColor ?? theme?.textColor;
+  const textMuted = overrides?.textMutedColor ?? theme?.textMutedColor;
+  const headingFont = overrides?.headingFont ?? theme?.headingFont;
+  const bodyFont = overrides?.bodyFont ?? theme?.bodyFont;
+  const btnRadius = overrides?.buttonRadius ?? theme?.buttonRadius;
+  const btnFontWeight = overrides?.buttonFontWeight ?? theme?.buttonFontWeight;
+  const btnShadowBool = overrides?.buttonShadow !== undefined ? overrides.buttonShadow : theme?.buttonShadow;
+  const cardRadius = overrides?.cardRadius ?? theme?.cardRadius;
+  const cardShadow = overrides?.cardShadow ?? theme?.cardShadow;
+  const cardBorderBool = overrides?.cardBorder !== undefined ? overrides.cardBorder : theme?.cardBorder;
+  const inputRadius = overrides?.inputRadius ?? theme?.inputRadius;
+
+  function setOrRemove(varName: string, value: string | undefined) {
+    if (value !== undefined) root.style.setProperty(varName, value);
+    else root.style.removeProperty(varName);
+  }
+
+  setOrRemove("--theme-primary", primary);
+  setOrRemove("--theme-secondary", secondary);
+  setOrRemove("--theme-accent", accent);
+  setOrRemove("--theme-bg", bg);
+  setOrRemove("--theme-surface", surface);
+  setOrRemove("--theme-text", text);
+  setOrRemove("--theme-text-muted", textMuted);
+  setOrRemove("--theme-font-heading", headingFont ? `'${headingFont}', system-ui, sans-serif` : undefined);
+  setOrRemove("--theme-font-body", bodyFont ? `'${bodyFont}', system-ui, sans-serif` : undefined);
+  setOrRemove("--theme-btn-radius", btnRadius);
+  setOrRemove("--theme-btn-font-weight", btnFontWeight);
+  setOrRemove("--theme-btn-shadow", btnShadowBool !== undefined ? resolveButtonShadow(btnShadowBool) : undefined);
+  setOrRemove("--theme-card-radius", cardRadius);
+  setOrRemove("--theme-card-shadow", cardShadow);
+  setOrRemove("--theme-card-border", cardBorderBool !== undefined ? resolveCardBorder(cardBorderBool) : undefined);
+  setOrRemove("--theme-input-radius", inputRadius);
 }

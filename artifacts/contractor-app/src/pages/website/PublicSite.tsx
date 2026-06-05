@@ -44,9 +44,20 @@ interface SiteSettings {
   brandColor: string;
   secondaryColor?: string;
   accentColor?: string;
+  bgColor?: string;
+  surfaceColor?: string;
+  textColor?: string;
+  textMutedColor?: string;
   fontFamily: string;
   headingFont?: string;
   bodyFont?: string;
+  buttonRadius?: string;
+  buttonFontWeight?: string;
+  buttonShadow?: boolean;
+  cardRadius?: string;
+  cardShadow?: string;
+  cardBorder?: boolean;
+  inputRadius?: string;
   logoUrl: string;
   faviconUrl?: string;
   headerStyle?: "light" | "dark" | "transparent";
@@ -241,11 +252,24 @@ export default function PublicSite() {
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
           )}
-          {settings.themeId && (
+          {(settings.themeId || settings.brandColor) && (
             <style>{buildThemeCssVarBlock(settings.themeId, {
               brandColor: settings.brandColor,
               secondaryColor: settings.secondaryColor,
               accentColor: settings.accentColor,
+              bgColor: settings.bgColor,
+              surfaceColor: settings.surfaceColor,
+              textColor: settings.textColor,
+              textMutedColor: settings.textMutedColor,
+              headingFont: settings.headingFont,
+              bodyFont: settings.bodyFont,
+              buttonRadius: settings.buttonRadius,
+              buttonFontWeight: settings.buttonFontWeight,
+              buttonShadow: settings.buttonShadow,
+              cardRadius: settings.cardRadius,
+              cardShadow: settings.cardShadow,
+              cardBorder: settings.cardBorder,
+              inputRadius: settings.inputRadius,
             })}</style>
           )}
           {settings.faviconUrl && <link rel="icon" href={settings.faviconUrl} />}
