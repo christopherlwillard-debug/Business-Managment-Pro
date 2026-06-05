@@ -43,6 +43,7 @@ import { ImageGallerySection, defaultImageGalleryContent } from "./sections/Imag
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
+import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { useEditorHistory } from "./useEditorHistory";
 import { nanoid } from "nanoid";
 
@@ -404,6 +405,7 @@ export default function WebsiteEditor() {
   const [uploadingColumnImageKeys, setUploadingColumnImageKeys] = useState<Set<string>>(new Set());
   const [uploadingGalleryImageIds, setUploadingGalleryImageIds] = useState<Set<string>>(new Set());
   const [showAddSection, setShowAddSection] = useState(false);
+  const [addSectionTab, setAddSectionTab] = useState<"sections" | "templates">("sections");
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const pagesRef = useRef<SitePage[]>([]);
@@ -1357,6 +1359,39 @@ export default function WebsiteEditor() {
     setInsertAfterSectionId(undefined);
   }
 
+  function addSectionFromTemplate(templateId: string) {
+    const tpl = SECTION_TEMPLATES.find(t => t.id === templateId);
+    if (!tpl) return;
+    const sectionId = Math.random().toString(36).slice(2, 9);
+    const newSection: Section = {
+      id: sectionId,
+      type: "row",
+      enabled: true,
+      order: sections.length,
+      content: tpl.content() as unknown as Record<string, unknown>,
+      ...(tpl.blockStyle ? { blockStyle: tpl.blockStyle } : {}),
+    };
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    const afterId = insertAfterSectionId;
+    if (afterId === null) {
+      updatePageSections([newSection, ...sections].map((s, i) => ({ ...s, order: i })));
+    } else if (afterId !== undefined) {
+      const idx = sections.findIndex(s => s.id === afterId);
+      if (idx >= 0) {
+        const inserted = [...sections.slice(0, idx + 1), newSection, ...sections.slice(idx + 1)];
+        updatePageSections(inserted.map((s, i) => ({ ...s, order: i })));
+      } else {
+        updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+      }
+    } else {
+      updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+    }
+    setActiveSection(sectionId);
+    setShowAddSection(false);
+    setInsertAfterSectionId(undefined);
+  }
+
   function switchPage(pageId: string) {
     if (pageId === activePageId) return;
     setActivePageId(pageId);
@@ -2021,18 +2056,56 @@ export default function WebsiteEditor() {
                   Add
                 </button>
                 {showAddSection && (
-                  <div className="absolute right-0 top-full mt-1 z-30 w-44 bg-popover border border-border rounded-lg shadow-lg py-1 text-sm">
-                    {ADDABLE_SECTION_TYPES.map(opt => (
+                  <div className="absolute right-0 top-full mt-1 z-30 w-72 bg-popover border border-border rounded-xl shadow-xl overflow-hidden text-sm">
+                    <div className="flex border-b border-border">
                       <button
-                        key={opt.type}
                         type="button"
-                        onClick={() => addSection(opt.type)}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                        onClick={() => setAddSectionTab("sections")}
+                        className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors ${addSectionTab === "sections" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
                       >
-                        {opt.icon}
-                        {opt.label}
+                        Blank Sections
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => setAddSectionTab("templates")}
+                        className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${addSectionTab === "templates" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                      >
+                        <LayoutTemplate className="w-3 h-3" />
+                        Templates
+                      </button>
+                    </div>
+                    {addSectionTab === "sections" ? (
+                      <div className="py-1 max-h-72 overflow-y-auto">
+                        {ADDABLE_SECTION_TYPES.map(opt => (
+                          <button
+                            key={opt.type}
+                            type="button"
+                            onClick={() => addSection(opt.type)}
+                            className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                          >
+                            {opt.icon}
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-1 max-h-96 overflow-y-auto">
+                        {SECTION_TEMPLATES.map(tpl => (
+                          <button
+                            key={tpl.id}
+                            type="button"
+                            onClick={() => addSectionFromTemplate(tpl.id)}
+                            className="flex items-start gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted transition-colors group"
+                          >
+                            <span className="text-base flex-shrink-0 mt-0.5">{tpl.emoji}</span>
+                            <span className="min-w-0">
+                              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{tpl.name}</span>
+                              <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">{tpl.description}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
