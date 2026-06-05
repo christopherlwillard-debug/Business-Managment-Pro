@@ -11,6 +11,7 @@ import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette,
+  ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -496,6 +497,10 @@ export default function WebsiteEditor() {
   const pendingFocusFieldRef = useRef<string | null>(null);
   const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
   const [faviconUploading, setFaviconUploading] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
@@ -1921,125 +1926,136 @@ export default function WebsiteEditor() {
       </div>
     )}
     <div className="flex flex-col h-full">
-      {/* Top bar */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-card gap-3 flex-wrap">
-        <div className="flex flex-col gap-1.5">
-          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Globe className="w-5 h-5 text-primary" />
-            Website Editor
-          </h1>
-          <p className="text-xs text-muted-foreground">{activeBusiness.name}</p>
-          <div className="flex items-center bg-muted/60 rounded-lg p-0.5 w-fit">
-            <button
-              onClick={() => setActiveTab("editor")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                activeTab === "editor"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Pencil className="w-3 h-3" />
-              Editor
-            </button>
-            <button
-              onClick={() => setActiveTab("media")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                activeTab === "media"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Images className="w-3 h-3" />
-              Media
-            </button>
-            <button
-              onClick={() => setActiveTab("analytics")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                activeTab === "analytics"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <BarChart2 className="w-3 h-3" />
-              Analytics
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Undo / Redo */}
-          <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
-            <button
-              type="button"
-              onClick={handleUndo}
-              disabled={!history.canUndo}
-              title="Undo (Ctrl+Z)"
-              className={`flex items-center px-2.5 py-1.5 transition-colors ${!history.canUndo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleRedo}
-              disabled={!history.canRedo}
-              title="Redo (Ctrl+Shift+Z)"
-              className={`flex items-center px-2.5 py-1.5 transition-colors ${!history.canRedo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      {/* Top bar — compact single row */}
+      <div className="flex-shrink-0 flex items-center gap-2 px-3 border-b border-border bg-card h-12">
+        {/* Site identity */}
+        <Globe className="w-4 h-4 text-primary flex-shrink-0" />
+        <span className="text-sm font-semibold text-foreground truncate max-w-[140px] hidden sm:block">{activeBusiness.name}</span>
 
-          {/* Viewport toggle */}
-          <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
-            {([ 
-              { id: "desktop", Icon: Monitor, label: "Desktop" },
-              { id: "tablet",  Icon: Tablet,  label: "Tablet"  },
-              { id: "mobile",  Icon: Smartphone, label: "Mobile" },
-            ] as const).map(({ id, Icon, label }) => (
-              <button
-                key={id}
-                onClick={() => changeViewport(id)}
-                title={label}
-                className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  viewport === id
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">{label}</span>
-              </button>
-            ))}
-          </div>
-
-          {isPublished && (
-            <a
-              href={publicUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-medium"
-            >
-              <CheckCircle className="w-3.5 h-3.5" />
-              Live
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
+        {/* Tab switcher */}
+        <div className="flex items-center bg-muted/60 rounded-lg p-0.5">
           <button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-60"
+            onClick={() => setActiveTab("editor")}
+            className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+              activeTab === "editor" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <Save className="w-4 h-4" />
-            Save Draft
+            <Pencil className="w-3 h-3" />
+            <span className="hidden sm:inline">Editor</span>
           </button>
           <button
-            onClick={() => setShowPublishConfirm(true)}
-            disabled={publishing}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+            onClick={() => setActiveTab("media")}
+            className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+              activeTab === "media" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <Upload className="w-4 h-4" />
-            {publishing ? "Publishing…" : "Publish"}
+            <Images className="w-3 h-3" />
+            <span className="hidden sm:inline">Media</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("analytics")}
+            className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+              activeTab === "analytics" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <BarChart2 className="w-3 h-3" />
+            <span className="hidden sm:inline">Analytics</span>
           </button>
         </div>
+
+        <div className="flex-1" />
+
+        {/* Viewport toggle */}
+        <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
+          {([
+            { id: "desktop", Icon: Monitor, label: "Desktop" },
+            { id: "tablet",  Icon: Tablet,  label: "Tablet"  },
+            { id: "mobile",  Icon: Smartphone, label: "Mobile" },
+          ] as const).map(({ id, Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => changeViewport(id)}
+              title={label}
+              className={`flex items-center px-2 py-1.5 transition-colors ${
+                viewport === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+            </button>
+          ))}
+        </div>
+
+        {/* Undo / Redo */}
+        <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
+          <button
+            type="button"
+            onClick={handleUndo}
+            disabled={!history.canUndo}
+            title="Undo (Ctrl+Z)"
+            className={`flex items-center px-2 py-1.5 transition-colors ${!history.canUndo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleRedo}
+            disabled={!history.canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+            className={`flex items-center px-2 py-1.5 transition-colors ${!history.canRedo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+          >
+            <Redo2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Focus mode toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            if (focusMode) {
+              setFocusMode(false);
+            } else {
+              setFocusMode(true);
+              setLeftCollapsed(false);
+              setRightCollapsed(false);
+            }
+          }}
+          title={focusMode ? "Exit focus mode" : "Focus mode — hide panels"}
+          className={`flex items-center px-2 py-1.5 rounded-lg border transition-colors ${
+            focusMode ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {focusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+        </button>
+
+        {isPublished && (
+          <a
+            href={publicUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-medium"
+            title="View live site"
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Live</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+        <button
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-60"
+        >
+          <Save className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Save Draft</span>
+        </button>
+        <button
+          onClick={() => setShowPublishConfirm(true)}
+          disabled={publishing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          {publishing ? "Publishing…" : "Publish"}
+        </button>
       </div>
 
       {showPublished && (
@@ -2056,12 +2072,26 @@ export default function WebsiteEditor() {
         ) : activeTab === "media" ? (
           <MediaLibrary businessId={bizId!} />
         ) : (<>
-        {/* Left panel — section list */}
-        <div className="w-56 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-y-auto">
-          {/* Pages panel */}
-          <div className="px-3 py-2 border-b border-border">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Pages</p>
+        {/* Left panel — collapsible Site Structure + Brand */}
+        {focusMode ? null : leftCollapsed ? (
+          <div className="w-9 flex-shrink-0 border-r border-border bg-card flex flex-col items-center py-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setLeftCollapsed(false)}
+              title="Expand panel"
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ChevronsRight className="w-4 h-4" />
+            </button>
+            <Layers className="w-4 h-4 text-muted-foreground/40" />
+            <Palette className="w-4 h-4 text-muted-foreground/40" />
+          </div>
+        ) : (
+        <div className="w-60 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-hidden">
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Site Structure</p>
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => { setShowAddPage(false); setShowPageTemplatePicker(true); }}
@@ -2069,213 +2099,251 @@ export default function WebsiteEditor() {
                 title="Add page"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Add
+                Page
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeftCollapsed(true)}
+                title="Collapse panel"
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5" />
               </button>
             </div>
-            {showAddPage && (
-              <div className="mt-1 mb-1 space-y-1">
+          </div>
+
+          {/* Inline add-page form */}
+          {showAddPage && (
+            <div className="px-3 pt-2 pb-1 border-b border-border space-y-1">
+              <input
+                type="text"
+                placeholder="Page name (e.g. About)"
+                value={newPageName}
+                onChange={e => {
+                  setNewPageName(e.target.value);
+                  setNewPageSlug(e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && newPageName.trim()) {
+                    addPage(newPageName.trim(), newPageSlug.trim() || undefined);
+                    setNewPageName(""); setNewPageSlug(""); setShowAddPage(false);
+                  }
+                  if (e.key === "Escape") { setShowAddPage(false); setNewPageName(""); setNewPageSlug(""); }
+                }}
+                className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                autoFocus
+              />
+              <div className="flex gap-1">
                 <input
                   type="text"
-                  placeholder="Page name (e.g. About)"
-                  value={newPageName}
-                  onChange={e => {
-                    setNewPageName(e.target.value);
-                    setNewPageSlug(e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && newPageName.trim()) {
+                  placeholder="url-slug"
+                  value={newPageSlug}
+                  onChange={e => setNewPageSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                  className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newPageName.trim()) {
                       addPage(newPageName.trim(), newPageSlug.trim() || undefined);
                       setNewPageName(""); setNewPageSlug(""); setShowAddPage(false);
                     }
-                    if (e.key === "Escape") { setShowAddPage(false); setNewPageName(""); setNewPageSlug(""); }
                   }}
-                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                  autoFocus
-                />
-                <div className="flex gap-1">
-                  <input
-                    type="text"
-                    placeholder="url-slug"
-                    value={newPageSlug}
-                    onChange={e => setNewPageSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                    className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (newPageName.trim()) {
-                        addPage(newPageName.trim(), newPageSlug.trim() || undefined);
-                        setNewPageName(""); setNewPageSlug(""); setShowAddPage(false);
-                      }
-                    }}
-                    className="px-2 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-            )}
-            <div className="space-y-0.5 mt-0.5">
-              {pages.map(page => (
-                <div
-                  key={page.id}
-                  className={`group flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                    activePageId === page.id
-                      ? "bg-primary/10 border border-primary/30 text-primary"
-                      : "hover:bg-muted text-foreground"
-                  }`}
-                  onClick={() => switchPage(page.id)}
+                  className="px-2 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
                 >
-                  {editingPageId === page.id ? (
-                    <input
-                      type="text"
-                      value={editingPageName}
-                      onChange={e => setEditingPageName(e.target.value)}
-                      onBlur={() => {
-                        if (editingPageName.trim()) renamePage(page.id, editingPageName.trim());
-                        setEditingPageId(null);
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") {
-                          if (editingPageName.trim()) renamePage(page.id, editingPageName.trim());
-                          setEditingPageId(null);
-                        }
-                        if (e.key === "Escape") setEditingPageId(null);
-                      }}
-                      className="flex-1 text-xs bg-transparent border-b border-primary focus:outline-none min-w-0"
-                      autoFocus
-                      onClick={e => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span className="flex-1 text-xs font-medium truncate">{page.name}</span>
-                  )}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={e => { e.stopPropagation(); setEditingPageId(page.id); setEditingPageName(page.name); }}
-                      className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
-                      title="Rename"
-                    >
-                      <Pencil className="w-2.5 h-2.5" />
-                    </button>
-                    {page.id !== "home" && (
-                      <button
-                        type="button"
-                        onClick={e => { e.stopPropagation(); deletePage(page.id); }}
-                        className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
-                        title="Delete page"
-                      >
-                        <Trash2 className="w-2.5 h-2.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="px-3 py-3 border-b border-border">
-            <div className="flex items-center justify-between mb-0.5">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sections</p>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => { setInsertAfterSectionId(undefined); setShowAddSection(v => !v); }}
-                  title="Add section"
-                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
                   Add
                 </button>
-                {showAddSection && (
-                  <div className="absolute right-0 top-full mt-1 z-30 w-72 bg-popover border border-border rounded-xl shadow-xl overflow-hidden text-sm">
-                    <div className="flex border-b border-border">
-                      <button
-                        type="button"
-                        onClick={() => setAddSectionTab("sections")}
-                        className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors ${addSectionTab === "sections" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-                      >
-                        Blank Sections
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAddSectionTab("templates")}
-                        className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${addSectionTab === "templates" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-                      >
-                        <LayoutTemplate className="w-3 h-3" />
-                        Templates
-                      </button>
-                    </div>
-                    {addSectionTab === "sections" ? (
-                      <div className="py-1 max-h-72 overflow-y-auto">
-                        {ADDABLE_SECTION_TYPES.map(opt => (
-                          <button
-                            key={opt.type}
-                            type="button"
-                            onClick={() => addSection(opt.type)}
-                            className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
-                          >
-                            {opt.icon}
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="py-1 max-h-96 overflow-y-auto">
-                        {SECTION_TEMPLATES.map(tpl => (
-                          <button
-                            key={tpl.id}
-                            type="button"
-                            onClick={() => addSectionFromTemplate(tpl.id)}
-                            className="flex items-start gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted transition-colors group"
-                          >
-                            <span className="text-base flex-shrink-0 mt-0.5">{tpl.emoji}</span>
-                            <span className="min-w-0">
-                              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{tpl.name}</span>
-                              <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">{tpl.description}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground">Drag to reorder</p>
-          </div>
-          <div ref={sidebarListRef} className="p-2 space-y-0.5">
-            {/* Header — locked, always first */}
-            {(() => {
-              const hdr = (pages.find(p => p.id === "home")?.sections ?? sections).find(s => s.type === "header");
-              if (!hdr) return null;
+          )}
+
+          {/* Unified tree — pages + their sections */}
+          <div ref={sidebarListRef} className="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0">
+            {pages.map(page => {
+              const isActivePage = activePageId === page.id;
+              const isExpanded = expandedPageIds.has(page.id);
+              const pageSections = isActivePage ? sections : (page.sections ?? []);
+
               return (
-                <div
-                  data-section-id={hdr.id}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                    activeSection === hdr.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
-                  }`}
-                  onClick={() => setActiveSection(hdr.id)}
-                >
-                  <Lock className="w-3.5 h-3.5 text-muted-foreground/40 flex-shrink-0" />
-                  <span className="flex-1 text-sm font-medium text-foreground">Header</span>
-                  <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
+                <div key={page.id}>
+                  {/* Page row */}
+                  <div
+                    className={`group flex items-center gap-1 px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                      isActivePage ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
+                    }`}
+                    onClick={() => {
+                      switchPage(page.id);
+                      setExpandedPageIds(prev => new Set([...prev, page.id]));
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setExpandedPageIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(page.id)) next.delete(page.id); else next.add(page.id);
+                          return next;
+                        });
+                      }}
+                    >
+                      <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
+                    </button>
+                    <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />
+                    {editingPageId === page.id ? (
+                      <input
+                        type="text"
+                        value={editingPageName}
+                        onChange={e => setEditingPageName(e.target.value)}
+                        onBlur={() => {
+                          if (editingPageName.trim()) renamePage(page.id, editingPageName.trim());
+                          setEditingPageId(null);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") { if (editingPageName.trim()) renamePage(page.id, editingPageName.trim()); setEditingPageId(null); }
+                          if (e.key === "Escape") setEditingPageId(null);
+                        }}
+                        className="flex-1 text-xs bg-transparent border-b border-primary focus:outline-none min-w-0"
+                        autoFocus
+                        onClick={e => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="flex-1 text-xs font-medium truncate">{page.name}</span>
+                    )}
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); setEditingPageId(page.id); setEditingPageName(page.name); }}
+                        className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
+                        title="Rename"
+                      >
+                        <Pencil className="w-2.5 h-2.5" />
+                      </button>
+                      {page.id !== "home" && (
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); deletePage(page.id); }}
+                          className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                          title="Delete page"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sections under this page */}
+                  {isExpanded && (
+                    <div className="ml-3 mt-0.5 space-y-0.5">
+                      {/* Header — locked, shown only under home page */}
+                      {page.id === "home" && (() => {
+                        const hdr = (pages.find(p => p.id === "home")?.sections ?? sections).find(s => s.type === "header");
+                        if (!hdr) return null;
+                        return (
+                          <div
+                            data-section-id={hdr.id}
+                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                              activeSection === hdr.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
+                            }`}
+                            onClick={() => setActiveSection(hdr.id)}
+                          >
+                            <Lock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+                            <span className="flex-1 text-xs font-medium text-foreground">Header</span>
+                            <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Sortable sections (active page) or read-only list (other pages) */}
+                      {isActivePage ? (
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                          <SortableContext items={sections.filter(s => s.type !== "header").map(s => s.id)} strategy={verticalListSortingStrategy}>
+                            {sections.filter(s => s.type !== "header").map(s => (
+                              <div key={s.id} data-section-id={s.id}>
+                                <SortableRow
+                                  section={s}
+                                  active={activeSection === s.id}
+                                  onToggle={() => toggleSection(s.id)}
+                                  onActivate={() => setActiveSection(s.id)}
+                                />
+                              </div>
+                            ))}
+                          </SortableContext>
+                        </DndContext>
+                      ) : (
+                        pageSections.filter(s => s.type !== "header").map(s => (
+                          <div
+                            key={s.id}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-muted transition-colors opacity-60"
+                            onClick={() => { switchPage(page.id); setExpandedPageIds(prev => new Set([...prev, page.id])); }}
+                          >
+                            <span className="flex-1 text-xs font-medium text-foreground">{SECTION_LABELS[s.type] ?? s.type}</span>
+                          </div>
+                        ))
+                      )}
+
+                      {/* Add Section (active page only) */}
+                      {isActivePage && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => { setInsertAfterSectionId(undefined); setShowAddSection(v => !v); }}
+                            className="flex items-center gap-1 w-full px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Add Section
+                          </button>
+                          {showAddSection && (
+                            <div className="absolute left-0 top-full mt-1 z-30 w-72 bg-popover border border-border rounded-xl shadow-xl overflow-hidden text-sm">
+                              <div className="flex border-b border-border">
+                                <button
+                                  type="button"
+                                  onClick={() => setAddSectionTab("sections")}
+                                  className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors ${addSectionTab === "sections" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                                >
+                                  Blank Sections
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setAddSectionTab("templates")}
+                                  className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${addSectionTab === "templates" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                                >
+                                  <LayoutTemplate className="w-3 h-3" />
+                                  Templates
+                                </button>
+                              </div>
+                              {addSectionTab === "sections" ? (
+                                <div className="py-1 max-h-72 overflow-y-auto">
+                                  {ADDABLE_SECTION_TYPES.map(opt => (
+                                    <button key={opt.type} type="button" onClick={() => addSection(opt.type)} className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors">
+                                      {opt.icon}
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="py-1 max-h-96 overflow-y-auto">
+                                  {SECTION_TEMPLATES.map(tpl => (
+                                    <button key={tpl.id} type="button" onClick={() => addSectionFromTemplate(tpl.id)} className="flex items-start gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted transition-colors group">
+                                      <span className="text-base flex-shrink-0 mt-0.5">{tpl.emoji}</span>
+                                      <span className="min-w-0">
+                                        <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{tpl.name}</span>
+                                        <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">{tpl.description}</span>
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
-            })()}
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={sections.filter(s => s.type !== "header").map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {sections.filter(s => s.type !== "header").map(s => (
-                  <div key={s.id} data-section-id={s.id}>
-                    <SortableRow
-                      section={s}
-                      active={activeSection === s.id}
-                      onToggle={() => toggleSection(s.id)}
-                      onActivate={() => setActiveSection(s.id)}
-                    />
-                  </div>
-                ))}
-              </SortableContext>
-            </DndContext>
+            })}
           </div>
 
           {/* Brand settings */}
@@ -2459,11 +2527,12 @@ export default function WebsiteEditor() {
             onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
           />
         </div>
+        )}
 
         {/* Canvas — live preview */}
-        <div className="flex-1 overflow-y-auto bg-muted/30" onClick={() => setActiveSection(null)}>
+        <div className="flex-1 overflow-y-auto bg-muted/30 min-w-0" onClick={() => setActiveSection(null)}>
           <div className={`mx-auto my-6 transition-all duration-300 ${
-            viewport === "desktop" ? "max-w-4xl px-4" :
+            viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
             viewport === "tablet" ? "max-w-[800px] px-4" :
             "max-w-[430px] px-3"
           }`}>
@@ -2503,9 +2572,36 @@ export default function WebsiteEditor() {
             )}
           </div>
         </div>
-        {activeSection && activeTab === "editor" && (() => {
+        {activeSection && activeTab === "editor" && !focusMode && (() => {
           const sec = sections.find(s => s.id === activeSection);
           if (!sec || sec.type === "header") return null;
+
+          if (rightCollapsed) {
+            return (
+              <div className="w-9 flex-shrink-0 border-l border-border bg-card flex flex-col items-center py-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRightCollapsed(false)}
+                  title="Expand panel"
+                  className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+                <Layers className="w-4 h-4 text-muted-foreground/40" />
+              </div>
+            );
+          }
+
+          const rightCollapseBtn = (
+            <button
+              type="button"
+              onClick={() => setRightCollapsed(true)}
+              title="Collapse panel"
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+            >
+              <ChevronsRight className="w-3.5 h-3.5" />
+            </button>
+          );
 
           if (
             sec.type === "content" &&
@@ -2516,6 +2612,10 @@ export default function WebsiteEditor() {
             if (selectedComp) {
               return (
                 <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
+                  <div className="flex items-center justify-between px-3 pt-2 pb-0">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
+                    {rightCollapseBtn}
+                  </div>
                   <ComponentEditorPanel
                     component={selectedComp as any}
                     onChange={updatedComp => {
@@ -2540,6 +2640,10 @@ export default function WebsiteEditor() {
               if (selComp) {
                 return (
                   <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
+                    <div className="flex items-center justify-between px-3 pt-2 pb-0">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
+                      {rightCollapseBtn}
+                    </div>
                     <ComponentEditorPanel
                       component={selComp as any}
                       onChange={updatedComp => {
@@ -2559,6 +2663,10 @@ export default function WebsiteEditor() {
             }
             return (
               <div className="w-72 flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Row</span>
+                  {rightCollapseBtn}
+                </div>
                 <RowEditorPanel
                   data={rowData}
                   onChange={newData => updateContent(sec.id, newData as unknown as Record<string, unknown>)}
@@ -2580,6 +2688,12 @@ export default function WebsiteEditor() {
 
           return (
             <div className="w-72 flex-shrink-0 border-l border-border bg-card overflow-y-auto">
+              <div className="flex items-center justify-between px-3 pt-2 pb-0">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                  {SECTION_LABELS[sec.type] ?? "Section"}
+                </span>
+                {rightCollapseBtn}
+              </div>
               <SectionStylePanel
                 sectionId={sec.id}
                 sectionType={sec.type}
