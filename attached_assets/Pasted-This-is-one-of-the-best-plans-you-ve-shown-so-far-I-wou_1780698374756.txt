@@ -1,0 +1,125 @@
+This is one of the best plans you’ve shown so far.
+
+I would approve it with only a few additions.
+
+Add these to the “Done Looks Like” section
+
+* Sidebar collapse state is remembered between sessions.
+* Focus Mode remembers the user’s previous sidebar state when exiting.
+* Keyboard shortcut for Focus Mode (F or Shift+F).
+* Double-clicking the canvas automatically enters Focus Mode.
+* The canvas should always occupy at least 70% of available width when both sidebars are open.
+
+Add these to the Canvas section
+
+Currently it says:
+
+Remove max-w-4xl cap.
+
+I’d make it stronger:
+
+The desktop canvas should behave like a true responsive website preview and use available horizontal space. The editor should never artificially restrict the canvas to a narrow width when space is available.
+
+Improve Preview
+
+Current:
+
+Full-screen preview opens public site.
+
+I’d add:
+
+Preview should support Desktop, Tablet, and Mobile modes while keeping all editor chrome hidden.
+
+This gives users a way to preview responsive layouts without leaving preview mode.
+
+Improve the Site Structure Tree
+
+I would add:
+
+The Site Structure tree should support:
+
+* Expand all pages
+* Collapse all pages
+* Search pages
+* Search sections
+* Visual icons for page and section types
+
+As sites grow, this becomes important.
+
+Add Future-Proofing
+
+I would add one line:
+
+The Site Structure tree architecture should support future nested structures such as rows, columns, and components without requiring redesign.
+
+Because after #700 and #701 you’ll eventually have:
+
+Home
+
+* Header
+* Hero
+    * Row
+        * Column
+            * Heading
+            * Button
+* Features
+* CTA
+* Footer
+
+You don’t want to redesign the tree later.
+
+⸻
+
+What I would build after #717
+
+The next task should not be another UI cleanup.
+
+It should be:
+
+#718 Theme Designer
+
+* Theme presets
+* Global colors
+* Global typography
+* Button styles
+* Card styles
+* Form styles
+* Header styles
+* Footer styles
+
+Then:
+
+#719 Media Library
+
+* Upload once
+* Reuse everywhere
+* Organize folders
+* Replace images
+
+Then:
+
+#720 Page Templates
+
+* Business
+* Restaurant
+* Consultant
+* Agency
+* Nonprofit
+* Contractor
+* Real Estate
+
+because those three things are what make builders feel polished.
+
+⸻
+
+At this point your roadmap is actually starting to resemble a professional builder:
+
+✅ Multi-page sites
+✅ Navigation builder
+✅ Header builder
+✅ Component library (#700)
+✅ Layout builder (#701)
+✅ Section templates (#704)
+✅ Workspace redesign (#717)
+
+Once those are completed, you’re moving beyond a simple editor and into something that genuinely starts competing with builders like ZenBusiness and Squarespace from a usability standpoint.

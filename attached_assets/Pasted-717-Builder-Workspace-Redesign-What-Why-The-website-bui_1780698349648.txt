@@ -1,0 +1,32 @@
+717 - Builder Workspace Redesign
+
+What & Why
+
+The website builder chrome consumes more screen space than the website itself. The canvas sits at max-w-4xl (~896px) while two sidebars and a tall toolbar fight for the same horizontal space. The result feels like an admin panel that happens to preview a website, not a website editor. This task restructures the layout so the website canvas dominates the screen — matching the feel of Wix, Squarespace, and Framer.
+
+Done looks like
+
+Merged structure panel: The left sidebar shows one unified tree — pages and their sections nested under each page — instead of two separate "Pages" and "Sections" stacks. Clicking a page expands it to show its sections. Active page is highlighted.
+Collapsible sidebars: Both the left panel and the right panel have a collapse toggle (chevron/arrow button on the panel edge). When collapsed, only a thin icon strip remains (or the panel disappears entirely). The canvas expands to fill the freed space.
+Wider canvas: When both sidebars are open the canvas occupies the remaining center space (flex-grow, no fixed max-w-4xl cap on desktop). When either sidebar is collapsed, the canvas grows further. Desktop canvas is no longer artificially capped at 896px.
+Slim top toolbar: The top bar is reduced in height — it holds only Logo/back, page name, Save Draft, Publish, and the device switcher (desktop/tablet/mobile icons). Undo/Redo stays. No extra padding or tall branding area.
+Focus mode: A "Focus" button (or keyboard shortcut) collapses both sidebars simultaneously so the canvas fills the full width. Clicking it again restores the previous sidebar state.
+Full-screen preview: A "Preview" button opens the public site in a full-screen overlay (or new tab) with zero editor chrome — visitors see exactly what the public site looks like.
+Hover-only section controls: The per-section action bar (move up/down, duplicate, delete, add below, settings) is hidden by default and appears as a floating overlay when the user hovers over a section in the canvas. This removes the permanent toolbar that consumes vertical space above every section.
+Out of scope
+
+Redesigning any section editor panels or their fields (Brand, Domain, SectionStylePanel, ComponentEditorPanel stay unchanged inside the panels).
+Changing the mobile phone-chrome preview wrapper.
+Rebuilding the Add Section flow or the page-template picker.
+Any new editing features — this is purely a layout/chrome restructuring.
+Steps
+
+Merge the left panel into a unified Site Structure tree. Replace the stacked Pages + Sections panels with a single collapsible tree where each page is a top-level row and its sections are indented children. Clicking a page makes it active; clicking a section scrolls the canvas to that section and selects it. Keep the existing drag-to-reorder for sections within a page. Keep the Add Page and Add Section entry points (inline button at the page or section level).
+Add collapse toggles to both sidebars. Left panel gets a collapse button on its right edge; right panel gets one on its left edge. Collapsed state is tracked in React state (persists for the session). When collapsed, the panel width goes to zero (or a small icon-only rail). The canvas flex-grow fills the gap automatically.
+Expand the canvas to fill available space. Remove the max-w-4xl cap for desktop view; let the canvas grow naturally inside the flex layout. Maintain max-w-[800px] for tablet and max-w-[430px] for mobile previews. Add a minimum canvas width so it never collapses below ~400px even when sidebars are both open.
+Slim down the top toolbar. Reduce vertical padding so the toolbar is ~48px tall instead of the current taller bar. Remove any extra spacing/branding that isn't essential during editing. Keep the device-switcher icons, Undo/Redo, Save Draft, and Publish in a single compact row.
+Add a Focus Mode toggle. Add a "Focus" icon button to the toolbar (arrows-pointing-outward / expand icon). Clicking it collapses both sidebars. Clicking again restores them. This is the one-click "get out of my way" affordance.
+Convert section controls to hover-only overlays. The move/duplicate/delete/add/settings buttons currently rendered as a permanent bar above each section should instead render as an absolutely-positioned floating strip that appears only on hover of the section container in the canvas. Use CSS group-hover or an onMouseEnter/onMouseLeave pattern to show/hide.
+Relevant files
+
+artifacts/contractor-app/src/pages/website/WebsiteEditor.tsx:1954-2599
