@@ -185,8 +185,8 @@ export function renderSiteComponent(
       const sizes: Record<number, string> = { 1: "text-4xl", 2: "text-3xl", 3: "text-2xl", 4: "text-xl" };
       return (
         <Tag
-          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", ...textStyleToCSS(p.style) }}
-          className={`font-bold text-gray-900 ${sizes[p.level ?? 2] ?? "text-3xl"} leading-tight`}
+          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", color: "var(--theme-text, #111827)", ...textStyleToCSS(p.style) }}
+          className={`font-bold ${sizes[p.level ?? 2] ?? "text-3xl"} leading-tight`}
         >
           {p.text}
         </Tag>
@@ -196,8 +196,8 @@ export function renderSiteComponent(
       const p = comp.props as ParagraphProps;
       return (
         <p
-          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", ...textStyleToCSS(p.style) }}
-          className="text-gray-700 leading-relaxed"
+          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", color: "var(--theme-text-muted, #374151)", ...textStyleToCSS(p.style) }}
+          className="leading-relaxed"
         >
           {p.text}
         </p>
@@ -209,15 +209,20 @@ export function renderSiteComponent(
       const bClasses = buttonConfigToClasses(p.config);
       const bg = bStyle.backgroundColor ?? settings.accentColor ?? settings.brandColor;
       const color = bStyle.color ?? "white";
-      const radius = bStyle.borderRadius ?? "9999px";
+      const radius = bStyle.borderRadius ?? "var(--theme-btn-radius, 9999px)";
       return (
         <div style={{ textAlign: p.align ?? "left" }}>
           <a
             href={p.config?.url || "#"}
             target={p.config?.newTab ? "_blank" : undefined}
             rel={p.config?.newTab ? "noopener noreferrer" : undefined}
-            className={`inline-block font-semibold transition-opacity hover:opacity-90 ${bClasses}`}
-            style={{ backgroundColor: bg, color, borderRadius: radius }}
+            className={`inline-block transition-opacity hover:opacity-90 ${bClasses}`}
+            style={{
+              backgroundColor: bg,
+              color,
+              borderRadius: radius,
+              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+            }}
           >
             {p.label || "Click here"}
           </a>
@@ -242,7 +247,7 @@ export function renderSiteComponent(
             className={`${widthClass[p.width ?? "full"] ?? "w-full"} rounded-lg`}
             style={{ objectFit: p.objectFit ?? "cover", borderRadius: p.borderRadius ? `${p.borderRadius}px` : undefined }}
           />
-          {p.caption && <figcaption className="text-xs text-gray-500 mt-1 text-center">{p.caption}</figcaption>}
+          {p.caption && <figcaption className="text-xs mt-1 text-center" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{p.caption}</figcaption>}
         </figure>
       );
     }
@@ -329,12 +334,12 @@ export function renderSiteComponent(
       return (
         <blockquote className="border-l-4 pl-5 py-2" style={{ borderColor: settings.brandColor }}>
           {stars > 0 && <div className="text-yellow-400 text-sm mb-1">{"★".repeat(stars)}</div>}
-          <p className="text-gray-700 italic mb-3">"{p.quote}"</p>
+          <p className="italic mb-3" style={{ color: "var(--theme-text-muted, #374151)" }}>"{p.quote}"</p>
           <div className="flex items-center gap-2">
             {p.avatarUrl && <img src={p.avatarUrl} alt={p.author} className="w-8 h-8 rounded-full object-cover" />}
             <div>
-              <p className="font-semibold text-gray-900 text-sm">{p.author}</p>
-              {p.role && <p className="text-gray-500 text-xs">{p.role}</p>}
+              <p className="font-semibold text-sm" style={{ color: "var(--theme-text, #111827)" }}>{p.author}</p>
+              {p.role && <p className="text-xs" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{p.role}</p>}
             </div>
           </div>
         </blockquote>

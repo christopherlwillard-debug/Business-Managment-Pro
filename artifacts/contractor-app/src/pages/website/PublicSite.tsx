@@ -216,12 +216,19 @@ export default function PublicSite() {
   const mobileSubText = (headerStyle === "dark" || headerStyle === "transparent") ? "text-white/70" : "text-gray-600";
   const mobileBorder = (headerStyle === "dark" || headerStyle === "transparent") ? "border-gray-700" : "border-gray-100";
 
-  const siteBodyStyle = settings.bodyFont
+  const siteBodyStyle: React.CSSProperties = settings.bodyFont
     ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
     : undefined;
 
   return (
-    <div className="min-h-screen bg-white" style={siteBodyStyle}>
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundColor: settings.themeId ? "var(--theme-bg, #ffffff)" : "#ffffff",
+        color: settings.themeId ? "var(--theme-text, inherit)" : undefined,
+        ...siteBodyStyle,
+      }}
+    >
       {createPortal(
         <>
           {googleFontsHref && <link rel="stylesheet" href={googleFontsHref} />}

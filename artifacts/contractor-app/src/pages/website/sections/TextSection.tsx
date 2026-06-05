@@ -55,17 +55,17 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
         <div className={`${maxWClass} ${alignClass}`}>
           {content.heading && (
             <h2
-              className="text-3xl md:text-4xl font-bold text-gray-900 mb-3"
-              style={{ color: blockStyle?.bgType ? undefined : undefined }}
+              className="text-3xl md:text-4xl font-bold mb-3"
+              style={{ color: "var(--theme-text, #111827)" }}
             >
               {content.heading}
             </h2>
           )}
           {content.subheading && (
-            <p className="text-lg text-gray-500 mb-5">{content.subheading}</p>
+            <p className="text-lg mb-5" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{content.subheading}</p>
           )}
           {content.body && (
-            <div className="text-gray-700 text-base leading-relaxed whitespace-pre-wrap">
+            <div className="text-base leading-relaxed whitespace-pre-wrap" style={{ color: "var(--theme-text-muted, #374151)" }}>
               {content.body}
             </div>
           )}

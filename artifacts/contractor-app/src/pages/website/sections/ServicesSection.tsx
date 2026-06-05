@@ -56,7 +56,7 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
             onChange={e => update({ heading: e.target.value })}
           />
         ) : (
-          <h2 data-edit-field="heading" className="text-3xl font-bold text-gray-900 dark:text-white mb-10 text-center">{content.heading}</h2>
+          <h2 data-edit-field="heading" className="text-3xl font-bold mb-10 text-center" style={{ color: "var(--theme-text, #111827)" }}>{content.heading}</h2>
         )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {content.items.map(item => (
@@ -101,7 +101,7 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
                     <div className="w-5 h-5 rounded-sm" style={{ backgroundColor: settings.accentColor ?? settings.brandColor }} />
                   </div>
                   <h3 className="font-semibold mb-2" style={{ color: settings.secondaryColor || "#111827" }}>{item.title}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">{item.description}</p>
+                  <p className="text-sm" style={{ color: "var(--theme-text-muted, #4b5563)" }}>{item.description}</p>
                 </>
               )}
             </div>
