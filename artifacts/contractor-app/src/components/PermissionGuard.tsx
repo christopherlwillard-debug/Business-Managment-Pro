@@ -11,7 +11,13 @@ interface PermissionGuardProps {
 export function PermissionGuard({ section, anySectionOf, ownerOnly, children }: PermissionGuardProps) {
   const { canView, isOwner, accessStatus } = useUserPermissions();
 
-  if (accessStatus === "loading") return null;
+  if (accessStatus === "loading") {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const blocked =
     (ownerOnly && !isOwner) ||
