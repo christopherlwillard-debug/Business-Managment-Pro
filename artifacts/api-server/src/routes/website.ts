@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Readable } from "stream";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable } from "@workspace/db/schema";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable } from "@workspace/db/schema";
 import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
@@ -573,11 +573,6 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     returnUrl?: string;
   };
 
-  if (!customerName?.trim()) return res.status(400).json({ error: "Name is required." });
-  if (!customerEmail?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
-    return res.status(400).json({ error: "A valid email is required." });
-  }
-
   const [biz] = await db
     .select({ id: businessesTable.id, name: businessesTable.name })
     .from(businessesTable)
@@ -599,6 +594,30 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
 
   const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
   const heading = (depositSection.content.heading as string) || "Deposit";
+
+  type FieldCfg = { show?: boolean; required?: boolean };
+  const fName  = (depositSection.content.fieldName  as FieldCfg | undefined) ?? { show: true,  required: true };
+  const fEmail = (depositSection.content.fieldEmail as FieldCfg | undefined) ?? { show: true,  required: true };
+  const fPhone = (depositSection.content.fieldPhone as FieldCfg | undefined) ?? { show: false, required: false };
+  const fNotes = (depositSection.content.fieldNotes as FieldCfg | undefined) ?? { show: false, required: false };
+
+  if (fName.show !== false && fName.required !== false && !customerName?.trim()) {
+    return res.status(400).json({ error: "Name is required." });
+  }
+  if (fEmail.show !== false && fEmail.required !== false) {
+    if (!customerEmail?.trim()) return res.status(400).json({ error: "Email is required." });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+      return res.status(400).json({ error: "A valid email address is required." });
+    }
+  } else if (customerEmail?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+    return res.status(400).json({ error: "Please enter a valid email address." });
+  }
+  if (fPhone.show !== false && fPhone.required !== false && !customerPhone?.trim()) {
+    return res.status(400).json({ error: "Phone number is required." });
+  }
+  if (fNotes.show !== false && fNotes.required !== false && !customerNotes?.trim()) {
+    return res.status(400).json({ error: "Notes are required." });
+  }
 
   let amount = configuredAmount;
   if (customAmount !== undefined) {
@@ -629,8 +648,8 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   const [submission] = await db.insert(depositSubmissionsTable).values({
     businessId: biz.id,
     siteConfigId: config.id,
-    customerName: customerName.trim(),
-    customerEmail: customerEmail.trim().toLowerCase(),
+    customerName: customerName?.trim() || "",
+    customerEmail: customerEmail?.trim().toLowerCase() || "",
     customerPhone: customerPhone?.trim() || null,
     customerNotes: customerNotes?.trim() || null,
     amount: String(amount),
@@ -642,7 +661,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     currency: "USD",
     productName: `${biz.name}: ${heading}`,
     referenceId: `website_deposit_${slug}_${submission.id}`,
-    customerEmail: customerEmail.trim(),
+    customerEmail: customerEmail?.trim() || undefined,
     redirectUrl,
   });
 
@@ -651,6 +670,26 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     .where(eq(depositSubmissionsTable.id, submission.id));
 
   res.json({ checkoutUrl: url });
+}));
+
+publicRouter.get("/:slug/contact-prefill", wrapAsync(async (req, res) => {
+  const { slug } = req.params;
+  const contactId = parseInt(req.query.contactId as string);
+  if (!contactId || isNaN(contactId)) return res.status(400).json({ error: "contactId required" });
+
+  const [biz] = await db
+    .select({ id: businessesTable.id })
+    .from(businessesTable)
+    .where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [contact] = await db
+    .select({ name: contactsTable.name, email: contactsTable.email, phone: contactsTable.phone })
+    .from(contactsTable)
+    .where(eq(contactsTable.id, contactId));
+
+  if (!contact) return res.status(404).json({ error: "Contact not found" });
+  res.json({ name: contact.name, email: contact.email ?? null, phone: contact.phone ?? null });
 }));
 
 router.get("/deposit-submissions", wrapAsync(async (req, res) => {

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import {
   invoicesTable, quickChargesTable, prospectsTable, estimatesTable,
   prospectEventsTable, otherIncomeTable, squarePaymentsTable, clientsTable,
+  depositSubmissionsTable,
 } from "@workspace/db/schema";
 import { eq, and, ne, asc, ilike, or } from "drizzle-orm";
 import { verifySquareWebhookSignature } from "../lib/square";
@@ -81,7 +82,18 @@ async function handleSquarePayment(opts: {
   }
 
   if (referenceId?.startsWith("website_deposit_") && squarePaymentId && amountMoney !== null) {
-    const siteSlug = referenceId.slice(16);
+    // referenceId format: "website_deposit_<slug>" (legacy) or "website_deposit_<slug>_<submissionId>"
+    const afterPrefix = referenceId.slice(16);
+    const lastUnderscore = afterPrefix.lastIndexOf("_");
+    let siteSlug = afterPrefix;
+    let submissionId: number | null = null;
+    if (lastUnderscore !== -1) {
+      const potentialId = parseInt(afterPrefix.slice(lastUnderscore + 1), 10);
+      if (!isNaN(potentialId)) {
+        submissionId = potentialId;
+        siteSlug = afterPrefix.slice(0, lastUnderscore);
+      }
+    }
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
 
@@ -110,6 +122,14 @@ async function handleSquarePayment(opts: {
     });
 
     console.log(`Website deposit payment ${squarePaymentId} recorded for site "${siteSlug}" — $${amountDollars}`);
+
+    // Mark deposit submission paid (new format with submission ID in referenceId)
+    if (submissionId !== null) {
+      await db.update(depositSubmissionsTable)
+        .set({ paymentStatus: "paid" })
+        .where(eq(depositSubmissionsTable.id, submissionId));
+      console.log(`Deposit submission ${submissionId} marked paid`);
+    }
 
     // Try to link to an existing prospect by buyer email, then by name
     let matchedProspectId: number | null = null;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, CreditCard, ShieldCheck, User, Mail, Phone, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
@@ -86,8 +86,26 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
   const [customerNotes, setCustomerNotes] = useState("");
 
   const [showFieldConfig, setShowFieldConfig] = useState(false);
+  const [prefillLoaded, setPrefillLoaded] = useState(false);
 
   const collectCustomerInfo = content.collectCustomerInfo !== false;
+
+  useEffect(() => {
+    if (isEditing || prefillLoaded || !collectCustomerInfo || !businessSlug) return;
+    const params = new URLSearchParams(window.location.search);
+    const contactId = params.get("contactId");
+    if (!contactId) return;
+    setPrefillLoaded(true);
+    fetch(`${BASE}/api/public/site/${businessSlug}/contact-prefill?contactId=${encodeURIComponent(contactId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { name?: string; email?: string; phone?: string } | null) => {
+        if (!data) return;
+        if (data.name) setCustomerName(data.name);
+        if (data.email) setCustomerEmail(data.email);
+        if (data.phone) setCustomerPhone(data.phone);
+      })
+      .catch(() => {});
+  }, [isEditing, collectCustomerInfo, businessSlug, prefillLoaded]);
 
   const fieldName  = { show: true,  required: true,  ...content.fieldName };
   const fieldEmail = { show: true,  required: true,  ...content.fieldEmail };
