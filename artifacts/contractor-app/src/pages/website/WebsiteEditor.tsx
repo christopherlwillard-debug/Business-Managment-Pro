@@ -50,6 +50,7 @@ import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
 import { useEditorHistory } from "./useEditorHistory";
 import { nanoid } from "nanoid";
+import type { SiteSettings } from "./website-types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -96,41 +97,7 @@ export interface SitePage {
   sections: Section[];
 }
 
-export interface SiteSettings {
-  brandColor: string;
-  secondaryColor?: string;
-  accentColor?: string;
-  bgColor?: string;
-  surfaceColor?: string;
-  textColor?: string;
-  textMutedColor?: string;
-  fontFamily: string;
-  headingFont?: string;
-  bodyFont?: string;
-  buttonRadius?: string;
-  buttonFontWeight?: string;
-  buttonShadow?: boolean;
-  cardRadius?: string;
-  cardShadow?: string;
-  cardBorder?: boolean;
-  inputRadius?: string;
-  headingSizeScale?: "compact" | "regular" | "large" | "xl";
-  baseFontSize?: "sm" | "base" | "lg";
-  headerBgColor?: string;
-  headerTextColor?: string;
-  headerLinkColor?: string;
-  footerTextColor?: string;
-  footerLinkColor?: string;
-  focusRingColor?: string;
-  logoUrl: string;
-  logoObjectPath?: string;
-  faviconUrl?: string;
-  faviconObjectPath?: string;
-  customDomain?: string;
-  headerStyle?: "light" | "dark" | "transparent";
-  footerBgColor?: string;
-  themeId?: string;
-}
+export type { SiteSettings } from "./website-types";
 
 interface WebsiteConfig {
   id: number | null;

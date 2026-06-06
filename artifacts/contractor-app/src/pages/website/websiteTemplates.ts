@@ -1,4 +1,4 @@
-import type { SiteSettings } from "./WebsiteEditor";
+import type { SiteSettings } from "./website-types";
 
 export interface WebsiteTemplate {
   id: string;
