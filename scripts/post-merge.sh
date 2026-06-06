@@ -658,3 +658,26 @@ pool.query(\`
 \`).then(() => { console.log('website_media table ensured'); pool.end(); })
   .catch(e => { console.error('website_media migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #752: create deposit_submissions table for website payment form (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS deposit_submissions (
+    id SERIAL PRIMARY KEY,
+    business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    site_config_id INTEGER REFERENCES website_configs(id) ON DELETE SET NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_email VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(50),
+    customer_notes TEXT,
+    amount NUMERIC(12,2) NOT NULL,
+    square_checkout_id VARCHAR(255),
+    square_checkout_url VARCHAR(1024),
+    payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )
+\`).then(() => { console.log('deposit_submissions table ensured'); pool.end(); })
+  .catch(e => { console.error('deposit_submissions migration error:', e.message); pool.end(); process.exit(1); });
+")

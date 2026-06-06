@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, serial, timestamp, unique, varchar } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, numeric, pgTable, serial, text, timestamp, unique, varchar } from "drizzle-orm/pg-core";
 import { businessesTable } from "./businesses";
 
 export const websitePageViewsTable = pgTable("website_page_views", {
@@ -37,6 +37,24 @@ export const websiteFormSubmissionsTable = pgTable("website_form_submissions", {
 
 export type WebsiteFormSubmission = typeof websiteFormSubmissionsTable.$inferSelect;
 export type InsertWebsiteFormSubmission = typeof websiteFormSubmissionsTable.$inferInsert;
+
+export const depositSubmissionsTable = pgTable("deposit_submissions", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  siteConfigId: integer("site_config_id").references(() => websiteConfigsTable.id, { onDelete: "set null" }),
+  customerName: varchar("customer_name", { length: 255 }).notNull(),
+  customerEmail: varchar("customer_email", { length: 255 }).notNull(),
+  customerPhone: varchar("customer_phone", { length: 50 }),
+  customerNotes: text("customer_notes"),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  squareCheckoutId: varchar("square_checkout_id", { length: 255 }),
+  squareCheckoutUrl: varchar("square_checkout_url", { length: 1024 }),
+  paymentStatus: varchar("payment_status", { length: 50 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type DepositSubmission = typeof depositSubmissionsTable.$inferSelect;
+export type InsertDepositSubmission = typeof depositSubmissionsTable.$inferInsert;
 
 export const websiteMediaFoldersTable = pgTable("website_media_folders", {
   id: serial("id").primaryKey(),

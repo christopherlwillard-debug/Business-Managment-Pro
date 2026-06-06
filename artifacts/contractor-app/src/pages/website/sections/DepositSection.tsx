@@ -1,8 +1,13 @@
 import { useState } from "react";
-import { Loader2, CreditCard, ShieldCheck } from "lucide-react";
+import { Loader2, CreditCard, ShieldCheck, User, Mail, Phone, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+interface CustomerFieldConfig {
+  show?: boolean;
+  required?: boolean;
+}
 
 interface DepositContent {
   heading: string;
@@ -10,6 +15,11 @@ interface DepositContent {
   amount: number;
   buttonLabel: string;
   allowCustomAmount?: boolean;
+  collectCustomerInfo?: boolean;
+  fieldName?: CustomerFieldConfig;
+  fieldEmail?: CustomerFieldConfig;
+  fieldPhone?: CustomerFieldConfig;
+  fieldNotes?: CustomerFieldConfig;
 }
 
 interface DepositSectionProps {
@@ -21,14 +31,83 @@ interface DepositSectionProps {
   blockStyle?: BlockStyle;
 }
 
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="relative inline-flex items-center cursor-pointer">
+      <input type="checkbox" className="sr-only peer" checked={checked} onChange={e => onChange(e.target.checked)} />
+      <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600" />
+    </label>
+  );
+}
+
+function FieldConfigRow({
+  label,
+  fieldKey,
+  cfg,
+  onUpdate,
+}: {
+  label: string;
+  fieldKey: keyof Pick<DepositContent, "fieldName" | "fieldEmail" | "fieldPhone" | "fieldNotes">;
+  cfg: CustomerFieldConfig | undefined;
+  onUpdate: (key: typeof fieldKey, v: CustomerFieldConfig) => void;
+}) {
+  const show = cfg?.show ?? true;
+  const required = cfg?.required ?? (fieldKey === "fieldName" || fieldKey === "fieldEmail");
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-gray-700 dark:text-gray-300 flex-1">{label}</span>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          <ToggleSwitch checked={show} onChange={v => onUpdate(fieldKey, { show: v, required: v ? required : false })} />
+          <span className="text-xs text-gray-500 dark:text-gray-400 w-8">{show ? "On" : "Off"}</span>
+        </div>
+        {show && (
+          <div className="flex items-center gap-1.5">
+            <ToggleSwitch
+              checked={required}
+              onChange={v => onUpdate(fieldKey, { show, required: v })}
+            />
+            <span className="text-xs text-gray-500 dark:text-gray-400 w-14">{required ? "Required" : "Optional"}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DepositSection({ content, settings, isEditing, onChange, businessSlug, blockStyle }: DepositSectionProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [customAmount, setCustomAmount] = useState<string>(String(content.amount ?? 250));
 
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerNotes, setCustomerNotes] = useState("");
+
+  const [showFieldConfig, setShowFieldConfig] = useState(false);
+
+  const collectCustomerInfo = content.collectCustomerInfo !== false;
+
+  const fieldName  = { show: true,  required: true,  ...content.fieldName };
+  const fieldEmail = { show: true,  required: true,  ...content.fieldEmail };
+  const fieldPhone = { show: false, required: false, ...content.fieldPhone };
+  const fieldNotes = { show: false, required: false, ...content.fieldNotes };
+
   function update(patch: Partial<DepositContent>) {
     onChange?.({ ...content, ...patch });
   }
+
+  function updateFieldCfg(key: keyof Pick<DepositContent, "fieldName" | "fieldEmail" | "fieldPhone" | "fieldNotes">, v: CustomerFieldConfig) {
+    onChange?.({ ...content, [key]: v });
+  }
+
+  const formattedAmount = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(content.amount ?? 0);
 
   async function handlePayNow() {
     if (!businessSlug) return;
@@ -42,7 +121,30 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
         return;
       }
       if (parsedCustom < minAmount) {
-        setError(`Minimum deposit is ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(minAmount)}.`);
+        setError(`Minimum deposit is ${formattedAmount}.`);
+        return;
+      }
+    }
+
+    if (collectCustomerInfo) {
+      if (fieldName.show && fieldName.required && !customerName.trim()) {
+        setError("Please enter your name.");
+        return;
+      }
+      if (fieldEmail.show && fieldEmail.required && !customerEmail.trim()) {
+        setError("Please enter your email address.");
+        return;
+      }
+      if (fieldEmail.show && customerEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+        setError("Please enter a valid email address.");
+        return;
+      }
+      if (fieldPhone.show && fieldPhone.required && !customerPhone.trim()) {
+        setError("Please enter your phone number.");
+        return;
+      }
+      if (fieldNotes.show && fieldNotes.required && !customerNotes.trim()) {
+        setError("Please fill in the notes field.");
         return;
       }
     }
@@ -52,17 +154,30 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
     try {
       const returnUrl = window.location.origin + window.location.pathname;
       const body: Record<string, unknown> = { returnUrl };
+
       if (content.allowCustomAmount && !isNaN(parsedCustom) && parsedCustom !== minAmount) {
         body.customAmount = parsedCustom;
       }
-      const res = await fetch(`${BASE}/api/public/site/${businessSlug}/create-deposit-link`, {
+
+      let endpoint: string;
+      if (collectCustomerInfo) {
+        endpoint = `${BASE}/api/public/site/${businessSlug}/deposit-submit`;
+        body.customerName = customerName.trim();
+        body.customerEmail = customerEmail.trim();
+        if (fieldPhone.show && customerPhone.trim()) body.customerPhone = customerPhone.trim();
+        if (fieldNotes.show && customerNotes.trim()) body.customerNotes = customerNotes.trim();
+      } else {
+        endpoint = `${BASE}/api/public/site/${businessSlug}/create-deposit-link`;
+      }
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as any).error ?? "Failed to create payment link");
+        throw new Error((data as Record<string, unknown>).error as string ?? "Failed to create payment link");
       }
       const { checkoutUrl } = await res.json() as { checkoutUrl: string };
       window.location.href = checkoutUrl;
@@ -71,13 +186,6 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
       setLoading(false);
     }
   }
-
-  const formattedAmount = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(content.amount ?? 0);
 
   if (isEditing) {
     return (
@@ -125,19 +233,47 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
             />
           </div>
           <div className="flex items-center gap-3">
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={!!content.allowCustomAmount}
-                onChange={e => update({ allowCustomAmount: e.target.checked })}
-              />
-              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600" />
-            </label>
+            <ToggleSwitch
+              checked={!!content.allowCustomAmount}
+              onChange={v => update({ allowCustomAmount: v })}
+            />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Allow visitors to enter a custom amount
             </span>
           </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <button
+              type="button"
+              className="flex items-center justify-between w-full text-sm font-medium text-gray-700 dark:text-gray-300"
+              onClick={() => setShowFieldConfig(v => !v)}
+            >
+              <span>Customer Info Fields</span>
+              {showFieldConfig ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            {showFieldConfig && (
+              <div className="mt-3 space-y-3">
+                <div className="flex items-center gap-3 pb-2 border-b border-gray-100 dark:border-gray-800">
+                  <ToggleSwitch
+                    checked={content.collectCustomerInfo !== false}
+                    onChange={v => update({ collectCustomerInfo: v })}
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Collect customer info before checkout
+                  </span>
+                </div>
+                {content.collectCustomerInfo !== false && (
+                  <div className="space-y-2.5 pl-1">
+                    <FieldConfigRow label="Name" fieldKey="fieldName" cfg={content.fieldName} onUpdate={updateFieldCfg} />
+                    <FieldConfigRow label="Email" fieldKey="fieldEmail" cfg={content.fieldEmail} onUpdate={updateFieldCfg} />
+                    <FieldConfigRow label="Phone" fieldKey="fieldPhone" cfg={content.fieldPhone} onUpdate={updateFieldCfg} />
+                    <FieldConfigRow label="Notes / message" fieldKey="fieldNotes" cfg={content.fieldNotes} onUpdate={updateFieldCfg} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="pt-2">
             <button
               disabled
@@ -165,29 +301,85 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
     >
       <div className="max-w-lg mx-auto">
         <div
-          className="bg-white p-8 text-center"
+          className="bg-white p-8"
           style={{
             borderRadius: "var(--theme-card-radius, 1rem)",
             boxShadow: "var(--theme-card-shadow, 0 4px 12px rgba(0,0,0,0.10))",
             border: "var(--theme-card-border, 1px solid #f3f4f6)",
           }}
         >
-          <div
-            className="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center"
-            style={{ backgroundColor: settings.brandColor + "22" }}
-          >
-            <CreditCard className="w-6 h-6" style={{ color: settings.brandColor }} />
+          <div className="text-center mb-6">
+            <div
+              className="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center"
+              style={{ backgroundColor: settings.brandColor + "22" }}
+            >
+              <CreditCard className="w-6 h-6" style={{ color: settings.brandColor }} />
+            </div>
+            <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--theme-text, #111827)" }}>
+              {content.heading || "Reserve Your Spot"}
+            </h2>
+            {content.description && (
+              <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+                {content.description}
+              </p>
+            )}
           </div>
-          <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--theme-text, #111827)" }}>
-            {content.heading || "Reserve Your Spot"}
-          </h2>
-          {content.description && (
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-5 leading-relaxed">
-              {content.description}
-            </p>
+
+          {collectCustomerInfo && (
+            <div className="space-y-3 mb-5">
+              {fieldName.show && (
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder={`Your name${fieldName.required ? "" : " (optional)"}`}
+                    value={customerName}
+                    onChange={e => { setCustomerName(e.target.value); setError(""); }}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                  />
+                </div>
+              )}
+              {fieldEmail.show && (
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <input
+                    type="email"
+                    placeholder={`Email address${fieldEmail.required ? "" : " (optional)"}`}
+                    value={customerEmail}
+                    onChange={e => { setCustomerEmail(e.target.value); setError(""); }}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                  />
+                </div>
+              )}
+              {fieldPhone.show && (
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <input
+                    type="tel"
+                    placeholder={`Phone number${fieldPhone.required ? "" : " (optional)"}`}
+                    value={customerPhone}
+                    onChange={e => { setCustomerPhone(e.target.value); setError(""); }}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                  />
+                </div>
+              )}
+              {fieldNotes.show && (
+                <div className="relative">
+                  <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <textarea
+                    rows={3}
+                    placeholder={`Notes or message${fieldNotes.required ? "" : " (optional)"}`}
+                    value={customerNotes}
+                    onChange={e => { setCustomerNotes(e.target.value); setError(""); }}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none"
+                  />
+                </div>
+              )}
+            </div>
           )}
+
           {content.allowCustomAmount ? (
-            <div className="mb-6">
+            <div className="mb-6 text-center">
               <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">
                 Deposit Amount (minimum {formattedAmount})
               </label>
@@ -207,12 +399,13 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
               </div>
             </div>
           ) : (
-            <p className="text-4xl font-bold mb-6" style={{ color: settings.brandColor }}>
+            <p className="text-4xl font-bold mb-6 text-center" style={{ color: settings.brandColor }}>
               {formattedAmount}
             </p>
           )}
+
           {error && (
-            <p className="text-sm text-red-600 dark:text-red-400 mb-3 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+            <p className="text-sm text-red-600 dark:text-red-400 mb-3 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 text-center">
               {error}
             </p>
           )}

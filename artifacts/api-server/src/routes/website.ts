@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Readable } from "stream";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable } from "@workspace/db/schema";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable } from "@workspace/db/schema";
 import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
@@ -555,6 +555,116 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   });
 
   res.json({ checkoutUrl: url });
+}));
+
+publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
+  const { slug } = req.params;
+
+  if (!isSquareConfigured()) {
+    return res.status(400).json({ error: "Payments are not configured for this site." });
+  }
+
+  const { customerName, customerEmail, customerPhone, customerNotes, customAmount, returnUrl } = req.body as {
+    customerName?: string;
+    customerEmail?: string;
+    customerPhone?: string;
+    customerNotes?: string;
+    customAmount?: number;
+    returnUrl?: string;
+  };
+
+  if (!customerName?.trim()) return res.status(400).json({ error: "Name is required." });
+  if (!customerEmail?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+    return res.status(400).json({ error: "A valid email is required." });
+  }
+
+  const [biz] = await db
+    .select({ id: businessesTable.id, name: businessesTable.name })
+    .from(businessesTable)
+    .where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ id: websiteConfigsTable.id, sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
+  if (!config) return res.status(404).json({ error: "Website not published" });
+
+  const sections = config.sections as Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>;
+  const depositSection = sections.find(s => s.type === "deposit" && s.enabled);
+  if (!depositSection) return res.status(404).json({ error: "Deposit section not found or not enabled" });
+
+  const configuredAmount = parseFloat(String(depositSection.content.amount ?? 0));
+  if (!configuredAmount || configuredAmount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+
+  const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
+  const heading = (depositSection.content.heading as string) || "Deposit";
+
+  let amount = configuredAmount;
+  if (customAmount !== undefined) {
+    if (!allowCustomAmount) return res.status(400).json({ error: "Custom amount is not allowed." });
+    const parsed = parseFloat(String(customAmount));
+    if (isNaN(parsed) || parsed <= 0) return res.status(400).json({ error: "Invalid custom amount." });
+    if (parsed < configuredAmount) return res.status(400).json({ error: `Minimum deposit is $${configuredAmount.toFixed(2)}.` });
+    amount = parsed;
+  }
+
+  const amountCents = Math.round(amount * 100);
+
+  let redirectUrl: string | undefined;
+  if (returnUrl) {
+    try {
+      const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
+      const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
+      const requestOrigin = `${proto}://${host}`.toLowerCase();
+      const parsed = new URL(returnUrl);
+      if (parsed.origin.toLowerCase() === requestOrigin) {
+        redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
+      }
+    } catch {
+      // Invalid or mismatched URL — no redirect
+    }
+  }
+
+  const [submission] = await db.insert(depositSubmissionsTable).values({
+    businessId: biz.id,
+    siteConfigId: config.id,
+    customerName: customerName.trim(),
+    customerEmail: customerEmail.trim().toLowerCase(),
+    customerPhone: customerPhone?.trim() || null,
+    customerNotes: customerNotes?.trim() || null,
+    amount: String(amount),
+    paymentStatus: "pending",
+  }).returning();
+
+  const { url, id: checkoutId } = await createSquarePaymentLink({
+    amountCents,
+    currency: "USD",
+    productName: `${biz.name}: ${heading}`,
+    referenceId: `website_deposit_${slug}_${submission.id}`,
+    customerEmail: customerEmail.trim(),
+    redirectUrl,
+  });
+
+  await db.update(depositSubmissionsTable)
+    .set({ squareCheckoutId: checkoutId, squareCheckoutUrl: url })
+    .where(eq(depositSubmissionsTable.id, submission.id));
+
+  res.json({ checkoutUrl: url });
+}));
+
+router.get("/deposit-submissions", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+  const subs = await db
+    .select()
+    .from(depositSubmissionsTable)
+    .where(eq(depositSubmissionsTable.businessId, businessId))
+    .orderBy(desc(depositSubmissionsTable.createdAt))
+    .limit(50);
+  res.json(subs);
 }));
 
 router.get("/form-submissions", wrapAsync(async (req, res) => {

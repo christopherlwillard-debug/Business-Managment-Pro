@@ -45,6 +45,7 @@ import { TextSection, defaultTextContent } from "./sections/TextSection";
 import { ImageGallerySection, defaultImageGalleryContent } from "./sections/ImageGallerySection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
+import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
@@ -3569,6 +3570,31 @@ function WebsiteEditor() {
                 </div>
               );
             }
+          }
+
+          if (sec.type === "deposit") {
+            panelContent = (
+              <div className="flex flex-col overflow-hidden h-full">
+                <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                    Pay Deposit
+                  </span>
+                  {rightCollapseBtn}
+                </div>
+                <div className="overflow-y-auto flex-1 min-h-0">
+                  <DepositSubmissionsPanel businessId={bizId} />
+                  <SectionStylePanel
+                    sectionId={sec.id}
+                    sectionType={sec.type}
+                    blockStyle={sec.blockStyle ?? {}}
+                    onChange={bs => updateBlockStyle(sec.id, bs)}
+                    onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                    isBgUploading={!!bgUploading[sec.id]}
+                    onOpenMediaLibrary={openMediaLibrary}
+                  />
+                </div>
+              </div>
+            );
           }
 
           if (!panelContent) {
