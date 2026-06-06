@@ -2155,6 +2155,7 @@ function WebsiteEditor() {
     }
   }
 
+  const isPublished = config?.published ?? false;
   const publicUrl = activeBusiness ? `${window.location.origin}${BASE}/site/${activeBusiness.slug}` : "";
   const previewUrl = activeBusiness
     ? isPublished
@@ -2350,8 +2351,6 @@ function WebsiteEditor() {
       </div>
     );
   }
-
-  const isPublished = config?.published ?? false;
 
   return (
     <>
