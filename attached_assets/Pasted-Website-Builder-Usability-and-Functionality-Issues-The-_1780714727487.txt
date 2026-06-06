@@ -1,0 +1,178 @@
+Website Builder Usability and Functionality Issues
+
+The website builder has improved significantly, but there are still several areas where editing feels incomplete or restricted. These issues should be addressed before focusing on additional advanced features.
+
+1. Header Builder Needs Full Control
+
+Current Issue:
+
+* The header appears locked.
+* Some header elements cannot be removed.
+* The CTA/button appears mandatory.
+
+Required Improvements:
+
+* Allow every header element to be enabled or disabled.
+* Logo toggle.
+* Navigation toggle.
+* Phone number toggle.
+* CTA button toggle.
+* Social icons toggle.
+* Allow completely blank headers if desired.
+* Allow multiple header layouts in the future.
+
+Success:
+Users should be able to fully customize or remove any header element.
+
+2. Sidebar Organization Still Needs Improvement
+
+Current Issue:
+
+* Editing controls are spread across long panels.
+* Users must scroll excessively to find settings.
+* Important controls are buried deep in the sidebar.
+
+Required Improvements:
+
+* Group settings into collapsible categories.
+* Style
+* Content
+* Layout
+* Advanced
+* Collapse unused groups by default.
+* Remember expanded/collapsed state.
+
+Success:
+Users should not need to scroll through large settings panels to find common options.
+
+3. Hero Banner Components Cannot Be Managed Properly
+
+Current Issue:
+
+* The hero contains a button.
+* When selecting the hero, some child elements disappear from editing.
+* Certain items cannot be deleted.
+
+Required Improvements:
+
+* Every component inside a section must be individually selectable.
+* Heading.
+* Paragraph.
+* Button.
+* Image.
+* Icons.
+* Components should never disappear while editing.
+* Every component must support:
+
+  * Edit
+  * Duplicate
+  * Hide
+  * Delete
+
+Success:
+Nothing inside a section should be locked or impossible to remove.
+
+4. Component Editability Audit
+
+Current Issue:
+
+* Some elements appear editable.
+* Some elements appear fixed.
+* Users cannot always determine what can be changed.
+
+Required Improvements:
+
+* Audit all existing components.
+* Verify every visible element supports editing.
+* Verify every editable element has delete capability where appropriate.
+* Remove hardcoded content wherever possible.
+
+Success:
+If users can see it, they should generally be able to edit it.
+
+5. Payment Form Needs Customer Information Fields
+
+Current Issue:
+
+* Payment collection does not gather enough customer information.
+* Payments may arrive without identifying details.
+
+Required Improvements:
+
+* Name field.
+* Email field.
+* Phone field.
+* Address field (optional).
+* Notes field.
+* Required field controls.
+* Submission storage.
+* Associate payment records with customer information.
+
+Success:
+Business owners can identify who submitted and paid through a form.
+
+6. Image Management Is Incomplete
+
+Current Issue:
+
+* Images can be uploaded.
+* Uploaded images cannot easily be placed throughout the website.
+
+Required Improvements:
+
+* Create a Media Library.
+* Upload once.
+* Reuse anywhere.
+* Replace images easily.
+* Select existing uploads from the media library.
+* Support logos, badges, and marketing graphics.
+
+Success:
+Users can upload an image once and place it anywhere on the website.
+
+7. More Image Placement Options
+
+Current Issue:
+
+* Images are limited in where they can be used.
+
+Required Improvements:
+
+* Image component.
+* Background images.
+* Footer logos.
+* Certification badges.
+* Partner logos.
+* Gallery images.
+* Team photos.
+* Service images.
+* Hero images.
+
+Success:
+Images should be usable anywhere appropriate throughout the site.
+
+8. Footer Needs Greater Flexibility
+
+Current Issue:
+
+* Difficult to add certifications, badges, and additional branding.
+
+Required Improvements:
+
+* Support images in footer.
+* Support logo grids.
+* Support certification badges.
+* Support social icons.
+* Support custom text blocks.
+* Support multiple footer layouts.
+
+Success:
+Users can add SBA logos, certifications, awards, and trust badges easily.
+
+Overall Goal
+
+The builder should follow a simple rule:
+
+If a user can see an element on the website, they should be able to select it, edit it, move it, duplicate it, hide it, or delete it.
+
+Nothing should feel locked, inaccessible, or hardcoded.
