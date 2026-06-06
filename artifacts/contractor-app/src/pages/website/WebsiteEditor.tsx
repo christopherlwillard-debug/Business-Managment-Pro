@@ -11,7 +11,7 @@ import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette,
-  ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X,
+  ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -220,6 +220,26 @@ const SECTION_LABELS: Record<string, string> = {
   gallery: "Image Gallery",
 };
 
+const SECTION_TYPE_ICONS: Record<string, React.ReactNode> = {
+  header:       <Layers    className="w-3 h-3 flex-shrink-0" />,
+  hero:         <Star      className="w-3 h-3 flex-shrink-0" />,
+  services:     <LayoutGrid className="w-3 h-3 flex-shrink-0" />,
+  about:        <FileText  className="w-3 h-3 flex-shrink-0" />,
+  contact:      <AlignLeft className="w-3 h-3 flex-shrink-0" />,
+  footer:       <Layers    className="w-3 h-3 flex-shrink-0" />,
+  portfolio:    <Images    className="w-3 h-3 flex-shrink-0" />,
+  deposit:      <ChevronDown className="w-3 h-3 flex-shrink-0" />,
+  columns:      <Columns   className="w-3 h-3 flex-shrink-0" />,
+  testimonials: <Star      className="w-3 h-3 flex-shrink-0" />,
+  faq:          <HelpCircle className="w-3 h-3 flex-shrink-0" />,
+  cta:          <Megaphone className="w-3 h-3 flex-shrink-0" />,
+  stats:        <BarChart2 className="w-3 h-3 flex-shrink-0" />,
+  content:      <AlignLeft className="w-3 h-3 flex-shrink-0" />,
+  row:          <LayoutGrid className="w-3 h-3 flex-shrink-0" />,
+  text:         <AlignLeft className="w-3 h-3 flex-shrink-0" />,
+  gallery:      <Images    className="w-3 h-3 flex-shrink-0" />,
+};
+
 const ADDABLE_SECTION_TYPES: Array<{
   type: Section["type"];
   label: string;
@@ -262,7 +282,8 @@ function SortableRow({
       <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={e => e.stopPropagation()}>
         <GripVertical className="w-4 h-4" />
       </div>
-      <span className={`flex-1 text-sm font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`}>
+      <span className={`flex-1 flex items-center gap-1.5 text-sm font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`}>
+        <span className="opacity-50">{SECTION_TYPE_ICONS[section.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />}</span>
         {SECTION_LABELS[section.type] ?? section.type}
       </span>
       <button
@@ -651,6 +672,10 @@ export default function WebsiteEditor() {
   const [showFullscreenPreview, setShowFullscreenPreview] = useState(false);
   const preFocusSidebarState = useRef<{ left: boolean; right: boolean } | null>(null);
   const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
+  const [treeSearch, setTreeSearch] = useState("");
+  const [previewViewport, setPreviewViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
+  const leftCollapsedRef = useRef(leftCollapsed);
+  const rightCollapsedRef = useRef(rightCollapsed);
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
@@ -659,10 +684,12 @@ export default function WebsiteEditor() {
 
   useEffect(() => {
     localStorage.setItem("website-editor-left-collapsed", String(leftCollapsed));
+    leftCollapsedRef.current = leftCollapsed;
   }, [leftCollapsed]);
 
   useEffect(() => {
     localStorage.setItem("website-editor-right-collapsed", String(rightCollapsed));
+    rightCollapsedRef.current = rightCollapsed;
   }, [rightCollapsed]);
 
   const isDirtyRef = useRef(false);
@@ -701,6 +728,23 @@ export default function WebsiteEditor() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") setActiveSection(null);
+      if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const t = e.target as HTMLElement;
+        if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+        setFocusMode(prev => {
+          if (prev) {
+            if (preFocusSidebarState.current) {
+              setLeftCollapsed(preFocusSidebarState.current.left);
+              setRightCollapsed(preFocusSidebarState.current.right);
+              preFocusSidebarState.current = null;
+            }
+            return false;
+          } else {
+            preFocusSidebarState.current = { left: leftCollapsedRef.current, right: rightCollapsedRef.current };
+            return true;
+          }
+        });
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -2207,7 +2251,30 @@ export default function WebsiteEditor() {
               : <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-medium">Draft preview</span>
             }
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Viewport toggle */}
+            <div className="flex items-center rounded-lg overflow-hidden border border-white/20 bg-white/5">
+              {([
+                { id: "desktop"  as const, Icon: Monitor,    label: "Desktop" },
+                { id: "tablet"   as const, Icon: Tablet,     label: "Tablet"  },
+                { id: "mobile"   as const, Icon: Smartphone, label: "Mobile"  },
+              ] as const).map(({ id, Icon, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPreviewViewport(id)}
+                  title={label}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${
+                    previewViewport === id
+                      ? "bg-white text-black font-medium"
+                      : "text-white/60 hover:text-white"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{label}</span>
+                </button>
+              ))}
+            </div>
             {isPublished && (
               <a
                 href={publicUrl}
@@ -2230,11 +2297,26 @@ export default function WebsiteEditor() {
             </button>
           </div>
         </div>
-        <iframe
-          src={previewUrl}
-          className="flex-1 w-full border-0"
-          title="Site preview"
-        />
+        {previewViewport === "desktop" ? (
+          <iframe src={previewUrl} className="flex-1 w-full border-0" title="Site preview" />
+        ) : (
+          <div className="flex-1 flex items-start justify-center overflow-auto py-6 bg-gray-950">
+            <div
+              className="relative bg-white shadow-2xl overflow-hidden flex-shrink-0 transition-all duration-300"
+              style={{
+                width:        previewViewport === "tablet" ? "768px" : "390px",
+                height:       previewViewport === "tablet" ? "1024px" : "844px",
+                borderRadius: previewViewport === "tablet" ? "16px" : "44px",
+                border:       "8px solid #374151",
+              }}
+            >
+              {previewViewport === "mobile" && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-5 bg-gray-700 rounded-b-xl z-10 pointer-events-none" />
+              )}
+              <iframe src={previewUrl} className="w-full h-full border-0" title="Site preview" />
+            </div>
+          </div>
+        )}
       </div>
     )}
     <div className="flex flex-col h-full">
@@ -2417,6 +2499,22 @@ export default function WebsiteEditor() {
             <div className="flex items-center gap-1">
               <button
                 type="button"
+                onClick={() => setExpandedPageIds(new Set(pages.map(p => p.id)))}
+                title="Expand all pages"
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpandedPageIds(new Set())}
+                title="Collapse all pages"
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronRight className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
                 onClick={() => { setShowAddPage(false); setPageTemplatePickerMode("add"); setShowPageTemplatePicker(true); }}
                 className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 title="Add page"
@@ -2432,6 +2530,30 @@ export default function WebsiteEditor() {
               >
                 <ChevronsLeft className="w-3.5 h-3.5" />
               </button>
+            </div>
+          </div>
+          {/* Tree search */}
+          <div className="px-2 py-1.5 border-b border-border/50 flex-shrink-0">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search sections…"
+                value={treeSearch}
+                onChange={e => {
+                  setTreeSearch(e.target.value);
+                  if (e.target.value) setExpandedPageIds(new Set(pages.map(p => p.id)));
+                }}
+                className="w-full pl-6 pr-6 py-0.5 text-[11px] border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {treeSearch && (
+                <button
+                  onClick={() => setTreeSearch("")}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -2482,7 +2604,15 @@ export default function WebsiteEditor() {
 
           {/* Unified tree — pages + their sections */}
           <div ref={sidebarListRef} className="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0">
-            {pages.map(page => {
+            {(treeSearch
+              ? pages.filter(p => {
+                  const q = treeSearch.toLowerCase();
+                  if (p.name.toLowerCase().includes(q)) return true;
+                  const secs = p.id === activePageId ? sections : (p.sections ?? []);
+                  return secs.some(s => (SECTION_LABELS[s.type] ?? s.type).toLowerCase().includes(q));
+                })
+              : pages
+            ).map(page => {
               const isActivePage = activePageId === page.id;
               const isExpanded = expandedPageIds.has(page.id);
               const pageSections = isActivePage ? sections : (page.sections ?? []);
@@ -3216,7 +3346,17 @@ export default function WebsiteEditor() {
         )}
 
         {/* Canvas — live preview */}
-        <div className="flex-1 overflow-y-auto bg-muted/30 min-w-0" onClick={() => setActiveSection(null)}>
+        <div
+          className="flex-1 overflow-y-auto bg-muted/30"
+          style={{ minWidth: "70%" }}
+          onClick={() => setActiveSection(null)}
+          onDoubleClick={e => {
+            if (focusMode) return;
+            if ((e.target as HTMLElement).closest("[data-section-canvas-id]")) return;
+            preFocusSidebarState.current = { left: leftCollapsed, right: rightCollapsed };
+            setFocusMode(true);
+          }}
+        >
           <div className={`mx-auto my-6 transition-all duration-300 ${
             viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
             viewport === "tablet" ? "max-w-[800px] px-4" :
