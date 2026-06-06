@@ -6,6 +6,8 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
 import { runBidSync } from "../jobs/bidSync.js";
 
+type SetAsideType = "sdvosb" | "small_business" | "open" | "other";
+
 interface AiSummary {
   description: string | null;
   estimatedValue: string | null;
@@ -14,6 +16,8 @@ interface AiSummary {
   importantDates: Array<{ label: string; date: string }>;
   isFit: boolean;
   fitReason: string | null;
+  setAsideType: SetAsideType;
+  bondingRequired: boolean;
 }
 
 function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
@@ -37,6 +41,12 @@ function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
     });
   };
 
+  const VALID_SET_ASIDE: SetAsideType[] = ["sdvosb", "small_business", "open", "other"];
+  const rawSetAside = typeof raw.setAsideType === "string" ? raw.setAsideType : "";
+  const setAsideType: SetAsideType = VALID_SET_ASIDE.includes(rawSetAside as SetAsideType)
+    ? (rawSetAside as SetAsideType)
+    : "other";
+
   return {
     description: toStr(raw.description),
     estimatedValue: toStr(raw.estimatedValue),
@@ -45,6 +55,8 @@ function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
     importantDates: toDates(raw.importantDates),
     isFit: raw.isFit === true,
     fitReason: toStr(raw.fitReason),
+    setAsideType,
+    bondingRequired: raw.bondingRequired === true,
   };
 }
 
@@ -70,7 +82,9 @@ Return JSON with exactly these fields:
   "veteranPreference": true or false (is SDVOSB or veteran-owned preference mentioned?),
   "importantDates": [{"label": "Event name", "date": "Date or deadline"}],
   "isFit": true or false (is this a good fit based on the scope: ${fitHint}?),
-  "fitReason": "Brief explanation of why it is or isn't a fit for this contractor"
+  "fitReason": "Brief explanation of why it is or isn't a fit for this contractor",
+  "setAsideType": one of "sdvosb" (SDVOSB/VOSB set-aside), "small_business" (small business set-aside), "open" (full and open competition, no set-aside), or "other" (HUBZone, 8(a), WOSB, etc.),
+  "bondingRequired": true or false (is a performance bond, bid bond, or payment bond explicitly required?)
 }`;
 }
 

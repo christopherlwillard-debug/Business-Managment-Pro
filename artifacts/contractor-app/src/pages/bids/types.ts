@@ -6,6 +6,8 @@ export interface QuickLink {
   password?: string;
 }
 
+export type SetAsideType = "sdvosb" | "small_business" | "open" | "other";
+
 export interface AiSummary {
   description?: string;
   estimatedValue?: string | null;
@@ -14,6 +16,8 @@ export interface AiSummary {
   importantDates?: Array<{ label: string; date: string }>;
   isFit?: boolean;
   fitReason?: string;
+  setAsideType?: SetAsideType;
+  bondingRequired?: boolean;
 }
 
 export interface BidOpportunity {

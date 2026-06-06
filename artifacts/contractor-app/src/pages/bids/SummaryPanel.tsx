@@ -1,9 +1,37 @@
 import {
   Sparkles, X, RefreshCw, XCircle, CheckCircle2,
   Briefcase, DollarSign, ShieldCheck, Calendar, ExternalLink,
+  Shield, Users, Globe, Award, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AiSummary, BidOpportunity } from "./types";
+import type { AiSummary, BidOpportunity, SetAsideType } from "./types";
+
+const SET_ASIDE_CONFIG: Record<SetAsideType, { label: string; icon: typeof Shield; color: string; bg: string }> = {
+  sdvosb: {
+    label: "SDVOSB Set-Aside",
+    icon: Shield,
+    color: "text-emerald-700 dark:text-emerald-300",
+    bg: "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800",
+  },
+  small_business: {
+    label: "Small Business Set-Aside",
+    icon: Users,
+    color: "text-blue-700 dark:text-blue-300",
+    bg: "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800",
+  },
+  open: {
+    label: "Open Competition",
+    icon: Globe,
+    color: "text-muted-foreground",
+    bg: "bg-muted/40 border-border",
+  },
+  other: {
+    label: "Veteran Preference",
+    icon: Award,
+    color: "text-purple-700 dark:text-purple-300",
+    bg: "bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800",
+  },
+};
 
 export default function SummaryPanel({
   bid,
@@ -59,6 +87,7 @@ export default function SummaryPanel({
 
           {summary && !loading && (
             <>
+              {/* Fit verdict */}
               {summary.isFit !== undefined && (
                 <div className={cn(
                   "flex items-start gap-3 p-4 rounded-xl border",
@@ -80,12 +109,58 @@ export default function SummaryPanel({
                     {summary.fitReason && (
                       <p className="text-xs mt-1 text-muted-foreground">{summary.fitReason}</p>
                     )}
-                    {summary.veteranPreference && (
-                      <p className="text-xs mt-1 font-medium text-blue-700 dark:text-blue-400">
-                        Veteran-owned preference mentioned
-                      </p>
-                    )}
                   </div>
+                </div>
+              )}
+
+              {/* Set-aside type */}
+              {summary.setAsideType && (() => {
+                const config = SET_ASIDE_CONFIG[summary.setAsideType];
+                const Icon = config.icon;
+                return (
+                  <div className={cn("flex items-start gap-3 p-4 rounded-xl border", config.bg)}>
+                    <Icon className={cn("w-5 h-5 flex-shrink-0 mt-0.5", config.color)} />
+                    <div>
+                      <p className={cn("font-semibold text-sm", config.color)}>
+                        {config.label}
+                      </p>
+                      {summary.setAsideType === "sdvosb" && (
+                        <p className="text-xs mt-0.5 text-muted-foreground">
+                          Your SDVOSB certification makes you eligible for this set-aside.
+                        </p>
+                      )}
+                      {summary.setAsideType === "small_business" && (
+                        <p className="text-xs mt-0.5 text-muted-foreground">
+                          Reserved for small businesses — your size status applies.
+                        </p>
+                      )}
+                      {summary.setAsideType === "open" && (
+                        <p className="text-xs mt-0.5 text-muted-foreground">
+                          Open to all — no set-aside restriction.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Veteran preference (only when not already sdvosb set-aside) */}
+              {summary.veteranPreference && summary.setAsideType !== "sdvosb" && (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+                  <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                  <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                    Veteran-owned preference mentioned
+                  </p>
+                </div>
+              )}
+
+              {/* Bonding required */}
+              {summary.bondingRequired && (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-50 border border-orange-200 dark:bg-orange-900/20 dark:border-orange-800">
+                  <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                  <p className="text-sm font-medium text-orange-700 dark:text-orange-400">
+                    Performance / payment bond required
+                  </p>
                 </div>
               )}
 
