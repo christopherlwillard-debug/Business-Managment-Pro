@@ -891,6 +891,7 @@ export default function WebsiteEditor() {
   const rightCollapsedRef = useRef(rightCollapsed);
   const [autoCollapsedRight, setAutoCollapsedRight] = useState(false);
   const autoCollapsedRightRef = useRef(false);
+  const editorBodyRef = useRef<HTMLDivElement>(null);
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
@@ -908,8 +909,10 @@ export default function WebsiteEditor() {
   }, [rightCollapsed]);
 
   useEffect(() => {
-    function checkWidth() {
-      const isNarrow = window.innerWidth < 1280;
+    function checkLayout() {
+      // Right sidebar needs ≥200px useful width; at 15% clamp that requires editor ≥ 1333px
+      const editorWidth = editorBodyRef.current?.offsetWidth ?? window.innerWidth;
+      const isNarrow = editorWidth * 0.15 < 200;
       if (isNarrow && !rightCollapsedRef.current && !autoCollapsedRightRef.current) {
         autoCollapsedRightRef.current = true;
         setAutoCollapsedRight(true);
@@ -920,9 +923,11 @@ export default function WebsiteEditor() {
         setRightCollapsed(false);
       }
     }
-    checkWidth();
-    window.addEventListener("resize", checkWidth);
-    return () => window.removeEventListener("resize", checkWidth);
+    checkLayout();
+    const ro = new ResizeObserver(checkLayout);
+    if (editorBodyRef.current) ro.observe(editorBodyRef.current);
+    window.addEventListener("resize", checkLayout);
+    return () => { ro.disconnect(); window.removeEventListener("resize", checkLayout); };
   }, []);
 
   const isDirtyRef = useRef(false);
@@ -2666,7 +2671,7 @@ export default function WebsiteEditor() {
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden">
+      <div ref={editorBodyRef} className="flex-1 flex overflow-hidden">
         {activeTab === "analytics" ? (
           <WebsiteAnalytics businessId={bizId!} />
         ) : activeTab === "media" ? (
@@ -2676,7 +2681,7 @@ export default function WebsiteEditor() {
         {focusMode ? null : (
         <div
           className="flex-shrink-0 border-r border-border bg-card flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out"
-          style={{ width: leftCollapsed ? '36px' : '240px' }}
+          style={{ width: leftCollapsed ? '36px' : 'clamp(180px, 15%, 240px)' }}
         >
           {leftCollapsed ? (
             <div className="flex flex-col items-center py-2 gap-3">
@@ -3590,7 +3595,7 @@ export default function WebsiteEditor() {
           return (
             <div
               className="flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out"
-              style={{ width: rightCollapsed ? '36px' : '288px' }}
+              style={{ width: rightCollapsed ? '36px' : 'clamp(200px, 15%, 288px)' }}
             >
               {panelContent}
             </div>
