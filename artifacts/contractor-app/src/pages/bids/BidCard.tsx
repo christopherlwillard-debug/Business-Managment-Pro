@@ -1,9 +1,10 @@
 import {
-  ExternalLink, Star, EyeOff, Sparkles, XCircle, CheckCircle2,
-  Building2, RefreshCw, Shield, Users, Globe, Award,
+  ExternalLink, Sparkles, XCircle, CheckCircle2,
+  Building2, Shield, Users, Globe, Award, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AiSummary, BidOpportunity, SetAsideType } from "./types";
+import type { AiSummary, BidOpportunity, BidStage, SetAsideType } from "./types";
+import { PIPELINE_STAGES } from "./types";
 
 function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -82,11 +83,20 @@ function EligibilityBadge({ summary }: { summary: AiSummary | null }) {
   );
 }
 
+const STAGE_BADGE: Record<string, { label: string; className: string }> = {
+  reviewing: { label: "Reviewing",  className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
+  bidding:   { label: "Bidding",    className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
+  submitted: { label: "Submitted",  className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+  won:       { label: "Won",        className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  lost:      { label: "Lost",       className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  no_bid:    { label: "No Bid",     className: "bg-muted text-muted-foreground" },
+};
+
 interface Props {
   bid: BidOpportunity;
   summary: AiSummary | null;
   onSummarize: (bid: BidOpportunity) => void;
-  onInterested: (bid: BidOpportunity) => void;
+  onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
   onDismiss: (bid: BidOpportunity) => void;
   onRestore: (bid: BidOpportunity) => void;
   isUpdating: boolean;
@@ -96,20 +106,21 @@ export default function BidCard({
   bid,
   summary,
   onSummarize,
-  onInterested,
+  onStageChange,
   onDismiss,
   onRestore,
   isUpdating,
 }: Props) {
   const effectiveSummary = summary;
-  const isDismissed = bid.status === "dismissed";
+  const isNoBid = bid.stage === "no_bid";
+  const stageBadge = STAGE_BADGE[bid.stage];
 
   return (
     <div className={cn(
       "bg-card border border-border rounded-xl p-4 flex flex-col gap-3 transition-opacity hover:border-border/80",
-      isDismissed && "opacity-60"
+      isNoBid && "opacity-60"
     )}>
-      {/* Top row: source badge + status badge + eligibility */}
+      {/* Top row: source badge + stage badge + eligibility */}
       <div className="flex flex-wrap items-center gap-1.5">
         {bid.source === "state-local" ? (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
@@ -121,14 +132,9 @@ export default function BidCard({
           </span>
         )}
 
-        {bid.status === "interested" && (
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-            Interested
-          </span>
-        )}
-        {bid.status === "dismissed" && (
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-            Hidden
+        {stageBadge && bid.stage !== "new" && (
+          <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", stageBadge.className)}>
+            {stageBadge.label}
           </span>
         )}
 
@@ -202,33 +208,36 @@ export default function BidCard({
             View
           </a>
         )}
-        {bid.status !== "interested" && !isDismissed && (
-          <button
-            onClick={() => onInterested(bid)}
-            disabled={isUpdating}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30 transition-colors whitespace-nowrap"
-          >
-            <Star className="w-3 h-3" />
-            Interested
-          </button>
+
+        {!isNoBid && (
+          <div className="relative ml-auto">
+            <select
+              value={bid.stage}
+              onChange={(e) => {
+                const newStage = e.target.value as BidStage;
+                if (newStage === "no_bid") {
+                  onDismiss(bid);
+                } else {
+                  onStageChange(bid, newStage);
+                }
+              }}
+              disabled={isUpdating}
+              className="appearance-none pl-2.5 pr-7 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-foreground cursor-pointer hover:border-primary/50 transition-colors disabled:opacity-60"
+            >
+              {PIPELINE_STAGES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+          </div>
         )}
-        {!isDismissed && (
-          <button
-            onClick={() => onDismiss(bid)}
-            disabled={isUpdating}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-          >
-            <EyeOff className="w-3 h-3" />
-            Hide
-          </button>
-        )}
-        {isDismissed && (
+
+        {isNoBid && (
           <button
             onClick={() => onRestore(bid)}
             disabled={isUpdating}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
           >
-            <RefreshCw className="w-3 h-3" />
             Restore
           </button>
         )}

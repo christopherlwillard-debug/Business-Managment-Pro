@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  RefreshCw, FileSearch, Shield,
+  RefreshCw, FileSearch, Shield, List, Columns,
 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -13,11 +13,14 @@ import SummaryPanel from "./bids/SummaryPanel";
 import BidFilterBar from "./bids/BidFilterBar";
 import BidStatsBar from "./bids/BidStatsBar";
 import BidCard from "./bids/BidCard";
+import PipelineBoard from "./bids/PipelineBoard";
 import type { BidFilter, SourceFilter } from "./bids/BidFilterBar";
-import type { QuickLink, AiSummary, BidOpportunity } from "./bids/types";
+import type { QuickLink, AiSummary, BidOpportunity, BidStage } from "./bids/types";
 import { RotateCcw } from "lucide-react";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const VIEW_KEY = "bid-view-preference";
 
 export default function BidOpportunities() {
   const queryClient = useQueryClient();
@@ -26,6 +29,9 @@ export default function BidOpportunities() {
   const { activeBusiness } = useBusiness();
   const businessId = activeBusiness?.id ?? null;
 
+  const [view, setView] = useState<"list" | "pipeline">(() =>
+    (localStorage.getItem(VIEW_KEY) as "list" | "pipeline") ?? "list"
+  );
   const [filter, setFilter] = useState<BidFilter>("all");
   const [fitOnly, setFitOnly] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -34,6 +40,11 @@ export default function BidOpportunities() {
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [summaryCache, setSummaryCache] = useState<Record<number, AiSummary>>({});
+
+  function switchView(v: "list" | "pipeline") {
+    setView(v);
+    localStorage.setItem(VIEW_KEY, v);
+  }
 
   // ── Quick Links ──────────────────────────────────────────────────────────
   const { data: settings } = useQuery<{ quickLinks?: QuickLink[] }>({
@@ -99,47 +110,65 @@ export default function BidOpportunities() {
   });
 
   const { data: bids = [], isLoading } = useQuery<BidOpportunity[]>({
-    queryKey: ["bids", filter, businessId],
+    queryKey: ["bids", businessId],
     enabled: businessId !== null,
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (filter !== "all") params.set("status", filter);
-      params.set("businessId", String(businessId));
-      const url = `${BASE_URL}/api/bids?${params.toString()}`;
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(`${BASE_URL}/api/bids?businessId=${businessId}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load bids");
       return res.json();
     },
   });
 
-  const updateStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+  const updateStage = useMutation({
+    mutationFn: async ({ id, stage }: { id: number; stage: BidStage }) => {
       const res = await fetch(`${BASE_URL}/api/bids/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ status, businessId }),
+        body: JSON.stringify({ stage, businessId }),
       });
       if (!res.ok) throw new Error("Failed to update bid");
-      return res.json();
+      return res.json() as Promise<BidOpportunity>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bids"] });
+    onSuccess: (updated) => {
+      queryClient.setQueryData<BidOpportunity[]>(["bids", businessId], (prev = []) =>
+        prev.map((b) => b.id === updated.id ? updated : b)
+      );
       queryClient.invalidateQueries({ queryKey: ["bids-active-count"] });
+      if (panelBid?.id === updated.id) setPanelBid(updated);
+    },
+  });
+
+  const updateNotes = useMutation({
+    mutationFn: async ({ id, notes }: { id: number; notes: string }) => {
+      const res = await fetch(`${BASE_URL}/api/bids/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ notes, businessId }),
+      });
+      if (!res.ok) throw new Error("Failed to save notes");
+      return res.json() as Promise<BidOpportunity>;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<BidOpportunity[]>(["bids", businessId], (prev = []) =>
+        prev.map((b) => b.id === updated.id ? updated : b)
+      );
+      if (panelBid?.id === updated.id) setPanelBid(updated);
     },
   });
 
   function dismissBid(bid: BidOpportunity) {
-    const previousStatus = bid.status;
-    updateStatus.mutate({ id: bid.id, status: "dismissed" }, {
+    const previousStage = bid.stage;
+    updateStage.mutate({ id: bid.id, stage: "no_bid" }, {
       onSuccess: () => {
         toast({
-          title: "Bid hidden",
+          title: "Bid moved to No Bid",
           description: bid.title.length > 60 ? bid.title.slice(0, 60) + "…" : bid.title,
           action: (
             <ToastAction
               altText="Undo"
-              onClick={() => updateStatus.mutate({ id: bid.id, status: previousStatus })}
+              onClick={() => updateStage.mutate({ id: bid.id, stage: previousStage })}
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1 inline" />
               Undo
@@ -193,23 +222,24 @@ export default function BidOpportunities() {
 
   // ── Filtering ─────────────────────────────────────────────────────────────
 
-  const activeBids = bids.filter((b) => b.status !== "dismissed");
-  const dismissedBids = bids.filter((b) => b.status === "dismissed");
-
-  const counts = {
-    all: activeBids.length,
-    new: bids.filter((b) => b.status === "new").length,
-    interested: bids.filter((b) => b.status === "interested").length,
-    dismissed: dismissedBids.length,
+  const counts: Partial<Record<BidFilter, number>> = {
+    all: bids.filter((b) => b.stage !== "no_bid").length,
+    new:       bids.filter((b) => b.stage === "new").length,
+    reviewing: bids.filter((b) => b.stage === "reviewing").length,
+    bidding:   bids.filter((b) => b.stage === "bidding").length,
+    submitted: bids.filter((b) => b.stage === "submitted").length,
+    won:       bids.filter((b) => b.stage === "won").length,
+    lost:      bids.filter((b) => b.stage === "lost").length,
+    no_bid:    bids.filter((b) => b.stage === "no_bid").length,
   };
 
-  const statusFiltered = filter === "dismissed" ? dismissedBids
-    : filter === "all" ? activeBids
-    : bids.filter((b) => b.status === filter);
+  const stageFiltered = filter === "all"
+    ? bids.filter((b) => b.stage !== "no_bid")
+    : bids.filter((b) => b.stage === filter);
 
-  const sourceFiltered = sourceFilter === "all" ? statusFiltered
-    : sourceFilter === "federal" ? statusFiltered.filter((b) => b.source !== "state-local")
-    : statusFiltered.filter((b) => b.source === "state-local");
+  const sourceFiltered = sourceFilter === "all" ? stageFiltered
+    : sourceFilter === "federal" ? stageFiltered.filter((b) => b.source !== "state-local")
+    : stageFiltered.filter((b) => b.source === "state-local");
 
   const fitCount = sourceFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true).length;
 
@@ -226,6 +256,8 @@ export default function BidOpportunities() {
           loading={panelLoading}
           error={panelError}
           onClose={() => setPanelBid(null)}
+          onStageChange={(stage) => updateStage.mutate({ id: panelBid.id, stage })}
+          onNotesSave={(notes) => updateNotes.mutate({ id: panelBid.id, notes })}
         />
       )}
 
@@ -251,15 +283,44 @@ export default function BidOpportunities() {
             <p className="text-muted-foreground mt-1">Select a business to see its bid feed</p>
           )}
         </div>
-        <button
-          onClick={() => syncBids.mutate()}
-          disabled={syncBids.isPending || !businessId}
-          title={!businessId ? "Select a business first" : undefined}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex-shrink-0"
-        >
-          <RefreshCw className={cn("w-4 h-4", syncBids.isPending && "animate-spin")} />
-          {syncBids.isPending ? "Refreshing…" : "Refresh Bids"}
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            <button
+              onClick={() => switchView("list")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
+                view === "list"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-card text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <List className="w-3.5 h-3.5" />
+              List
+            </button>
+            <button
+              onClick={() => switchView("pipeline")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l border-border",
+                view === "pipeline"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-card text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Columns className="w-3.5 h-3.5" />
+              Pipeline
+            </button>
+          </div>
+          <button
+            onClick={() => syncBids.mutate()}
+            disabled={syncBids.isPending || !businessId}
+            title={!businessId ? "Select a business first" : undefined}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          >
+            <RefreshCw className={cn("w-4 h-4", syncBids.isPending && "animate-spin")} />
+            {syncBids.isPending ? "Refreshing…" : "Refresh Bids"}
+          </button>
+        </div>
       </div>
 
       {/* Stats bar */}
@@ -273,7 +334,7 @@ export default function BidOpportunities() {
         isOwner={isOwner}
       />
 
-      {/* Filter bar */}
+      {/* Filter bar — shown in list view; source/fit also apply in pipeline */}
       <BidFilterBar
         filter={filter}
         setFilter={setFilter}
@@ -298,11 +359,24 @@ export default function BidOpportunities() {
             The system checks SAM.gov and Kentucky county bid pages daily at 7 AM. New opportunities will appear here automatically.
           </p>
         </div>
+      ) : view === "pipeline" ? (
+        <PipelineBoard
+          bids={bids}
+          summaryCache={summaryCache}
+          onSummarize={openSummaryPanel}
+          onStageChange={(bid, stage) => {
+            if (stage === "no_bid") dismissBid(bid);
+            else updateStage.mutate({ id: bid.id, stage });
+          }}
+          isUpdating={updateStage.isPending}
+          fitOnly={fitOnly}
+          sourceFilter={sourceFilter}
+        />
       ) : displayedBids.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
           <FileSearch className="w-8 h-8 text-muted-foreground/30" />
           <p className="text-muted-foreground font-medium">No bids match your filters</p>
-          <p className="text-sm text-muted-foreground/60">Try adjusting the status, source, or fit filter.</p>
+          <p className="text-sm text-muted-foreground/60">Try adjusting the stage, source, or fit filter.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -312,10 +386,10 @@ export default function BidOpportunities() {
               bid={bid}
               summary={summaryCache[bid.id] ?? bid.aiSummary}
               onSummarize={openSummaryPanel}
-              onInterested={(b) => updateStatus.mutate({ id: b.id, status: "interested" })}
+              onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage })}
               onDismiss={dismissBid}
-              onRestore={(b) => updateStatus.mutate({ id: b.id, status: "new" })}
-              isUpdating={updateStatus.isPending}
+              onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new" })}
+              isUpdating={updateStage.isPending}
             />
           ))}
         </div>

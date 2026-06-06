@@ -1,21 +1,27 @@
 import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { BidStage } from "./types";
 
-const STATUS_LABELS: Record<string, string> = {
-  new: "New",
-  interested: "Interested",
-  dismissed: "Dismissed",
-};
-
-export type BidFilter = "all" | "new" | "interested" | "dismissed";
+export type BidFilter = "all" | BidStage;
 export type SourceFilter = "all" | "federal" | "local";
+
+const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
+  { value: "all",       label: "All" },
+  { value: "new",       label: "New" },
+  { value: "reviewing", label: "Reviewing" },
+  { value: "bidding",   label: "Bidding" },
+  { value: "submitted", label: "Submitted" },
+  { value: "won",       label: "Won" },
+  { value: "lost",      label: "Lost" },
+  { value: "no_bid",    label: "No Bid" },
+];
 
 interface Props {
   filter: BidFilter;
   setFilter: (f: BidFilter) => void;
   fitOnly: boolean;
   setFitOnly: (fn: (v: boolean) => boolean) => void;
-  counts: Record<BidFilter, number>;
+  counts: Partial<Record<BidFilter, number>>;
   fitCount: number;
   sourceFilter: SourceFilter;
   setSourceFilter: (s: SourceFilter) => void;
@@ -28,23 +34,23 @@ export default function BidFilterBar({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        {(["all", "new", "interested", "dismissed"] as const).map((f) => (
+        {STAGE_FILTER_TABS.map(({ value, label }) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
+            key={value}
+            onClick={() => setFilter(value)}
             className={cn(
               "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
-              filter === f
+              filter === value
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
             )}
           >
-            {f === "all" ? "All" : STATUS_LABELS[f]}
+            {label}
             <span className={cn(
               "ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
-              filter === f ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+              filter === value ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
             )}>
-              {counts[f]}
+              {counts[value] ?? 0}
             </span>
           </button>
         ))}

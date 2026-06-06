@@ -573,6 +573,21 @@ pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS ai_summary js
   .catch(e => { console.error('bid_opportunities ai_summary migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Task #744: add stage and notes columns to bid_opportunities (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS stage text')
+  .then(() => pool.query('ALTER TABLE bid_opportunities ADD COLUMN IF NOT EXISTS notes text'))
+  .then(() => pool.query(\`UPDATE bid_opportunities SET stage = 'reviewing' WHERE status = 'interested' AND stage IS NULL\`))
+  .then(() => pool.query(\`UPDATE bid_opportunities SET stage = 'no_bid' WHERE status = 'dismissed' AND stage IS NULL\`))
+  .then(() => pool.query(\`UPDATE bid_opportunities SET stage = 'new' WHERE stage IS NULL\`))
+  .then(() => pool.query(\`ALTER TABLE bid_opportunities ALTER COLUMN stage SET DEFAULT 'new'\`))
+  .then(() => pool.query(\`ALTER TABLE bid_opportunities ALTER COLUMN stage SET NOT NULL\`))
+  .then(() => { console.log('bid_opportunities pipeline columns ensured'); pool.end(); })
+  .catch(e => { console.error('bid_opportunities pipeline migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Task #560: add phases JSONB column to jobs (idempotent)
 (cd lib/db && node -e "
 const { Pool } = require('pg');

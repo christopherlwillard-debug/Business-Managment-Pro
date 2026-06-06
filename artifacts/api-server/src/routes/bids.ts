@@ -6,6 +6,9 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
 import { runBidSync } from "../jobs/bidSync.js";
 
+type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
+const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
+
 type SetAsideType = "sdvosb" | "small_business" | "open" | "other";
 
 interface AiSummary {
@@ -92,7 +95,7 @@ const router = Router();
 
 router.get("/", async (req, res) => {
   try {
-    const { status, businessId } = req.query;
+    const { businessId } = req.query;
     const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
 
     if (isNaN(bizId)) {
@@ -100,23 +103,12 @@ router.get("/", async (req, res) => {
       return;
     }
 
-    let rows;
-    if (status && typeof status === "string") {
-      rows = await db
-        .select()
-        .from(bidOpportunitiesTable)
-        .where(and(
-          eq(bidOpportunitiesTable.businessId, bizId),
-          eq(bidOpportunitiesTable.status, status)
-        ))
-        .orderBy(desc(bidOpportunitiesTable.createdAt));
-    } else {
-      rows = await db
-        .select()
-        .from(bidOpportunitiesTable)
-        .where(eq(bidOpportunitiesTable.businessId, bizId))
-        .orderBy(desc(bidOpportunitiesTable.createdAt));
-    }
+    const rows = await db
+      .select()
+      .from(bidOpportunitiesTable)
+      .where(eq(bidOpportunitiesTable.businessId, bizId))
+      .orderBy(desc(bidOpportunitiesTable.createdAt));
+
     res.json(rows);
   } catch (err) {
     console.error("[bids] GET /bids error:", err);
@@ -138,17 +130,42 @@ router.patch("/:id", async (req, res) => {
     return;
   }
 
-  const { status } = req.body as { status?: string };
-  const allowed = ["new", "interested", "dismissed"];
-  if (!status || !allowed.includes(status)) {
-    res.status(400).json({ error: "Invalid status. Must be new, interested, or dismissed." });
+  const { stage, notes, status } = req.body as { stage?: string; notes?: string; status?: string };
+  const updates: Record<string, unknown> = {};
+
+  if (stage !== undefined) {
+    if (!VALID_STAGES.includes(stage as BidStage)) {
+      res.status(400).json({ error: `Invalid stage. Must be one of: ${VALID_STAGES.join(", ")}` });
+      return;
+    }
+    updates.stage = stage;
+    if (stage === "no_bid") updates.status = "dismissed";
+    else if (stage === "reviewing") updates.status = "interested";
+    else if (stage === "new") updates.status = "new";
+  }
+
+  if (notes !== undefined) {
+    updates.notes = notes;
+  }
+
+  if (status !== undefined && stage === undefined) {
+    const allowed = ["new", "interested", "dismissed"];
+    if (!allowed.includes(status)) {
+      res.status(400).json({ error: "Invalid status. Must be new, interested, or dismissed." });
+      return;
+    }
+    updates.status = status;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No valid fields to update." });
     return;
   }
 
   try {
     const [updated] = await db
       .update(bidOpportunitiesTable)
-      .set({ status })
+      .set(updates)
       .where(and(
         eq(bidOpportunitiesTable.id, id),
         eq(bidOpportunitiesTable.businessId, bizId),

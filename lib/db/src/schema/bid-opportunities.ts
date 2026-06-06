@@ -13,6 +13,8 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   responseDeadline: text("response_deadline"),
   url: text("url"),
   status: text("status").notNull().default("new"),
+  stage: text("stage").notNull().default("new"),
+  notes: text("notes"),
   source: text("source").notNull().default("federal"),
   sourceLabel: text("source_label"),
   aiSummary: jsonb("ai_summary"),

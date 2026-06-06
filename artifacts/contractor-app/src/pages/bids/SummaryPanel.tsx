@@ -1,10 +1,13 @@
+import { useState, useEffect } from "react";
 import {
   Sparkles, X, RefreshCw, XCircle, CheckCircle2,
   Briefcase, DollarSign, ShieldCheck, Calendar, ExternalLink,
-  Shield, Users, Globe, Award, AlertTriangle,
+  Shield, Users, Globe, Award, AlertTriangle, ChevronDown,
+  StickyNote, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AiSummary, BidOpportunity, SetAsideType } from "./types";
+import type { AiSummary, BidOpportunity, BidStage, SetAsideType } from "./types";
+import { PIPELINE_STAGES } from "./types";
 
 const SET_ASIDE_CONFIG: Record<SetAsideType, { label: string; icon: typeof Shield; color: string; bg: string }> = {
   sdvosb: {
@@ -39,13 +42,34 @@ export default function SummaryPanel({
   loading,
   error,
   onClose,
+  onStageChange,
+  onNotesSave,
 }: {
   bid: BidOpportunity;
   summary: AiSummary | null;
   loading: boolean;
   error: string | null;
   onClose: () => void;
+  onStageChange: (stage: BidStage) => void;
+  onNotesSave: (notes: string) => void;
 }) {
+  const [notes, setNotes] = useState(bid.notes ?? "");
+  const [savedIndicator, setSavedIndicator] = useState(false);
+
+  useEffect(() => {
+    setNotes(bid.notes ?? "");
+  }, [bid.id, bid.notes]);
+
+  function handleNotesBlur() {
+    const trimmed = notes.trim();
+    const prev = (bid.notes ?? "").trim();
+    if (trimmed !== prev) {
+      onNotesSave(trimmed);
+      setSavedIndicator(true);
+      setTimeout(() => setSavedIndicator(false), 2000);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div
@@ -60,6 +84,21 @@ export default function SummaryPanel({
             </div>
             <p className="font-semibold text-foreground text-sm leading-snug line-clamp-2">{bid.title}</p>
             {bid.agency && <p className="text-xs text-muted-foreground mt-0.5">{bid.agency}</p>}
+            <div className="flex items-center gap-2 mt-2.5">
+              <span className="text-xs text-muted-foreground font-medium">Stage:</span>
+              <div className="relative">
+                <select
+                  value={bid.stage}
+                  onChange={(e) => onStageChange(e.target.value as BidStage)}
+                  className="appearance-none pl-2.5 pr-7 py-1 text-xs font-medium rounded-lg border border-border bg-card text-foreground cursor-pointer hover:border-primary/50 transition-colors"
+                >
+                  {PIPELINE_STAGES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+              </div>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -225,6 +264,31 @@ export default function SummaryPanel({
               </div>
             </>
           )}
+
+          {/* Notes section — always visible */}
+          <div className="space-y-2 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Your Notes</span>
+              </div>
+              {savedIndicator && (
+                <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  <Check className="w-3 h-3" />
+                  Saved
+                </span>
+              )}
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={handleNotesBlur}
+              rows={4}
+              placeholder="Site visit dates, go/no-go reasoning, team contacts, key requirements to address…"
+              className="w-full resize-none rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors"
+            />
+            <p className="text-xs text-muted-foreground/50">Auto-saves when you click away.</p>
+          </div>
         </div>
 
         {bid.url && (
