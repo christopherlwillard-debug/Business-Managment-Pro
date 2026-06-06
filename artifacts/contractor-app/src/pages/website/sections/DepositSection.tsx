@@ -93,12 +93,12 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
   useEffect(() => {
     if (isEditing || prefillLoaded || !collectCustomerInfo || !businessSlug) return;
     const params = new URLSearchParams(window.location.search);
-    const contactId = params.get("contactId");
-    if (!contactId) return;
+    const prefillToken = params.get("prefill");
+    if (!prefillToken) return;
     setPrefillLoaded(true);
-    fetch(`${BASE}/api/public/site/${businessSlug}/contact-prefill?contactId=${encodeURIComponent(contactId)}`)
+    fetch(`${BASE}/api/public/site/${businessSlug}/contact-prefill?token=${encodeURIComponent(prefillToken)}`)
       .then(r => r.ok ? r.json() : null)
-      .then((data: { name?: string; email?: string; phone?: string } | null) => {
+      .then((data: { name?: string; email?: string | null; phone?: string | null } | null) => {
         if (!data) return;
         if (data.name) setCustomerName(data.name);
         if (data.email) setCustomerEmail(data.email);

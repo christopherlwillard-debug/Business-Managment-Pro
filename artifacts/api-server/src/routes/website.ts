@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { Readable } from "stream";
+import { createHmac, createHash } from "crypto";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
 import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable } from "@workspace/db/schema";
@@ -20,6 +21,34 @@ const router = Router();
 const publicRouter = Router();
 
 const BASE_URL = process.env["BASE_URL"] ?? "";
+
+function getPrefillKey(): string {
+  const raw = process.env.DATABASE_URL ?? "buildpro-prefill-default-key";
+  return createHash("sha256").update(raw).digest("hex").slice(0, 32);
+}
+
+function createPrefillToken(data: { name: string; email: string | null; phone: string | null }): string {
+  const payload = JSON.stringify({ n: data.name, e: data.email, p: data.phone, x: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+  const b64 = Buffer.from(payload).toString("base64url");
+  const mac = createHmac("sha256", getPrefillKey()).update(b64).digest("hex").slice(0, 16);
+  return `${b64}.${mac}`;
+}
+
+function decodePrefillToken(token: string): { name: string; email: string | null; phone: string | null } | null {
+  try {
+    const dotIdx = token.lastIndexOf(".");
+    if (dotIdx === -1) return null;
+    const b64 = token.slice(0, dotIdx);
+    const mac = token.slice(dotIdx + 1);
+    const expectedMac = createHmac("sha256", getPrefillKey()).update(b64).digest("hex").slice(0, 16);
+    if (mac !== expectedMac) return null;
+    const payload = JSON.parse(Buffer.from(b64, "base64url").toString()) as { n: string; e: string | null; p: string | null; x: number };
+    if (Date.now() > payload.x) return null;
+    return { name: payload.n, email: payload.e, phone: payload.p };
+  } catch {
+    return null;
+  }
+}
 
 function defaultSections() {
   return [
@@ -673,23 +702,25 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.get("/:slug/contact-prefill", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
+  const { token } = req.query;
+  if (typeof token !== "string" || !token) {
+    return res.status(400).json({ error: "token required" });
+  }
+  const data = decodePrefillToken(token);
+  if (!data) return res.status(400).json({ error: "Invalid or expired prefill token" });
+  res.json(data);
+}));
+
+router.get("/contact-prefill-token", wrapAsync(async (req, res) => {
   const contactId = parseInt(req.query.contactId as string);
   if (!contactId || isNaN(contactId)) return res.status(400).json({ error: "contactId required" });
-
-  const [biz] = await db
-    .select({ id: businessesTable.id })
-    .from(businessesTable)
-    .where(eq(businessesTable.slug, slug));
-  if (!biz) return res.status(404).json({ error: "Not found" });
-
   const [contact] = await db
     .select({ name: contactsTable.name, email: contactsTable.email, phone: contactsTable.phone })
     .from(contactsTable)
     .where(eq(contactsTable.id, contactId));
-
   if (!contact) return res.status(404).json({ error: "Contact not found" });
-  res.json({ name: contact.name, email: contact.email ?? null, phone: contact.phone ?? null });
+  const token = createPrefillToken({ name: contact.name, email: contact.email ?? null, phone: contact.phone ?? null });
+  res.json({ token });
 }));
 
 router.get("/deposit-submissions", wrapAsync(async (req, res) => {
