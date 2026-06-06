@@ -16,6 +16,7 @@ const SECTION_LABELS: Record<string, string> = {
   footer: "Footer",
   portfolio: "Portfolio",
   deposit: "Pay Deposit",
+  image: "Image",
   columns: "Columns",
   testimonials: "Testimonials",
   faq: "FAQ",

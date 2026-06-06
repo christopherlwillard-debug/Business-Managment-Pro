@@ -43,6 +43,7 @@ import { ComponentEditorPanel } from "./ComponentEditorPanel";
 import { RowEditorPanel } from "./RowEditorPanel";
 import { TextSection, defaultTextContent } from "./sections/TextSection";
 import { ImageGallerySection, defaultImageGalleryContent } from "./sections/ImageGallerySection";
+import { ImageSection, defaultImageContent } from "./sections/ImageSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
@@ -84,7 +85,7 @@ class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { er
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -142,7 +143,8 @@ function renderSection(
     case "services": return <ServicesSection {...props} businessName={extras?.businessName} />;
     case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
-    case "footer":  return <FooterSection {...props} />;
+    case "footer":  return <FooterSection {...props} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
+    case "image":   return <ImageSection {...props} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
     case "portfolio": return (
       <PortfolioSection
         {...props}
@@ -213,6 +215,7 @@ const SECTION_LABELS: Record<string, string> = {
   row: "Row",
   text: "Text Block",
   gallery: "Image Gallery",
+  image: "Image",
 };
 
 const SECTION_TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -233,6 +236,7 @@ const SECTION_TYPE_ICONS: Record<string, React.ReactNode> = {
   row:          <LayoutGrid className="w-3 h-3 flex-shrink-0" />,
   text:         <AlignLeft className="w-3 h-3 flex-shrink-0" />,
   gallery:      <Images    className="w-3 h-3 flex-shrink-0" />,
+  image:        <Images    className="w-3 h-3 flex-shrink-0" />,
 };
 
 const ADDABLE_SECTION_TYPES: Array<{
@@ -244,6 +248,7 @@ const ADDABLE_SECTION_TYPES: Array<{
   { type: "hero", label: "Hero Banner", icon: <ImagePlus className="w-4 h-4" />, allowMultiple: true },
   { type: "text", label: "Text Block", icon: <AlignLeft className="w-4 h-4" />, allowMultiple: true },
   { type: "gallery", label: "Image Gallery", icon: <Images className="w-4 h-4" />, allowMultiple: true },
+  { type: "image",   label: "Image",         icon: <Images className="w-4 h-4" />, allowMultiple: true },
   { type: "testimonials", label: "Testimonials", icon: <Star className="w-4 h-4" />, allowMultiple: true },
   { type: "faq", label: "FAQ", icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
   { type: "cta", label: "CTA Banner", icon: <Megaphone className="w-4 h-4" />, allowMultiple: true },
@@ -1926,6 +1931,8 @@ function WebsiteEditor() {
       content = defaultTextContent() as unknown as Record<string, unknown>;
     } else if (type === "gallery") {
       content = defaultImageGalleryContent() as unknown as Record<string, unknown>;
+    } else if (type === "image") {
+      content = defaultImageContent() as unknown as Record<string, unknown>;
     } else if (type === "hero") {
       content = {
         headline: "Your Page Title",

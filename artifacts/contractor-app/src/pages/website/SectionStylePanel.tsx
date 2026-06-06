@@ -1,15 +1,6 @@
 import { useState } from "react";
-import { ImagePlus, Loader2, X, Images } from "lucide-react";
+import { ImagePlus, Loader2, X, Images, ChevronDown, ChevronUp } from "lucide-react";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
-
-function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="border-b border-border pb-4 mb-4 last:border-0 last:mb-0">
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">{title}</p>
-      {children}
-    </div>
-  );
-}
 
 function SliderRow({
   label,
@@ -48,14 +39,33 @@ function SliderRow({
   );
 }
 
-interface SectionStylePanelProps {
-  sectionId: string;
-  sectionType: string;
-  blockStyle: BlockStyle;
-  onChange: (bs: BlockStyle) => void;
-  onBgImageUpload?: (file: File) => void;
-  isBgUploading?: boolean;
-  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+function AccordionSection({
+  title,
+  groupKey,
+  openGroups,
+  onToggle,
+  children,
+}: {
+  title: string;
+  groupKey: string;
+  openGroups: Record<string, boolean>;
+  onToggle: (k: string) => void;
+  children: React.ReactNode;
+}) {
+  const open = openGroups[groupKey] ?? false;
+  return (
+    <div className="border-b border-border last:border-0">
+      <button
+        type="button"
+        onClick={() => onToggle(groupKey)}
+        className="flex items-center justify-between w-full py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-foreground transition-colors"
+      >
+        <span>{title}</span>
+        {open ? <ChevronUp className="w-3 h-3 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 flex-shrink-0" />}
+      </button>
+      {open && <div className="pb-4">{children}</div>}
+    </div>
+  );
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -68,7 +78,18 @@ const SECTION_LABELS: Record<string, string> = {
   deposit: "Pay Deposit",
   content: "Content Block",
   row: "Row",
+  image: "Image",
 };
+
+interface SectionStylePanelProps {
+  sectionId: string;
+  sectionType: string;
+  blockStyle: BlockStyle;
+  onChange: (bs: BlockStyle) => void;
+  onBgImageUpload?: (file: File) => void;
+  isBgUploading?: boolean;
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+}
 
 export function SectionStylePanel({
   sectionId: _sectionId,
@@ -80,6 +101,27 @@ export function SectionStylePanel({
   onOpenMediaLibrary,
 }: SectionStylePanelProps) {
   const [tab, setTab] = useState<"style" | "advanced">("style");
+
+  const storageKey = `section-style-accordion-${sectionType}`;
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved
+        ? JSON.parse(saved)
+        : { background: true, spacing: false, decoration: false, animation: false, visibility: false, css: false };
+    } catch {
+      return { background: true, spacing: false, decoration: false, animation: false, visibility: false, css: false };
+    }
+  });
+
+  function toggleGroup(key: string) {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
   const bs = blockStyle;
 
   function patch(update: Partial<BlockStyle>) {
@@ -114,7 +156,8 @@ export function SectionStylePanel({
       <div className="flex-1 overflow-y-auto p-3">
         {tab === "style" ? (
           <>
-            <PanelSection title="Background">
+            {/* Background */}
+            <AccordionSection title="Background" groupKey="background" openGroups={openGroups} onToggle={toggleGroup}>
               <div className="flex gap-1 mb-3">
                 {(["color", "image", "gradient"] as const).map((t) => (
                   <button
@@ -201,7 +244,9 @@ export function SectionStylePanel({
                   {onOpenMediaLibrary && (
                     <button
                       type="button"
-                      onClick={() => onOpenMediaLibrary(url => patch({ bgImageUrl: url, bgImageObjectPath: undefined }))}
+                      onClick={() =>
+                        onOpenMediaLibrary((url) => patch({ bgImageUrl: url, bgImageObjectPath: undefined }))
+                      }
                       className="flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-2 cursor-pointer transition-colors hover:bg-muted mb-2 text-muted-foreground hover:text-foreground"
                     >
                       <Images className="w-3 h-3" />
@@ -274,83 +319,44 @@ export function SectionStylePanel({
                   )}
                 </>
               )}
-            </PanelSection>
 
-            {(bgType === "image" || bgType === "gradient") && (
-              <PanelSection title="Overlay">
-                <div className="flex items-center gap-2 mb-3">
-                  <label className="text-xs text-muted-foreground w-14 flex-shrink-0">Color</label>
-                  <input
-                    type="color"
-                    value={bs.overlayColor ?? "#000000"}
-                    onChange={(e) => patch({ overlayColor: e.target.value })}
-                    className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent"
+              {(bgType === "image" || bgType === "gradient") && (
+                <div className="mt-4 pt-3 border-t border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Overlay</p>
+                  <div className="flex items-center gap-2 mb-3">
+                    <label className="text-xs text-muted-foreground w-14 flex-shrink-0">Color</label>
+                    <input
+                      type="color"
+                      value={bs.overlayColor ?? "#000000"}
+                      onChange={(e) => patch({ overlayColor: e.target.value })}
+                      className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent"
+                    />
+                  </div>
+                  <SliderRow
+                    label="Opacity"
+                    value={Math.round((bs.overlayOpacity ?? 0) * 100)}
+                    min={0}
+                    max={90}
+                    unit="%"
+                    onChange={(v) => patch({ overlayOpacity: v / 100 })}
                   />
                 </div>
-                <SliderRow
-                  label="Opacity"
-                  value={Math.round((bs.overlayOpacity ?? 0) * 100)}
-                  min={0}
-                  max={90}
-                  unit="%"
-                  onChange={(v) => patch({ overlayOpacity: v / 100 })}
-                />
-              </PanelSection>
-            )}
+              )}
+            </AccordionSection>
 
-            <PanelSection title="Spacing">
-              <SliderRow
-                label="Padding Top"
-                value={bs.paddingTop}
-                min={0}
-                max={200}
-                onChange={(v) => patch({ paddingTop: v })}
-              />
-              <SliderRow
-                label="Padding Bottom"
-                value={bs.paddingBottom}
-                min={0}
-                max={200}
-                onChange={(v) => patch({ paddingBottom: v })}
-              />
-              <SliderRow
-                label="Padding Left"
-                value={bs.paddingLeft}
-                min={0}
-                max={100}
-                onChange={(v) => patch({ paddingLeft: v })}
-              />
-              <SliderRow
-                label="Padding Right"
-                value={bs.paddingRight}
-                min={0}
-                max={100}
-                onChange={(v) => patch({ paddingRight: v })}
-              />
-              <SliderRow
-                label="Margin Top"
-                value={bs.marginTop}
-                min={0}
-                max={200}
-                onChange={(v) => patch({ marginTop: v || undefined })}
-              />
-              <SliderRow
-                label="Margin Bottom"
-                value={bs.marginBottom}
-                min={0}
-                max={200}
-                onChange={(v) => patch({ marginBottom: v || undefined })}
-              />
-              <SliderRow
-                label="Min Height"
-                value={bs.minHeight}
-                min={0}
-                max={800}
-                onChange={(v) => patch({ minHeight: v || undefined })}
-              />
-            </PanelSection>
+            {/* Spacing */}
+            <AccordionSection title="Spacing" groupKey="spacing" openGroups={openGroups} onToggle={toggleGroup}>
+              <SliderRow label="Padding Top"    value={bs.paddingTop}    min={0} max={200} onChange={(v) => patch({ paddingTop: v })} />
+              <SliderRow label="Padding Bottom" value={bs.paddingBottom} min={0} max={200} onChange={(v) => patch({ paddingBottom: v })} />
+              <SliderRow label="Padding Left"   value={bs.paddingLeft}   min={0} max={100} onChange={(v) => patch({ paddingLeft: v })} />
+              <SliderRow label="Padding Right"  value={bs.paddingRight}  min={0} max={100} onChange={(v) => patch({ paddingRight: v })} />
+              <SliderRow label="Margin Top"     value={bs.marginTop}     min={0} max={200} onChange={(v) => patch({ marginTop: v || undefined })} />
+              <SliderRow label="Margin Bottom"  value={bs.marginBottom}  min={0} max={200} onChange={(v) => patch({ marginBottom: v || undefined })} />
+              <SliderRow label="Min Height"     value={bs.minHeight}     min={0} max={800} onChange={(v) => patch({ minHeight: v || undefined })} />
+            </AccordionSection>
 
-            <PanelSection title="Decoration">
+            {/* Decoration */}
+            <AccordionSection title="Decoration" groupKey="decoration" openGroups={openGroups} onToggle={toggleGroup}>
               <div className="mb-3">
                 <label className="text-xs text-muted-foreground block mb-2">Shadow</label>
                 <div className="flex gap-1 flex-wrap">
@@ -376,18 +382,19 @@ export function SectionStylePanel({
                 max={48}
                 onChange={(v) => patch({ borderRadius: v || undefined })}
               />
-            </PanelSection>
+            </AccordionSection>
 
-            <PanelSection title="Animation">
+            {/* Animation */}
+            <AccordionSection title="Animation" groupKey="animation" openGroups={openGroups} onToggle={toggleGroup}>
               <p className="text-[10px] text-muted-foreground mb-2">
                 Entrance animation — plays on the live site when the section scrolls into view
               </p>
               <div className="grid grid-cols-2 gap-1">
                 {(
                   [
-                    { value: "none", label: "None" },
-                    { value: "fadeIn", label: "Fade In" },
-                    { value: "slideUp", label: "Slide Up" },
+                    { value: "none",      label: "None" },
+                    { value: "fadeIn",    label: "Fade In" },
+                    { value: "slideUp",   label: "Slide Up" },
                     { value: "slideLeft", label: "Slide Left" },
                   ] as const
                 ).map(({ value, label }) => (
@@ -404,7 +411,7 @@ export function SectionStylePanel({
                   </button>
                 ))}
               </div>
-            </PanelSection>
+            </AccordionSection>
 
             <button
               onClick={() => onChange({})}
@@ -415,7 +422,8 @@ export function SectionStylePanel({
           </>
         ) : (
           <>
-            <PanelSection title="Visibility">
+            {/* Visibility */}
+            <AccordionSection title="Visibility" groupKey="visibility" openGroups={openGroups} onToggle={toggleGroup}>
               <div className="space-y-3">
                 {(
                   [
@@ -437,9 +445,10 @@ export function SectionStylePanel({
                   </div>
                 ))}
               </div>
-            </PanelSection>
+            </AccordionSection>
 
-            <PanelSection title="Custom CSS Class">
+            {/* Custom CSS Class */}
+            <AccordionSection title="Custom CSS Class" groupKey="css" openGroups={openGroups} onToggle={toggleGroup}>
               <input
                 type="text"
                 value={bs.customClass ?? ""}
@@ -448,7 +457,7 @@ export function SectionStylePanel({
                 className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
               />
               <p className="text-[10px] text-muted-foreground mt-1">Applied to the section's outer wrapper element</p>
-            </PanelSection>
+            </AccordionSection>
           </>
         )}
       </div>
