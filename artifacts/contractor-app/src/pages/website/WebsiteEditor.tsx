@@ -1,4 +1,31 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Component, type ReactNode } from "react";
+
+class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center space-y-4">
+          <p className="font-semibold text-destructive text-lg">Website editor failed to load</p>
+          <p className="text-sm text-muted-foreground max-w-sm">{this.state.error.message}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            Refresh page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
@@ -817,7 +844,7 @@ function TemplatePicker({
   );
 }
 
-export default function WebsiteEditor() {
+function WebsiteEditor() {
   const { activeBusiness } = useBusiness();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -932,6 +959,7 @@ export default function WebsiteEditor() {
 
   const isDirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dataInitializedRef = useRef(false);
 
   const bizId = activeBusiness?.id;
 
@@ -941,6 +969,7 @@ export default function WebsiteEditor() {
     setActivePageId("home");
     isDirtyRef.current = false;
     pickerShownRef.current = false;
+    dataInitializedRef.current = false;
     history.reset();
     if (textEditSessionRef.current.timer) { clearTimeout(textEditSessionRef.current.timer); }
     textEditSessionRef.current = { active: false, timer: null };
@@ -1057,62 +1086,66 @@ export default function WebsiteEditor() {
       if (!res.ok) throw new Error("Failed to load");
       return res.json();
     },
-    onSuccess: (data) => {
-      const sorted = [...(data.sections as Section[])].sort((a, b) => a.order - b.order);
-      let migrated = sorted.map(s => {
-        if (s.type === "hero" && !s.blockStyle?.bgType && (s.content as any).bgColor) {
-          return { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgType: "color" as const, bgColor: (s.content as any).bgColor } };
-        }
-        return s;
-      });
-      if (!migrated.find(s => s.type === "header")) {
-        const defHeader: Section = {
-          id: "header-" + Math.random().toString(36).slice(2, 9),
-          type: "header",
-          enabled: true,
-          order: -1,
-          content: defaultHeaderContent() as unknown as Record<string, unknown>,
-        };
-        migrated = [defHeader, ...migrated];
-        isDirtyRef.current = true;
+  });
+
+  useEffect(() => {
+    if (!config || dataInitializedRef.current) return;
+    dataInitializedRef.current = true;
+
+    const sorted = [...(config.sections as Section[])].sort((a, b) => a.order - b.order);
+    let migrated = sorted.map(s => {
+      if (s.type === "hero" && !s.blockStyle?.bgType && (s.content as any).bgColor) {
+        return { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgType: "color" as const, bgColor: (s.content as any).bgColor } };
       }
-      const rawSettings = data.settings as SiteSettings & { pages?: SitePage[] };
-      const extraPages: SitePage[] = rawSettings.pages ?? [];
-      const isNewSite = data.id === null;
-      const shouldBootstrapDefaults = isNewSite && extraPages.length === 0;
-      const defaultExtraPages: SitePage[] = shouldBootstrapDefaults
-        ? [
-            { id: "page-about", name: "About", slug: "about", sections: [] },
-            { id: "page-services", name: "Services", slug: "services", sections: [] },
-            { id: "page-contact", name: "Contact", slug: "contact", sections: [] },
-          ]
-        : extraPages;
-      if (shouldBootstrapDefaults) {
-        const siteSlug = activeBusiness?.slug ?? "";
-        const defaultNavLinks = defaultExtraPages.map(p => ({
-          id: nanoid(), label: p.name, href: `/site/${siteSlug}/${p.slug}`, pageId: p.id,
-        }));
-        migrated = migrated.map(s => s.type === "header" ? {
-          ...s,
-          content: { ...s.content, navLinks: [...((s.content.navLinks as any[]) ?? []), ...defaultNavLinks] },
-        } : s);
-        isDirtyRef.current = true;
-      }
-      const allPages: SitePage[] = [
-        { id: "home", name: "Home", slug: "home", sections: migrated },
-        ...defaultExtraPages,
-      ];
-      setLocalPages(allPages);
-      const cleanSettings = { ...rawSettings };
-      delete (cleanSettings as any).pages;
-      setLocalSettings(cleanSettings as SiteSettings);
-      if (isNewSite && !pickerShownRef.current) {
-        pickerShownRef.current = true;
-        setShowTemplatePicker(true);
-        setPickerIsReset(false);
-      }
-    },
-  } as any);
+      return s;
+    });
+    if (!migrated.find(s => s.type === "header")) {
+      const defHeader: Section = {
+        id: "header-" + Math.random().toString(36).slice(2, 9),
+        type: "header",
+        enabled: true,
+        order: -1,
+        content: defaultHeaderContent() as unknown as Record<string, unknown>,
+      };
+      migrated = [defHeader, ...migrated];
+      isDirtyRef.current = true;
+    }
+    const rawSettings = config.settings as SiteSettings & { pages?: SitePage[] };
+    const extraPages: SitePage[] = rawSettings.pages ?? [];
+    const isNewSite = config.id === null;
+    const shouldBootstrapDefaults = isNewSite && extraPages.length === 0;
+    const defaultExtraPages: SitePage[] = shouldBootstrapDefaults
+      ? [
+          { id: "page-about", name: "About", slug: "about", sections: [] },
+          { id: "page-services", name: "Services", slug: "services", sections: [] },
+          { id: "page-contact", name: "Contact", slug: "contact", sections: [] },
+        ]
+      : extraPages;
+    if (shouldBootstrapDefaults) {
+      const siteSlug = activeBusiness?.slug ?? "";
+      const defaultNavLinks = defaultExtraPages.map(p => ({
+        id: nanoid(), label: p.name, href: `/site/${siteSlug}/${p.slug}`, pageId: p.id,
+      }));
+      migrated = migrated.map(s => s.type === "header" ? {
+        ...s,
+        content: { ...s.content, navLinks: [...((s.content.navLinks as any[]) ?? []), ...defaultNavLinks] },
+      } : s);
+      isDirtyRef.current = true;
+    }
+    const allPages: SitePage[] = [
+      { id: "home", name: "Home", slug: "home", sections: migrated },
+      ...defaultExtraPages,
+    ];
+    setLocalPages(allPages);
+    const cleanSettings = { ...rawSettings };
+    delete (cleanSettings as any).pages;
+    setLocalSettings(cleanSettings as SiteSettings);
+    if (isNewSite && !pickerShownRef.current) {
+      pickerShownRef.current = true;
+      setShowTemplatePicker(true);
+      setPickerIsReset(false);
+    }
+  }, [config]);
 
   const pages: SitePage[] = localPages ?? (config
     ? [{ id: "home", name: "Home", slug: "home", sections: [...(config.sections as Section[])].sort((a, b) => a.order - b.order) }]
@@ -3605,5 +3638,13 @@ export default function WebsiteEditor() {
       </div>
     </div>
     </>
+  );
+}
+
+export default function WebsiteEditorWithBoundary() {
+  return (
+    <WebsiteEditorErrorBoundary>
+      <WebsiteEditor />
+    </WebsiteEditorErrorBoundary>
   );
 }
