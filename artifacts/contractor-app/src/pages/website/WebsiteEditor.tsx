@@ -1,31 +1,4 @@
 import { useState, useRef, useEffect, Component, type ReactNode } from "react";
-
-class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center space-y-4">
-          <p className="font-semibold text-destructive text-lg">Website editor failed to load</p>
-          <p className="text-sm text-muted-foreground max-w-sm">{this.state.error.message}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-          >
-            Refresh page
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
@@ -79,6 +52,33 @@ import { useEditorHistory } from "./useEditorHistory";
 import { nanoid } from "nanoid";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center space-y-4">
+          <p className="font-semibold text-destructive text-lg">Website editor failed to load</p>
+          <p className="text-sm text-muted-foreground max-w-sm">{this.state.error.message}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            Refresh page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface Section {
   id: string;
