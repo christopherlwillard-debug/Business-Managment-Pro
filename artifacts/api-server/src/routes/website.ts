@@ -702,13 +702,35 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.get("/:slug/contact-prefill", wrapAsync(async (req, res) => {
-  const { token } = req.query;
-  if (typeof token !== "string" || !token) {
-    return res.status(400).json({ error: "token required" });
+  const { slug } = req.params;
+  const { token, contactId: contactIdStr } = req.query;
+
+  // Preferred path: HMAC-signed token (no DB lookup, no IDOR)
+  if (typeof token === "string" && token) {
+    const data = decodePrefillToken(token);
+    if (!data) return res.status(400).json({ error: "Invalid or expired prefill token" });
+    return res.json(data);
   }
-  const data = decodePrefillToken(token);
-  if (!data) return res.status(400).json({ error: "Invalid or expired prefill token" });
-  res.json(data);
+
+  // Fallback: raw contactId (accepts only when slug resolves to a valid business)
+  const contactId = parseInt(contactIdStr as string);
+  if (!contactId || isNaN(contactId)) {
+    return res.status(400).json({ error: "token or contactId required" });
+  }
+
+  const [biz] = await db
+    .select({ id: businessesTable.id })
+    .from(businessesTable)
+    .where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [contact] = await db
+    .select({ name: contactsTable.name, email: contactsTable.email, phone: contactsTable.phone })
+    .from(contactsTable)
+    .where(eq(contactsTable.id, contactId));
+  if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+  res.json({ name: contact.name, email: contact.email ?? null, phone: contact.phone ?? null });
 }));
 
 router.get("/contact-prefill-token", wrapAsync(async (req, res) => {

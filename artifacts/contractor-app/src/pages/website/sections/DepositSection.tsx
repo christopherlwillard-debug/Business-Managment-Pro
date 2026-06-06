@@ -94,9 +94,13 @@ export function DepositSection({ content, settings, isEditing, onChange, busines
     if (isEditing || prefillLoaded || !collectCustomerInfo || !businessSlug) return;
     const params = new URLSearchParams(window.location.search);
     const prefillToken = params.get("prefill");
-    if (!prefillToken) return;
+    const contactId = params.get("contactId");
+    if (!prefillToken && !contactId) return;
     setPrefillLoaded(true);
-    fetch(`${BASE}/api/public/site/${businessSlug}/contact-prefill?token=${encodeURIComponent(prefillToken)}`)
+    const query = prefillToken
+      ? `token=${encodeURIComponent(prefillToken)}`
+      : `contactId=${encodeURIComponent(contactId!)}`;
+    fetch(`${BASE}/api/public/site/${businessSlug}/contact-prefill?${query}`)
       .then(r => r.ok ? r.json() : null)
       .then((data: { name?: string; email?: string | null; phone?: string | null } | null) => {
         if (!data) return;
