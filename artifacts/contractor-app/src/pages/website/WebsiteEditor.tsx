@@ -2202,6 +2202,8 @@ function WebsiteEditor() {
           onClick={e => {
             e.stopPropagation();
             const tgt = e.target as HTMLElement;
+            // Prevent anchor links from navigating while inside the editor
+            if (tgt.closest("a[href]")) e.preventDefault();
             if (isActive && tgt.closest("input, textarea, select, button, a[href], [role=button]")) return;
             if (!isActive) {
               const fieldEl = tgt.closest("[data-edit-field]") as HTMLElement | null;

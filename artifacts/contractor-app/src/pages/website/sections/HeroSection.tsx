@@ -1,3 +1,4 @@
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
 import { TextStyleToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
@@ -11,6 +12,9 @@ interface HeroContent {
   headlineStyle?: TextStyle;
   subheadlineStyle?: TextStyle;
   ctaButton?: ButtonConfig;
+  showHeadline?: boolean;
+  showSubheadline?: boolean;
+  showCta?: boolean;
 }
 
 interface HeroSectionProps {
@@ -22,9 +26,39 @@ interface HeroSectionProps {
   blockStyle?: BlockStyle;
 }
 
+function InlineToggle({
+  label,
+  visible,
+  onToggle,
+}: {
+  label: string;
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); onToggle(); }}
+      title={visible ? `Hide ${label}` : `Show ${label}`}
+      className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+        visible
+          ? "border-white/30 text-white/60 hover:border-red-400/60 hover:text-red-400/80 hover:bg-red-400/10"
+          : "border-white/20 text-white/30 hover:border-white/50 hover:text-white/60 bg-white/5"
+      }`}
+    >
+      {visible ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+      {visible ? `Hide ${label}` : `Show ${label}`}
+    </button>
+  );
+}
+
 export function HeroSection({ content, settings, isEditing, onChange, businessName, blockStyle }: HeroSectionProps) {
   const bg = content.bgColor || settings.brandColor || "#1a1a2e";
   const biz = businessName ?? "a contractor business";
+
+  const showHeadline = content.showHeadline !== false;
+  const showSubheadline = content.showSubheadline !== false;
+  const showCta = content.showCta !== false;
 
   function update(patch: Partial<HeroContent>) {
     onChange?.({ ...content, ...patch });
@@ -48,57 +82,126 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         blockStyle={blockStyle}
         isEditing={isEditing}
       >
-        <input
-          data-edit-field="headline"
-          className="w-full text-center text-4xl font-bold bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
-          style={headlineCSS}
-          value={content.headline}
-          placeholder="Your headline here"
-          onChange={e => update({ headline: e.target.value })}
-        />
-        <TextStyleToolbar
-          style={content.headlineStyle}
-          onChange={s => update({ headlineStyle: s })}
-          dark
-        />
-        <AiCopyPopover
-          variant="dark"
-          label="Headline"
-          defaultPrompt={`Write a punchy 5-8 word headline for ${biz}'s website. It should be confident and appeal to homeowners.`}
-          onAccept={v => update({ headline: v })}
-        />
+        {/* Headline */}
+        <div className="relative">
+          {showHeadline ? (
+            <>
+              <input
+                data-edit-field="headline"
+                className="w-full text-center text-4xl font-bold bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
+                style={headlineCSS}
+                value={content.headline}
+                placeholder="Your headline here"
+                onChange={e => update({ headline: e.target.value })}
+              />
+              <TextStyleToolbar
+                style={content.headlineStyle}
+                onChange={s => update({ headlineStyle: s })}
+                dark
+              />
+              <AiCopyPopover
+                variant="dark"
+                label="Headline"
+                defaultPrompt={`Write a punchy 5-8 word headline for ${biz}'s website. It should be confident and appeal to homeowners.`}
+                onAccept={v => update({ headline: v })}
+              />
+            </>
+          ) : (
+            <div className="py-3 text-white/30 italic text-sm border border-dashed border-white/20 rounded">
+              Headline hidden
+            </div>
+          )}
+          <div className="mt-1">
+            <InlineToggle
+              label="Headline"
+              visible={showHeadline}
+              onToggle={() => update({ showHeadline: !showHeadline })}
+            />
+          </div>
+        </div>
+
         <div className="mb-4" />
-        <input
-          data-edit-field="subheadline"
-          className="w-full text-center text-lg bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
-          style={subheadlineCSS}
-          value={content.subheadline}
-          placeholder="Subheadline text"
-          onChange={e => update({ subheadline: e.target.value })}
-        />
-        <TextStyleToolbar
-          style={content.subheadlineStyle}
-          onChange={s => update({ subheadlineStyle: s })}
-          dark
-        />
-        <AiCopyPopover
-          variant="dark"
-          label="Subheadline"
-          defaultPrompt={`Write a 1-2 sentence subheadline for ${biz}'s website. The headline is: "${content.headline}". Keep it under 20 words.`}
-          onAccept={v => update({ subheadline: v })}
-        />
+
+        {/* Subheadline */}
+        <div className="relative">
+          {showSubheadline ? (
+            <>
+              <input
+                data-edit-field="subheadline"
+                className="w-full text-center text-lg bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
+                style={subheadlineCSS}
+                value={content.subheadline}
+                placeholder="Subheadline text"
+                onChange={e => update({ subheadline: e.target.value })}
+              />
+              <TextStyleToolbar
+                style={content.subheadlineStyle}
+                onChange={s => update({ subheadlineStyle: s })}
+                dark
+              />
+              <AiCopyPopover
+                variant="dark"
+                label="Subheadline"
+                defaultPrompt={`Write a 1-2 sentence subheadline for ${biz}'s website. The headline is: "${content.headline}". Keep it under 20 words.`}
+                onAccept={v => update({ subheadline: v })}
+              />
+            </>
+          ) : (
+            <div className="py-3 text-white/30 italic text-sm border border-dashed border-white/20 rounded">
+              Subheadline hidden
+            </div>
+          )}
+          <div className="mt-1">
+            <InlineToggle
+              label="Subheadline"
+              visible={showSubheadline}
+              onToggle={() => update({ showSubheadline: !showSubheadline })}
+            />
+          </div>
+        </div>
+
         <div className="mb-6" />
-        <input
-          data-edit-field="ctaLabel"
-          className="inline-block text-sm font-semibold px-6 py-3 rounded-full bg-white/20 border border-white/40 focus:border-white outline-none text-center placeholder-white/40"
-          value={content.ctaLabel}
-          placeholder="Button label"
-          onChange={e => update({ ctaLabel: e.target.value })}
-        />
-        <ButtonEditor
-          config={content.ctaButton}
-          onChange={cfg => update({ ctaButton: cfg })}
-        />
+
+        {/* CTA Button */}
+        <div className="relative">
+          {showCta ? (
+            <>
+              <input
+                data-edit-field="ctaLabel"
+                className="inline-block text-sm font-semibold px-6 py-3 rounded-full bg-white/20 border border-white/40 focus:border-white outline-none text-center placeholder-white/40"
+                value={content.ctaLabel}
+                placeholder="Button label"
+                onChange={e => update({ ctaLabel: e.target.value })}
+              />
+              <ButtonEditor
+                config={content.ctaButton}
+                onChange={cfg => update({ ctaButton: cfg })}
+              />
+            </>
+          ) : (
+            <div className="py-3 text-white/30 italic text-sm border border-dashed border-white/20 rounded">
+              Button hidden
+            </div>
+          )}
+          <div className="mt-2 flex items-center justify-center gap-2">
+            <InlineToggle
+              label="Button"
+              visible={showCta}
+              onToggle={() => update({ showCta: !showCta })}
+            />
+            {showCta && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); update({ showCta: false }); }}
+                title="Remove button"
+                className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-red-400/40 text-red-400/70 hover:bg-red-400/10 hover:border-red-400/70 hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+                Remove button
+              </button>
+            )}
+          </div>
+        </div>
       </BlockStyleWrapper>
     );
   }
@@ -114,36 +217,42 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
       blockStyle={blockStyle}
       isEditing={isEditing}
     >
-      <h1
-        data-edit-field="headline"
-        className="text-4xl md:text-5xl font-bold mb-4 leading-tight"
-        style={headlineCSS}
-      >
-        {content.headline}
-      </h1>
-      <p
-        data-edit-field="subheadline"
-        className="text-lg md:text-xl text-white/80 mb-8 max-w-2xl mx-auto"
-        style={subheadlineCSS}
-      >
-        {content.subheadline}
-      </p>
-      <a
-        data-edit-field="ctaLabel"
-        href={ctaHref}
-        target={ctaTarget}
-        rel={ctaRel}
-        className={`inline-block transition-opacity hover:opacity-90 ${ctaBtnClasses}`}
-        style={{
-          backgroundColor: ctaBg,
-          color: ctaText,
-          borderRadius: ctaBorderRadius,
-          fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
-          boxShadow: "var(--theme-btn-shadow, none)",
-        }}
-      >
-        {content.ctaLabel}
-      </a>
+      {showHeadline && (
+        <h1
+          data-edit-field="headline"
+          className="text-4xl md:text-5xl font-bold mb-4 leading-tight"
+          style={headlineCSS}
+        >
+          {content.headline}
+        </h1>
+      )}
+      {showSubheadline && (
+        <p
+          data-edit-field="subheadline"
+          className="text-lg md:text-xl text-white/80 mb-8 max-w-2xl mx-auto"
+          style={subheadlineCSS}
+        >
+          {content.subheadline}
+        </p>
+      )}
+      {showCta && (
+        <a
+          data-edit-field="ctaLabel"
+          href={ctaHref}
+          target={ctaTarget}
+          rel={ctaRel}
+          className={`inline-block transition-opacity hover:opacity-90 ${ctaBtnClasses}`}
+          style={{
+            backgroundColor: ctaBg,
+            color: ctaText,
+            borderRadius: ctaBorderRadius,
+            fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+            boxShadow: "var(--theme-btn-shadow, none)",
+          }}
+        >
+          {content.ctaLabel}
+        </a>
+      )}
     </BlockStyleWrapper>
   );
 }

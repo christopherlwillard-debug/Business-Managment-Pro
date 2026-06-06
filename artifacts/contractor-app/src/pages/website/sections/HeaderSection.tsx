@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2, GripVertical, Phone, Menu, FileText, ChevronDown } from "lucide-react";
+import { Plus, Trash2, GripVertical, Phone, Menu, FileText, ChevronDown, Eye } from "lucide-react";
 import { ButtonEditor, type ButtonConfig } from "./ButtonEditor";
 
 export interface NavLink {
@@ -8,12 +8,20 @@ export interface NavLink {
   href: string;
 }
 
+export type LogoSize = "sm" | "md" | "lg";
+
 export interface HeaderContent {
   navLinks: NavLink[];
   phone?: string;
   ctaLabel?: string;
   ctaConfig?: ButtonConfig;
   sticky?: boolean;
+  showLogo?: boolean;
+  showBusinessName?: boolean;
+  showNav?: boolean;
+  showPhone?: boolean;
+  showCta?: boolean;
+  logoSize?: LogoSize;
 }
 
 export interface SitePageRef {
@@ -38,8 +46,20 @@ export function defaultHeaderContent(): HeaderContent {
     ctaLabel: "Get a Quote",
     ctaConfig: { url: "#contact", borderRadius: "pill" },
     sticky: true,
+    showLogo: true,
+    showBusinessName: true,
+    showNav: true,
+    showPhone: true,
+    showCta: true,
+    logoSize: "md",
   };
 }
+
+const LOGO_SIZE_H: Record<LogoSize, string> = {
+  sm: "h-6",
+  md: "h-8",
+  lg: "h-12",
+};
 
 interface HeaderSectionProps {
   content: HeaderContent;
@@ -54,6 +74,31 @@ interface HeaderSectionProps {
   businessName?: string;
   siteSlug?: string;
   pages?: SitePageRef[];
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-0.5">
+      <span className="text-xs text-white/70">{label}</span>
+      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+        <input
+          type="checkbox"
+          className="sr-only peer"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <div className="w-8 h-4 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
+      </label>
+    </div>
+  );
 }
 
 function HeaderPreviewBar({
@@ -83,6 +128,14 @@ function HeaderPreviewBar({
   const phone = content.phone ?? "";
   const ctaLabel = content.ctaLabel ?? "Get a Quote";
 
+  const showLogo = content.showLogo !== false;
+  const showBusinessName = content.showBusinessName !== false;
+  const showNav = content.showNav !== false;
+  const showPhone = content.showPhone !== false;
+  const showCta = content.showCta !== false;
+  const logoSize = content.logoSize ?? "md";
+  const logoH = LOGO_SIZE_H[logoSize];
+
   return (
     <div
       className={`px-6 py-3 flex items-center justify-between border-b ${transparentBgClass} ${borderClass}`}
@@ -92,32 +145,36 @@ function HeaderPreviewBar({
       }}
     >
       <div className="flex items-center gap-3 flex-shrink-0">
-        {settings.logoUrl && (
+        {showLogo && settings.logoUrl && (
           <img
             src={settings.logoUrl}
             alt={businessName ?? "Logo"}
-            className="h-8 w-auto object-contain"
+            className={`${logoH} w-auto object-contain`}
           />
         )}
-        <span className="font-bold text-sm" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
-          {businessName ?? "Your Business"}
-        </span>
+        {showBusinessName && (
+          <span className="font-bold text-sm" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
+            {businessName ?? "Your Business"}
+          </span>
+        )}
       </div>
 
-      <nav className="hidden md:flex items-center gap-6">
-        {navLinks.map((link) => (
-          <span
-            key={link.id}
-            className="text-sm font-medium transition-opacity hover:opacity-80 cursor-pointer"
-            style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
-          >
-            {link.label}
-          </span>
-        ))}
-      </nav>
+      {showNav && (
+        <nav className="hidden md:flex items-center gap-6">
+          {navLinks.map((link) => (
+            <span
+              key={link.id}
+              className="text-sm font-medium transition-opacity hover:opacity-80 cursor-pointer"
+              style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+            >
+              {link.label}
+            </span>
+          ))}
+        </nav>
+      )}
 
       <div className="flex items-center gap-3 flex-shrink-0">
-        {phone && (
+        {showPhone && phone && (
           <span
             className="hidden md:block text-sm font-medium"
             style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
@@ -125,17 +182,19 @@ function HeaderPreviewBar({
             {phone}
           </span>
         )}
-        <span
-          className="px-4 py-2 text-sm text-white cursor-pointer transition-opacity hover:opacity-90"
-          style={{
-            backgroundColor: settings.brandColor,
-            borderRadius: "var(--theme-btn-radius, 9999px)",
-            fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
-            boxShadow: "var(--theme-btn-shadow, none)",
-          }}
-        >
-          {ctaLabel}
-        </span>
+        {showCta && (
+          <span
+            className="px-4 py-2 text-sm text-white cursor-pointer transition-opacity hover:opacity-90"
+            style={{
+              backgroundColor: settings.brandColor,
+              borderRadius: "var(--theme-btn-radius, 9999px)",
+              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+              boxShadow: "var(--theme-btn-shadow, none)",
+            }}
+          >
+            {ctaLabel}
+          </span>
+        )}
         <span className="md:hidden cursor-pointer" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
           <Menu className="w-5 h-5" />
         </span>
@@ -158,6 +217,13 @@ export function HeaderSection({
   const ctaLabel = content.ctaLabel ?? "Get a Quote";
   const ctaConfig = content.ctaConfig;
   const sticky = content.sticky ?? true;
+
+  const showLogo = content.showLogo !== false;
+  const showBusinessName = content.showBusinessName !== false;
+  const showNav = content.showNav !== false;
+  const showPhone = content.showPhone !== false;
+  const showCta = content.showCta !== false;
+  const logoSize = content.logoSize ?? "md";
 
   const [showPagesPicker, setShowPagesPicker] = useState(false);
 
@@ -218,141 +284,185 @@ export function HeaderSection({
           Header Settings
         </p>
 
-        {/* Nav links */}
+        {/* Visibility toggles */}
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-white/70">Navigation Links</p>
+          <p className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+            <Eye className="w-3 h-3" />
+            Visibility
+          </p>
+          <div className="bg-white/5 rounded-lg px-3 py-1.5 space-y-1">
+            <ToggleRow label="Logo" checked={showLogo} onChange={v => update({ showLogo: v })} />
+            <ToggleRow label="Business Name" checked={showBusinessName} onChange={v => update({ showBusinessName: v })} />
+            <ToggleRow label="Navigation Links" checked={showNav} onChange={v => update({ showNav: v })} />
+            <ToggleRow label="Phone Number" checked={showPhone} onChange={v => update({ showPhone: v })} />
+            <ToggleRow label="CTA Button" checked={showCta} onChange={v => update({ showCta: v })} />
+          </div>
+        </div>
+
+        {/* Logo size — only shown when a logo is uploaded */}
+        {settings.logoUrl && (
           <div className="space-y-1.5">
-            {navLinks.map((link) => {
-              const isPageLink = link.href.startsWith("/site/");
-              return (
-                <div key={link.id} className="flex items-center gap-2">
-                  <GripVertical className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />
-                  <input
-                    type="text"
-                    value={link.label}
-                    onChange={(e) => updateNavLink(link.id, { label: e.target.value })}
-                    placeholder="Label"
-                    className="flex-1 min-w-0 text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
-                  />
-                  <div className="flex-1 min-w-0 flex items-center gap-1">
+            <p className="text-xs font-semibold text-white/70">Logo Size</p>
+            <div className="flex items-center gap-2">
+              {(["sm", "md", "lg"] as LogoSize[]).map(size => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => update({ logoSize: size })}
+                  className={`flex-1 py-1.5 text-xs rounded border transition-colors ${
+                    logoSize === size
+                      ? "bg-primary border-primary text-white"
+                      : "bg-white/5 border-white/20 text-white/60 hover:border-white/40 hover:text-white"
+                  }`}
+                >
+                  {size === "sm" ? "Small" : size === "md" ? "Medium" : "Large"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Nav links */}
+        {showNav && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-white/70">Navigation Links</p>
+            <div className="space-y-1.5">
+              {navLinks.map((link) => {
+                const isPageLink = link.href.startsWith("/site/");
+                return (
+                  <div key={link.id} className="flex items-center gap-2">
+                    <GripVertical className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />
                     <input
                       type="text"
-                      value={link.href}
-                      onChange={(e) => updateNavLink(link.id, { href: e.target.value })}
-                      placeholder="#section or /page"
-                      className={`flex-1 min-w-0 text-xs bg-white/10 border text-white/70 placeholder-white/20 rounded px-2 py-1.5 outline-none focus:border-white/50 ${
-                        isPageLink ? "border-primary/50 text-primary/80" : "border-white/20"
-                      }`}
+                      value={link.label}
+                      onChange={(e) => updateNavLink(link.id, { label: e.target.value })}
+                      placeholder="Label"
+                      className="flex-1 min-w-0 text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
                     />
-                    {extraPages.length > 0 && (
-                      <div className="relative flex-shrink-0">
-                        <PageLinkPicker
-                          pages={extraPages}
-                          onSelect={(page) => fillLinkFromPage(link.id, page)}
-                        />
-                      </div>
-                    )}
+                    <div className="flex-1 min-w-0 flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={link.href}
+                        onChange={(e) => updateNavLink(link.id, { href: e.target.value })}
+                        placeholder="#section or /page"
+                        className={`flex-1 min-w-0 text-xs bg-white/10 border text-white/70 placeholder-white/20 rounded px-2 py-1.5 outline-none focus:border-white/50 ${
+                          isPageLink ? "border-primary/50 text-primary/80" : "border-white/20"
+                        }`}
+                      />
+                      {extraPages.length > 0 && (
+                        <div className="relative flex-shrink-0">
+                          <PageLinkPicker
+                            pages={extraPages}
+                            onSelect={(page) => fillLinkFromPage(link.id, page)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeNavLink(link.id)}
+                      className="p-1 text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
+                );
+              })}
+            </div>
+
+            {/* Add link — smart picker if pages exist */}
+            <div className="relative">
+              {extraPages.length > 0 ? (
+                <>
                   <button
                     type="button"
-                    onClick={() => removeNavLink(link.id)}
-                    className="p-1 text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors flex-shrink-0"
+                    onClick={() => setShowPagesPicker(v => !v)}
+                    className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Plus className="w-3.5 h-3.5" />
+                    Add link
+                    <ChevronDown className="w-3 h-3" />
                   </button>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Add link — smart picker if pages exist */}
-          <div className="relative">
-            {extraPages.length > 0 ? (
-              <>
+                  {showPagesPicker && (
+                    <div className="absolute top-full left-0 mt-1 z-30 bg-gray-800 border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[180px]">
+                      <div className="px-3 py-1.5 border-b border-white/10">
+                        <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wide">Your Pages</p>
+                      </div>
+                      {extraPages.map(page => (
+                        <button
+                          key={page.id}
+                          type="button"
+                          onClick={() => addNavLink(page)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white hover:bg-white/10 transition-colors"
+                        >
+                          <FileText className="w-3 h-3 text-primary/70 flex-shrink-0" />
+                          {page.name}
+                        </button>
+                      ))}
+                      <div className="border-t border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => addNavLink()}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white/60 hover:bg-white/10 transition-colors"
+                        >
+                          <Plus className="w-3 h-3 flex-shrink-0" />
+                          Custom link
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => setShowPagesPicker(v => !v)}
+                  onClick={() => addNavLink()}
                   className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Add link
-                  <ChevronDown className="w-3 h-3" />
                 </button>
-                {showPagesPicker && (
-                  <div className="absolute top-full left-0 mt-1 z-30 bg-gray-800 border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[180px]">
-                    <div className="px-3 py-1.5 border-b border-white/10">
-                      <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wide">Your Pages</p>
-                    </div>
-                    {extraPages.map(page => (
-                      <button
-                        key={page.id}
-                        type="button"
-                        onClick={() => addNavLink(page)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white hover:bg-white/10 transition-colors"
-                      >
-                        <FileText className="w-3 h-3 text-primary/70 flex-shrink-0" />
-                        {page.name}
-                      </button>
-                    ))}
-                    <div className="border-t border-white/10">
-                      <button
-                        type="button"
-                        onClick={() => addNavLink()}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white/60 hover:bg-white/10 transition-colors"
-                      >
-                        <Plus className="w-3 h-3 flex-shrink-0" />
-                        Custom link
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => addNavLink()}
-                className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add link
-              </button>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Phone number */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
-            <Phone className="w-3 h-3" />
-            Phone Number
-          </label>
-          <input
-            type="text"
-            value={phone}
-            onChange={(e) => update({ phone: e.target.value })}
-            placeholder="(555) 555-5555 — leave blank to hide"
-            className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
-          />
-        </div>
+        {showPhone && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+              <Phone className="w-3 h-3" />
+              Phone Number
+            </label>
+            <input
+              type="text"
+              value={phone}
+              onChange={(e) => update({ phone: e.target.value })}
+              placeholder="(555) 555-5555"
+              className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
+            />
+          </div>
+        )}
 
         {/* CTA button */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-white/70">CTA Button</p>
-          <input
-            type="text"
-            value={ctaLabel}
-            onChange={(e) => update({ ctaLabel: e.target.value })}
-            placeholder="Button label"
-            className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
-          />
-          <ButtonEditor
-            config={ctaConfig}
-            onChange={(cfg) => update({ ctaConfig: cfg })}
-          />
-        </div>
+        {showCta && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-white/70">CTA Button</p>
+            <input
+              type="text"
+              value={ctaLabel}
+              onChange={(e) => update({ ctaLabel: e.target.value })}
+              placeholder="Button label"
+              className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
+            />
+            <ButtonEditor
+              config={ctaConfig}
+              onChange={(cfg) => update({ ctaConfig: cfg })}
+            />
+          </div>
+        )}
 
         {/* Sticky toggle */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pt-1 border-t border-white/10">
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
