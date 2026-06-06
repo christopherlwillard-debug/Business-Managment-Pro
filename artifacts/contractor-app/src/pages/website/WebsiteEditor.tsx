@@ -354,6 +354,219 @@ function CustomDomainPanel({
   );
 }
 
+interface TreeNodeData {
+  id: string;
+  type: "page" | "section";
+  label: string;
+  icon: React.ReactNode;
+  section?: Section;
+  page?: SitePage;
+  pageId?: string;
+  children: TreeNodeData[];
+}
+
+function SiteTreeNode({
+  node, depth, expandedIds, onToggleExpand,
+  activePageId, activeSection,
+  switchPage, editingPageId, setEditingPageId, editingPageName, setEditingPageName,
+  renamePage, deletePage, setPageTemplatePickerMode, setShowPageTemplatePicker,
+  sensors, handleDragEnd, toggleSection, setActiveSection, sections: activeSections,
+  setInsertAfterSectionId, setShowAddSection, showAddSection,
+  addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
+}: {
+  node: TreeNodeData; depth: number;
+  expandedIds: Set<string>; onToggleExpand: (id: string) => void;
+  activePageId: string; activeSection: string | null;
+  switchPage: (id: string) => void;
+  editingPageId: string | null; setEditingPageId: (id: string | null) => void;
+  editingPageName: string; setEditingPageName: (n: string) => void;
+  renamePage: (id: string, name: string) => void;
+  deletePage: (id: string) => void;
+  setPageTemplatePickerMode: (m: "add" | "apply") => void;
+  setShowPageTemplatePicker: (v: boolean) => void;
+  sensors: ReturnType<typeof useSensors>;
+  handleDragEnd: (e: DragEndEvent) => void;
+  toggleSection: (id: string) => void;
+  setActiveSection: (id: string | null) => void;
+  sections: Section[];
+  setInsertAfterSectionId: (id: string | null | undefined) => void;
+  setShowAddSection: React.Dispatch<React.SetStateAction<boolean>>;
+  showAddSection: boolean;
+  addSectionTab: "sections" | "templates";
+  setAddSectionTab: (tab: "sections" | "templates") => void;
+  addSection: (type: Section["type"]) => void;
+  addSectionFromTemplate: (id: string) => void;
+}) {
+  const isExpanded = expandedIds.has(node.id);
+  const isActivePage = node.type === "page" && node.id === activePageId;
+  const isActiveSection = node.type === "section" && activeSection === node.id;
+
+  const sharedProps = {
+    depth, expandedIds, onToggleExpand, activePageId, activeSection,
+    switchPage, editingPageId, setEditingPageId, editingPageName, setEditingPageName,
+    renamePage, deletePage, setPageTemplatePickerMode, setShowPageTemplatePicker,
+    sensors, handleDragEnd, toggleSection, setActiveSection, sections: activeSections,
+    setInsertAfterSectionId, setShowAddSection, showAddSection,
+    addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
+  };
+
+  if (node.type === "section") {
+    const parentPageId = node.pageId ?? "";
+    if (parentPageId === activePageId) {
+      return (
+        <div data-section-id={node.id}>
+          <SortableRow
+            section={node.section!}
+            active={isActiveSection}
+            onToggle={() => toggleSection(node.id)}
+            onActivate={() => setActiveSection(node.id)}
+          />
+        </div>
+      );
+    }
+    return (
+      <div
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-muted transition-colors opacity-60"
+        onClick={() => { switchPage(parentPageId); if (!expandedIds.has(parentPageId)) onToggleExpand(parentPageId); }}
+      >
+        <span className="opacity-60 flex-shrink-0">{node.icon}</span>
+        <span className="flex-1 text-xs font-medium text-foreground">{node.label}</span>
+      </div>
+    );
+  }
+
+  const page = node.page!;
+  const lockedHeader = node.id === "home"
+    ? (isActivePage ? activeSections : (page.sections ?? [])).find(s => s.type === "header")
+    : null;
+
+  return (
+    <div>
+      <div
+        className={`group flex items-center gap-1 px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+          isActivePage ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
+        }`}
+        onClick={() => { switchPage(node.id); if (!expandedIds.has(node.id)) onToggleExpand(node.id); }}
+      >
+        <button type="button" className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
+          onClick={e => { e.stopPropagation(); onToggleExpand(node.id); }}>
+          <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
+        </button>
+        <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />
+        {editingPageId === node.id ? (
+          <input type="text" value={editingPageName}
+            onChange={e => setEditingPageName(e.target.value)}
+            onBlur={() => { if (editingPageName.trim()) renamePage(node.id, editingPageName.trim()); setEditingPageId(null); }}
+            onKeyDown={e => {
+              if (e.key === "Enter") { if (editingPageName.trim()) renamePage(node.id, editingPageName.trim()); setEditingPageId(null); }
+              if (e.key === "Escape") setEditingPageId(null);
+            }}
+            className="flex-1 text-xs bg-transparent border-b border-primary focus:outline-none min-w-0"
+            autoFocus onClick={e => e.stopPropagation()}
+          />
+        ) : (
+          <span className="flex-1 text-xs font-medium truncate">{node.label}</span>
+        )}
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <button type="button" onClick={e => { e.stopPropagation(); setEditingPageId(node.id); setEditingPageName(node.label); }}
+            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground" title="Rename">
+            <Pencil className="w-2.5 h-2.5" />
+          </button>
+          <button type="button" onClick={e => { e.stopPropagation(); switchPage(node.id); setPageTemplatePickerMode("apply"); setShowPageTemplatePicker(true); }}
+            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground" title="Replace page with template">
+            <LayoutTemplate className="w-2.5 h-2.5" />
+          </button>
+          {node.id !== "home" && (
+            <button type="button" onClick={e => { e.stopPropagation(); deletePage(node.id); }}
+              className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive" title="Delete page">
+              <Trash2 className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="ml-3 mt-0.5 space-y-0.5">
+          {lockedHeader && (
+            <div data-section-id={lockedHeader.id}
+              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                activeSection === lockedHeader.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
+              }`}
+              onClick={() => setActiveSection(lockedHeader.id)}
+            >
+              <Lock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+              <span className="flex-1 text-xs font-medium text-foreground">Header</span>
+              <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
+            </div>
+          )}
+
+          {isActivePage ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={node.children.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                {node.children.map(child => (
+                  <SiteTreeNode key={child.id} node={child} depth={depth + 1} {...sharedProps} />
+                ))}
+              </SortableContext>
+            </DndContext>
+          ) : (
+            node.children.map(child => (
+              <SiteTreeNode key={child.id} node={child} depth={depth + 1} {...sharedProps} />
+            ))
+          )}
+
+          {isActivePage && (
+            <div className="relative">
+              <button type="button"
+                onClick={() => { setInsertAfterSectionId(undefined); setShowAddSection(v => !v); }}
+                className="flex items-center gap-1 w-full px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                <Plus className="w-3 h-3" />
+                Add Section
+              </button>
+              {showAddSection && (
+                <div className="absolute left-0 top-full mt-1 z-30 w-72 bg-popover border border-border rounded-xl shadow-xl overflow-hidden text-sm">
+                  <div className="flex border-b border-border">
+                    <button type="button" onClick={() => setAddSectionTab("sections")}
+                      className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors ${addSectionTab === "sections" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
+                      Blank Sections
+                    </button>
+                    <button type="button" onClick={() => setAddSectionTab("templates")}
+                      className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${addSectionTab === "templates" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
+                      <LayoutTemplate className="w-3 h-3" />
+                      Templates
+                    </button>
+                  </div>
+                  {addSectionTab === "sections" ? (
+                    <div className="py-1 max-h-72 overflow-y-auto">
+                      {ADDABLE_SECTION_TYPES.map(opt => (
+                        <button key={opt.type} type="button" onClick={() => addSection(opt.type)}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors">
+                          {opt.icon}{opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-1 max-h-96 overflow-y-auto">
+                      {SECTION_TEMPLATES.map(tpl => (
+                        <button key={tpl.id} type="button" onClick={() => addSectionFromTemplate(tpl.id)}
+                          className="flex items-start gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted transition-colors group">
+                          <span className="text-base flex-shrink-0 mt-0.5">{tpl.emoji}</span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{tpl.name}</span>
+                            <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">{tpl.description}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PageTemplatePicker({
   mode,
@@ -676,6 +889,8 @@ export default function WebsiteEditor() {
   const [previewViewport, setPreviewViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const leftCollapsedRef = useRef(leftCollapsed);
   const rightCollapsedRef = useRef(rightCollapsed);
+  const [autoCollapsedRight, setAutoCollapsedRight] = useState(false);
+  const autoCollapsedRightRef = useRef(false);
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
@@ -691,6 +906,24 @@ export default function WebsiteEditor() {
     localStorage.setItem("website-editor-right-collapsed", String(rightCollapsed));
     rightCollapsedRef.current = rightCollapsed;
   }, [rightCollapsed]);
+
+  useEffect(() => {
+    function checkWidth() {
+      const isNarrow = window.innerWidth < 1280;
+      if (isNarrow && !rightCollapsedRef.current && !autoCollapsedRightRef.current) {
+        autoCollapsedRightRef.current = true;
+        setAutoCollapsedRight(true);
+        setRightCollapsed(true);
+      } else if (!isNarrow && autoCollapsedRightRef.current) {
+        autoCollapsedRightRef.current = false;
+        setAutoCollapsedRight(false);
+        setRightCollapsed(false);
+      }
+    }
+    checkWidth();
+    window.addEventListener("resize", checkWidth);
+    return () => window.removeEventListener("resize", checkWidth);
+  }, []);
 
   const isDirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2242,74 +2475,40 @@ export default function WebsiteEditor() {
     )}
     {showFullscreenPreview && previewUrl && (
       <div className="fixed inset-0 z-[100] flex flex-col bg-black">
-        <div className="flex items-center justify-between px-4 py-2 bg-black/80 backdrop-blur-sm border-b border-white/10 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-white/60" />
-            <span className="text-sm text-white/80 font-medium truncate max-w-sm">{publicUrl}</span>
-            {isPublished
-              ? <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-medium">Live</span>
-              : <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-medium">Draft preview</span>
-            }
+        {/* Minimal floating controls */}
+        <div className="flex items-center justify-center gap-3 px-4 py-2 bg-black/70 backdrop-blur-sm border-b border-white/10 flex-shrink-0">
+          <div className="flex items-center rounded-lg overflow-hidden border border-white/20 bg-white/5">
+            {([
+              { id: "desktop" as const, Icon: Monitor,    label: "Desktop" },
+              { id: "tablet"  as const, Icon: Tablet,     label: "Tablet"  },
+              { id: "mobile"  as const, Icon: Smartphone, label: "Mobile"  },
+            ] as const).map(({ id, Icon, label }) => (
+              <button key={id} type="button" onClick={() => setPreviewViewport(id)} title={label}
+                className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${
+                  previewViewport === id ? "bg-white text-black font-medium" : "text-white/60 hover:text-white"
+                }`}>
+                <Icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-3">
-            {/* Viewport toggle */}
-            <div className="flex items-center rounded-lg overflow-hidden border border-white/20 bg-white/5">
-              {([
-                { id: "desktop"  as const, Icon: Monitor,    label: "Desktop" },
-                { id: "tablet"   as const, Icon: Tablet,     label: "Tablet"  },
-                { id: "mobile"   as const, Icon: Smartphone, label: "Mobile"  },
-              ] as const).map(({ id, Icon, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setPreviewViewport(id)}
-                  title={label}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${
-                    previewViewport === id
-                      ? "bg-white text-black font-medium"
-                      : "text-white/60 hover:text-white"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{label}</span>
-                </button>
-              ))}
-            </div>
-            {isPublished && (
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open in tab</span>
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowFullscreenPreview(false)}
-              title="Close preview (Esc)"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <X className="w-4 h-4" />
-              <span>Close</span>
-            </button>
-          </div>
+          <button type="button" onClick={() => setShowFullscreenPreview(false)} title="Close (Esc)"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors">
+            <X className="w-4 h-4" />
+            <span>Close</span>
+          </button>
         </div>
         {previewViewport === "desktop" ? (
           <iframe src={previewUrl} className="flex-1 w-full border-0" title="Site preview" />
         ) : (
           <div className="flex-1 flex items-start justify-center overflow-auto py-6 bg-gray-950">
-            <div
-              className="relative bg-white shadow-2xl overflow-hidden flex-shrink-0 transition-all duration-300"
+            <div className="relative bg-white shadow-2xl overflow-hidden flex-shrink-0 transition-all duration-300"
               style={{
-                width:        previewViewport === "tablet" ? "768px" : "390px",
+                width:        previewViewport === "tablet" ? "800px" : "430px",
                 height:       previewViewport === "tablet" ? "1024px" : "844px",
                 borderRadius: previewViewport === "tablet" ? "16px" : "44px",
                 border:       "8px solid #374151",
-              }}
-            >
+              }}>
               {previewViewport === "mobile" && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-5 bg-gray-700 rounded-b-xl z-10 pointer-events-none" />
               )}
@@ -2417,7 +2616,7 @@ export default function WebsiteEditor() {
               setFocusMode(true);
             }
           }}
-          title={focusMode ? "Exit focus mode" : "Focus mode — hide panels"}
+          title={focusMode ? "Exit focus mode (F)" : "Focus mode (F)"}
           className={`flex items-center px-2 py-1.5 rounded-lg border transition-colors ${
             focusMode ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground hover:text-foreground"
           }`}
@@ -2604,207 +2803,55 @@ export default function WebsiteEditor() {
 
           {/* Unified tree — pages + their sections */}
           <div ref={sidebarListRef} className="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0">
-            {(treeSearch
-              ? pages.filter(p => {
-                  const q = treeSearch.toLowerCase();
-                  if (p.name.toLowerCase().includes(q)) return true;
-                  const secs = p.id === activePageId ? sections : (p.sections ?? []);
-                  return secs.some(s => (SECTION_LABELS[s.type] ?? s.type).toLowerCase().includes(q));
-                })
-              : pages
-            ).map(page => {
-              const isActivePage = activePageId === page.id;
-              const isExpanded = expandedPageIds.has(page.id);
-              const pageSections = isActivePage ? sections : (page.sections ?? []);
-
-              return (
-                <div key={page.id}>
-                  {/* Page row */}
-                  <div
-                    className={`group flex items-center gap-1 px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                      isActivePage ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
-                    }`}
-                    onClick={() => {
-                      switchPage(page.id);
-                      setExpandedPageIds(prev => new Set([...prev, page.id]));
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
-                      onClick={e => {
-                        e.stopPropagation();
-                        setExpandedPageIds(prev => {
-                          const next = new Set(prev);
-                          if (next.has(page.id)) next.delete(page.id); else next.add(page.id);
-                          return next;
-                        });
-                      }}
-                    >
-                      <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
-                    </button>
-                    <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />
-                    {editingPageId === page.id ? (
-                      <input
-                        type="text"
-                        value={editingPageName}
-                        onChange={e => setEditingPageName(e.target.value)}
-                        onBlur={() => {
-                          if (editingPageName.trim()) renamePage(page.id, editingPageName.trim());
-                          setEditingPageId(null);
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") { if (editingPageName.trim()) renamePage(page.id, editingPageName.trim()); setEditingPageId(null); }
-                          if (e.key === "Escape") setEditingPageId(null);
-                        }}
-                        className="flex-1 text-xs bg-transparent border-b border-primary focus:outline-none min-w-0"
-                        autoFocus
-                        onClick={e => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="flex-1 text-xs font-medium truncate">{page.name}</span>
-                    )}
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={e => { e.stopPropagation(); setEditingPageId(page.id); setEditingPageName(page.name); }}
-                        className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
-                        title="Rename"
-                      >
-                        <Pencil className="w-2.5 h-2.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={e => { e.stopPropagation(); switchPage(page.id); setPageTemplatePickerMode("apply"); setShowPageTemplatePicker(true); }}
-                        className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground"
-                        title="Replace page with template"
-                      >
-                        <LayoutTemplate className="w-2.5 h-2.5" />
-                      </button>
-                      {page.id !== "home" && (
-                        <button
-                          type="button"
-                          onClick={e => { e.stopPropagation(); deletePage(page.id); }}
-                          className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
-                          title="Delete page"
-                        >
-                          <Trash2 className="w-2.5 h-2.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Sections under this page */}
-                  {isExpanded && (
-                    <div className="ml-3 mt-0.5 space-y-0.5">
-                      {/* Header — locked, shown only under home page */}
-                      {page.id === "home" && (() => {
-                        const hdr = (pages.find(p => p.id === "home")?.sections ?? sections).find(s => s.type === "header");
-                        if (!hdr) return null;
-                        return (
-                          <div
-                            data-section-id={hdr.id}
-                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                              activeSection === hdr.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
-                            }`}
-                            onClick={() => setActiveSection(hdr.id)}
-                          >
-                            <Lock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
-                            <span className="flex-1 text-xs font-medium text-foreground">Header</span>
-                            <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Sortable sections (active page) or read-only list (other pages) */}
-                      {isActivePage ? (
-                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                          <SortableContext items={sections.filter(s => s.type !== "header").map(s => s.id)} strategy={verticalListSortingStrategy}>
-                            {sections.filter(s => s.type !== "header").map(s => (
-                              <div key={s.id} data-section-id={s.id}>
-                                <SortableRow
-                                  section={s}
-                                  active={activeSection === s.id}
-                                  onToggle={() => toggleSection(s.id)}
-                                  onActivate={() => setActiveSection(s.id)}
-                                />
-                              </div>
-                            ))}
-                          </SortableContext>
-                        </DndContext>
-                      ) : (
-                        pageSections.filter(s => s.type !== "header").map(s => (
-                          <div
-                            key={s.id}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-muted transition-colors opacity-60"
-                            onClick={() => { switchPage(page.id); setExpandedPageIds(prev => new Set([...prev, page.id])); }}
-                          >
-                            <span className="flex-1 text-xs font-medium text-foreground">{SECTION_LABELS[s.type] ?? s.type}</span>
-                          </div>
-                        ))
-                      )}
-
-                      {/* Add Section (active page only) */}
-                      {isActivePage && (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => { setInsertAfterSectionId(undefined); setShowAddSection(v => !v); }}
-                            className="flex items-center gap-1 w-full px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                          >
-                            <Plus className="w-3 h-3" />
-                            Add Section
-                          </button>
-                          {showAddSection && (
-                            <div className="absolute left-0 top-full mt-1 z-30 w-72 bg-popover border border-border rounded-xl shadow-xl overflow-hidden text-sm">
-                              <div className="flex border-b border-border">
-                                <button
-                                  type="button"
-                                  onClick={() => setAddSectionTab("sections")}
-                                  className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors ${addSectionTab === "sections" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-                                >
-                                  Blank Sections
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setAddSectionTab("templates")}
-                                  className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${addSectionTab === "templates" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-                                >
-                                  <LayoutTemplate className="w-3 h-3" />
-                                  Templates
-                                </button>
-                              </div>
-                              {addSectionTab === "sections" ? (
-                                <div className="py-1 max-h-72 overflow-y-auto">
-                                  {ADDABLE_SECTION_TYPES.map(opt => (
-                                    <button key={opt.type} type="button" onClick={() => addSection(opt.type)} className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors">
-                                      {opt.icon}
-                                      {opt.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="py-1 max-h-96 overflow-y-auto">
-                                  {SECTION_TEMPLATES.map(tpl => (
-                                    <button key={tpl.id} type="button" onClick={() => addSectionFromTemplate(tpl.id)} className="flex items-start gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted transition-colors group">
-                                      <span className="text-base flex-shrink-0 mt-0.5">{tpl.emoji}</span>
-                                      <span className="min-w-0">
-                                        <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{tpl.name}</span>
-                                        <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">{tpl.description}</span>
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {(() => {
+              const q = treeSearch.toLowerCase();
+              const filteredPages = treeSearch
+                ? pages.filter(p =>
+                    p.name.toLowerCase().includes(q) ||
+                    (p.id === activePageId ? sections : (p.sections ?? [])).some(s =>
+                      (SECTION_LABELS[s.type] ?? s.type).toLowerCase().includes(q)))
+                : pages;
+              const treeData: TreeNodeData[] = filteredPages.map(p => ({
+                id: p.id,
+                type: "page" as const,
+                label: p.name,
+                icon: <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />,
+                page: p,
+                pageId: p.id,
+                children: (p.id === activePageId ? sections : (p.sections ?? []))
+                  .filter(s => s.type !== "header")
+                  .filter(s => !treeSearch || (SECTION_LABELS[s.type] ?? s.type).toLowerCase().includes(q))
+                  .map(s => ({
+                    id: s.id,
+                    type: "section" as const,
+                    label: SECTION_LABELS[s.type] ?? s.type,
+                    icon: SECTION_TYPE_ICONS[s.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />,
+                    section: s,
+                    page: p,
+                    pageId: p.id,
+                    children: [],
+                  })),
+              }));
+              const treeNodeProps = {
+                expandedIds: expandedPageIds,
+                onToggleExpand: (id: string) => setExpandedPageIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id); else next.add(id);
+                  return next;
+                }),
+                activePageId,
+                activeSection,
+                switchPage,
+                editingPageId, setEditingPageId, editingPageName, setEditingPageName,
+                renamePage, deletePage, setPageTemplatePickerMode, setShowPageTemplatePicker,
+                sensors, handleDragEnd, toggleSection, setActiveSection, sections,
+                setInsertAfterSectionId, setShowAddSection, showAddSection,
+                addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
+              };
+              return treeData.map(node => (
+                <SiteTreeNode key={node.id} node={node} depth={0} {...treeNodeProps} />
+              ));
+            })()}
           </div>
 
           {/* Theme Designer */}
@@ -3347,8 +3394,7 @@ export default function WebsiteEditor() {
 
         {/* Canvas — live preview */}
         <div
-          className="flex-1 overflow-y-auto bg-muted/30"
-          style={{ minWidth: "70%" }}
+          className={`flex-1 overflow-y-auto bg-muted/30 lg:min-w-[70%] ${!focusMode ? "cursor-zoom-in" : ""}`}
           onClick={() => setActiveSection(null)}
           onDoubleClick={e => {
             if (focusMode) return;
@@ -3420,11 +3466,14 @@ export default function WebsiteEditor() {
               <div className="flex flex-col items-center py-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setRightCollapsed(false)}
-                  title="Expand panel"
-                  className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => { autoCollapsedRightRef.current = false; setAutoCollapsedRight(false); setRightCollapsed(false); }}
+                  title={autoCollapsedRight ? "Expand panel (auto-collapsed for canvas space)" : "Expand panel"}
+                  className="relative p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ChevronsLeft className="w-4 h-4" />
+                  {autoCollapsedRight && (
+                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-primary" />
+                  )}
                 </button>
                 <Layers className="w-4 h-4 text-muted-foreground/40" />
               </div>
