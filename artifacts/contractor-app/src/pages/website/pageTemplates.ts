@@ -165,7 +165,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           maxWidth: "xl",
           verticalAlign: "center",
         },
-        blockStyle: { paddingTop: 72, paddingBottom: 72, bgType: "color", bgColor: "#f9fafb" },
+        blockStyle: { paddingTop: 72, paddingBottom: 72 },
       },
       {
         type: "portfolio",
@@ -357,7 +357,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           layout: "centered",
           imageUrl: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80",
         },
-        blockStyle: { bgType: "image", bgImageUrl: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80", bgOverlay: 0.55, paddingTop: 120, paddingBottom: 120 },
+        blockStyle: { paddingTop: 120, paddingBottom: 120 },
       },
       {
         type: "row",
@@ -464,7 +464,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           maxWidth: "lg",
           verticalAlign: "center",
         },
-        blockStyle: { paddingTop: 64, paddingBottom: 64, bgType: "color", bgColor: "#fafaf8" },
+        blockStyle: { paddingTop: 64, paddingBottom: 64 },
       },
       {
         type: "cta",
@@ -545,7 +545,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           maxWidth: "xl",
           verticalAlign: "start",
         },
-        blockStyle: { paddingTop: 64, paddingBottom: 64, bgType: "color", bgColor: "#f9fafb" },
+        blockStyle: { paddingTop: 64, paddingBottom: 64 },
       },
       {
         type: "services",
@@ -648,8 +648,8 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "We Build Digital Experiences That Convert", level: 1, align: "left", style: { color: "#ffffff" } } },
-                { id: uid(), type: "paragraph", props: { text: "Strategy. Design. Development. Growth. We partner with ambitious brands to build digital products people love and results clients can measure.", align: "left", style: { color: "#d1d5db" } } },
+                { id: uid(), type: "heading", props: { text: "We Build Digital Experiences That Convert", level: 1, align: "left" } },
+                { id: uid(), type: "paragraph", props: { text: "Strategy. Design. Development. Growth. We partner with ambitious brands to build digital products people love and results clients can measure.", align: "left" } },
                 { id: uid(), type: "button", props: { label: "Start a Project", config: { url: "#contact", variant: "filled", size: "lg" }, align: "left" } },
               ],
             },
@@ -658,7 +658,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           maxWidth: "xl",
           verticalAlign: "center",
         },
-        blockStyle: { bgType: "color", bgColor: "#0f172a", paddingTop: 100, paddingBottom: 100 },
+        blockStyle: { paddingTop: 100, paddingBottom: 100 },
       },
       {
         type: "services",
@@ -701,42 +701,42 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "Acme Corp", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+                { id: uid(), type: "heading", props: { text: "Acme Corp", level: 4, align: "center", style: { fontWeight: "700", letterSpacing: "0.05em" } } },
               ],
             },
             {
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "Horizon Labs", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+                { id: uid(), type: "heading", props: { text: "Horizon Labs", level: 4, align: "center", style: { fontWeight: "700", letterSpacing: "0.05em" } } },
               ],
             },
             {
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "Meridian Co.", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+                { id: uid(), type: "heading", props: { text: "Meridian Co.", level: 4, align: "center", style: { fontWeight: "700", letterSpacing: "0.05em" } } },
               ],
             },
             {
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "Apex Group", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+                { id: uid(), type: "heading", props: { text: "Apex Group", level: 4, align: "center", style: { fontWeight: "700", letterSpacing: "0.05em" } } },
               ],
             },
             {
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "Lumen Inc.", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+                { id: uid(), type: "heading", props: { text: "Lumen Inc.", level: 4, align: "center", style: { fontWeight: "700", letterSpacing: "0.05em" } } },
               ],
             },
             {
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "Nova Studio", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+                { id: uid(), type: "heading", props: { text: "Nova Studio", level: 4, align: "center", style: { fontWeight: "700", letterSpacing: "0.05em" } } },
               ],
             },
           ],
@@ -746,7 +746,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           headerText: "Trusted by",
           headerSubtext: "Brands that take their digital presence seriously.",
         },
-        blockStyle: { paddingTop: 48, paddingBottom: 48, bgType: "color", bgColor: "#f8fafc" },
+        blockStyle: { paddingTop: 48, paddingBottom: 48 },
       },
       {
         type: "row",
@@ -870,7 +870,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           layout: "centered",
           imageUrl: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1200&q=80",
         },
-        blockStyle: { bgType: "image", bgImageUrl: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1200&q=80", bgOverlay: 0.5, paddingTop: 110, paddingBottom: 110 },
+        blockStyle: { paddingTop: 110, paddingBottom: 110 },
       },
       {
         type: "stats",
@@ -964,7 +964,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           headerText: "Get Involved",
           headerSubtext: "There are many ways to make a difference.",
         },
-        blockStyle: { paddingTop: 80, paddingBottom: 80, bgType: "color", bgColor: "#f9fafb" },
+        blockStyle: { paddingTop: 80, paddingBottom: 80 },
       },
       {
         type: "testimonials",
@@ -1160,7 +1160,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           maxWidth: "xl",
           verticalAlign: "start",
         },
-        blockStyle: { paddingTop: 64, paddingBottom: 64, bgType: "color", bgColor: "#f9fafb" },
+        blockStyle: { paddingTop: 64, paddingBottom: 64 },
       },
       {
         type: "row",
@@ -1236,7 +1236,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         enabled: true,
         order: 2,
         content: getTemplatContent("features-grid"),
-        blockStyle: { paddingTop: 64, paddingBottom: 64, bgType: "color", bgColor: "#f9fafb" },
+        blockStyle: { paddingTop: 64, paddingBottom: 64 },
       },
       {
         type: "row",
@@ -1273,7 +1273,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
         enabled: true,
         order: 4,
         content: getTemplatContent("pricing-cards"),
-        blockStyle: { paddingTop: 64, paddingBottom: 64, bgType: "color", bgColor: "#f9fafb" },
+        blockStyle: { paddingTop: 64, paddingBottom: 64 },
       },
       {
         type: "cta",
@@ -1362,7 +1362,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           maxWidth: "xl",
           verticalAlign: "start",
         },
-        blockStyle: { paddingTop: 64, paddingBottom: 64, bgType: "color", bgColor: "#f9fafb" },
+        blockStyle: { paddingTop: 64, paddingBottom: 64 },
       },
       {
         type: "stats",
