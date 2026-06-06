@@ -15,9 +15,11 @@ export interface PageSectionConfig {
 export interface PageTemplate {
   id: string;
   name: string;
+  tagline: string;
   defaultSlug: string;
   description: string;
   emoji: string;
+  thumbnailSvg: string;
   sectionSummary: string[];
   category: "business" | "page";
   sections: () => PageSectionConfig[];
@@ -31,6 +33,52 @@ function getTemplateStyle(id: string) {
   return SECTION_TEMPLATES.find(t => t.id === id)!.blockStyle;
 }
 
+function makeSvg(labels: string[]): string {
+  const C: Record<string, string> = {
+    "Hero": "#818cf8", "Mission Hero": "#818cf8",
+    "Services": "#64748b", "About Us": "#94a3b8", "About": "#94a3b8", "Our Story": "#94a3b8",
+    "Stats": "#c7d2fe", "Impact Numbers": "#c7d2fe", "Results": "#f9a8d4",
+    "Portfolio": "#a5b4fc",
+    "Testimonials": "#ddd6fe", "Stories": "#ddd6fe",
+    "CTA": "#4f46e5", "Donate CTA": "#4f46e5", "Reserve / Order CTA": "#4f46e5", "Book a Call": "#4f46e5",
+    "Contact Form": "#e2e8f0", "Contact": "#e2e8f0",
+    "Gallery": "#e9d5ff",
+    "Team": "#7dd3fc",
+    "Process": "#bae6fd",
+    "Client Logos": "#fef9c3",
+    "Programs": "#bbf7d0",
+    "Get Involved": "#86efac",
+    "Hours & Info": "#fef3c7",
+    "Featured Menu": "#fde68a",
+    "Why Choose Us": "#94a3b8",
+    "Problem → Solution": "#fca5a5",
+  };
+  const H: Record<string, number> = {
+    "Hero": 26, "Mission Hero": 26, "Services": 18, "About Us": 16, "About": 16, "Our Story": 16,
+    "Why Choose Us": 16, "Stats": 10, "Impact Numbers": 10, "Portfolio": 18, "Testimonials": 14,
+    "Stories": 14, "CTA": 10, "Donate CTA": 10, "Reserve / Order CTA": 10, "Book a Call": 10,
+    "Contact Form": 18, "Contact": 18, "Gallery": 16, "Team": 14, "Process": 14,
+    "Client Logos": 9, "Programs": 16, "Get Involved": 16, "Hours & Info": 12,
+    "Featured Menu": 16, "Problem → Solution": 12, "Results": 10,
+  };
+  const W = 160, P = 4, G = 2;
+  const nat = labels.reduce((s, l) => s + (H[l] ?? 12) + G, -G);
+  const sc = nat > 96 ? 96 / nat : 1;
+  let y = P;
+  let rects = "";
+  for (const lbl of labels) {
+    const h = Math.max(5, Math.round((H[lbl] ?? 12) * sc));
+    rects += `<rect x="${P}" y="${y}" width="${W - P * 2}" height="${h}" rx="2" fill="${C[lbl] ?? "#e2e8f0"}"/>`;
+    if (h >= 9) {
+      const fs = Math.min(6.5, h * 0.52);
+      const disp = lbl.length > 18 ? lbl.slice(0, 16) + "\u2026" : lbl;
+      rects += `<text x="${W / 2}" y="${y + h / 2 + fs * 0.38}" text-anchor="middle" font-size="${fs}" fill="rgba(255,255,255,0.9)" font-family="system-ui" font-weight="500">${disp}</text>`;
+    }
+    y += h + Math.max(1, Math.round(G * sc));
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${y + P}">${rects}</svg>`;
+}
+
 // ── Business-type templates ─────────────────────────────────────────────────
 
 export const PAGE_TEMPLATES: PageTemplate[] = [
@@ -39,11 +87,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "contractor",
     name: "Contractor",
+    tagline: "Built for the trades — quote, build, get paid.",
     defaultSlug: "home",
     description: "Built for trades and home services — hero, services, portfolio, testimonials, and a quote form.",
     emoji: "🔨",
     category: "business",
-    sectionSummary: ["Hero", "Services", "Stats", "Portfolio", "Testimonials", "CTA", "Contact Form"],
+    sectionSummary: ["Hero", "Services", "Stats", "Why Choose Us", "Portfolio", "Testimonials", "CTA", "Contact Form"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "hero",
@@ -104,7 +154,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
               id: uid(),
               widthRatio: 1,
               components: [
-                { id: uid(), type: "heading", props: { text: "Why Contractors Choose Us", level: 2, align: "left" } },
+                { id: uid(), type: "heading", props: { text: "Why Choose Us", level: 2, align: "left" } },
                 { id: uid(), type: "paragraph", props: { text: "We've built our reputation one satisfied customer at a time. Every project — big or small — gets the same level of care and attention to detail.", align: "left" } },
                 { id: uid(), type: "paragraph", props: { text: "✓ Free, detailed estimates — no surprises\n✓ Fully licensed, bonded & insured\n✓ Clean, respectful job sites every day\n✓ Clear communication from start to finish\n✓ Satisfaction guarantee on every job", align: "left" } },
                 { id: uid(), type: "button", props: { label: "View Our Work", config: { url: "#portfolio", variant: "filled", size: "lg" }, align: "left" } },
@@ -176,11 +226,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "business-general",
     name: "Business",
+    tagline: "A polished presence for any professional service.",
     defaultSlug: "home",
     description: "A polished all-purpose layout — hero, about, services, team, testimonials, and contact.",
     emoji: "💼",
     category: "business",
-    sectionSummary: ["Hero", "About Us", "Services", "Team", "Testimonials", "CTA", "Contact"],
+    sectionSummary: ["Hero", "About Us", "Services", "Stats", "Team", "Testimonials", "CTA", "Contact"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "hero",
@@ -285,11 +337,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "restaurant",
     name: "Restaurant",
+    tagline: "Beautiful food-first pages that fill tables.",
     defaultSlug: "home",
     description: "A bold food-first layout — featured menu, our story, hours, gallery, and a reservation CTA.",
     emoji: "🍽️",
     category: "business",
-    sectionSummary: ["Hero", "Featured Menu", "Our Story", "Hours & Info", "Gallery", "Reserve / Order CTA"],
+    sectionSummary: ["Hero", "Featured Menu", "Our Story", "Stats", "Gallery", "Hours & Info", "Reserve / Order CTA"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "hero",
@@ -432,11 +486,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "consultant",
     name: "Consultant",
+    tagline: "Problem → solution framing that drives bookings.",
     defaultSlug: "home",
     description: "Problem/solution framing, services, client results, bio, testimonials, and a discovery call CTA.",
     emoji: "🎯",
     category: "business",
-    sectionSummary: ["Hero", "Problem → Solution", "Services", "Results", "About", "Testimonials", "Book a Call"],
+    sectionSummary: ["Hero", "Problem → Solution", "Services", "Results", "About", "Testimonials", "Book a Call", "Contact Form"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "row",
@@ -574,11 +630,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "agency",
     name: "Agency",
+    tagline: "Creative and bold — for studios that mean business.",
     defaultSlug: "home",
-    description: "Creative and bold — services, portfolio, process, team, and a project kickoff CTA.",
+    description: "Creative and bold — services, portfolio, client logos, process, team, and a project kickoff CTA.",
     emoji: "🚀",
     category: "business",
-    sectionSummary: ["Hero", "Services", "Portfolio", "Process", "Team", "Stats", "Start a Project"],
+    sectionSummary: ["Hero", "Services", "Portfolio", "Client Logos", "Process", "Team", "Stats", "CTA"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "row",
@@ -643,6 +701,63 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
               id: uid(),
               widthRatio: 1,
               components: [
+                { id: uid(), type: "heading", props: { text: "Acme Corp", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+              ],
+            },
+            {
+              id: uid(),
+              widthRatio: 1,
+              components: [
+                { id: uid(), type: "heading", props: { text: "Horizon Labs", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+              ],
+            },
+            {
+              id: uid(),
+              widthRatio: 1,
+              components: [
+                { id: uid(), type: "heading", props: { text: "Meridian Co.", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+              ],
+            },
+            {
+              id: uid(),
+              widthRatio: 1,
+              components: [
+                { id: uid(), type: "heading", props: { text: "Apex Group", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+              ],
+            },
+            {
+              id: uid(),
+              widthRatio: 1,
+              components: [
+                { id: uid(), type: "heading", props: { text: "Lumen Inc.", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+              ],
+            },
+            {
+              id: uid(),
+              widthRatio: 1,
+              components: [
+                { id: uid(), type: "heading", props: { text: "Nova Studio", level: 4, align: "center", style: { color: "#64748b", fontWeight: "700", letterSpacing: "0.05em" } } },
+              ],
+            },
+          ],
+          gap: 24,
+          maxWidth: "xl",
+          verticalAlign: "center",
+          headerText: "Trusted by",
+          headerSubtext: "Brands that take their digital presence seriously.",
+        },
+        blockStyle: { paddingTop: 48, paddingBottom: 48, bgType: "color", bgColor: "#f8fafc" },
+      },
+      {
+        type: "row",
+        enabled: true,
+        order: 4,
+        content: {
+          columns: [
+            {
+              id: uid(),
+              widthRatio: 1,
+              components: [
                 { id: uid(), type: "icon", props: { emoji: "🔍", size: 40, align: "center" } },
                 { id: uid(), type: "heading", props: { text: "1. Discover", level: 4, align: "center" } },
                 { id: uid(), type: "paragraph", props: { text: "We start by understanding your business, users, and goals. No assumptions — just listening and research.", align: "center" } },
@@ -682,19 +797,19 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
           headerText: "Our Process",
           headerSubtext: "How we get from idea to impact.",
         },
-        blockStyle: { paddingTop: 80, paddingBottom: 80, bgType: "color", bgColor: "#f8fafc" },
+        blockStyle: { paddingTop: 80, paddingBottom: 80 },
       },
       {
         type: "row",
         enabled: true,
-        order: 4,
+        order: 5,
         content: getTemplatContent("team-section"),
         blockStyle: getTemplateStyle("team-section"),
       },
       {
         type: "stats",
         enabled: true,
-        order: 5,
+        order: 6,
         content: {
           heading: "By the Numbers",
           stats: [
@@ -708,7 +823,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
       {
         type: "cta",
         enabled: true,
-        order: 6,
+        order: 7,
         content: {
           heading: "Have a Project in Mind?",
           subheading: "We'd love to hear about it. Tell us what you're building and we'll tell you how we can help.",
@@ -721,7 +836,7 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
       {
         type: "contact",
         enabled: true,
-        order: 7,
+        order: 8,
         content: {
           heading: "Start a Project",
           subheading: "Tell us what you're working on. We'll follow up within 24 hours.",
@@ -735,11 +850,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "nonprofit",
     name: "Nonprofit",
+    tagline: "Mission-first storytelling that drives donations.",
     defaultSlug: "home",
     description: "Mission-first layout — impact stats, programs, get involved, stories, and a donation CTA.",
     emoji: "❤️",
     category: "business",
     sectionSummary: ["Mission Hero", "Impact Numbers", "Programs", "Get Involved", "Stories", "Donate CTA"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "hero",
@@ -884,11 +1001,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "home-page",
     name: "Home Page",
+    tagline: "A complete landing page ready to customize.",
     defaultSlug: "home",
     description: "A full landing page — hero, services, stats, testimonials, and a call to action.",
     emoji: "🏠",
     category: "page",
-    sectionSummary: ["Hero Split", "Services Cards", "Statistics", "Testimonials", "CTA Banner"],
+    sectionSummary: ["Hero", "Services", "Stats", "Testimonials", "CTA"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "hero",
@@ -964,18 +1083,19 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "about-page",
     name: "About Page",
+    tagline: "Tell your story — who you are and why it matters.",
     defaultSlug: "about",
     description: "Tell your story — hero, about us, how it works, team, and a CTA.",
     emoji: "👋",
     category: "page",
-    sectionSummary: ["Hero Centered", "About Us", "Process / How It Works", "Team Grid", "CTA Banner"],
+    sectionSummary: ["Hero", "About Us", "Process", "Team", "CTA"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "row",
         enabled: true,
         order: 0,
         content: {
-          ...getTemplatContent("hero-centered"),
           columns: [
             {
               id: uid(),
@@ -986,8 +1106,11 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
               ],
             },
           ],
+          gap: 24,
+          maxWidth: "lg",
+          verticalAlign: "center",
         },
-        blockStyle: getTemplateStyle("hero-centered"),
+        blockStyle: { paddingTop: 80, paddingBottom: 80 },
       },
       {
         type: "about",
@@ -1065,11 +1188,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "services-page",
     name: "Services Page",
+    tagline: "Showcase your offerings with pricing and proof.",
     defaultSlug: "services",
     description: "Showcase your offerings — hero, service cards, features, benefits, pricing, and CTA.",
     emoji: "🛠️",
     category: "page",
-    sectionSummary: ["Hero Centered", "Service Cards", "Features Grid", "Benefits Section", "Pricing", "CTA Banner"],
+    sectionSummary: ["Hero", "Services", "Stats", "CTA"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "row",
@@ -1169,11 +1294,13 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
   {
     id: "contact-page",
     name: "Contact Page",
+    tagline: "Make it easy for anyone to reach you.",
     defaultSlug: "contact",
     description: "Make it easy to reach you — contact form, location, and business hours.",
     emoji: "📬",
     category: "page",
-    sectionSummary: ["Contact Info Card", "Contact Form", "Office Location", "Business Hours"],
+    sectionSummary: ["Hero", "Contact Form", "Stats"],
+    get thumbnailSvg() { return makeSvg(this.sectionSummary); },
     sections: () => [
       {
         type: "row",

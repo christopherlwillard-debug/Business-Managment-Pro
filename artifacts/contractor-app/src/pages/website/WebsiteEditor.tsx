@@ -344,40 +344,111 @@ function PageTemplatePicker({
 }: {
   mode: "add" | "apply";
   currentPageName?: string;
-  onSelect: (t: PageTemplate) => void;
+  onSelect: (t: PageTemplate, customName: string) => void;
   onApply: (t: PageTemplate) => void;
   onBlank: () => void;
   onClose: () => void;
 }) {
+  const [namePrompt, setNamePrompt] = useState<{ template: PageTemplate; name: string } | null>(null);
   const businessTemplates = PAGE_TEMPLATES.filter(t => t.category === "business");
   const pageTemplates = PAGE_TEMPLATES.filter(t => t.category === "page");
 
+  function handleCardClick(t: PageTemplate) {
+    if (mode === "apply") {
+      onApply(t);
+    } else {
+      setNamePrompt({ template: t, name: t.name });
+    }
+  }
+
   function TemplateCard({ t }: { t: PageTemplate }) {
-    const handler = mode === "apply" ? () => onApply(t) : () => onSelect(t);
+    const thumb = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(t.thumbnailSvg)}`;
     return (
       <button
-        onClick={handler}
-        className="text-left rounded-xl border-2 border-border hover:border-primary hover:shadow-md transition-all p-4 group"
+        onClick={() => handleCardClick(t)}
+        className="text-left rounded-xl border-2 border-border hover:border-primary hover:shadow-md transition-all overflow-hidden group"
       >
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">{t.emoji}</span>
-          <p className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">{t.name}</p>
+        <div className="bg-muted/30 border-b border-border flex items-center justify-center py-2 px-3">
+          <img src={thumb} alt={`${t.name} layout`} className="w-full max-h-24 object-contain" />
         </div>
-        <p className="text-xs text-muted-foreground mb-3 leading-snug">{t.description}</p>
-        <div className="flex flex-wrap gap-1">
-          {t.sectionSummary.map((s, i) => (
-            <span key={i} className="inline-flex items-center text-[10px] font-medium bg-muted text-muted-foreground rounded px-1.5 py-0.5">
-              {s}
-            </span>
-          ))}
+        <div className="p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-lg">{t.emoji}</span>
+            <p className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors">{t.name}</p>
+          </div>
+          <p className="text-[11px] text-muted-foreground leading-snug mb-2">{t.tagline}</p>
+          <div className="flex flex-wrap gap-1">
+            {t.sectionSummary.slice(0, 5).map((s, i) => (
+              <span key={i} className="inline-flex items-center text-[9px] font-medium bg-muted text-muted-foreground rounded px-1.5 py-0.5">
+                {s}
+              </span>
+            ))}
+            {t.sectionSummary.length > 5 && (
+              <span className="inline-flex items-center text-[9px] font-medium bg-muted text-muted-foreground rounded px-1.5 py-0.5">
+                +{t.sectionSummary.length - 5} more
+              </span>
+            )}
+          </div>
         </div>
       </button>
     );
   }
 
+  // ── Name-prompt step (add mode only) ──────────────────────────────────────
+  if (namePrompt) {
+    const thumb = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(namePrompt.template.thumbnailSvg)}`;
+    return (
+      <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center p-6">
+        <div className="max-w-sm w-full bg-card rounded-2xl border border-border shadow-xl p-6">
+          <div className="flex items-start gap-4 mb-5">
+            <img src={thumb} alt="layout preview" className="w-16 h-20 object-contain rounded-lg bg-muted/40 flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-xl">{namePrompt.template.emoji}</span>
+                <p className="font-bold text-foreground">{namePrompt.template.name}</p>
+              </div>
+              <p className="text-xs text-muted-foreground leading-snug">{namePrompt.template.tagline}</p>
+            </div>
+          </div>
+          <label className="text-sm font-medium text-foreground block mb-1.5">Name this page</label>
+          <input
+            value={namePrompt.name}
+            onChange={e => setNamePrompt(p => p ? { ...p, name: e.target.value } : p)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && namePrompt.name.trim()) {
+                onSelect(namePrompt.template, namePrompt.name.trim());
+                setNamePrompt(null);
+              }
+              if (e.key === "Escape") setNamePrompt(null);
+            }}
+            placeholder="e.g. Home, About, Services…"
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary bg-background"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => setNamePrompt(null)}
+              className="flex-1 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted transition-colors"
+            >
+              ← Back
+            </button>
+            <button
+              disabled={!namePrompt.name.trim()}
+              onClick={() => { onSelect(namePrompt.template, namePrompt.name.trim()); setNamePrompt(null); }}
+              className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              Create Page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main picker ───────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center p-6 overflow-y-auto">
-      <div className="max-w-3xl w-full pt-8 pb-16">
+      <div className="max-w-4xl w-full pt-8 pb-16">
         <div className="text-center mb-8 relative">
           <button
             onClick={onClose}
@@ -410,7 +481,7 @@ function PageTemplatePicker({
             <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">🏢 Business Layouts</span>
             <div className="flex-1 h-px bg-border" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {businessTemplates.map(t => <TemplateCard key={t.id} t={t} />)}
           </div>
         </div>
@@ -421,7 +492,7 @@ function PageTemplatePicker({
             <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">📄 Page Types</span>
             <div className="flex-1 h-px bg-border" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {pageTemplates.map(t => <TemplateCard key={t.id} t={t} />)}
           </div>
         </div>
@@ -1668,7 +1739,9 @@ export default function WebsiteEditor() {
     setActiveSection(null);
   }
 
-  function addPageFromTemplate(tpl: PageTemplate) {
+  function addPageFromTemplate(tpl: PageTemplate, customName?: string) {
+    const name = customName?.trim() || tpl.name;
+    const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || tpl.defaultSlug;
     const sections: Section[] = tpl.sections().map((s, i) => ({
       id: "s-" + Math.random().toString(36).slice(2, 9),
       type: s.type,
@@ -1677,7 +1750,7 @@ export default function WebsiteEditor() {
       content: s.content,
       blockStyle: s.blockStyle as BlockStyle | undefined,
     }));
-    addPage(tpl.name, tpl.defaultSlug, sections);
+    addPage(name, slug, sections);
     setShowPageTemplatePicker(false);
   }
 
