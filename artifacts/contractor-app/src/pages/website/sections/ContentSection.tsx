@@ -127,24 +127,33 @@ export function defaultContentSectionData(): ContentSectionData {
   };
 }
 
-export const CONTENT_COMPONENT_TYPES: Array<{
+type ContentComponentTypeEntry = {
   type: ComponentType;
   label: string;
   icon: React.ReactNode;
   description: string;
-}> = [
-  { type: "heading",     label: "Heading",     icon: <Type className="w-4 h-4" />,       description: "H1–H4 title text" },
-  { type: "paragraph",   label: "Paragraph",   icon: <AlignLeft className="w-4 h-4" />,  description: "Body text block" },
-  { type: "button",      label: "Button",      icon: <MousePointer className="w-4 h-4" />, description: "Clickable button or link" },
-  { type: "image",       label: "Image",       icon: <ImageIcon className="w-4 h-4" />,  description: "Photo or graphic" },
-  { type: "divider",     label: "Divider",     icon: <Minus className="w-4 h-4" />,      description: "Horizontal rule" },
-  { type: "icon",        label: "Icon",        icon: <Smile className="w-4 h-4" />,      description: "Emoji or symbol" },
-  { type: "video",       label: "Video",       icon: <PlayCircle className="w-4 h-4" />, description: "YouTube / Vimeo embed" },
-  { type: "card",        label: "Card",        icon: <Square className="w-4 h-4" />,     description: "Image + text + CTA card" },
-  { type: "testimonial", label: "Testimonial", icon: <Quote className="w-4 h-4" />,      description: "Customer quote" },
-  { type: "form",        label: "Form",        icon: <Mail className="w-4 h-4" />,       description: "Simple contact form" },
-  { type: "map",         label: "Map",         icon: <MapPin className="w-4 h-4" />,     description: "Google Maps embed" },
-];
+};
+
+let _contentComponentTypes: ContentComponentTypeEntry[] | null = null;
+
+export function getContentComponentTypes(): ContentComponentTypeEntry[] {
+  if (!_contentComponentTypes) {
+    _contentComponentTypes = [
+      { type: "heading",     label: "Heading",     icon: <Type className="w-4 h-4" />,         description: "H1–H4 title text" },
+      { type: "paragraph",   label: "Paragraph",   icon: <AlignLeft className="w-4 h-4" />,    description: "Body text block" },
+      { type: "button",      label: "Button",      icon: <MousePointer className="w-4 h-4" />, description: "Clickable button or link" },
+      { type: "image",       label: "Image",       icon: <ImageIcon className="w-4 h-4" />,    description: "Photo or graphic" },
+      { type: "divider",     label: "Divider",     icon: <Minus className="w-4 h-4" />,        description: "Horizontal rule" },
+      { type: "icon",        label: "Icon",        icon: <Smile className="w-4 h-4" />,        description: "Emoji or symbol" },
+      { type: "video",       label: "Video",       icon: <PlayCircle className="w-4 h-4" />,   description: "YouTube / Vimeo embed" },
+      { type: "card",        label: "Card",        icon: <Square className="w-4 h-4" />,       description: "Image + text + CTA card" },
+      { type: "testimonial", label: "Testimonial", icon: <Quote className="w-4 h-4" />,        description: "Customer quote" },
+      { type: "form",        label: "Form",        icon: <Mail className="w-4 h-4" />,         description: "Simple contact form" },
+      { type: "map",         label: "Map",         icon: <MapPin className="w-4 h-4" />,       description: "Google Maps embed" },
+    ];
+  }
+  return _contentComponentTypes;
+}
 
 export function defaultPropsForType(type: ComponentType): SiteComponentProps {
   switch (type) {
@@ -515,7 +524,7 @@ interface SortableItemProps {
 
 function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, settings }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
-  const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
+  const label = getContentComponentTypes().find(t => t.type === comp.type)?.label ?? comp.type;
 
   const dragHandle = (
     <div
@@ -651,7 +660,7 @@ function AddComponentPicker({ onAdd, onClose }: AddComponentPickerProps) {
         <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm leading-none">✕</button>
       </div>
       <div className="grid grid-cols-2 gap-1">
-        {CONTENT_COMPONENT_TYPES.map(ct => (
+        {getContentComponentTypes().map(ct => (
           <button
             key={ct.type}
             type="button"
@@ -797,7 +806,7 @@ export function ContentSection({
   }
 
   const pasteLabel = copiedComponent
-    ? (CONTENT_COMPONENT_TYPES.find(t => t.type === copiedComponent.type)?.label ?? "Component")
+    ? (getContentComponentTypes().find(t => t.type === copiedComponent.type)?.label ?? "Component")
     : null;
 
   return (

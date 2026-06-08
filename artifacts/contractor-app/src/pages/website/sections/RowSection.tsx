@@ -11,7 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Plus, GripVertical, Trash2, Copy, AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, LayoutGrid, ClipboardPaste, Link2, FileText, MousePointer, Type, Lock, EyeOff } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import {
-  renderSiteComponent, renderSiteComponentEditable, CONTENT_COMPONENT_TYPES, defaultPropsForType,
+  renderSiteComponent, renderSiteComponentEditable, getContentComponentTypes, defaultPropsForType,
   type SiteComponent, type ComponentType, type SiteComponentProps,
   type HeadingProps, type ParagraphProps, type ImageCompProps,
 } from "./ContentSection";
@@ -102,7 +102,7 @@ function ComponentPicker({ onAdd, onClose }: { onAdd: (t: ComponentType) => void
         <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
       </div>
       <div className="grid grid-cols-2 gap-0.5">
-        {CONTENT_COMPONENT_TYPES.map(ct => (
+        {getContentComponentTypes().map(ct => (
           <button
             key={ct.type}
             type="button"
@@ -136,7 +136,7 @@ interface SortableCompItemProps {
 
 function SortableCompItem({ comp, colId, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, settings }: SortableCompItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
-  const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
+  const label = getContentComponentTypes().find(t => t.type === comp.type)?.label ?? comp.type;
 
   const dragHandle = (
     <div {...attributes} {...listeners} className="cursor-grab text-white/60 hover:text-white p-1" onClick={e => e.stopPropagation()}>
@@ -530,7 +530,7 @@ export function RowSection({
                         className="flex items-center gap-1 text-[10px] font-medium text-primary/70 hover:text-primary transition-colors w-full justify-center border border-dashed border-primary/20 rounded py-1 hover:border-primary/50 bg-primary/5"
                       >
                         <ClipboardPaste className="w-3 h-3" />
-                        Paste {CONTENT_COMPONENT_TYPES.find(t => t.type === copiedComponent.type)?.label ?? copiedComponent.type}
+                        Paste {getContentComponentTypes().find(t => t.type === copiedComponent.type)?.label ?? copiedComponent.type}
                       </button>
                     )}
                   </div>

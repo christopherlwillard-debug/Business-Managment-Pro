@@ -255,45 +255,59 @@ const SECTION_LABELS: Record<string, string> = {
   image: "Image",
 };
 
-const SECTION_TYPE_ICONS: Record<string, React.ReactNode> = {
-  header:       <Layers    className="w-3 h-3 flex-shrink-0" />,
-  hero:         <Star      className="w-3 h-3 flex-shrink-0" />,
-  services:     <LayoutGrid className="w-3 h-3 flex-shrink-0" />,
-  about:        <FileText  className="w-3 h-3 flex-shrink-0" />,
-  contact:      <AlignLeft className="w-3 h-3 flex-shrink-0" />,
-  footer:       <Layers    className="w-3 h-3 flex-shrink-0" />,
-  portfolio:    <Images    className="w-3 h-3 flex-shrink-0" />,
-  deposit:      <ChevronDown className="w-3 h-3 flex-shrink-0" />,
-  columns:      <Columns   className="w-3 h-3 flex-shrink-0" />,
-  testimonials: <Star      className="w-3 h-3 flex-shrink-0" />,
-  faq:          <HelpCircle className="w-3 h-3 flex-shrink-0" />,
-  cta:          <Megaphone className="w-3 h-3 flex-shrink-0" />,
-  stats:        <BarChart2 className="w-3 h-3 flex-shrink-0" />,
-  content:      <AlignLeft className="w-3 h-3 flex-shrink-0" />,
-  row:          <LayoutGrid className="w-3 h-3 flex-shrink-0" />,
-  text:         <AlignLeft className="w-3 h-3 flex-shrink-0" />,
-  gallery:      <Images    className="w-3 h-3 flex-shrink-0" />,
-  image:        <Images    className="w-3 h-3 flex-shrink-0" />,
-};
+let _sectionTypeIcons: Record<string, React.ReactNode> | null = null;
+function getSectionTypeIcons(): Record<string, React.ReactNode> {
+  if (!_sectionTypeIcons) {
+    _sectionTypeIcons = {
+      header:       <Layers    className="w-3 h-3 flex-shrink-0" />,
+      hero:         <Star      className="w-3 h-3 flex-shrink-0" />,
+      services:     <LayoutGrid className="w-3 h-3 flex-shrink-0" />,
+      about:        <FileText  className="w-3 h-3 flex-shrink-0" />,
+      contact:      <AlignLeft className="w-3 h-3 flex-shrink-0" />,
+      footer:       <Layers    className="w-3 h-3 flex-shrink-0" />,
+      portfolio:    <Images    className="w-3 h-3 flex-shrink-0" />,
+      deposit:      <ChevronDown className="w-3 h-3 flex-shrink-0" />,
+      columns:      <Columns   className="w-3 h-3 flex-shrink-0" />,
+      testimonials: <Star      className="w-3 h-3 flex-shrink-0" />,
+      faq:          <HelpCircle className="w-3 h-3 flex-shrink-0" />,
+      cta:          <Megaphone className="w-3 h-3 flex-shrink-0" />,
+      stats:        <BarChart2 className="w-3 h-3 flex-shrink-0" />,
+      content:      <AlignLeft className="w-3 h-3 flex-shrink-0" />,
+      row:          <LayoutGrid className="w-3 h-3 flex-shrink-0" />,
+      text:         <AlignLeft className="w-3 h-3 flex-shrink-0" />,
+      gallery:      <Images    className="w-3 h-3 flex-shrink-0" />,
+      image:        <Images    className="w-3 h-3 flex-shrink-0" />,
+    };
+  }
+  return _sectionTypeIcons;
+}
 
-const ADDABLE_SECTION_TYPES: Array<{
+type AddableSectionEntry = {
   type: Section["type"];
   label: string;
   icon: React.ReactNode;
   allowMultiple?: boolean;
-}> = [
-  { type: "hero", label: "Hero Banner", icon: <ImagePlus className="w-4 h-4" />, allowMultiple: true },
-  { type: "text", label: "Text Block", icon: <AlignLeft className="w-4 h-4" />, allowMultiple: true },
-  { type: "gallery", label: "Image Gallery", icon: <Images className="w-4 h-4" />, allowMultiple: true },
-  { type: "image",   label: "Image",         icon: <Images className="w-4 h-4" />, allowMultiple: true },
-  { type: "testimonials", label: "Testimonials", icon: <Star className="w-4 h-4" />, allowMultiple: true },
-  { type: "faq", label: "FAQ", icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
-  { type: "cta", label: "CTA Banner", icon: <Megaphone className="w-4 h-4" />, allowMultiple: true },
-  { type: "stats", label: "Stats / Numbers", icon: <BarChart2 className="w-4 h-4" />, allowMultiple: true },
-  { type: "columns", label: "Columns", icon: <Columns className="w-4 h-4" />, allowMultiple: true },
-  { type: "content", label: "Content Block", icon: <Layers className="w-4 h-4" />, allowMultiple: true },
-  { type: "row", label: "Row", icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
-];
+};
+
+let _addableSectionTypes: AddableSectionEntry[] | null = null;
+function getAddableSectionTypes(): AddableSectionEntry[] {
+  if (!_addableSectionTypes) {
+    _addableSectionTypes = [
+      { type: "hero",         label: "Hero Banner",    icon: <ImagePlus  className="w-4 h-4" />, allowMultiple: true },
+      { type: "text",         label: "Text Block",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
+      { type: "gallery",      label: "Image Gallery",  icon: <Images     className="w-4 h-4" />, allowMultiple: true },
+      { type: "image",        label: "Image",          icon: <Images     className="w-4 h-4" />, allowMultiple: true },
+      { type: "testimonials", label: "Testimonials",   icon: <Star       className="w-4 h-4" />, allowMultiple: true },
+      { type: "faq",          label: "FAQ",            icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
+      { type: "cta",          label: "CTA Banner",     icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
+      { type: "stats",        label: "Stats / Numbers",icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
+      { type: "columns",      label: "Columns",        icon: <Columns    className="w-4 h-4" />, allowMultiple: true },
+      { type: "content",      label: "Content Block",  icon: <Layers     className="w-4 h-4" />, allowMultiple: true },
+      { type: "row",          label: "Row",            icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
+    ];
+  }
+  return _addableSectionTypes;
+}
 
 function SortableRow({
   section,
@@ -320,7 +334,7 @@ function SortableRow({
         <GripVertical className="w-4 h-4" />
       </div>
       <span className={`flex-1 flex items-center gap-1.5 text-sm font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`}>
-        <span className="opacity-50">{SECTION_TYPE_ICONS[section.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />}</span>
+        <span className="opacity-50">{getSectionTypeIcons()[section.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />}</span>
         {SECTION_LABELS[section.type] ?? section.type}
       </span>
       <button
@@ -574,7 +588,7 @@ function SiteTreeNode({
                   </div>
                   {addSectionTab === "sections" ? (
                     <div className="py-1 max-h-72 overflow-y-auto">
-                      {ADDABLE_SECTION_TYPES.map(opt => (
+                      {getAddableSectionTypes().map(opt => (
                         <button key={opt.type} type="button" onClick={() => addSection(opt.type)}
                           className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors">
                           {opt.icon}{opt.label}
@@ -3934,7 +3948,7 @@ function WebsiteEditor() {
                     id: s.id,
                     type: "section" as const,
                     label: SECTION_LABELS[s.type] ?? s.type,
-                    icon: SECTION_TYPE_ICONS[s.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />,
+                    icon: getSectionTypeIcons()[s.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />,
                     section: s,
                     page: p,
                     pageId: p.id,
