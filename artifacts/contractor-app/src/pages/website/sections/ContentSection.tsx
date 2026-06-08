@@ -706,7 +706,6 @@ export function ContentSection({
   onCopyComponent,
   onBeforeAction,
   onToggleHide,
-  sectionId,
   onComponentContextMenu,
 }: ContentSectionProps) {
   const { toast } = useToast();

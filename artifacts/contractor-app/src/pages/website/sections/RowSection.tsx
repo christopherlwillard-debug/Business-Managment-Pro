@@ -286,7 +286,6 @@ export function RowSection({
   onCopyComponent,
   onBeforeAction,
   onToggleRowComponentHide,
-  sectionId,
   onComponentContextMenu,
   onColumnContextMenu,
 }: RowSectionProps) {
