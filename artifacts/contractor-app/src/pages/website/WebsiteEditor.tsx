@@ -92,6 +92,12 @@ interface Section {
   order: number;
   content: Record<string, unknown>;
   blockStyle?: BlockStyle;
+  /**
+   * Reserved for future responsive breakpoint overrides.
+   * Tablet = 768–1023px; Mobile = <768px.
+   * Non-functional until responsive editing ships; persisted so data round-trips safely.
+   */
+  breakpoints?: import("./website-types").SectionBreakpoints;
 }
 
 export interface SitePage {

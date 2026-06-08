@@ -10,7 +10,7 @@ import type { RowSectionData } from "./sections/RowSection";
 import { ComponentEditorPanel } from "./ComponentEditorPanel";
 import { RowEditorPanel } from "./RowEditorPanel";
 import {
-  ALL_FIELDS, type InspectorTab,
+  ALL_FIELDS, CORE_FIELDS, type InspectorTab, type FieldDescriptor,
   getPinnedFields, togglePin, getRecentFields, recordRecentField,
 } from "./inspectorFields";
 
@@ -52,16 +52,31 @@ export interface InspectorPanelProps {
   specialContent?: React.ReactNode;
 }
 
+// ── Context passed into every field renderer ───────────────────────────────────
+
+interface FieldCtx {
+  bs: BlockStyle;
+  patch: (p: Partial<BlockStyle>) => void;
+  trackRecent: (id: string) => void;
+  sectionEnabled: boolean;
+  onToggleSection: () => void;
+  switchTab: (t: InspectorTab) => void;
+  handlePin: (id: string) => void;
+  pins: string[];
+  onOpenMediaLibrary: (cb: (url: string) => void) => void;
+  onBgImageUpload: (file: File) => void;
+  isBgUploading: boolean;
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const PANEL_WIDTH_KEY = "inspector-panel-width";
-const SECTION_TAB_KEY = "inspector-tab-section";
-const COMPONENT_TAB_KEY = "inspector-tab-component";
+const PANEL_WIDTH_KEY    = "inspector-panel-width";
+const SECTION_TAB_KEY    = "inspector-tab-section";
+const COMPONENT_TAB_KEY  = "inspector-tab-component";
 const TABS: InspectorTab[] = ["quick", "content", "style", "layout", "advanced"];
 const TAB_LABELS: Record<InspectorTab, string> = {
   quick: "Quick", content: "Content", style: "Style", layout: "Layout", advanced: "Advanced",
 };
-
 const SECTION_LABELS: Record<string, string> = {
   hero: "Hero Banner", services: "Services", about: "About Us",
   contact: "Contact Form", footer: "Footer", portfolio: "Portfolio",
@@ -69,19 +84,18 @@ const SECTION_LABELS: Record<string, string> = {
   text: "Text Block", gallery: "Gallery", columns: "Columns",
   testimonials: "Testimonials", faq: "FAQ", cta: "CTA", stats: "Stats",
 };
+const FONT_OPTIONS = [
+  "Inter","Roboto","Open Sans","Lato","Montserrat","Poppins",
+  "Playfair Display","Merriweather","Georgia","Times New Roman","Arial","Helvetica",
+];
+const STYLE_SECTION_ORDER = ["Typography","Colors","Backgrounds","Borders","Shadows"];
+const LAYOUT_SECTION_ORDER = ["","Spacing","Sizing"];
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
-
-function SectionLabel({ type }: { type: string }) {
-  return <>{SECTION_LABELS[type] ?? type}</>;
-}
+// ── Small helpers ──────────────────────────────────────────────────────────────
 
 function SliderRow({
   label, value, min, max, unit = "px", onChange,
-}: {
-  label: string; value: number | undefined; min: number; max: number;
-  unit?: string; onChange: (v: number) => void;
-}) {
+}: { label: string; value: number | undefined; min: number; max: number; unit?: string; onChange: (v: number) => void }) {
   const v = value ?? min;
   return (
     <div className="mb-3">
@@ -96,9 +110,7 @@ function SliderRow({
   );
 }
 
-function Toggle({
-  checked, onChange,
-}: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="relative inline-flex items-center cursor-pointer">
       <input type="checkbox" className="sr-only peer" checked={checked}
@@ -108,9 +120,9 @@ function Toggle({
   );
 }
 
-function AccordionBlock({
-  title, defaultOpen = false, children,
-}: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+function AccordionBlock({ title, defaultOpen = false, children }: {
+  title: string; defaultOpen?: boolean; children: React.ReactNode;
+}) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-b border-border last:border-0">
@@ -124,9 +136,7 @@ function AccordionBlock({
   );
 }
 
-function FieldWrap({
-  fieldId, label, onPin, pinned, onReset, children,
-}: {
+function FieldWrap({ fieldId, label, onPin, pinned, onReset, children }: {
   fieldId: string; label: string; onPin: (id: string) => void;
   pinned: boolean; onReset?: () => void; children: React.ReactNode;
 }) {
@@ -136,17 +146,14 @@ function FieldWrap({
         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{label}</label>
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {onReset && (
-            <button type="button" onClick={onReset}
-              title="Reset to default"
+            <button type="button" onClick={onReset} title="Reset to default"
               className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors">
               <RotateCcw className="w-2.5 h-2.5" />
             </button>
           )}
           <button type="button" onClick={() => onPin(fieldId)}
             title={pinned ? "Unpin" : "Pin to Quick tab"}
-            className={`p-0.5 rounded transition-colors ${
-              pinned ? "!opacity-100 text-amber-500 hover:text-amber-600" : "text-muted-foreground hover:text-foreground"
-            }`}>
+            className={`p-0.5 rounded transition-colors ${pinned ? "!opacity-100 text-amber-500 hover:text-amber-600" : "text-muted-foreground hover:text-foreground"}`}>
             <Star className="w-2.5 h-2.5" fill={pinned ? "currentColor" : "none"} />
           </button>
         </div>
@@ -165,6 +172,361 @@ function ComingSoonPlaceholder() {
   );
 }
 
+// ── Compound/complex sub-renderers ────────────────────────────────────────────
+
+function BgFullEditor({ bs, patch, trackRecent, onOpenMediaLibrary, onBgImageUpload, isBgUploading }: {
+  bs: BlockStyle; patch: (p: Partial<BlockStyle>) => void; trackRecent: (id: string) => void;
+  onOpenMediaLibrary: (cb: (url: string) => void) => void;
+  onBgImageUpload: (file: File) => void; isBgUploading: boolean;
+}) {
+  const bgType = bs.bgType ?? "color";
+  return (
+    <>
+      <div className="flex gap-1 mb-3">
+        {(["color","image","gradient"] as const).map(t => (
+          <button key={t} onClick={() => { patch({ bgType: t }); trackRecent("background"); }}
+            className={`flex-1 py-1.5 text-xs font-medium rounded capitalize transition-colors ${bgType === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+            {t}
+          </button>
+        ))}
+      </div>
+      {bgType === "color" && (
+        <div className="flex items-center gap-2">
+          <input type="color" value={bs.bgColor ?? "#ffffff"}
+            onChange={e => { patch({ bgColor: e.target.value }); trackRecent("background"); }}
+            className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
+          <input type="text" value={bs.bgColor ?? ""}
+            onChange={e => { patch({ bgColor: e.target.value }); trackRecent("background"); }}
+            placeholder="#ffffff"
+            className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+          {bs.bgColor && (
+            <button onClick={() => patch({ bgColor: undefined })}
+              className="text-muted-foreground hover:text-foreground">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+      {bgType === "image" && (
+        <>
+          {bs.bgImageUrl && (
+            <div className="relative mb-2 rounded-lg overflow-hidden h-24 bg-muted">
+              <img src={bs.bgImageUrl} alt="" className="w-full h-full object-cover" />
+              <button onClick={() => patch({ bgImageUrl: undefined, bgImageObjectPath: undefined })}
+                className="absolute top-1 right-1 p-0.5 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-2 cursor-pointer hover:bg-muted mb-2 ${isBgUploading ? "opacity-60 pointer-events-none" : ""}`}>
+            {isBgUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
+            {isBgUploading ? "Uploading…" : bs.bgImageUrl ? "Replace Image" : "Upload Image"}
+            <input type="file" accept="image/*" className="sr-only" disabled={isBgUploading}
+              onChange={e => { const f = e.target.files?.[0]; if (f) onBgImageUpload(f); e.target.value = ""; }} />
+          </label>
+          <button type="button"
+            onClick={() => onOpenMediaLibrary(url => patch({ bgImageUrl: url, bgImageObjectPath: undefined }))}
+            className="flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-2 hover:bg-muted mb-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Images className="w-3 h-3" /> Choose from Library
+          </button>
+          <input type="text" value={bs.bgImageObjectPath ? "" : (bs.bgImageUrl ?? "")}
+            placeholder="Or paste image URL"
+            onChange={e => patch({ bgImageUrl: e.target.value, bgImageObjectPath: undefined })}
+            className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+        </>
+      )}
+      {bgType === "gradient" && (
+        <>
+          <div className="flex gap-2 mb-2">
+            {([["From","bgGradientFrom","#1a1a2e"],["To","bgGradientTo","#4a4a8a"]] as const).map(([lbl, key, def]) => (
+              <div key={key} className="flex-1 min-w-0">
+                <label className="text-[10px] text-muted-foreground block mb-1">{lbl}</label>
+                <div className="flex items-center gap-1">
+                  <input type="color" value={(bs as Record<string,string>)[key] ?? def}
+                    onChange={e => patch({ [key]: e.target.value })}
+                    className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
+                  <input type="text" value={(bs as Record<string,string>)[key] ?? ""}
+                    onChange={e => patch({ [key]: e.target.value })}
+                    className="flex-1 min-w-0 text-[10px] border border-border rounded px-1 py-1 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <SliderRow label="Angle" value={bs.bgGradientAngle} min={0} max={360} unit="°"
+            onChange={v => patch({ bgGradientAngle: v })} />
+          {bs.bgGradientFrom && bs.bgGradientTo && (
+            <div className="w-full h-8 rounded-lg mt-1"
+              style={{ backgroundImage: `linear-gradient(${bs.bgGradientAngle ?? 135}deg, ${bs.bgGradientFrom}, ${bs.bgGradientTo})` }} />
+          )}
+        </>
+      )}
+      {(bgType === "image" || bgType === "gradient") && (
+        <div className="mt-4 pt-3 border-t border-border">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Overlay</p>
+          <div className="flex items-center gap-2 mb-3">
+            <label className="text-xs text-muted-foreground w-14 flex-shrink-0">Color</label>
+            <input type="color" value={bs.overlayColor ?? "#000000"}
+              onChange={e => patch({ overlayColor: e.target.value })}
+              className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent" />
+          </div>
+          <SliderRow label="Opacity" value={Math.round((bs.overlayOpacity ?? 0) * 100)} min={0} max={90} unit="%"
+            onChange={v => patch({ overlayOpacity: v / 100 })} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function PaddingQuadControl({ bs, patch, trackRecent }: {
+  bs: BlockStyle; patch: (p: Partial<BlockStyle>) => void; trackRecent: (id: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {([["Top","paddingTop"],["Bottom","paddingBottom"]] as const).map(([lbl, key]) => (
+        <div key={key}>
+          <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+            <span>{lbl}</span><span>{bs[key] ?? 0}px</span>
+          </div>
+          <input type="range" min={0} max={200} value={bs[key] ?? 0}
+            onChange={e => { patch({ [key]: parseInt(e.target.value) }); trackRecent("padding"); }}
+            className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Registry-driven field renderer ────────────────────────────────────────────
+
+function renderField(f: FieldDescriptor, ctx: FieldCtx): React.ReactNode {
+  const { bs, patch, trackRecent, sectionEnabled, onToggleSection, switchTab } = ctx;
+  const k = f.kind;
+
+  function onChange(v: unknown) {
+    patch(f.setValue(v));
+    trackRecent(f.id);
+  }
+
+  switch (k.type) {
+    case "content-link":
+      return (
+        <button type="button" onClick={() => switchTab("content")}
+          className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors">
+          <span>Edit in Content tab</span>
+          <span className="text-[9px] font-bold uppercase opacity-50">Content →</span>
+        </button>
+      );
+
+    case "section-visible":
+      return (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-foreground">
+            {sectionEnabled ? "Visible on published site" : "Hidden on published site"}
+          </span>
+          <Toggle checked={sectionEnabled}
+            onChange={() => { onToggleSection(); trackRecent(f.id); }} />
+        </div>
+      );
+
+    case "padding-quad":
+      return <PaddingQuadControl bs={bs} patch={patch} trackRecent={trackRecent} />;
+
+    case "bg-full":
+      return (
+        <BgFullEditor bs={bs} patch={patch} trackRecent={trackRecent}
+          onOpenMediaLibrary={ctx.onOpenMediaLibrary}
+          onBgImageUpload={ctx.onBgImageUpload}
+          isBgUploading={ctx.isBgUploading} />
+      );
+
+    case "color-text": {
+      const val = f.getValue(bs) as string | undefined;
+      return (
+        <div className="flex items-center gap-2">
+          <input type="color" value={val ?? "#000000"}
+            onChange={e => onChange(e.target.value)}
+            className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
+          <input type="text" value={val ?? ""}
+            onChange={e => onChange(e.target.value || undefined)}
+            placeholder="Inherit from theme"
+            className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+          {val && (
+            <button onClick={() => onChange(undefined)}
+              className="flex-shrink-0 text-muted-foreground hover:text-foreground">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    case "color-only": {
+      const val = f.getValue(bs) as string;
+      return (
+        <input type="color" value={val}
+          onChange={e => onChange(e.target.value)}
+          className="w-full h-8 rounded cursor-pointer border border-border bg-transparent" />
+      );
+    }
+
+    case "range": {
+      const val = (f.getValue(bs) as number) ?? 0;
+      const unit = k.unit ?? "px";
+      return (
+        <div>
+          <div className="flex justify-end text-[10px] text-muted-foreground/60 mb-1">
+            <span className="font-mono tabular-nums">{val}{unit}</span>
+          </div>
+          <input type="range" min={k.min} max={k.max} step={k.step ?? 1} value={val}
+            onChange={e => onChange(parseInt(e.target.value))}
+            className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
+        </div>
+      );
+    }
+
+    case "select": {
+      const val = f.getValue(bs) as string;
+      return (
+        <select value={val} onChange={e => onChange(e.target.value)}
+          className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+          {k.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      );
+    }
+
+    case "pills": {
+      const val = f.getValue(bs) as string;
+      return (
+        <div className="flex gap-1">
+          {k.options.map(([v, l]) => (
+            <button key={v} onClick={() => onChange(v)}
+              className={`flex-1 py-1.5 text-[10px] rounded transition-colors ${val === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    case "number": {
+      const val = f.getValue(bs) as number | undefined;
+      return (
+        <input type="number" min={k.min} max={k.max} step={k.step ?? 1}
+          value={val ?? ""}
+          onChange={e => onChange(parseFloat(e.target.value) || undefined)}
+          placeholder={k.placeholder}
+          className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+      );
+    }
+
+    case "toggle": {
+      const val = f.getValue(bs) as boolean;
+      return (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">{val ? "On" : "Off"}</span>
+          <Toggle checked={val} onChange={v => onChange(v)} />
+        </div>
+      );
+    }
+
+    case "text": {
+      const val = f.getValue(bs) as string;
+      return (
+        <input type="text" value={val}
+          onChange={e => onChange(e.target.value || undefined)}
+          placeholder={k.placeholder}
+          className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+      );
+    }
+
+    case "font-picker": {
+      const val = f.getValue(bs) as string | undefined;
+      return (
+        <select value={val ?? ""} onChange={e => onChange(e.target.value || undefined)}
+          className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+          <option value="">Inherit from theme</option>
+          {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
+        </select>
+      );
+    }
+
+    case "shadow-preset": {
+      const val = f.getValue(bs) as string;
+      return (
+        <div className="flex gap-1 flex-wrap">
+          {(["none","sm","md","lg","xl"] as const).map(s => (
+            <button key={s} onClick={() => onChange(s)}
+              className={`px-2 py-1 text-xs rounded capitalize transition-colors ${val === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    case "animation-preset": {
+      const val = f.getValue(bs) as string;
+      return (
+        <div className="grid grid-cols-2 gap-1">
+          {([["none","None"],["fadeIn","Fade In"],["slideUp","Slide Up"],["slideLeft","Slide Left"]] as const).map(([v, l]) => (
+            <button key={v} onClick={() => onChange(v)}
+              className={`py-1.5 text-xs rounded transition-colors ${val === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    default:
+      return null;
+  }
+}
+
+// ── Universal field wrapper — applies pin / reset / recent to every field ─────
+
+function RenderedField({ f, ctx }: { f: FieldDescriptor; ctx: FieldCtx }) {
+  const isSpecial = ["content-link","bg-full","padding-quad"].includes(f.kind.type);
+
+  const resetFn: (() => void) | undefined =
+    f.kind.type === "section-visible"
+      ? () => { if (!ctx.sectionEnabled) ctx.onToggleSection(); ctx.trackRecent(f.id); }
+      : f.resetOverride
+        ? () => { f.resetOverride!(ctx.patch); ctx.trackRecent(f.id); }
+        : !isSpecial
+          ? () => { ctx.patch(f.setValue(f.defaultValue)); ctx.trackRecent(f.id); }
+          : undefined;
+
+  return (
+    <FieldWrap fieldId={f.id} label={f.label}
+      onPin={ctx.handlePin} pinned={ctx.pins.includes(f.id)}
+      onReset={resetFn}>
+      {renderField(f, ctx)}
+    </FieldWrap>
+  );
+}
+
+// ── Collapsed state ───────────────────────────────────────────────────────────
+
+function CollapsedPanel({ onExpand, autoCollapsed, onClearAutoCollapse }: {
+  onExpand: () => void; autoCollapsed?: boolean; onClearAutoCollapse?: () => void;
+}) {
+  return (
+    <div className="flex-shrink-0 border-l border-border bg-card flex flex-col items-center pt-3 gap-2 w-8">
+      <button type="button" onClick={() => { onExpand(); onClearAutoCollapse?.(); }}
+        title="Expand inspector"
+        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+        <ChevronsLeft className="w-3.5 h-3.5" />
+      </button>
+      {autoCollapsed && (
+        <span className="text-[8px] text-muted-foreground/40 [writing-mode:vertical-rl] rotate-180 select-none">
+          Inspector
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export function InspectorPanel({
@@ -178,7 +540,7 @@ export function InspectorPanel({
 }: InspectorPanelProps) {
   const hasComponent = !!selectedComponent;
 
-  // ── Width (resizable) ──────────────────────────────────────────────────────
+  // ── Panel width (resizable) ────────────────────────────────────────────────
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = parseInt(localStorage.getItem(PANEL_WIDTH_KEY) ?? "288", 10);
     return Math.max(280, Math.min(520, isNaN(saved) ? 288 : saved));
@@ -203,16 +565,18 @@ export function InspectorPanel({
     window.addEventListener("mouseup", onUp);
   }
 
-  // ── Tab state (section vs component stored separately) ─────────────────────
+  // ── Tab state ──────────────────────────────────────────────────────────────
   const tabKey = hasComponent ? COMPONENT_TAB_KEY : SECTION_TAB_KEY;
   const [activeTab, setActiveTab] = useState<InspectorTab>(() => {
     const saved = localStorage.getItem(tabKey) as InspectorTab | null;
-    return TABS.includes(saved as InspectorTab) ? (saved as InspectorTab) : "quick";
+    if (TABS.includes(saved as InspectorTab)) return saved as InspectorTab;
+    return hasComponent ? "content" : "quick";
   });
 
   useEffect(() => {
     const saved = localStorage.getItem(tabKey) as InspectorTab | null;
-    setActiveTab(TABS.includes(saved as InspectorTab) ? (saved as InspectorTab) : "quick");
+    if (TABS.includes(saved as InspectorTab)) setActiveTab(saved as InspectorTab);
+    else setActiveTab(hasComponent ? "content" : "quick");
   }, [hasComponent, tabKey]);
 
   function switchTab(t: InspectorTab) {
@@ -220,221 +584,128 @@ export function InspectorPanel({
     localStorage.setItem(tabKey, t);
   }
 
+  // ── Pin / recent state ─────────────────────────────────────────────────────
+  const [pins, setPins] = useState<string[]>(() => getPinnedFields());
+  const [recent, setRecent] = useState<string[]>(() => getRecentFields());
+
+  function handlePin(id: string) { setPins(togglePin(id)); }
+
+  function trackRecent(id: string) {
+    recordRecentField(id);
+    setRecent(getRecentFields());
+  }
+
   // ── Search ─────────────────────────────────────────────────────────────────
   const [searchRaw, setSearchRaw] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  function handleSearchChange(v: string) {
-    setSearchRaw(v);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => setSearchQuery(v.trim().toLowerCase()), 150);
+  function handleSearchChange(raw: string) {
+    setSearchRaw(raw);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      const q = raw.trim().toLowerCase();
+      setSearchQuery(q);
+      setIsSearching(q.length > 0);
+    }, 150);
   }
-
-  // ── Pins + Recently Used ───────────────────────────────────────────────────
-  const [pins, setPins] = useState<string[]>(() => getPinnedFields());
-  const [recentFields, setRecentFields] = useState<string[]>(() => getRecentFields());
-
-  function handlePin(id: string) { setPins(togglePin(id)); }
-  function trackRecent(id: string) { recordRecentField(id); setRecentFields(getRecentFields()); }
 
   // ── BlockStyle helpers ─────────────────────────────────────────────────────
-  const bs = section.blockStyle ?? {};
-  function patch(update: Partial<BlockStyle>) {
-    onChangeBlockStyle({ ...bs, ...update });
-  }
+  const bs: BlockStyle = section.blockStyle ?? {};
+  function patch(p: Partial<BlockStyle>) { onChangeBlockStyle({ ...bs, ...p }); }
 
-  // ── Apply Style To scope ───────────────────────────────────────────────────
+  // ── Apply Style To ─────────────────────────────────────────────────────────
   const [applyScope, setApplyScope] = useState<"section" | "page" | "site">("section");
+
+  // ── Field context (shared by all renderers) ────────────────────────────────
+  const fieldCtx: FieldCtx = {
+    bs, patch, trackRecent,
+    sectionEnabled: section.enabled,
+    onToggleSection, switchTab, handlePin, pins,
+    onOpenMediaLibrary, onBgImageUpload, isBgUploading,
+  };
+
+  // ── Derived lists ──────────────────────────────────────────────────────────
+  const searchResults = isSearching
+    ? ALL_FIELDS.filter(f =>
+        f.label.toLowerCase().includes(searchQuery) || f.id.includes(searchQuery)
+      )
+    : [];
+
+  const pinnedDescriptors = ALL_FIELDS.filter(f => pins.includes(f.id));
+
+  const recentDescriptors = ALL_FIELDS
+    .filter(f => recent.includes(f.id) && !pins.includes(f.id))
+    .sort((a, b) => recent.indexOf(a.id) - recent.indexOf(b.id))
+    .slice(0, 5);
 
   // ── Collapsed view ─────────────────────────────────────────────────────────
   if (collapsed) {
     return (
-      <div className="flex-shrink-0 border-l border-border bg-card flex flex-col items-center py-2 gap-3"
-        style={{ width: 36 }}>
-        <button type="button" onClick={() => { onClearAutoCollapse?.(); onExpand(); }}
-          title={autoCollapsed ? "Expand panel (auto-collapsed)" : "Expand panel"}
-          className="relative p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-          <ChevronsLeft className="w-4 h-4" />
-          {autoCollapsed && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-primary" />}
-        </button>
-        <Layers className="w-4 h-4 text-muted-foreground/40" />
-      </div>
+      <CollapsedPanel onExpand={onExpand}
+        autoCollapsed={autoCollapsed} onClearAutoCollapse={onClearAutoCollapse} />
     );
   }
-
-  // ── Search results ─────────────────────────────────────────────────────────
-  const searchResults = searchQuery.length >= 2
-    ? ALL_FIELDS.filter(f => f.label.toLowerCase().includes(searchQuery))
-    : [];
-  const isSearching = searchQuery.length >= 2;
 
   // ── Tab renderers ──────────────────────────────────────────────────────────
 
   function renderQuickTab() {
-    const pinnedDescriptors = pins.map(id => ALL_FIELDS.find(f => f.id === id)).filter(Boolean) as typeof ALL_FIELDS;
-    const recentDescriptors = recentFields.map(id => ALL_FIELDS.find(f => f.id === id)).filter(Boolean).slice(0, 8) as typeof ALL_FIELDS;
-
     return (
-      <div className="p-3 space-y-4">
-        {/* Recently Used */}
-        {recentDescriptors.length > 0 && (
-          <div>
-            <div className="flex items-center gap-1.5 mb-2">
-              <Clock className="w-3 h-3 text-muted-foreground/60" />
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Recently Used</p>
-            </div>
-            <div className="space-y-0.5">
-              {recentDescriptors.map(f => (
-                <button key={f.id} type="button" onClick={() => switchTab(f.tab)}
-                  className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted transition-colors text-left group">
-                  <span className="text-xs text-foreground">{f.label}</span>
-                  <span className="text-[9px] font-bold uppercase text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
-                    {TAB_LABELS[f.tab]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Pinned */}
+      <div className="p-3">
         {pinnedDescriptors.length > 0 && (
-          <div>
-            <div className="flex items-center gap-1.5 mb-2">
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 mb-3">
               <Star className="w-3 h-3 text-amber-500" fill="currentColor" />
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Pinned</p>
             </div>
-            <div className="space-y-0.5">
-              {pinnedDescriptors.map(f => (
-                <div key={f.id} className="flex items-center group">
-                  <button type="button" onClick={() => switchTab(f.tab)}
-                    className="flex-1 flex items-center justify-between px-2 py-1.5 rounded-l hover:bg-muted transition-colors text-left">
-                    <span className="text-xs text-foreground">{f.label}</span>
-                    <span className="text-[9px] font-bold uppercase text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
-                      {TAB_LABELS[f.tab]}
-                    </span>
-                  </button>
-                  <button type="button" onClick={() => handlePin(f.id)}
-                    title="Unpin"
-                    className="px-1.5 py-1.5 rounded-r hover:bg-muted text-amber-500 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
+            {pinnedDescriptors.map(f => (
+              <div key={f.id} className="group flex items-center gap-1 mb-1 border border-border rounded overflow-hidden">
+                <button type="button" onClick={() => switchTab(f.tab)}
+                  className="flex-1 flex items-center justify-between px-2 py-1.5 hover:bg-muted transition-colors text-left">
+                  <span className="text-xs text-foreground">{f.label}</span>
+                  <span className="text-[9px] font-bold uppercase text-muted-foreground/50 group-hover:text-muted-foreground">
+                    {TAB_LABELS[f.tab]}
+                  </span>
+                </button>
+                <button type="button" onClick={() => handlePin(f.id)} title="Unpin"
+                  className="px-1.5 py-1.5 rounded-r hover:bg-muted text-amber-500 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Core controls — the 8 most-used settings */}
+        {recentDescriptors.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Clock className="w-3 h-3 text-muted-foreground/60" />
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Recent</p>
+            </div>
+            {recentDescriptors.map(f => (
+              <button key={f.id} type="button" onClick={() => switchTab(f.tab)}
+                className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted transition-colors text-left mb-0.5">
+                <span className="text-xs text-foreground">{f.label}</span>
+                <span className="text-[9px] uppercase font-bold text-muted-foreground/50">{TAB_LABELS[f.tab]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div>
           <div className="flex items-center gap-1.5 mb-3">
             <Zap className="w-3 h-3 text-muted-foreground/60" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Core</p>
           </div>
-
-          {/* Text / Image / Link — shortcuts to Content tab */}
-          {(["text", "image", "link"] as const).map(fid => {
-            const labels: Record<string, string> = { text: "Text Content", image: "Image", link: "Link URL" };
-            return (
-              <FieldWrap key={fid} fieldId={fid} label={labels[fid]} onPin={handlePin} pinned={pins.includes(fid)}>
-                <button type="button" onClick={() => switchTab("content")}
-                  className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors">
-                  <span>Edit in Content tab</span>
-                  <span className="text-[9px] font-bold uppercase opacity-50">Content →</span>
-                </button>
-              </FieldWrap>
-            );
-          })}
-
-          {/* Background Color */}
-          <FieldWrap fieldId="bg-color" label="Background Color" onPin={handlePin} pinned={pins.includes("bg-color")}
-            onReset={() => { patch({ bgColor: undefined, bgType: undefined }); trackRecent("bg-color"); }}>
-            <div className="flex items-center gap-2">
-              <input type="color" value={bs.bgColor ?? "#ffffff"}
-                onChange={e => { patch({ bgColor: e.target.value, bgType: "color" }); trackRecent("bg-color"); }}
-                className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
-              <input type="text" value={bs.bgColor ?? ""}
-                onChange={e => { patch({ bgColor: e.target.value, bgType: "color" }); trackRecent("bg-color"); }}
-                placeholder="#ffffff"
-                className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
-              {bs.bgColor && (
-                <button onClick={() => { patch({ bgColor: undefined }); trackRecent("bg-color"); }}
-                  className="flex-shrink-0 text-muted-foreground hover:text-foreground">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </FieldWrap>
-
-          {/* Padding top + bottom quick sliders */}
-          <FieldWrap fieldId="padding" label="Padding" onPin={handlePin} pinned={pins.includes("padding")}
-            onReset={() => { patch({ paddingTop: undefined, paddingBottom: undefined }); trackRecent("padding"); }}>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                  <span>Top</span><span>{bs.paddingTop ?? 0}px</span>
-                </div>
-                <input type="range" min={0} max={200} value={bs.paddingTop ?? 0}
-                  onChange={e => { patch({ paddingTop: parseInt(e.target.value) }); trackRecent("padding"); }}
-                  className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
-              </div>
-              <div>
-                <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                  <span>Bottom</span><span>{bs.paddingBottom ?? 0}px</span>
-                </div>
-                <input type="range" min={0} max={200} value={bs.paddingBottom ?? 0}
-                  onChange={e => { patch({ paddingBottom: parseInt(e.target.value) }); trackRecent("padding"); }}
-                  className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
-              </div>
-            </div>
-          </FieldWrap>
-
-          {/* Alignment */}
-          <FieldWrap fieldId="alignment" label="Alignment" onPin={handlePin} pinned={pins.includes("alignment")}
-            onReset={() => { patch({ alignment: undefined }); trackRecent("alignment"); }}>
-            <div className="flex gap-1">
-              {(["left", "center", "right", "full"] as const).map(a => (
-                <button key={a} onClick={() => { patch({ alignment: a }); trackRecent("alignment"); }}
-                  className={`flex-1 py-1.5 text-[10px] rounded capitalize transition-colors ${
-                    (bs.alignment ?? "left") === a
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:text-foreground"
-                  }`}>{a}</button>
-              ))}
-            </div>
-          </FieldWrap>
-
-          {/* Width / Max Width */}
-          <FieldWrap fieldId="width" label="Width / Max Width" onPin={handlePin} pinned={pins.includes("width")}
-            onReset={() => { patch({ maxWidth: undefined }); trackRecent("width"); }}>
-            <div>
-              <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                <span>Max Width</span><span>{bs.maxWidth ? `${bs.maxWidth}px` : "Full width"}</span>
-              </div>
-              <input type="range" min={0} max={1440} step={40} value={bs.maxWidth ?? 0}
-                onChange={e => { const v = parseInt(e.target.value); patch({ maxWidth: v || undefined }); trackRecent("width"); }}
-                className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
-            </div>
-          </FieldWrap>
-
-          {/* Visibility */}
-          <FieldWrap fieldId="visibility" label="Visibility" onPin={handlePin} pinned={pins.includes("visibility")}
-            onReset={() => { onToggleSection(); trackRecent("visibility"); }}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-foreground">
-                {section.enabled ? "Visible on published site" : "Hidden on published site"}
-              </span>
-              <Toggle checked={section.enabled} onChange={() => { onToggleSection(); trackRecent("visibility"); }} />
-            </div>
-          </FieldWrap>
-
-          {(recentDescriptors.length === 0 && pinnedDescriptors.length === 0) && (
-            <p className="text-[10px] text-muted-foreground/50 text-center pt-2">
-              Hover any field and click ⭐ to pin it here
-            </p>
-          )}
+          {CORE_FIELDS.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
         </div>
+
+        {recentDescriptors.length === 0 && pinnedDescriptors.length === 0 && (
+          <p className="text-[10px] text-muted-foreground/50 text-center pt-2">
+            Hover any field and click ⭐ to pin it here
+          </p>
+        )}
       </div>
     );
   }
@@ -450,9 +721,7 @@ export function InspectorPanel({
         />
       );
     }
-    if (specialContent) {
-      return <div className="overflow-y-auto">{specialContent}</div>;
-    }
+    if (specialContent) return <div className="overflow-y-auto">{specialContent}</div>;
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mb-3">
@@ -472,296 +741,48 @@ export function InspectorPanel({
   }
 
   function renderStyleTab() {
-    const bgType = bs.bgType ?? "color";
+    const styleFields = ALL_FIELDS.filter(f => f.tab === "style");
+    const grouped = new Map<string, FieldDescriptor[]>();
+    for (const f of styleFields) {
+      const sec = f.section ?? "";
+      if (!grouped.has(sec)) grouped.set(sec, []);
+      grouped.get(sec)!.push(f);
+    }
+
     return (
       <div className="p-3">
-        {/* Copy / paste / apply toolbar */}
         <div className="flex items-center gap-1 mb-3 flex-wrap">
-          <button type="button" onClick={onCopyStyle} title="Copy styles"
+          <button type="button" onClick={onCopyStyle}
             className="flex items-center gap-1 px-2 py-1.5 text-xs rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors">
             <Copy className="w-3 h-3" /> Copy
           </button>
           <button type="button" onClick={onPasteStyle} disabled={!copiedStyle}
-            title={copiedStyle ? "Paste styles" : "No styles copied"}
-            className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded transition-colors ${
-              copiedStyle
-                ? "bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground"
-                : "bg-muted/50 text-muted-foreground/30 cursor-not-allowed"
-            }`}>
+            className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded transition-colors ${copiedStyle ? "bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground" : "bg-muted/50 text-muted-foreground/30 cursor-not-allowed"}`}>
             <ClipboardPaste className="w-3 h-3" /> Paste
           </button>
           <button type="button" onClick={() => onChangeBlockStyle({})}
-            title="Reset all styles"
             className="flex items-center gap-1 px-2 py-1.5 text-xs rounded bg-muted hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors ml-auto">
             <RotateCcw className="w-3 h-3" /> Reset
           </button>
         </div>
 
-        <AccordionBlock title="Typography">
-          <FieldWrap fieldId="font-family" label="Font Family" onPin={handlePin} pinned={pins.includes("font-family")}
-            onReset={() => { patch({ fontFamily: undefined }); trackRecent("font-family"); }}>
-            <select value={bs.fontFamily ?? ""}
-              onChange={e => { patch({ fontFamily: e.target.value || undefined }); trackRecent("font-family"); }}
-              className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
-              <option value="">Inherit from theme</option>
-              {["Inter","Roboto","Open Sans","Lato","Montserrat","Poppins","Playfair Display","Merriweather","Georgia","Times New Roman","Arial","Helvetica"].map(f => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          </FieldWrap>
+        {STYLE_SECTION_ORDER.map(secName => {
+          const secFields = grouped.get(secName);
+          if (!secFields?.length) return null;
+          return (
+            <AccordionBlock key={secName} title={secName} defaultOpen={secName === "Backgrounds"}>
+              {secFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
+            </AccordionBlock>
+          );
+        })}
 
-          <div className="grid grid-cols-2 gap-3">
-            <FieldWrap fieldId="font-size" label="Size (px)" onPin={handlePin} pinned={pins.includes("font-size")}
-              onReset={() => { patch({ fontSize: undefined }); trackRecent("font-size"); }}>
-              <input type="number" min={10} max={96} value={bs.fontSize ?? ""}
-                onChange={e => { patch({ fontSize: parseInt(e.target.value) || undefined }); trackRecent("font-size"); }}
-                placeholder="Inherit"
-                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-            </FieldWrap>
-
-            <FieldWrap fieldId="font-weight" label="Weight" onPin={handlePin} pinned={pins.includes("font-weight")}
-              onReset={() => { patch({ fontWeight: undefined }); trackRecent("font-weight"); }}>
-              <select value={bs.fontWeight ?? ""}
-                onChange={e => { patch({ fontWeight: e.target.value || undefined }); trackRecent("font-weight"); }}
-                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
-                <option value="">Inherit</option>
-                {[["300","Light"],["400","Regular"],["500","Medium"],["600","Semi-bold"],["700","Bold"],["800","Extra bold"],["900","Black"]].map(([v,l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
-              </select>
-            </FieldWrap>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <FieldWrap fieldId="line-height" label="Line Ht." onPin={handlePin} pinned={pins.includes("line-height")}
-              onReset={() => { patch({ lineHeight: undefined }); trackRecent("line-height"); }}>
-              <input type="number" min={1} max={3} step={0.1} value={bs.lineHeight ?? ""}
-                onChange={e => { patch({ lineHeight: parseFloat(e.target.value) || undefined }); trackRecent("line-height"); }}
-                placeholder="Inherit"
-                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-            </FieldWrap>
-
-            <FieldWrap fieldId="letter-spacing" label="Spacing" onPin={handlePin} pinned={pins.includes("letter-spacing")}
-              onReset={() => { patch({ letterSpacing: undefined }); trackRecent("letter-spacing"); }}>
-              <input type="number" min={-2} max={20} step={0.5} value={bs.letterSpacing ?? ""}
-                onChange={e => { patch({ letterSpacing: parseFloat(e.target.value) || undefined }); trackRecent("letter-spacing"); }}
-                placeholder="0"
-                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-            </FieldWrap>
-          </div>
-
-          <FieldWrap fieldId="text-transform" label="Transform" onPin={handlePin} pinned={pins.includes("text-transform")}
-            onReset={() => { patch({ textTransform: undefined }); trackRecent("text-transform"); }}>
-            <div className="flex gap-1">
-              {(["none","uppercase","lowercase","capitalize"] as const).map(t => (
-                <button key={t} onClick={() => { patch({ textTransform: t }); trackRecent("text-transform"); }}
-                  className={`flex-1 py-1.5 text-[10px] rounded transition-colors ${
-                    (bs.textTransform ?? "none") === t
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:text-foreground"
-                  }`}>{t === "none" ? "—" : t === "uppercase" ? "AA" : t === "lowercase" ? "aa" : "Aa"}</button>
-              ))}
-            </div>
-          </FieldWrap>
-        </AccordionBlock>
-
-        <AccordionBlock title="Colors">
-          <FieldWrap fieldId="text-color" label="Text Color" onPin={handlePin} pinned={pins.includes("text-color")}
-            onReset={() => { patch({ textColor: undefined }); trackRecent("text-color"); }}>
-            <div className="flex items-center gap-2">
-              <input type="color" value={bs.textColor ?? "#000000"}
-                onChange={e => { patch({ textColor: e.target.value }); trackRecent("text-color"); }}
-                className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
-              <input type="text" value={bs.textColor ?? ""}
-                onChange={e => { patch({ textColor: e.target.value || undefined }); trackRecent("text-color"); }}
-                placeholder="Inherit from theme"
-                className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
-              {bs.textColor && (
-                <button onClick={() => { patch({ textColor: undefined }); trackRecent("text-color"); }}
-                  className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
-              )}
-            </div>
-          </FieldWrap>
-
-          <FieldWrap fieldId="accent-color" label="Accent / Button Color" onPin={handlePin} pinned={pins.includes("accent-color")}
-            onReset={() => { patch({ accentColor: undefined }); trackRecent("accent-color"); }}>
-            <div className="flex items-center gap-2">
-              <input type="color" value={bs.accentColor ?? "#3b82f6"}
-                onChange={e => { patch({ accentColor: e.target.value }); trackRecent("accent-color"); }}
-                className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
-              <input type="text" value={bs.accentColor ?? ""}
-                onChange={e => { patch({ accentColor: e.target.value || undefined }); trackRecent("accent-color"); }}
-                placeholder="Inherit from theme"
-                className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
-              {bs.accentColor && (
-                <button onClick={() => { patch({ accentColor: undefined }); trackRecent("accent-color"); }}
-                  className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
-              )}
-            </div>
-          </FieldWrap>
-        </AccordionBlock>
-
-        <AccordionBlock title="Backgrounds" defaultOpen>
-          <div className="flex gap-1 mb-3">
-            {(["color", "image", "gradient"] as const).map(t => (
-              <button key={t} onClick={() => { patch({ bgType: t }); trackRecent("bg-color"); }}
-                className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors capitalize ${
-                  bgType === t
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}>{t}</button>
-            ))}
-          </div>
-
-          {bgType === "color" && (
-            <div className="flex items-center gap-2">
-              <input type="color" value={bs.bgColor ?? "#ffffff"}
-                onChange={e => { patch({ bgColor: e.target.value }); trackRecent("bg-color"); }}
-                className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
-              <input type="text" value={bs.bgColor ?? ""}
-                onChange={e => { patch({ bgColor: e.target.value }); trackRecent("bg-color"); }}
-                placeholder="#ffffff"
-                className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
-              {bs.bgColor && (
-                <button onClick={() => patch({ bgColor: undefined })}
-                  className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
-              )}
-            </div>
-          )}
-
-          {bgType === "image" && (
-            <>
-              {bs.bgImageUrl && (
-                <div className="relative mb-2 rounded-lg overflow-hidden h-24 bg-muted">
-                  <img src={bs.bgImageUrl} alt="" className="w-full h-full object-cover" />
-                  <button onClick={() => patch({ bgImageUrl: undefined, bgImageObjectPath: undefined })}
-                    className="absolute top-1 right-1 p-0.5 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-              <label className={`flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-2 cursor-pointer transition-colors hover:bg-muted mb-2 ${isBgUploading ? "opacity-60 pointer-events-none" : ""}`}>
-                {isBgUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImagePlus className="w-3 h-3" />}
-                {isBgUploading ? "Uploading…" : bs.bgImageUrl ? "Replace Image" : "Upload Image"}
-                <input type="file" accept="image/*" className="sr-only" disabled={isBgUploading}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) onBgImageUpload(f); e.target.value = ""; }} />
-              </label>
-              <button type="button"
-                onClick={() => onOpenMediaLibrary(url => patch({ bgImageUrl: url, bgImageObjectPath: undefined }))}
-                className="flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-2 cursor-pointer transition-colors hover:bg-muted mb-2 text-muted-foreground hover:text-foreground">
-                <Images className="w-3 h-3" /> Choose from Library
-              </button>
-              <input type="text" value={bs.bgImageObjectPath ? "" : (bs.bgImageUrl ?? "")}
-                placeholder="Or paste image URL"
-                onChange={e => patch({ bgImageUrl: e.target.value, bgImageObjectPath: undefined })}
-                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-            </>
-          )}
-
-          {bgType === "gradient" && (
-            <>
-              <div className="flex gap-2 mb-2">
-                {([["From", "bgGradientFrom", "#1a1a2e"], ["To", "bgGradientTo", "#4a4a8a"]] as const).map(([lbl, key, def]) => (
-                  <div key={key} className="flex-1 min-w-0">
-                    <label className="text-[10px] text-muted-foreground block mb-1">{lbl}</label>
-                    <div className="flex items-center gap-1">
-                      <input type="color" value={(bs as Record<string, string>)[key] ?? def}
-                        onChange={e => patch({ [key]: e.target.value })}
-                        className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
-                      <input type="text" value={(bs as Record<string, string>)[key] ?? ""}
-                        onChange={e => patch({ [key]: e.target.value })}
-                        className="flex-1 min-w-0 text-[10px] border border-border rounded px-1 py-1 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <SliderRow label="Angle" value={bs.bgGradientAngle} min={0} max={360} unit="°"
-                onChange={v => patch({ bgGradientAngle: v })} />
-              {bs.bgGradientFrom && bs.bgGradientTo && (
-                <div className="w-full h-8 rounded-lg mt-1"
-                  style={{ backgroundImage: `linear-gradient(${bs.bgGradientAngle ?? 135}deg, ${bs.bgGradientFrom}, ${bs.bgGradientTo})` }} />
-              )}
-            </>
-          )}
-
-          {(bgType === "image" || bgType === "gradient") && (
-            <div className="mt-4 pt-3 border-t border-border">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Overlay</p>
-              <div className="flex items-center gap-2 mb-3">
-                <label className="text-xs text-muted-foreground w-14 flex-shrink-0">Color</label>
-                <input type="color" value={bs.overlayColor ?? "#000000"}
-                  onChange={e => patch({ overlayColor: e.target.value })}
-                  className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent" />
-              </div>
-              <SliderRow label="Opacity" value={Math.round((bs.overlayOpacity ?? 0) * 100)} min={0} max={90} unit="%"
-                onChange={v => patch({ overlayOpacity: v / 100 })} />
-            </div>
-          )}
-        </AccordionBlock>
-
-        <AccordionBlock title="Shadows">
-          <div className="flex gap-1 flex-wrap mb-2">
-            {(["none", "sm", "md", "lg", "xl"] as const).map(s => (
-              <button key={s} onClick={() => { patch({ shadow: s }); trackRecent("shadow"); }}
-                className={`px-2 py-1 text-xs rounded capitalize transition-colors ${
-                  (bs.shadow ?? "none") === s
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}>{s}</button>
-            ))}
-          </div>
-        </AccordionBlock>
-
-        <AccordionBlock title="Borders">
-          <FieldWrap fieldId="border-radius" label="Border Radius" onPin={handlePin} pinned={pins.includes("border-radius")}
-            onReset={() => { patch({ borderRadius: undefined }); trackRecent("border-radius"); }}>
-            <SliderRow label="Radius" value={bs.borderRadius} min={0} max={48}
-              onChange={v => { patch({ borderRadius: v || undefined }); trackRecent("border-radius"); }} />
-          </FieldWrap>
-
-          <FieldWrap fieldId="border-width" label="Border Width" onPin={handlePin} pinned={pins.includes("border-width")}
-            onReset={() => { patch({ borderWidth: undefined }); trackRecent("border-width"); }}>
-            <SliderRow label="Width" value={bs.borderWidth} min={0} max={16} unit="px"
-              onChange={v => { patch({ borderWidth: v || undefined }); trackRecent("border-width"); }} />
-          </FieldWrap>
-
-          <div className="grid grid-cols-2 gap-3">
-            <FieldWrap fieldId="border-style" label="Style" onPin={handlePin} pinned={pins.includes("border-style")}
-              onReset={() => { patch({ borderStyle: undefined }); trackRecent("border-style"); }}>
-              <select value={bs.borderStyle ?? "none"}
-                onChange={e => { patch({ borderStyle: e.target.value as BlockStyle["borderStyle"] }); trackRecent("border-style"); }}
-                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
-                {(["none","solid","dashed","dotted"] as const).map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </FieldWrap>
-
-            <FieldWrap fieldId="border-color" label="Color" onPin={handlePin} pinned={pins.includes("border-color")}
-              onReset={() => { patch({ borderColor: undefined }); trackRecent("border-color"); }}>
-              <input type="color" value={bs.borderColor ?? "#e5e7eb"}
-                onChange={e => { patch({ borderColor: e.target.value }); trackRecent("border-color"); }}
-                className="w-full h-8 rounded cursor-pointer border border-border bg-transparent" />
-            </FieldWrap>
-          </div>
-        </AccordionBlock>
-
-        {/* Bulk Apply */}
         <div className="pt-3 mt-2 border-t border-border">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Apply Style To</p>
           <div className="flex gap-1 mb-2">
-            {([
-              ["section", "This Section"],
-              ["page",    "This Page"],
-              ["site",    "Entire Website"],
-            ] as const).map(([s, label]) => (
+            {([["section","This Section"],["page","This Page"],["site","Entire Website"]] as const).map(([s, lbl]) => (
               <button key={s} onClick={() => setApplyScope(s)}
-                className={`flex-1 py-1.5 text-[10px] rounded transition-colors ${
-                  applyScope === s
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}>
-                {label}
+                className={`flex-1 py-1.5 text-[10px] rounded transition-colors ${applyScope === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+                {lbl}
               </button>
             ))}
           </div>
@@ -776,10 +797,17 @@ export function InspectorPanel({
 
   function renderLayoutTab() {
     const colGrid = "grid grid-cols-[1fr_52px_52px_52px] gap-1";
+    const layoutFields = ALL_FIELDS.filter(f => f.tab === "layout");
+    const grouped = new Map<string, FieldDescriptor[]>();
+    for (const f of layoutFields) {
+      const sec = f.section ?? "";
+      if (!grouped.has(sec)) grouped.set(sec, []);
+      grouped.get(sec)!.push(f);
+    }
+
     return (
       <div className="p-3">
-        {/* Responsive column headers */}
-        <div className={`${colGrid} mb-2`}>
+        <div className={`${colGrid} mb-3`}>
           <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Field</div>
           <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground">
             <Monitor className="w-2.5 h-2.5" /><span>Desk</span>
@@ -792,101 +820,27 @@ export function InspectorPanel({
           </div>
         </div>
 
-        {/* Alignment & Max Width */}
-        <div className={`${colGrid} items-start mb-2`}>
-          <div>
-            <div className="text-[10px] text-muted-foreground mb-1">Alignment</div>
-            <div className="flex gap-0.5">
-              {(["left","center","right","full"] as const).map(a => (
-                <button key={a} onClick={() => { patch({ alignment: a }); trackRecent("alignment"); }}
-                  className={`flex-1 py-1 text-[9px] rounded transition-colors ${
-                    (bs.alignment ?? "left") === a ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
-                  }`}>{a[0].toUpperCase()}</button>
+        {LAYOUT_SECTION_ORDER.map((secName, i) => {
+          const secFields = grouped.get(secName);
+          if (!secFields?.length) return null;
+          return (
+            <div key={secName || "root"}>
+              {i > 0 && <div className="border-t border-border my-3" />}
+              {secName && (
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">{secName}</p>
+              )}
+              {secFields.map(f => (
+                <div key={f.id} className={`${colGrid} items-start mb-1`}>
+                  <RenderedField f={f} ctx={fieldCtx} />
+                  <ComingSoonPlaceholder />
+                  <ComingSoonPlaceholder />
+                  <ComingSoonPlaceholder />
+                </div>
               ))}
             </div>
-          </div>
-          <ComingSoonPlaceholder />
-          <ComingSoonPlaceholder />
-          <ComingSoonPlaceholder />
-        </div>
+          );
+        })}
 
-        <div className={`${colGrid} items-center mb-2`}>
-          <div>
-            <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
-              <span>Max Width</span><span>{bs.maxWidth ? `${bs.maxWidth}px` : "Full"}</span>
-            </div>
-            <input type="range" min={0} max={1440} step={40} value={bs.maxWidth ?? 0}
-              onChange={e => { const v = parseInt(e.target.value); patch({ maxWidth: v || undefined }); trackRecent("width"); }}
-              className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
-          </div>
-          <ComingSoonPlaceholder />
-          <ComingSoonPlaceholder />
-          <ComingSoonPlaceholder />
-        </div>
-
-        <div className="border-t border-border my-3" />
-
-        {([
-          ["Padding Top",    "paddingTop",    0, 200, "padding"],
-          ["Padding Right",  "paddingRight",  0, 100, "padding"],
-          ["Padding Bottom", "paddingBottom", 0, 200, "padding"],
-          ["Padding Left",   "paddingLeft",   0, 100, "padding"],
-        ] as const).map(([lbl, key, min, max, recent]) => (
-          <div key={key} className={`${colGrid} items-center mb-2`}>
-            <div>
-              <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
-                <span>{lbl}</span><span>{(bs as Record<string, number | undefined>)[key] ?? 0}px</span>
-              </div>
-              <input type="range" min={min} max={max}
-                value={(bs as Record<string, number | undefined>)[key] ?? 0}
-                onChange={e => { patch({ [key]: parseInt(e.target.value) }); trackRecent(recent); }}
-                className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
-            </div>
-            <ComingSoonPlaceholder />
-            <ComingSoonPlaceholder />
-            <ComingSoonPlaceholder />
-          </div>
-        ))}
-
-        <div className="border-t border-border my-3" />
-
-        {([
-          ["Margin Top",    "marginTop",    0, 200, "margin-top"],
-          ["Margin Bottom", "marginBottom", 0, 200, "margin-bottom"],
-        ] as const).map(([lbl, key, min, max, recent]) => (
-          <div key={key} className={`${colGrid} items-center mb-2`}>
-            <div>
-              <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
-                <span>{lbl}</span><span>{(bs as Record<string, number | undefined>)[key] ?? 0}px</span>
-              </div>
-              <input type="range" min={min} max={max}
-                value={(bs as Record<string, number | undefined>)[key] ?? 0}
-                onChange={e => { patch({ [key]: parseInt(e.target.value) || undefined }); trackRecent(recent); }}
-                className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
-            </div>
-            <ComingSoonPlaceholder />
-            <ComingSoonPlaceholder />
-            <ComingSoonPlaceholder />
-          </div>
-        ))}
-
-        <div className="border-t border-border my-3" />
-
-        <div className={`${colGrid} items-center mb-2`}>
-          <div>
-            <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
-              <span>Min Height</span><span>{bs.minHeight ?? 0}px</span>
-            </div>
-            <input type="range" min={0} max={800} value={bs.minHeight ?? 0}
-              onChange={e => { patch({ minHeight: parseInt(e.target.value) || undefined }); trackRecent("min-height"); }}
-              className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
-          </div>
-          <ComingSoonPlaceholder />
-          <ComingSoonPlaceholder />
-          <ComingSoonPlaceholder />
-        </div>
-
-        {/* Row-specific layout controls */}
         {section.type === "row" && rowData && onChangeRowData && (
           <>
             <div className="border-t border-border my-3" />
@@ -899,85 +853,11 @@ export function InspectorPanel({
   }
 
   function renderAdvancedTab() {
+    const advancedFields = ALL_FIELDS.filter(f => f.tab === "advanced");
     return (
-      <div className="p-3 space-y-0">
-        <AccordionBlock title="Visibility" defaultOpen>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-foreground font-medium">Show on published site</p>
-                <p className="text-[10px] text-muted-foreground">Hides section from visitors when off</p>
-              </div>
-              <Toggle checked={section.enabled} onChange={onToggleSection} />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-foreground">Hide on Mobile</p>
-                <p className="text-[10px] text-muted-foreground">Screens &lt; 768px</p>
-              </div>
-              <Toggle checked={!!bs.hideOnMobile} onChange={v => { patch({ hideOnMobile: v }); trackRecent("hide-mobile"); }} />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-foreground">Hide on Tablet</p>
-                <p className="text-[10px] text-muted-foreground">768px–1023px screens</p>
-              </div>
-              <Toggle checked={!!bs.hideOnTablet} onChange={v => { patch({ hideOnTablet: v }); trackRecent("hide-tablet"); }} />
-            </div>
-          </div>
-        </AccordionBlock>
-
-        <AccordionBlock title="Animation">
-          <p className="text-[10px] text-muted-foreground mb-2">
-            Entrance animation — plays on the live site when the section scrolls into view
-          </p>
-          <div className="grid grid-cols-2 gap-1">
-            {([["none","None"],["fadeIn","Fade In"],["slideUp","Slide Up"],["slideLeft","Slide Left"]] as const).map(([v, l]) => (
-              <button key={v} onClick={() => { patch({ animation: v }); trackRecent("animation"); }}
-                className={`py-1.5 text-xs rounded transition-colors ${
-                  (bs.animation ?? "none") === v
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}>{l}</button>
-            ))}
-          </div>
-        </AccordionBlock>
-
-        <AccordionBlock title="Anchor ID">
-          <input type="text" value={bs.anchorId ?? ""}
-            onChange={e => { patch({ anchorId: e.target.value || undefined }); trackRecent("anchor-id"); }}
-            placeholder="e.g. about-section"
-            className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-          <p className="text-[10px] text-muted-foreground mt-1">
-            Renders as <code className="font-mono bg-muted px-0.5 rounded">id="…"</code> on the public site. Link with <code className="font-mono bg-muted px-0.5 rounded">#about-section</code>
-          </p>
-        </AccordionBlock>
-
-        <AccordionBlock title="CSS Class">
-          <input type="text" value={bs.customClass ?? ""}
-            onChange={e => { patch({ customClass: e.target.value || undefined }); trackRecent("css-class"); }}
-            placeholder="e.g. my-custom-section"
-            className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
-          <p className="text-[10px] text-muted-foreground mt-1">
-            Appended to the section wrapper's <code className="font-mono bg-muted px-0.5 rounded">className</code>
-          </p>
-        </AccordionBlock>
-
-        <AccordionBlock title="Custom Attributes">
-          <p className="text-[10px] text-muted-foreground mb-2">
-            JSON object of <code className="font-mono bg-muted px-0.5 rounded">data-*</code> attributes. Future-ready for analytics and integrations.
-          </p>
-          <textarea value={bs.customAttrs ?? ""}
-            onChange={e => { patch({ customAttrs: e.target.value || undefined }); trackRecent("custom-attrs"); }}
-            placeholder={'{\n  "data-section": "hero",\n  "data-track": "cta-view"\n}'}
-            rows={4}
-            className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono resize-none" />
-          <p className="text-[10px] text-muted-foreground mt-1">
-            Keys without <code className="font-mono bg-muted px-0.5 rounded">data-</code> prefix are auto-prefixed
-          </p>
-        </AccordionBlock>
-
-        <div className="pt-3">
+      <div className="p-3">
+        {advancedFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
+        <div className="pt-3 mt-2 border-t border-border">
           <button type="button" onClick={onDeleteSection}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border border-red-200 dark:border-red-900">
             <Trash2 className="w-3.5 h-3.5" /> Delete Section
@@ -987,27 +867,21 @@ export function InspectorPanel({
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
-  const sectionLabel = hasComponent
-    ? "Component"
-    : (SECTION_LABELS[section.type] ?? section.type);
+  // ── Full render ────────────────────────────────────────────────────────────
+  const sectionLabel = hasComponent ? "Component" : (SECTION_LABELS[section.type] ?? section.type);
 
   return (
     <div className="flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden relative"
       style={{ width: panelWidth }}>
 
-      {/* Resize handle — drag left edge to resize */}
       <div onMouseDown={handleResizeDrag}
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 group flex items-center"
         title="Drag to resize panel">
         <div className="w-px h-full bg-border group-hover:bg-primary/50 group-hover:w-0.5 transition-all" />
       </div>
 
-      {/* Content — offset for resize handle */}
       <div className="flex flex-col h-full overflow-hidden">
-
-        {/* Header: breadcrumb + action buttons */}
+        {/* Header */}
         <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
           <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1 truncate">
             <span className="truncate">{pageName}</span>
@@ -1015,9 +889,7 @@ export function InspectorPanel({
             <span className="font-medium text-muted-foreground truncate">{sectionLabel}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest truncate">
-              {sectionLabel}
-            </span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest truncate">{sectionLabel}</span>
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {!hasComponent && (
                 <>
@@ -1062,7 +934,6 @@ export function InspectorPanel({
           </div>
         </div>
 
-        {/* Search results overlay */}
         {isSearching ? (
           <div className="flex-1 overflow-y-auto p-3">
             {searchResults.length === 0 ? (
@@ -1091,21 +962,14 @@ export function InspectorPanel({
           </div>
         ) : (
           <>
-            {/* Tab bar */}
             <div className="flex border-b border-border flex-shrink-0 bg-card">
               {TABS.map(t => (
                 <button key={t} onClick={() => switchTab(t)}
-                  className={`flex-1 py-2 text-[10px] font-medium capitalize transition-colors ${
-                    activeTab === t
-                      ? "text-foreground border-b-2 border-primary -mb-px"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}>
+                  className={`flex-1 py-2 text-[10px] font-medium capitalize transition-colors ${activeTab === t ? "text-foreground border-b-2 border-primary -mb-px" : "text-muted-foreground hover:text-foreground"}`}>
                   {TAB_LABELS[t]}
                 </button>
               ))}
             </div>
-
-            {/* Tab content */}
             <div className="flex-1 overflow-y-auto">
               {activeTab === "quick"    && renderQuickTab()}
               {activeTab === "content"  && renderContentTab()}
