@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, clientErrorsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -20,6 +20,7 @@ router.get("/", async (_req, res) => {
       firstSeen: string;
       lastSeen: string;
       count: number;
+      ids: number[];
     }>();
 
     for (const row of errors) {
@@ -27,6 +28,7 @@ router.get("/", async (_req, res) => {
       const existing = grouped.get(key);
       if (existing) {
         existing.count += 1;
+        existing.ids.push(row.id);
         if (row.createdAt.toISOString() < existing.firstSeen) {
           existing.firstSeen = row.createdAt.toISOString();
         }
@@ -44,6 +46,7 @@ router.get("/", async (_req, res) => {
           firstSeen: row.createdAt.toISOString(),
           lastSeen: row.createdAt.toISOString(),
           count: 1,
+          ids: [row.id],
         });
       }
     }
@@ -53,6 +56,22 @@ router.get("/", async (_req, res) => {
   } catch (err) {
     console.error("[admin/errors] query failed:", err);
     res.status(500).json({ error: "Failed to load errors" });
+  }
+});
+
+router.delete("/", async (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "ids must be a non-empty array" });
+    return;
+  }
+
+  try {
+    await db.delete(clientErrorsTable).where(inArray(clientErrorsTable.id, ids));
+    res.status(204).end();
+  } catch (err) {
+    console.error("[admin/errors] delete failed:", err);
+    res.status(500).json({ error: "Failed to dismiss errors" });
   }
 });
 

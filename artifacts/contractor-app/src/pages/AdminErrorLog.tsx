@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bug, ChevronDown, ChevronRight, RefreshCw, AlertTriangle } from "lucide-react";
+import { Bug, ChevronDown, ChevronRight, RefreshCw, AlertTriangle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -23,8 +23,25 @@ function formatDate(iso: string) {
   return d.toLocaleString();
 }
 
-function ErrorRow({ group }: { group: ErrorGroup }) {
+function ErrorRow({ group, onDismissed }: { group: ErrorGroup; onDismissed: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
+
+  async function handleDismiss(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDismissing(true);
+    try {
+      const res = await fetch(`${BASE}/api/admin/errors`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: group.ids }),
+      });
+      if (!res.ok) throw new Error("Failed to dismiss");
+      onDismissed();
+    } catch {
+      setDismissing(false);
+    }
+  }
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -48,6 +65,17 @@ function ErrorRow({ group }: { group: ErrorGroup }) {
             {group.count > 1 && <span>First seen: {formatDate(group.firstSeen)}</span>}
           </div>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 mt-0.5"
+          onClick={handleDismiss}
+          disabled={dismissing}
+          title="Dismiss this error group"
+        >
+          <X className="h-4 w-4" />
+          <span className="ml-1 text-xs">{dismissing ? "Dismissing…" : "Dismiss"}</span>
+        </Button>
       </button>
 
       {expanded && (
@@ -78,6 +106,7 @@ function ErrorRow({ group }: { group: ErrorGroup }) {
 }
 
 export default function AdminErrorLog() {
+  const queryClient = useQueryClient();
   const { data, isLoading, isError, refetch, isFetching } = useQuery<ErrorGroup[]>({
     queryKey: ["admin-errors"],
     queryFn: async () => {
@@ -86,6 +115,10 @@ export default function AdminErrorLog() {
       return res.json();
     },
   });
+
+  function handleDismissed() {
+    queryClient.invalidateQueries({ queryKey: ["admin-errors"] });
+  }
 
   return (
     <div className="container max-w-4xl mx-auto py-8 px-4">
@@ -138,7 +171,7 @@ export default function AdminErrorLog() {
           </CardHeader>
           <CardContent className="space-y-2">
             {data.map((group, i) => (
-              <ErrorRow key={i} group={group} />
+              <ErrorRow key={i} group={group} onDismissed={handleDismissed} />
             ))}
           </CardContent>
         </Card>
