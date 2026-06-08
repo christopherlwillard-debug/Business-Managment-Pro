@@ -69,20 +69,23 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
               {content.body}
             </div>
           )}
+          {!content.heading && !content.body && (
+            <p className="text-muted-foreground text-sm italic">Click to add text content…</p>
+          )}
         </div>
       </BlockStyleWrapper>
     );
   }
 
   return (
-    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-8" isEditing={true}>
-      <div onClick={e => e.stopPropagation()} className="space-y-3">
-        <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wide">Text Block</p>
+    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-6" isEditing={true}>
+      <div onClick={e => e.stopPropagation()} className="space-y-3 bg-card/95 backdrop-blur-sm rounded-xl border border-border p-4 shadow-sm">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Text Block</p>
 
         <div className="flex gap-3 items-center">
           <div className="flex-1">
-            <p className="text-[10px] text-white/40 mb-1">Alignment</p>
-            <div className="flex rounded-lg overflow-hidden border border-white/20">
+            <p className="text-[10px] text-muted-foreground mb-1">Alignment</p>
+            <div className="flex rounded-lg overflow-hidden border border-border">
               {(["left", "center", "right"] as const).map(a => (
                 <button
                   key={a}
@@ -90,8 +93,8 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
                   onClick={() => update({ alignment: a })}
                   className={`flex-1 py-1.5 text-xs font-medium transition-colors capitalize ${
                     alignment === a
-                      ? "bg-white/20 text-white"
-                      : "bg-white/5 text-white/50 hover:bg-white/10"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
                   }`}
                 >
                   {a}
@@ -100,8 +103,8 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
             </div>
           </div>
           <div className="flex-1">
-            <p className="text-[10px] text-white/40 mb-1">Max Width</p>
-            <div className="flex rounded-lg overflow-hidden border border-white/20">
+            <p className="text-[10px] text-muted-foreground mb-1">Max Width</p>
+            <div className="flex rounded-lg overflow-hidden border border-border">
               {(["sm", "md", "lg", "full"] as const).map(w => (
                 <button
                   key={w}
@@ -109,8 +112,8 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
                   onClick={() => update({ maxWidth: w })}
                   className={`flex-1 py-1.5 text-xs font-medium transition-colors uppercase ${
                     maxWidth === w
-                      ? "bg-white/20 text-white"
-                      : "bg-white/5 text-white/50 hover:bg-white/10"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
                   }`}
                 >
                   {w}
@@ -122,7 +125,7 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
 
         <input
           type="text"
-          className="w-full text-xl font-bold bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-2 outline-none focus:border-white/60"
+          className="w-full text-xl font-bold bg-background border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
           placeholder="Heading (optional)"
           value={content.heading ?? ""}
           onChange={e => update({ heading: e.target.value })}
@@ -130,7 +133,7 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
 
         <input
           type="text"
-          className="w-full text-sm bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-1.5 outline-none focus:border-white/60"
+          className="w-full text-sm bg-background border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-1.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
           placeholder="Subheading (optional)"
           value={content.subheading ?? ""}
           onChange={e => update({ subheading: e.target.value })}
@@ -138,7 +141,7 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
 
         <textarea
           rows={6}
-          className="w-full text-sm bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-2 outline-none focus:border-white/60 resize-y leading-relaxed"
+          className="w-full text-sm bg-background border border-border text-foreground placeholder:text-muted-foreground rounded-lg px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 resize-y leading-relaxed"
           placeholder="Write your content here…"
           value={content.body}
           onChange={e => update({ body: e.target.value })}

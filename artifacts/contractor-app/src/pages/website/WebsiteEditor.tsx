@@ -1051,6 +1051,21 @@ function WebsiteEditor() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Delete key shortcut — delete active section (skips if typing in an input)
+  useEffect(() => {
+    function onDeleteKey(e: KeyboardEvent) {
+      if (e.key !== "Delete") return;
+      const tag = (document.activeElement as HTMLElement)?.tagName ?? "";
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+      if ((document.activeElement as HTMLElement)?.isContentEditable) return;
+      if (!activeSection) return;
+      e.preventDefault();
+      handleDeleteSectionClick(activeSection);
+    }
+    window.addEventListener("keydown", onDeleteKey);
+    return () => window.removeEventListener("keydown", onDeleteKey);
+  }, [activeSection, sections]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { data: config, isLoading } = useQuery<WebsiteConfig>({
     queryKey: ["website-config", bizId],
     enabled: !!bizId,
@@ -1276,9 +1291,15 @@ function WebsiteEditor() {
   }
 
   function toggleSection(id: string) {
+    const sec = sections.find(s => s.id === id);
+    const willHide = sec?.enabled !== false;
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     updatePageSections(sections.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+    toast({
+      title: willHide ? "Section hidden" : "Section shown",
+      description: `${SECTION_LABELS[sec?.type ?? ""] ?? "Section"} is now ${willHide ? "hidden from" : "visible on"} your site. Press Ctrl+Z to undo.`,
+    });
   }
 
   function updateContent(id: string, content: Record<string, unknown>) {
@@ -1389,6 +1410,7 @@ function WebsiteEditor() {
     isDirtyRef.current = true;
     updatePageSections(newSections);
     setActiveSection(dup.id);
+    toast({ title: "Section duplicated", description: "Press Ctrl+Z to undo." });
   }
 
   const CORE_SECTION_TYPES = new Set(["hero", "services", "about", "contact", "footer", "portfolio", "deposit"]);
@@ -1404,6 +1426,8 @@ function WebsiteEditor() {
   }
 
   function doDeleteSection(id: string) {
+    const sec = sections.find(s => s.id === id);
+    const label = SECTION_LABELS[sec?.type ?? ""] ?? "Section";
     const newSections = sections
       .filter(s => s.id !== id)
       .map((s, i) => ({ ...s, order: i }));
@@ -1412,6 +1436,7 @@ function WebsiteEditor() {
     updatePageSections(newSections);
     setActiveSection(null);
     setDeleteSectionConfirm(null);
+    toast({ title: `${label} deleted`, description: "Press Ctrl+Z to undo." });
   }
 
   async function handleSectionBgUpload(sectionId: string, file: File) {
@@ -2220,20 +2245,22 @@ function WebsiteEditor() {
             }
           }}
         >
-          {/* Active label badge */}
-          {isActive && (
-            <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">
-              <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                {isHeader && <Lock className="w-2.5 h-2.5" />}
-                {isHeader ? "Header" : SECTION_LABELS[s.type]}
+          {/* Type label badge — muted on hover, primary when active */}
+          <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 transition-all duration-150 ${
+              isActive
+                ? "bg-primary text-primary-foreground opacity-100"
+                : "bg-foreground/70 text-background opacity-0 group-hover/sec:opacity-100"
+            }`}>
+              {isHeader && <Lock className="w-2.5 h-2.5" />}
+              {isHeader ? "Header" : SECTION_LABELS[s.type]}
+            </span>
+            {isActive && isHeader && (
+              <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
+                Edit nav &amp; CTA
               </span>
-              {isHeader && (
-                <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
-                  Edit nav &amp; CTA
-                </span>
-              )}
-            </div>
-          )}
+            )}
+          </div>
           {/* Floating action bar — visible on hover or when active (non-header only) */}
           {!isHeader && (
             <div className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity ${
@@ -2262,6 +2289,12 @@ function WebsiteEditor() {
               ><Copy className="w-3.5 h-3.5" /></button>
               <button
                 type="button"
+                onClick={e => { e.stopPropagation(); toggleSection(s.id); }}
+                title="Hide section"
+                className="p-1 rounded text-white/70 hover:bg-white/20 hover:text-white transition-colors"
+              ><EyeOff className="w-3.5 h-3.5" /></button>
+              <button
+                type="button"
                 onClick={e => {
                   e.stopPropagation();
                   setInsertAfterSectionId(s.id);
@@ -2274,7 +2307,7 @@ function WebsiteEditor() {
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
-                title="Delete section"
+                title="Delete section (Del)"
                 className="p-1 rounded text-red-300 hover:bg-red-500/20 transition-colors"
               ><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
@@ -3501,9 +3534,18 @@ function WebsiteEditor() {
             if (selectedComp) {
               panelContent = (
                 <div className="flex flex-col overflow-hidden h-full">
-                  <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
-                    {rightCollapseBtn}
+                  <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
+                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
+                      <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
+                      <ChevronRight className="w-2.5 h-2.5" />
+                      <span>{SECTION_LABELS[sec.type] ?? "Section"}</span>
+                      <ChevronRight className="w-2.5 h-2.5" />
+                      <span className="font-medium text-muted-foreground">Component</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
+                      {rightCollapseBtn}
+                    </div>
                   </div>
                   <div className="overflow-y-auto flex-1 min-h-0">
                     <ComponentEditorPanel
@@ -3529,9 +3571,18 @@ function WebsiteEditor() {
               if (selComp) {
                 panelContent = (
                   <div className="flex flex-col overflow-hidden h-full">
-                    <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
-                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
-                      {rightCollapseBtn}
+                    <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
+                      <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
+                        <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
+                        <ChevronRight className="w-2.5 h-2.5" />
+                        <span>Row</span>
+                        <ChevronRight className="w-2.5 h-2.5" />
+                        <span className="font-medium text-muted-foreground">Component</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
+                        {rightCollapseBtn}
+                      </div>
                     </div>
                     <div className="overflow-y-auto flex-1 min-h-0">
                       <ComponentEditorPanel
@@ -3555,9 +3606,20 @@ function WebsiteEditor() {
             if (!panelContent) {
               panelContent = (
                 <div className="flex flex-col overflow-hidden h-full">
-                  <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Row</span>
-                    {rightCollapseBtn}
+                  <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
+                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
+                      <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
+                      <ChevronRight className="w-2.5 h-2.5" />
+                      <span className="font-medium text-muted-foreground">Row</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Row</span>
+                      <div className="flex items-center gap-0.5">
+                        <button type="button" onClick={() => duplicateSection(sec.id)} title="Duplicate section" className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"><Copy className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => handleDeleteSectionClick(sec.id)} title="Delete section (Del)" className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                        {rightCollapseBtn}
+                      </div>
+                    </div>
                   </div>
                   <RowEditorPanel
                     data={rowData}
@@ -3582,11 +3644,18 @@ function WebsiteEditor() {
           if (sec.type === "deposit") {
             panelContent = (
               <div className="flex flex-col overflow-hidden h-full">
-                <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                    Pay Deposit
-                  </span>
-                  {rightCollapseBtn}
+                <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
+                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
+                    <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                    <span className="font-medium text-muted-foreground">Pay Deposit</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                      Pay Deposit
+                    </span>
+                    {rightCollapseBtn}
+                  </div>
                 </div>
                 <div className="overflow-y-auto flex-1 min-h-0">
                   <DepositSubmissionsPanel businessId={bizId} />
@@ -3607,11 +3676,44 @@ function WebsiteEditor() {
           if (!panelContent) {
             panelContent = (
               <div className="flex flex-col overflow-y-auto h-full">
-                <div className="flex items-center justify-between px-3 pt-2 pb-0 flex-shrink-0">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                    {SECTION_LABELS[sec.type] ?? "Section"}
-                  </span>
-                  {rightCollapseBtn}
+                <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
+                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
+                    <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                    <span className="font-medium text-muted-foreground">{SECTION_LABELS[sec.type] ?? "Section"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                      {SECTION_LABELS[sec.type] ?? "Section"}
+                    </span>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(sec.id)}
+                        title={sec.enabled ? "Hide section" : "Show section"}
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {sec.enabled ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => duplicateSection(sec.id)}
+                        title="Duplicate section"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSectionClick(sec.id)}
+                        title="Delete section (Del)"
+                        className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      {rightCollapseBtn}
+                    </div>
+                  </div>
                 </div>
                 <SectionStylePanel
                   sectionId={sec.id}
