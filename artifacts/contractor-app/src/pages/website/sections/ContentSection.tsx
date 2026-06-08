@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
+import { InlineEditableText } from "../InlineEditableText";
+import { useInlineEditContext } from "../InlineEditContext";
 import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from "@dnd-kit/sortable";
@@ -181,6 +183,82 @@ const MAX_WIDTH_CLASS: Record<string, string> = {
   xl: "max-w-6xl",
   full: "max-w-none",
 };
+
+/**
+ * Inline-editable variant of renderSiteComponent.
+ * Used in the canvas public-view when a sectionId is available, so that
+ * double-clicking heading/paragraph/button text opens inline editing.
+ * Non-text component types fall back to the static renderer.
+ */
+export function renderSiteComponentEditable(
+  comp: SiteComponent,
+  settings: { brandColor: string; accentColor?: string; secondaryColor?: string },
+  sectionId: string,
+  onUpdateComp: (updated: SiteComponent) => void,
+): React.ReactNode {
+  switch (comp.type) {
+    case "heading": {
+      const p = comp.props as HeadingProps;
+      const Tag = (`h${p.level ?? 2}`) as "h1" | "h2" | "h3" | "h4";
+      const sizes: Record<number, string> = { 1: "text-4xl", 2: "text-3xl", 3: "text-2xl", 4: "text-xl" };
+      return (
+        <InlineEditableText
+          id={`${sectionId}-${comp.id}-heading`}
+          value={p.text}
+          placeholder="Heading text"
+          as={Tag}
+          className={`font-bold ${sizes[p.level ?? 2] ?? "text-3xl"} leading-tight`}
+          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", color: "var(--theme-text, #111827)", ...textStyleToCSS(p.style) }}
+          onCommit={(v) => onUpdateComp({ ...comp, props: { ...p, text: v } })}
+        />
+      );
+    }
+    case "paragraph": {
+      const p = comp.props as ParagraphProps;
+      return (
+        <InlineEditableText
+          id={`${sectionId}-${comp.id}-paragraph`}
+          value={p.text}
+          placeholder="Paragraph text"
+          multiline
+          as="p"
+          className="leading-relaxed"
+          style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", color: "var(--theme-text-muted, #374151)", ...textStyleToCSS(p.style) }}
+          onCommit={(v) => onUpdateComp({ ...comp, props: { ...p, text: v } })}
+        />
+      );
+    }
+    case "button": {
+      const p = comp.props as ButtonCompProps;
+      const bStyle = buttonConfigToStyle(p.config);
+      const bClasses = buttonConfigToClasses(p.config);
+      const bg = bStyle.backgroundColor ?? settings.accentColor ?? settings.brandColor;
+      const color = bStyle.color ?? "white";
+      const radius = bStyle.borderRadius ?? "var(--theme-btn-radius, 9999px)";
+      return (
+        <div style={{ textAlign: p.align ?? "left" }}>
+          <InlineEditableText
+            id={`${sectionId}-${comp.id}-button`}
+            value={p.label || ""}
+            placeholder="Button label"
+            as="span"
+            className={`inline-block transition-opacity hover:opacity-90 ${bClasses}`}
+            style={{
+              backgroundColor: bg,
+              color,
+              borderRadius: radius,
+              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+              boxShadow: "var(--theme-btn-shadow, none)",
+            }}
+            onCommit={(v) => onUpdateComp({ ...comp, props: { ...p, label: v } })}
+          />
+        </div>
+      );
+    }
+    default:
+      return renderSiteComponent(comp, settings);
+  }
+}
 
 export function renderSiteComponent(
   comp: SiteComponent,
@@ -591,6 +669,7 @@ interface ContentSectionProps {
   isEditing?: boolean;
   onChange?: (content: ContentSectionData) => void;
   blockStyle?: BlockStyle;
+  sectionId?: string;
   selectedComponentId?: string | null;
   onSelectComponent?: (id: string | null) => void;
   /** The component currently on the clipboard — enables Paste button */
@@ -609,6 +688,7 @@ export function ContentSection({
   isEditing,
   onChange,
   blockStyle,
+  sectionId,
   selectedComponentId,
   onSelectComponent,
   copiedComponent,
@@ -620,8 +700,12 @@ export function ContentSection({
   const [showPicker, setShowPicker] = useState(false);
   const components = content.components ?? [];
   const mwClass = MAX_WIDTH_CLASS[content.maxWidth ?? "lg"] ?? "max-w-4xl";
+  const inlineCtx = useInlineEditContext();
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Suppress DnD while the user is inline-editing a text field.
+  const sensors = useSensors(useSensor(PointerSensor, {
+    activationConstraint: { distance: inlineCtx?.editingId ? 99999 : 5 },
+  }));
 
   function updateComps(newComps: SiteComponent[]) {
     onChange?.({ ...content, components: newComps });
@@ -687,7 +771,13 @@ export function ContentSection({
       <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-6 py-12" isEditing={false}>
         <div className={`${mwClass} mx-auto space-y-6`}>
           {components.filter(c => !c.hidden).map(comp => (
-            <div key={comp.id}>{renderSiteComponent(comp, settings)}</div>
+            <div key={comp.id}>
+              {sectionId
+                ? renderSiteComponentEditable(comp, settings, sectionId, (updated) => {
+                    onChange?.({ ...content, components: components.map(c => c.id === updated.id ? updated : c) });
+                  })
+                : renderSiteComponent(comp, settings)}
+            </div>
           ))}
         </div>
       </BlockStyleWrapper>

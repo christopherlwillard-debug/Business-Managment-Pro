@@ -157,7 +157,7 @@ function renderSection(
     case "services": return <ServicesSection {...props} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
     case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
-    case "footer":  return <FooterSection {...props} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
+    case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
     case "image":   return <ImageSection {...props} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
     case "portfolio": return (
       <PortfolioSection
@@ -195,6 +195,7 @@ function renderSection(
     case "content": return (
       <ContentSection
         {...props}
+        sectionId={extras?.sectionId}
         selectedComponentId={extras?.selectedComponentId}
         onSelectComponent={extras?.onSelectComponent}
         copiedComponent={extras?.copiedComponent}
@@ -206,6 +207,7 @@ function renderSection(
     case "row": return (
       <RowSection
         {...props}
+        sectionId={extras?.sectionId}
         selectedColumnId={extras?.selectedRowColumnId}
         selectedComponentId={extras?.selectedRowComponentId}
         onSelectRowComponent={extras?.onSelectRowComponent}
@@ -992,7 +994,12 @@ function WebsiteEditor() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setActiveSection(null);
+      if (e.key === "Escape") {
+        // If the user is inline-editing a text field, let InlineEditableText handle
+        // the Escape (it commits and stopPropagation()s). Do not deselect section.
+        if (editingIdRef.current) return;
+        setActiveSection(null);
+      }
       if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const t = e.target as HTMLElement;
         if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
@@ -2596,7 +2603,7 @@ function WebsiteEditor() {
 
     return (
       <InlineEditContext.Provider value={contextValue}>
-        <div style={previewBodyStyle}>
+        <div style={previewBodyStyle} data-editing={editingId || undefined}>
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
           )}

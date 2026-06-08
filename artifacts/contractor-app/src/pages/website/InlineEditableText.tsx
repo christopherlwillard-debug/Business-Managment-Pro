@@ -4,19 +4,13 @@ import { useInlineEditContext } from "./InlineEditContext";
 type InlineAs = "h1" | "h2" | "h3" | "h4" | "p" | "span" | "div" | "a" | "li" | "strong";
 
 interface InlineEditableTextProps {
-  /** Unique stable ID for this editable field (e.g. `{sectionId}-headline`) */
   id: string;
-  /** Current text value */
   value: string;
-  /** Shown in editing mode when value is empty */
   placeholder?: string;
-  /** Allow Enter key to insert newlines (paragraphs, FAQ answers, etc.) */
   multiline?: boolean;
-  /** HTML element to render as */
   as?: InlineAs;
   className?: string;
   style?: React.CSSProperties;
-  /** Called with the final committed value when the user exits editing */
   onCommit: (value: string) => void;
 }
 
@@ -28,9 +22,9 @@ interface InlineEditableTextProps {
  * it switches to a contenteditable element with a blue ring.
  *
  * Keyboard contract:
- *   • Escape  — cancel (revert to original value)
- *   • Enter   — commit for single-line elements; newline for multiline
- *   • Tab     — commit and move focus to the next editable in DOM order
+ *   • Escape  — commit (save current text and exit editing)
+ *   • Enter   — commit for single-line; newline for multiline
+ *   • Tab     — commit and advance to next editable in the same section
  *   • Blur    — always commits
  *
  * Safe to render without the Provider (e.g. public site, preview mode) —
@@ -52,12 +46,10 @@ export function InlineEditableText({
 
   useLayoutEffect(() => {
     if (!isActive || !ref.current) return;
-    // Set content imperatively to avoid React cursor-reset during typing
     if (ref.current.textContent !== ctx!.draft) {
       ref.current.textContent = ctx!.draft;
     }
     ref.current.focus();
-    // Place cursor at end of text
     const sel = window.getSelection();
     if (sel && ref.current) {
       const range = document.createRange();
@@ -83,17 +75,24 @@ export function InlineEditableText({
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
-      ctx?.cancelEdit();
+      // stopPropagation so the global Escape handler (which deselects the section)
+      // does not fire while the user is committing an inline edit.
+      e.stopPropagation();
+      ctx?.commitEdit();
     } else if (e.key === "Enter" && !multiline) {
       e.preventDefault();
       ctx?.commitEdit();
     } else if (e.key === "Tab") {
       e.preventDefault();
       ctx?.commitEdit();
-      // Move focus to the next InlineEditableText in DOM order
+      // Advance to the next InlineEditableText within the same section container.
       requestAnimationFrame(() => {
+        const thisEl = document.querySelector<HTMLElement>(`[data-inline-editable="${id}"]`);
+        // Walk up to the nearest section canvas wrapper; fall back to document.
+        const sectionEl: Element =
+          thisEl?.closest("[data-section-canvas-id]") ?? document.documentElement;
         const all = Array.from(
-          document.querySelectorAll<HTMLElement>("[data-inline-editable]")
+          sectionEl.querySelectorAll<HTMLElement>("[data-inline-editable]")
         );
         const idx = all.findIndex(el => el.dataset.inlineEditable === id);
         if (idx >= 0 && idx + 1 < all.length) {

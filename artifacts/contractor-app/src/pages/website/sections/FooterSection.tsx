@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Eye, ChevronDown, ChevronUp, Plus, Trash2, ExternalLink, Facebook, Instagram, Linkedin, Twitter, Youtube } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
+import { InlineEditableText } from "../InlineEditableText";
 
 interface BadgeItem {
   id: string;
@@ -35,6 +36,7 @@ interface FooterSectionProps {
   onChange?: (content: FooterContent) => void;
   blockStyle?: BlockStyle;
   onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+  sectionId?: string;
 }
 
 const SOCIAL_PLATFORMS: Array<{ key: SocialLink["platform"]; label: string; icon: React.ReactNode }> = [
@@ -96,7 +98,7 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-export function FooterSection({ content, settings, isEditing, onChange, blockStyle, onOpenMediaLibrary }: FooterSectionProps) {
+export function FooterSection({ content, settings, isEditing, onChange, blockStyle, onOpenMediaLibrary, sectionId }: FooterSectionProps) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem("footer-editor-accordion");
@@ -339,9 +341,30 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
             className="flex flex-wrap justify-center gap-6 text-sm opacity-80"
             style={{ color: footerLink ? `var(--theme-footer-link, ${footerLink})` : `var(--theme-footer-text, #ffffff)` }}
           >
-            {showPhone   && content.phone         && <span>📞 {content.phone}</span>}
-            {showEmail   && content.email         && <span>✉️ {content.email}</span>}
-            {showLicense && content.licenseNumber && <span>🪪 License: {content.licenseNumber}</span>}
+            {showPhone && (content.phone || sectionId) && (
+              <span>📞{" "}
+                {sectionId ? (
+                  <InlineEditableText id={`${sectionId}-footer-phone`} value={content.phone} placeholder="Phone number" as="span"
+                    onCommit={(v) => onChange?.({ ...content, phone: v })} />
+                ) : content.phone}
+              </span>
+            )}
+            {showEmail && (content.email || sectionId) && (
+              <span>✉️{" "}
+                {sectionId ? (
+                  <InlineEditableText id={`${sectionId}-footer-email`} value={content.email} placeholder="Email address" as="span"
+                    onCommit={(v) => onChange?.({ ...content, email: v })} />
+                ) : content.email}
+              </span>
+            )}
+            {showLicense && (content.licenseNumber || sectionId) && (
+              <span>🪪 License:{" "}
+                {sectionId ? (
+                  <InlineEditableText id={`${sectionId}-footer-license`} value={content.licenseNumber} placeholder="License #" as="span"
+                    onCommit={(v) => onChange?.({ ...content, licenseNumber: v })} />
+                ) : content.licenseNumber}
+              </span>
+            )}
           </div>
         )}
 
@@ -388,11 +411,21 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
         )}
 
         {/* Custom text */}
-        {content.customText && (
-          <p className="text-xs opacity-50 leading-relaxed max-w-2xl mx-auto">{content.customText}</p>
+        {(content.customText || sectionId) && (
+          <p className="text-xs opacity-50 leading-relaxed max-w-2xl mx-auto">
+            {sectionId ? (
+              <InlineEditableText id={`${sectionId}-footer-custom`} value={content.customText ?? ""} placeholder="Disclaimer or additional info"
+                multiline as="span" onCommit={(v) => onChange?.({ ...content, customText: v })} />
+            ) : content.customText}
+          </p>
         )}
 
-        <p className="text-xs opacity-40">{content.copyright || `© ${new Date().getFullYear()} All rights reserved.`}</p>
+        <p className="text-xs opacity-40">
+          {sectionId ? (
+            <InlineEditableText id={`${sectionId}-footer-copyright`} value={content.copyright ?? ""} placeholder={`© ${new Date().getFullYear()} All rights reserved.`}
+              as="span" onCommit={(v) => onChange?.({ ...content, copyright: v })} />
+          ) : (content.copyright || `© ${new Date().getFullYear()} All rights reserved.`)}
+        </p>
       </div>
     </BlockStyleWrapper>
   );

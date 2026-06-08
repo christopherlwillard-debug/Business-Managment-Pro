@@ -100,8 +100,8 @@ export function InlineEditStatus({ editingId }: { editingId: string | null }) {
     return (
       <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 rounded-md text-primary text-[11px] font-medium select-none">
         <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse flex-shrink-0" />
-        Editing…
-        <span className="text-primary/60 ml-0.5">· Esc to cancel</span>
+        Editing text
+        <span className="text-primary/60 ml-0.5">· Esc or Enter to save</span>
       </div>
     );
   }

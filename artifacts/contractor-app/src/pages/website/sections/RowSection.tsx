@@ -1,4 +1,6 @@
 import React, { useState, useId } from "react";
+import { InlineEditableText } from "../InlineEditableText";
+import { useInlineEditContext } from "../InlineEditContext";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -9,7 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Plus, GripVertical, Trash2, Copy, AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, LayoutGrid, ClipboardPaste, Link2, FileText, MousePointer } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import {
-  renderSiteComponent, CONTENT_COMPONENT_TYPES, defaultPropsForType,
+  renderSiteComponent, renderSiteComponentEditable, CONTENT_COMPONENT_TYPES, defaultPropsForType,
   type SiteComponent, type ComponentType, type SiteComponentProps,
   type HeadingProps, type ParagraphProps, type ImageCompProps,
 } from "./ContentSection";
@@ -244,6 +246,7 @@ interface RowSectionProps {
   isEditing?: boolean;
   onChange?: (content: RowSectionData) => void;
   blockStyle?: BlockStyle;
+  sectionId?: string;
   selectedColumnId?: string | null;
   selectedComponentId?: string | null;
   onSelectRowComponent?: (columnId: string, componentId: string | null) => void;
@@ -261,6 +264,7 @@ export function RowSection({
   isEditing,
   onChange,
   blockStyle,
+  sectionId,
   selectedColumnId,
   selectedComponentId,
   onSelectRowComponent,
@@ -277,8 +281,12 @@ export function RowSection({
   const gap = data.gap ?? 24;
   const mwClass = MAX_WIDTH_CLASS[data.maxWidth ?? "lg"] ?? "max-w-4xl";
   const alignClass = ALIGN_CLASS[data.verticalAlign ?? "start"] ?? "items-start";
+  const inlineCtx = useInlineEditContext();
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Suppress DnD while the user is inline-editing a text field.
+  const sensors = useSensors(useSensor(PointerSensor, {
+    activationConstraint: { distance: inlineCtx?.editingId ? 99999 : 5 },
+  }));
 
   function updateData(patch: Partial<RowSectionData>) {
     onChange?.({ ...data, ...patch });
@@ -362,7 +370,15 @@ export function RowSection({
             {columns.map(col => (
               <div key={col.id} className="min-w-0 space-y-6">
                 {col.components.filter(c => !c.hidden).map(comp => (
-                  <div key={comp.id}>{renderSiteComponent(comp, settings)}</div>
+                  <div key={comp.id}>
+                    {sectionId
+                      ? renderSiteComponentEditable(comp, settings, `${sectionId}-${col.id}`, (updated) => {
+                          onChange?.({ ...data, columns: columns.map(c => c.id === col.id
+                            ? { ...c, components: c.components.map(cc => cc.id === updated.id ? updated : cc) }
+                            : c) });
+                        })
+                      : renderSiteComponent(comp, settings)}
+                  </div>
                 ))}
               </div>
             ))}
