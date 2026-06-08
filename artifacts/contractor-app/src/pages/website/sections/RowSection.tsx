@@ -145,13 +145,12 @@ function SortableCompItem({ comp, colId, isSelected, onSelect, onDuplicate, onDe
     >
       <EditableWrapper
         id={`${colId}-${comp.id}`}
-        type={label}
+        label={label}
         isSelected={isSelected}
-        onSelect={onSelect}
+        onSelect={e => { e.stopPropagation(); onSelect(); }}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
         extraToolbar={<>{dragHandle}{copyBtn}</>}
-        isLocked={false}
       >
         <div className="px-2 py-2 pointer-events-none overflow-hidden max-h-28">
           {renderSiteComponent(comp, settings)}
