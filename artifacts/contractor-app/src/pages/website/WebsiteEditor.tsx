@@ -1077,9 +1077,10 @@ function WebsiteEditor() {
       if (isTyping) return;
       if (e.key === "Delete") {
         e.preventDefault();
-        if (selectedComponentState) {
-          // Delete the selected component from its ContentSection
-          const { sectionId, componentId } = selectedComponentState;
+
+        /** Helper: delete a component from a section by sectionId + componentId */
+        function deleteComponentFromSection(sectionId: string, componentId: string) {
+          history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
           setLocalPages(prev => {
             if (!prev) return prev;
             return prev.map(p =>
@@ -1090,7 +1091,9 @@ function WebsiteEditor() {
                     ...s,
                     content: {
                       ...(s.content as Record<string, unknown>),
-                      components: ((s.content as any)?.components ?? []).filter((c: { id: string }) => c.id !== componentId),
+                      components: ((s.content as any)?.components ?? []).filter(
+                        (c: { id: string }) => c.id !== componentId
+                      ),
                     },
                   }
                 ),
@@ -1098,8 +1101,18 @@ function WebsiteEditor() {
             );
           });
           isDirtyRef.current = true;
-          setSelectedComponentState(null);
           toast({ title: "Component deleted", duration: 2000 });
+        }
+
+        // Priority order: row component → content component → active section
+        if (selectedRowState?.componentId) {
+          deleteComponentFromSection(selectedRowState.sectionId, selectedRowState.componentId);
+          setSelectedRowState(prev => prev ? { sectionId: prev.sectionId, columnId: prev.columnId } : null);
+          return;
+        }
+        if (selectedComponentState) {
+          deleteComponentFromSection(selectedComponentState.sectionId, selectedComponentState.componentId);
+          setSelectedComponentState(null);
           return;
         }
         if (activeSection) {
@@ -1109,7 +1122,7 @@ function WebsiteEditor() {
     }
     window.addEventListener("keydown", onNavKey);
     return () => window.removeEventListener("keydown", onNavKey);
-  }, [activeSection, selectedComponentState, sections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSection, selectedComponentState, selectedRowState, sections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * selectSectionAndScroll — sets the active section AND scrolls the canvas

@@ -1,0 +1,670 @@
+Library
+Search
+Apps
+Contractor Management App
+Contractor Management App
+Website
+Other
+Contractor App
+Website
+Images
+generated_image
+Image
+#761 - Tabbed Inspector Panel — Content, Style, Layout, Advanced, Quick
+What & Why
+The current right sidebar is one long scrolling panel that mixes content fields, style controls, layout options, and visibility settings together. This replaces it with a five-tab inspector — organized, fast, and architected so settings never pile up again. The panel is built around a centralized Field Registry (one source of truth for all settings) that the tabs simply filter and display. No logic duplication across tab files.
+
+Done looks like
+The right sidebar shows five tabs whenever a section, row, or component is selected: Quick, Content, Style, Layout, Advanced
+Tabs are rendered as a compact sticky tab bar; the active tab is preserved per selection type (section vs. component remember their last tab)
+When nothing is selected, the sidebar shows site-level settings (pages, global theme, SEO) — tabs appear only on selection
+All existing functionality is preserved — no settings are removed, only reorganized
+Quick tab (default active tab):
+
+10 most-used controls always visible without switching tabs: Text, Image, Link, Background Color, Padding, Alignment, Width, Visibility, Duplicate, Delete
+Designed to cover ~80% of editing sessions without the user ever leaving this tab
+Content tab:
+
+All text fields, image pickers, link inputs, list item editors, and form field configuration for the selected element
+Style tab — organized into collapsible sub-sections (not one flat scroll):
+
+Typography: font family, size, weight, line height, letter spacing, text transform
+Colors: text color, background color, button/accent color override
+Borders: border width, style, color, border radius
+Shadows: box shadow presets + custom values
+Backgrounds: solid color, gradient, image (upload + position), overlay opacity
+Layout tab — each control has Desktop / Tablet / Mobile column placeholders:
+
+Width, max-width, alignment (left/center/right/full)
+Padding (top/right/bottom/left) with per-breakpoint placeholder columns (no functionality yet — columns are present in the UI for future wiring)
+Margin (top/bottom)
+Column count and gap (for Row sections)
+Vertical alignment
+The responsive columns are visually present with a "coming soon" indicator; they are non-functional but the data model fields are reserved in website-types.ts
+Advanced tab:
+
+Visibility toggle (show/hide on published site)
+Anchor ID (stored on section, rendered as id on the public site wrapper)
+CSS class input (appended to the wrapper className on the public site)
+Animation entry (none / fade-in / slide-up / slide-in-left — applied via CSS class)
+Custom Attributes: a JSON text field for arbitrary data-* attributes (stored in section data, applied on public site; labeled "Future-ready" in the UI)
+Inspector Search:
+
+A search input (Search settings...) at the top of the inspector panel, above the tab bar
+Typing filters all controls across all tabs — matches on label text (e.g. "padding", "color", "animation")
+Matched controls render in a flat filtered list with their tab label shown as a small badge (e.g. Layout · Padding)
+Clears on Escape or when the field is emptied
+Pinned / Favorites:
+
+Every control has a star (⭐) icon on hover
+Pinned controls appear in a "Pinned" section at the top of the Quick tab
+Pins are stored in localStorage per user (not synced to the server)
+Out of scope
+Functional responsive overrides (tablet/mobile values actually doing different things) — layout column placeholders are UI-only
+AI copy suggestions inside the Content tab (handled by existing AI popover)
+Per-element animation timeline or keyframe editor
+Steps
+Field Registry — Define a central inspectorFields.ts that declares every setting as a typed field descriptor: { id, label, tab, styleSubSection?, component, getValue, setValue }. Tabs don't own logic — they query this registry filtered by tab. This is the core architectural constraint: all setting logic lives here, not inside tab components.
+
+InspectorPanel shell — Build the top-level InspectorPanel component with: search input, five-tab bar (Quick / Content / Style / Layout / Advanced), and a dynamic field renderer that maps filtered field descriptors to their component. Pass selected item data and update callbacks in via props.
+
+Quick tab — Hard-code the 10 most-used field IDs as a curated list; the tab renders those fields from the registry by ID. Also renders the Pinned section above them.
+
+Style tab — Render fields filtered by tab: "style", grouped by styleSubSection (Typography, Colors, Borders, Shadows, Backgrounds). Each sub-section is a collapsible <details> group.
+
+Layout tab with responsive placeholders — Render Layout fields. For width, padding, margin, and alignment fields, wrap each input in a three-column responsive container (Desktop / Tablet / Mobile). Only the Desktop column is functional; Tablet and Mobile columns render a greyed "—" placeholder with a tooltip "Responsive overrides coming soon." Reserve the breakpoint fields in website-types.ts now.
+
+Advanced tab — Render Advanced fields including the custom attributes JSON field. Wire anchor ID and CSS class to the section data model and ensure they're applied in PublicSite.tsx section wrappers. Wire animation class to a small CSS keyframe stylesheet injected into the public site.
+
+Search — Implement search as a client-side filter over the full field registry (all tabs). Render results as a flat list with tab-badge labels. Connect to the search input via controlled state; debounce at ~150ms.
+
+Pinning — Add a star icon to each field descriptor's rendered control (visible on hover). Store pinned field IDs in localStorage under a stable key. Render pinned fields at the top of the Quick tab.
+
+Wire into the editor — Replace the current ad-hoc right panel rendering in WebsiteEditor.tsx with <InspectorPanel> when selectedSectionId is set. Retire direct renders of SectionStylePanel and ComponentEditorPanel from the main editor layout; their logic migrates into the field registry.
+
+Public site — Ensure anchor IDs, custom classes, animation classes, and custom attributes added in the Advanced tab are correctly applied in PublicSite.tsx section and component wrappers.
+
+Relevant files
+artifacts/contractor-app/src/pages/website/WebsiteEditor.tsx
+artifacts/contractor-app/src/pages/website/SectionStylePanel.tsx
+artifacts/contractor-app/src/pages/website/ComponentEditorPanel.tsx
+artifacts/contractor-app/src/pages/website/RowEditorPanel.tsx
+artifacts/contractor-app/src/pages/website/PublicSite.tsx
+artifacts/contractor-app/src/pages/website/website-types.ts
+artifacts/contractor-app/src/pages/website/sections/BlockStyleWrapper.tsx
+
+This version of #761 is significantly better than the original.
+
+The biggest improvement isn't the extra tabs—it's the Field Registry architecture.
+
+That one decision prevents a future nightmare where:
+
+ContentTab owns some settings
+StyleTab owns others
+LayoutTab owns others
+AdvancedTab owns others
+
+and six months later nobody knows where settings live.
+
+With the registry approach:
+
+Field Registry
+↓
+Inspector Panel
+↓
+Tabs filter fields
+
+everything stays centralized.
+
+I would only add 4 things
+1. Recently Used Controls
+
+Above Pinned controls:
+
+Recently Used
+
+Show the last 5–10 controls edited.
+
+Examples:
+
+Background Color
+Padding
+Font Size
+Border Radius
+
+This becomes incredibly useful once users are styling pages.
+
+2. Reset to Default
+
+Every control should have:
+
+Reset
+
+Example:
+
+Background Color
+⭐ Reset
+
+Padding
+⭐ Reset
+
+Users constantly experiment and need a quick way back.
+
+3. Bulk Style Application
+
+Since you already have:
+
+Copy Styles
+Paste Styles
+
+Add:
+
+Apply Style To
+
+This Section
+This Page
+Entire Website
+
+Later this becomes incredibly powerful with Theme Designer.
+
+4. Inspector Width Resize
+
+Let users drag the inspector wider.
+
+Especially useful for:
+
+JSON attributes
+CSS classes
+Long URLs
+Form settings
+
+A fixed-width inspector gets frustrating quickly.
+
+One thing I'd move
+
+Currently:
+
+Quick Tab
+
+Contains:
+
+Text
+Image
+Link
+Background Color
+Padding
+Alignment
+Width
+Visibility
+Duplicate
+Delete
+
+I would remove:
+
+Duplicate
+Delete
+
+Those belong in the canvas toolbar and context menu (#755 and #759).
+
+Quick should focus on editing.
+
+What This Unlocks
+
+Once #761 is complete you can build:
+
+Theme Designer
+
+because every color, font, and spacing control now has a home.
+
+Media Library
+
+because image controls now have a dedicated content area.
+
+Responsive Editing
+
+because the layout tab already reserves breakpoint space.
+
+Full Templates
+
+because users can actually customize them efficiently.
+
+Current Priority
+
+If I were running the project today:
+
+#755 Universal Editing Framework
+#761 Inspector Panel
+#760 Inline Text Editing
+#759 Context Menu
+#762 Media Library 2.0
+
+The reason I'd move #760 ahead of #759 is simple:
+
+Users edit text constantly.
+
+Users right-click occasionally.
+
+Inline editing will be noticed on every page, every day.
+
+Overall, #761 is now looking like a professional inspector system rather than just a reorganized sidebar, and that's exactly the direction I'd take it.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#759 - Right-Click Quick Actions Context Menu on the Canvas
+What & Why
+Every section, row, component, and image on the canvas gets a right-click context menu so power users can act without touching the sidebar. This is Phase 2 of the editor roadmap. The menu is the primary power-user workflow — not just a shortcut to existing sidebar buttons. The interaction model becomes: Single Click = Select, Double Click = Edit, Right Click = Actions.
+
+Done looks like
+Right-clicking any canvas element opens a context menu at cursor position; the browser's default right-click menu is suppressed
+The menu is context-aware — items differ by element type:
+Section: Add Section Above, Add Section Below, Duplicate, Copy, Paste, Hide/Show, Delete, Copy Styles, Paste Styles, Inspect
+Component (text, button, card, etc.): Edit, Duplicate, Copy, Paste, Hide/Show, Delete, Copy Styles, Paste Styles, Inspect
+Image component: Replace Image, Edit Alt Text, Copy, Duplicate, Delete, Inspect
+Keyboard shortcuts are shown inline in the menu (e.g. Duplicate Ctrl+D, Delete Del) — shortcuts are display labels even if not all are functional yet; they teach discoverability
+The menu closes on Escape, outside click, or after an action
+A small toast confirms destructive or non-obvious actions (Delete, Paste Styles)
+Double-click on a text component enters inline edit mode (consistent with #760)
+Smart Paste: paste destination is inferred from what was right-clicked — section paste inserts a new section below the target; row paste inserts a row below; component paste inserts into the same container as the target. Users never have to think about where the paste lands.
+Inspect option jumps to the inspector panel (#761) open on the appropriate tab for that element type
+Every context menu action registers with the undo/redo system — no actions bypass history
+Out of scope
+Keyboard-driven menu navigation (arrow keys through items)
+Cut (move) as a single action — Duplicate + Delete covers this
+Multi-select / batch right-click operations
+Steps
+CanvasContextMenu component — Build a portal-mounted floating menu that renders at {x, y}. It accepts an array of MenuAction descriptors { label, shortcutLabel?, icon?, disabled?, danger?, onClick } and renders them as a styled list. Handles Escape and outside-click dismissal. Uses the app's existing popover z-index and shadow tokens.
+
+Context menu state — Add contextMenu: { visible, x, y, targetType: 'section'|'row'|'component'|'image', targetId } | null to WebsiteEditor.tsx state. Wire onContextMenu (with e.preventDefault()) on EditableWrapper's root element, differentiating element type via a data-element-type attribute set by each wrapper.
+
+Menu item sets — Define three MenuAction[] arrays (Section, Component, Image) in a contextMenuActions.ts helper, keeping the menu-building logic out of WebsiteEditor.tsx. Each action receives the editor's mutation callbacks as parameters.
+
+Copy / Paste / Copy Styles / Paste Styles clipboard state — Add copiedItem (deep clone of section or component data) and copiedStyles (block-style + spacing snapshot) to editor state. Copy deep-clones the target; Paste inserts the clone using Smart Paste logic. Disable Paste and Paste Styles menu items when their respective clipboard is empty.
+
+Smart Paste logic — A resolveSmartPaste(target, copiedItem, editorState) utility determines the correct insertion point: section after target section, row after target row, component into same container. Handles type mismatches gracefully (e.g. pasting a component onto a section shows a toast: "Paste a component inside a row or content block").
+
+Double-click integration — In EditableWrapper, add onDoubleClick that calls startEditing for the primary text field of text-bearing components (consistent with #760). For non-text elements, double-click is a no-op.
+
+Inspect action — The Inspect menu item calls a openInspector(targetId, defaultTab) handler — setting the sidebar selection to the target and opening the inspector panel to the Content tab for text elements, Style tab for sections, Layout tab for rows.
+
+Undo registration — Explicitly pass all context menu mutation calls through the existing pushHistory / useEditorHistory mechanism. Add a test case (manual or automated) that verifies right-click → Delete → Ctrl+Z restores the element.
+
+Keyboard shortcut labels — Add shortcut hint text to each menu item. Ctrl+D for Duplicate, Del for Delete, Ctrl+C / Ctrl+V for Copy / Paste. These are display labels; wire any not-yet-functional shortcuts as follow-up keyboard shortcut tasks.
+
+Relevant files
+artifacts/contractor-app/src/pages/website/WebsiteEditor.tsx
+artifacts/contractor-app/src/pages/website/EditableWrapper.tsx
+artifacts/contractor-app/src/pages/website/sections/RowSection.tsx
+artifacts/contractor-app/src/pages/website/ComponentEditorPanel.tsx
+artifacts/contractor-app/src/pages/website/SectionStylePanel.tsx
+artifacts/contractor-app/src/pages/website/website-types.ts
+
+This version of #759 is very good. It's no longer just a context menu—it's becoming the power-user interaction layer for the builder.
+
+I would approve it with only a few final tweaks:
+
+Add "Add Component" Context Action
+
+For rows, columns, and content blocks:
+
+Right Click →
+
+Add Text
+Add Image
+Add Button
+Add Component
+
+This will be one of the most-used actions and saves users from moving to the sidebar.
+
+Add "Convert To" Actions
+
+Future-proofing:
+
+Right Click Paragraph →
+
+Convert to Heading
+Convert to Button
+Convert to CTA
+
+Right Click Heading →
+
+Convert to Paragraph
+
+This becomes incredibly useful later.
+
+Add "Move To" Action
+
+Even though drag-and-drop exists, users sometimes want precision.
+
+Right Click →
+
+Move to Section
+Move to Row
+Move to Column
+
+Especially useful once sites become larger.
+
+Add "Lock" State
+
+Your editing framework already has:
+
+Hide
+Delete
+Duplicate
+
+I would add:
+
+Lock
+Unlock
+
+Locked items:
+
+Cannot be moved
+Cannot be edited
+Cannot be deleted accidentally
+
+Very useful for headers, footers, and finished sections.
+
+Add Image-Specific Actions
+
+For images:
+
+Replace Image
+Edit Alt Text
+Open Media Library
+Duplicate
+Delete
+
+Since your Media Library will likely be #762, this will connect naturally.
+
+One Architectural Addition
+
+I'd add:
+
+Context menu actions must be generated from a central action registry rather than hardcoded menu arrays.
+
+Something like:
+
+Action Registry
+├ Edit
+├ Duplicate
+├ Delete
+├ Hide
+├ Copy
+├ Paste
+├ Copy Styles
+├ Paste Styles
+├ Inspect
+└ Lock
+
+Then each object type simply exposes which actions it supports.
+
+This prevents:
+
+Section Menu
+Component Menu
+Image Menu
+Row Menu
+
+from drifting apart over time.
+
+Overall Assessment
+
+Current editor roadmap:
+
+✅ #717 Workspace Redesign
+
+✅ #751 Header/Hero Control
+
+✅ #753 Images Everywhere
+
+🔄 #755 Universal Editing Framework
+
+📋 #759 Context Menu
+
+📋 #760 Inline Text Editing
+
+📋 #761 Inspector Panel
+
+At this point, I honestly think the biggest missing piece is no longer editing.
+
+It's Media Library 2.0.
+
+You've mentioned several times:
+
+Uploading images works
+Using them everywhere doesn't
+Logos are difficult
+SBA badges are difficult
+Footer images are difficult
+
+Once #755, #759, #760, and #761 are finished, I'd immediately build:
+
+#762 Media Library 2.0
+
+because that will solve a huge percentage of the remaining frustrations you'll have while building real websites.
+
+#760 - True Inline Text Editing — Click to Type Directly on the Canvas
+What & Why
+Right now all text changes happen through sidebar form inputs. This replaces that with direct on-canvas editing: the user double-clicks a heading, paragraph, button label, or any other text element and types — just like Google Docs or Notion. This is the highest-impact editor improvement after the universal editing framework because it eliminates the mental disconnect between "what I see" and "where I edit."
+
+Done looks like
+Single click = Select (shows blue outline from EditableWrapper, opens inspector panel)
+Double click = Edit — enters inline edit mode; a cursor appears inside the text; the user types
+Clicking outside or pressing Escape commits the edit and exits inline mode; no data is lost
+InlineEditableText is designed for future rich-text layering — formatting extensions (Bold, Italic, color, links) can be added without rewriting the component
+The inspector sidebar updates to reflect the committed text value
+An autosave indicator appears during editing (Editing…) and after commit (Saved ✓), fading out after ~2 seconds
+Empty text components show a visible placeholder (Click to edit heading, Click to edit paragraph, etc.) so users never think the component is broken
+While in inline edit mode: section dragging, component dragging, and conflicting keyboard shortcuts (Delete key, Ctrl+Z, arrow navigation) are all suppressed to prevent accidental moves
+Undo/redo records each committed edit as one single undoable action — not one action per keystroke
+Enter/Escape behavior by element type:
+
+Element	Enter	Shift+Enter	Escape
+Heading, Paragraph, FAQ answer, Testimonial, About body	New line	—	Commit + exit
+Button label, Stat value, Nav item, Stat label	Commit + exit	—	Cancel (revert)
+Supported elements (text-bearing components only):
+
+Heading, Paragraph, Button label, Link text
+Hero: headline, sub-headline, CTA label
+About: heading, body paragraph
+Services: section heading, each card title and description
+Footer: tagline, phone, email, license number
+Testimonial: quote text, author name, role
+FAQ: question and answer
+Stats: label and value
+CTA: headline and sub-headline
+Inline editing is disabled in preview mode.
+
+Out of scope
+Rich text formatting toolbar appearing inline while typing (Bold, Italic, Color) — sidebar handles formatting; inline editing is for content
+Image, divider, or form field elements (not text)
+Steps
+useInlineEdit hook — Manages { editingId: string | null, draft: string, priorSnapshot: SiteConfig | null }. Exposes startEditing(id, currentValue) (captures undo snapshot), updateDraft(value), commitEdit() (calls content updater + pushes undo history with snapshot), and cancelEdit() (restores prior snapshot). Snapshot is taken at startEditing, pushed at commitEdit — one history entry per edit session.
+
+InlineEditableText component — Renders children normally when not editing. When editingId matches, renders a contenteditable div/span that preserves the element's computed font styles (font family, size, weight, color, alignment — read from CSS variables or props). Handles onInput → updateDraft, onBlur → commitEdit, and onKeyDown for Enter/Escape per the single-line vs. multi-line behavior table above. Suppresses pointer events on drag handles and bubbles Escape to exit. Designed as an open extension point: a future rich-text branch can swap the contenteditable div for a Tiptap/ProseMirror editor without changing the surrounding wrapper contract.
+
+Drag + shortcut suppression — While editingId is non-null, set a data-editing="true" attribute on the editor root. @dnd-kit's useDraggable and useSortable hooks already support a disabled prop — pass disabled={!!editingId} to all drag contexts. Suppress Delete key and Ctrl+Z in the editor's global onKeyDown handler when editingId is set.
+
+Autosave indicator — A small InlineEditStatus component mounted in the editor toolbar area. Shows Editing… (pulsing dot) while editingId is active, then Saved ✓ for 2 seconds after commit, then disappears.
+
+Placeholder text — Each InlineEditableText instance accepts a placeholder prop. When the value is empty/whitespace and the element is not being edited, render the placeholder as a grey overlay (CSS ::before pseudo-element or a positioned <span>). Placeholder text: Click to edit heading, Click to edit paragraph, Click to edit button text, etc.
+
+Thread edit state via context — Add useInlineEdit at the WebsiteEditor level and expose { editingId, startEditing, commitEdit, cancelEdit } via a new InlineEditContext. Section and component renderers consume this context — no prop drilling.
+
+Wrap section text fields — Replace static text renders in Hero, About, Services, Footer, Testimonial, FAQ, Stats, and CTA section components with InlineEditableText. Each wraps only the text node; non-text elements in the same section are unchanged.
+
+Wrap component-level text — In ContentSection and RowSection renderers, wrap text rendered by Heading, Paragraph, Button, and Link component types with InlineEditableText. On commit, call the component-level updateComponent handler.
+
+Double-click wiring in EditableWrapper — On onDoubleClick, call startEditing for the element's primary text field (headline for Hero, text for Paragraph, label for Button). Single-click only selects — does not enter edit mode. This is the canonical interaction model for the builder.
+
+Relevant files
+artifacts/contractor-app/src/pages/website/WebsiteEditor.tsx
+artifacts/contractor-app/src/pages/website/EditableWrapper.tsx
+artifacts/contractor-app/src/pages/website/sections/HeroSection.tsx
+artifacts/contractor-app/src/pages/website/sections/AboutSection.tsx
+artifacts/contractor-app/src/pages/website/sections/ServicesSection.tsx
+artifacts/contractor-app/src/pages/website/sections/FooterSection.tsx
+artifacts/contractor-app/src/pages/website/sections/RowSection.tsx
+artifacts/contractor-app/src/pages/website/ComponentEditorPanel.tsx
+artifacts/contractor-app/src/pages/website/website-types.ts
+
+This is the first version of #760 that I would consider production-ready.
+
+You've solved the biggest mistake many builders make:
+
+Entering edit mode accidentally.
+
+The interaction model is now very clear:
+
+Single Click = Select
+Double Click = Edit
+Right Click = Actions
+
+That's exactly what users expect.
+
+What I like most
+Future-Proof Architecture
+
+This line is excellent:
+
+Designed as an open extension point: a future rich-text branch can swap the contenteditable div for a Tiptap/ProseMirror editor without changing the surrounding wrapper contract.
+
+That will save a massive refactor later.
+
+One History Entry Per Edit
+
+Another excellent decision:
+
+Start Editing
+↓
+Type 50 characters
+↓
+Commit
+↓
+One Undo Step
+
+Instead of:
+
+50 characters
+=
+50 undo steps
+
+This is exactly how professional editors behave.
+
+DnD Suppression
+
+Many builders get this wrong.
+
+You've already anticipated:
+
+Dragging conflicts
+Delete key conflicts
+Ctrl+Z conflicts
+
+while editing.
+
+That's a huge quality-of-life improvement.
+
+Two Additions I'd Still Make
+1. Tab Key Navigation
+
+While editing:
+
+Tab should move to the next editable text element.
+
+Example:
+
+Hero Heading
+↓ Tab
+Hero Subheading
+↓ Tab
+Hero Button
+
+This makes editing pages much faster.
+
+Add:
+
+Tab commits the current edit and moves focus to the next text element within the same section.
+
+2. Selection Preservation
+
+Current:
+
+Double click
+→ Edit
+→ Commit
+→ Exit
+
+I would explicitly state:
+
+After commit, the element remains selected.
+
+Don't deselect it.
+
+Users often want to continue editing styles in #761 immediately afterward.
+
+One Small Enhancement
+Editing Badge
+
+While editing:
+
+Editing Text
+
+near the toolbar.
+
+Not critical, but helpful.
+
+What This Means
+
+Once #755, #760, and #761 are complete:
+
+Users can:
+
+Click text
+Edit directly
+Right-click actions
+Use inspector tabs
+Undo mistakes
+Copy styles
+
+That's when the builder stops feeling like an admin dashboard and starts feeling like a website builder.
+
+My Next Task After #760
+
+I would immediately create:
+
+#762 Media Library 2.0
+
+Because after text editing is solved, the next biggest friction point you've mentioned repeatedly is images.
+
+Things I'd want:
+
+Upload once, use anywhere
+Folders
+Search
+Replace image globally
+Recently used images
+Drag image onto canvas
+Logo library
+Business badges (SBA, Veteran-Owned, etc.)
+
+Looking at everything you've told me over the last few days, I think images are now a larger pain point than text.
+
+So if #760 gets approved and built, I'd move straight to Media Library improvements before adding any more templates or advanced website features.
