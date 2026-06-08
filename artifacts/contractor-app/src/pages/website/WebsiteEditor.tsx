@@ -196,6 +196,8 @@ function renderSection(
         selectedColumnId={extras?.selectedRowColumnId}
         selectedComponentId={extras?.selectedRowComponentId}
         onSelectRowComponent={extras?.onSelectRowComponent}
+        copiedComponent={extras?.copiedComponent}
+        onCopyComponent={extras?.onCopyComponent}
       />
     );
     default: return null;
@@ -1075,11 +1077,56 @@ function WebsiteEditor() {
         return;
       }
       if (isTyping) return;
+      if (e.key === "Enter") {
+        // Focus first editable field in the component editor panel
+        const panel = document.querySelector("[data-component-editor-panel]");
+        const firstField = panel?.querySelector("input, textarea, select") as HTMLElement | null;
+        if (firstField) {
+          e.preventDefault();
+          firstField.focus();
+        }
+        return;
+      }
+
       if (e.key === "Delete") {
         e.preventDefault();
 
-        /** Helper: delete a component from a section by sectionId + componentId */
-        function deleteComponentFromSection(sectionId: string, componentId: string) {
+        // Priority order: row component → content component → active section
+        if (selectedRowState?.componentId) {
+          // Row components are nested under content.columns[].components
+          const { sectionId, columnId, componentId } = selectedRowState as { sectionId: string; columnId: string; componentId: string };
+          history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+          setLocalPages(prev => {
+            if (!prev) return prev;
+            return prev.map(p =>
+              p.id !== activePageIdRef.current ? p : {
+                ...p,
+                sections: p.sections.map(s =>
+                  s.id !== sectionId ? s : {
+                    ...s,
+                    content: {
+                      ...(s.content as Record<string, unknown>),
+                      columns: ((s.content as any)?.columns ?? []).map((col: { id: string; components: { id: string }[] }) =>
+                        col.id !== columnId ? col : {
+                          ...col,
+                          components: col.components.filter((c) => c.id !== componentId),
+                        }
+                      ),
+                    },
+                  }
+                ),
+              }
+            );
+          });
+          isDirtyRef.current = true;
+          setSelectedRowState(prev => prev ? { sectionId: prev.sectionId, columnId: prev.columnId } : null);
+          toast({ title: "Component deleted", duration: 2000 });
+          return;
+        }
+
+        if (selectedComponentState) {
+          // ContentSection components are stored in content.components
+          const { sectionId, componentId } = selectedComponentState;
           history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
           setLocalPages(prev => {
             if (!prev) return prev;
@@ -1101,20 +1148,11 @@ function WebsiteEditor() {
             );
           });
           isDirtyRef.current = true;
+          setSelectedComponentState(null);
           toast({ title: "Component deleted", duration: 2000 });
+          return;
         }
 
-        // Priority order: row component → content component → active section
-        if (selectedRowState?.componentId) {
-          deleteComponentFromSection(selectedRowState.sectionId, selectedRowState.componentId);
-          setSelectedRowState(prev => prev ? { sectionId: prev.sectionId, columnId: prev.columnId } : null);
-          return;
-        }
-        if (selectedComponentState) {
-          deleteComponentFromSection(selectedComponentState.sectionId, selectedComponentState.componentId);
-          setSelectedComponentState(null);
-          return;
-        }
         if (activeSection) {
           handleDeleteSectionClick(activeSection);
         }
@@ -3566,7 +3604,7 @@ function WebsiteEditor() {
                       {rightCollapseBtn}
                     </div>
                   </div>
-                  <div className="overflow-y-auto flex-1 min-h-0">
+                  <div className="overflow-y-auto flex-1 min-h-0" data-component-editor-panel>
                     <ComponentEditorPanel
                       component={selectedComp as any}
                       onChange={updatedComp => {
@@ -3603,7 +3641,7 @@ function WebsiteEditor() {
                         {rightCollapseBtn}
                       </div>
                     </div>
-                    <div className="overflow-y-auto flex-1 min-h-0">
+                    <div className="overflow-y-auto flex-1 min-h-0" data-component-editor-panel>
                       <ComponentEditorPanel
                         component={selComp as any}
                         onChange={updatedComp => {

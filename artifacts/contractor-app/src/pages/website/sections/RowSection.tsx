@@ -6,12 +6,13 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, GripVertical, Trash2, Copy, LayoutGrid } from "lucide-react";
+import { Plus, GripVertical, Trash2, Copy, LayoutGrid, ClipboardPaste } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import {
   renderSiteComponent, CONTENT_COMPONENT_TYPES, defaultPropsForType,
   type SiteComponent, type ComponentType,
 } from "./ContentSection";
+import { EditableWrapper } from "../EditableWrapper";
 
 export interface RowColumn {
   id: string;
@@ -110,46 +111,52 @@ function ComponentPicker({ onAdd, onClose }: { onAdd: (t: ComponentType) => void
 
 interface SortableCompItemProps {
   comp: SiteComponent;
+  colId: string;
   isSelected: boolean;
   onSelect: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onCopy?: () => void;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableCompItem({ comp, isSelected, onSelect, onDuplicate, onDelete, settings }: SortableCompItemProps) {
+function SortableCompItem({ comp, colId, isSelected, onSelect, onDuplicate, onDelete, onCopy, settings }: SortableCompItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
+
+  const dragHandle = (
+    <div {...attributes} {...listeners} className="cursor-grab text-muted-foreground p-1" onClick={e => e.stopPropagation()}>
+      <GripVertical className="w-3 h-3" />
+    </div>
+  );
+
+  const copyBtn = onCopy && (
+    <button type="button" title="Copy component" onClick={e => { e.stopPropagation(); onCopy(); }}
+      className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted">
+      <Copy className="w-3 h-3" />
+    </button>
+  );
+
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className={`group relative rounded border-2 transition-all cursor-pointer text-xs ${
-        isSelected ? "border-primary/70 bg-primary/5" : "border-gray-200 hover:border-primary/40"
-      }`}
       onClick={e => { e.stopPropagation(); onSelect(); }}
     >
-      <div className={`flex items-center gap-1 px-1.5 py-1 rounded-t border-b ${
-        isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-gray-100"
-      }`}>
-        <div {...attributes} {...listeners} className="cursor-grab text-gray-400" onClick={e => e.stopPropagation()}>
-          <GripVertical className="w-3 h-3" />
+      <EditableWrapper
+        id={`${colId}-${comp.id}`}
+        type={label}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+        extraToolbar={<>{dragHandle}{copyBtn}</>}
+        isLocked={false}
+      >
+        <div className="px-2 py-2 pointer-events-none overflow-hidden max-h-28">
+          {renderSiteComponent(comp, settings)}
         </div>
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide flex-1 truncate">{label}</span>
-        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button type="button" onClick={e => { e.stopPropagation(); onDuplicate(); }}
-            className="p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200">
-            <Copy className="w-2.5 h-2.5" />
-          </button>
-          <button type="button" onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50">
-            <Trash2 className="w-2.5 h-2.5" />
-          </button>
-        </div>
-      </div>
-      <div className="px-2 py-2 pointer-events-none overflow-hidden max-h-28">
-        {renderSiteComponent(comp, settings)}
-      </div>
+      </EditableWrapper>
     </div>
   );
 }
@@ -163,6 +170,8 @@ interface RowSectionProps {
   selectedColumnId?: string | null;
   selectedComponentId?: string | null;
   onSelectRowComponent?: (columnId: string, componentId: string | null) => void;
+  copiedComponent?: SiteComponent | null;
+  onCopyComponent?: (comp: SiteComponent) => void;
 }
 
 export function RowSection({
@@ -174,6 +183,8 @@ export function RowSection({
   selectedColumnId,
   selectedComponentId,
   onSelectRowComponent,
+  copiedComponent,
+  onCopyComponent,
 }: RowSectionProps) {
   const [showPickerForCol, setShowPickerForCol] = useState<string | null>(null);
   const rawId = useId();
@@ -231,6 +242,19 @@ export function RowSection({
     if (!col) return;
     updateColumn(colId, col.components.filter(c => c.id !== compId));
     if (selectedComponentId === compId) onSelectRowComponent?.(colId, null);
+  }
+
+  function pasteComponent(colId: string) {
+    if (!copiedComponent) return;
+    const col = columns.find(c => c.id === colId);
+    if (!col) return;
+    const copy: SiteComponent = { ...copiedComponent, props: { ...copiedComponent.props }, id: uid() };
+    const selectedIdx = col.components.findIndex(c => c.id === selectedComponentId);
+    const insertIdx = selectedIdx >= 0 ? selectedIdx + 1 : col.components.length;
+    const next = [...col.components];
+    next.splice(insertIdx, 0, copy);
+    updateColumn(colId, next);
+    onSelectRowComponent?.(colId, copy.id);
   }
 
   const cssTemplate = `@media (min-width: 768px) { [data-row-grid="${gridId}"] { grid-template-columns: ${gridTemplate(columns)}; } }`;
@@ -292,10 +316,12 @@ export function RowSection({
                         <SortableCompItem
                           key={comp.id}
                           comp={comp}
+                          colId={col.id}
                           isSelected={isColActive && selectedComponentId === comp.id}
                           onSelect={() => onSelectRowComponent?.(col.id, comp.id)}
                           onDuplicate={() => duplicateComponent(col.id, comp.id)}
                           onDelete={() => deleteComponent(col.id, comp.id)}
+                          onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
                           settings={settings}
                         />
                       ))}
@@ -306,26 +332,38 @@ export function RowSection({
                     <p className="text-gray-400 text-[10px] text-center py-3 italic">Empty column</p>
                   )}
 
-                  <div className="mt-1.5 relative">
-                    {showPickerForCol === col.id && (
-                      <div className="absolute bottom-full left-0 mb-1 z-50">
-                        <ComponentPicker
-                          onAdd={type => addComponent(col.id, type)}
-                          onClose={() => setShowPickerForCol(null)}
-                        />
-                      </div>
+                  <div className="mt-1.5 space-y-1">
+                    <div className="relative">
+                      {showPickerForCol === col.id && (
+                        <div className="absolute bottom-full left-0 mb-1 z-50">
+                          <ComponentPicker
+                            onAdd={type => addComponent(col.id, type)}
+                            onClose={() => setShowPickerForCol(null)}
+                          />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setShowPickerForCol(showPickerForCol === col.id ? null : col.id);
+                        }}
+                        className="flex items-center gap-1 text-[10px] font-medium text-primary/70 hover:text-primary transition-colors w-full justify-center border border-dashed border-primary/30 rounded py-1 hover:border-primary/60"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add
+                      </button>
+                    </div>
+                    {copiedComponent && (
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); pasteComponent(col.id); }}
+                        className="flex items-center gap-1 text-[10px] font-medium text-primary/70 hover:text-primary transition-colors w-full justify-center border border-dashed border-primary/20 rounded py-1 hover:border-primary/50 bg-primary/5"
+                      >
+                        <ClipboardPaste className="w-3 h-3" />
+                        Paste {CONTENT_COMPONENT_TYPES.find(t => t.type === copiedComponent.type)?.label ?? copiedComponent.type}
+                      </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation();
-                        setShowPickerForCol(showPickerForCol === col.id ? null : col.id);
-                      }}
-                      className="flex items-center gap-1 text-[10px] font-medium text-primary/70 hover:text-primary transition-colors w-full justify-center border border-dashed border-primary/30 rounded py-1 hover:border-primary/60"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add
-                    </button>
                   </div>
                 </div>
               );
