@@ -15,6 +15,7 @@ import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
 import { textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { EditableWrapper } from "../EditableWrapper";
+import { useToast } from "@/hooks/use-toast";
 
 export type ComponentType =
   | "heading" | "paragraph" | "button" | "image" | "divider"
@@ -96,6 +97,8 @@ export interface SiteComponent {
   id: string;
   type: ComponentType;
   props: SiteComponentProps;
+  /** When true the component is hidden from the public site; dimmed on canvas */
+  hidden?: boolean;
 }
 
 export interface ContentSectionData {
@@ -415,10 +418,11 @@ interface SortableItemProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onCopy?: () => void;
+  onToggleHide?: () => void;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableItem({ comp, isSelected, onSelect, onDuplicate, onDelete, onCopy, settings }: SortableItemProps) {
+function SortableItem({ comp, isSelected, onSelect, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
 
@@ -454,9 +458,11 @@ function SortableItem({ comp, isSelected, onSelect, onDuplicate, onDelete, onCop
         id={comp.id}
         label={label}
         isSelected={isSelected}
+        isHidden={!!comp.hidden}
         onSelect={e => { e.stopPropagation(); onSelect(); }}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
+        onToggleHide={onToggleHide}
         extraToolbar={<>{copyBtn}{dragHandle}</>}
       >
         <div className="px-3 py-3 pointer-events-none select-none overflow-hidden max-h-40">
@@ -511,6 +517,10 @@ interface ContentSectionProps {
   copiedComponent?: SiteComponent | null;
   /** Called when the user copies a component via the toolbar Copy button */
   onCopyComponent?: (comp: SiteComponent) => void;
+  /** Called before any discrete mutation (duplicate, delete, paste, add, reorder) — push history snapshot */
+  onBeforeAction?: () => void;
+  /** Toggle component hidden state; called with component id */
+  onToggleHide?: (id: string) => void;
 }
 
 export function ContentSection({
@@ -523,7 +533,10 @@ export function ContentSection({
   onSelectComponent,
   copiedComponent,
   onCopyComponent,
+  onBeforeAction,
+  onToggleHide,
 }: ContentSectionProps) {
+  const { toast } = useToast();
   const [showPicker, setShowPicker] = useState(false);
   const components = content.components ?? [];
   const mwClass = MAX_WIDTH_CLASS[content.maxWidth ?? "lg"] ?? "max-w-4xl";
@@ -537,6 +550,7 @@ export function ContentSection({
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (over && active.id !== over.id) {
+      onBeforeAction?.();
       const oldIdx = components.findIndex(c => c.id === active.id);
       const newIdx = components.findIndex(c => c.id === over.id);
       updateComps(arrayMove(components, oldIdx, newIdx));
@@ -544,15 +558,17 @@ export function ContentSection({
   }
 
   function addComponent(type: ComponentType) {
+    onBeforeAction?.();
     const newComp: SiteComponent = { id: uid(), type, props: defaultPropsForType(type) };
     updateComps([...components, newComp]);
     onSelectComponent?.(newComp.id);
   }
 
   function duplicateComponent(id: string) {
+    onBeforeAction?.();
     const idx = components.findIndex(c => c.id === id);
     if (idx === -1) return;
-    const copy: SiteComponent = { ...components[idx], id: uid() };
+    const copy: SiteComponent = { ...components[idx], id: uid(), hidden: false };
     const next = [...components];
     next.splice(idx + 1, 0, copy);
     updateComps(next);
@@ -560,6 +576,7 @@ export function ContentSection({
   }
 
   function deleteComponent(id: string) {
+    onBeforeAction?.();
     updateComps(components.filter(c => c.id !== id));
     if (selectedComponentId === id) onSelectComponent?.(null);
   }
@@ -567,7 +584,8 @@ export function ContentSection({
   /** Insert the clipboard component below the currently selected component (or at the end) */
   function pasteComponent() {
     if (!copiedComponent) return;
-    const newComp: SiteComponent = { ...copiedComponent, id: uid() };
+    onBeforeAction?.();
+    const newComp: SiteComponent = { ...copiedComponent, id: uid(), hidden: false };
     if (selectedComponentId) {
       const idx = components.findIndex(c => c.id === selectedComponentId);
       if (idx !== -1) {
@@ -575,18 +593,20 @@ export function ContentSection({
         next.splice(idx + 1, 0, newComp);
         updateComps(next);
         onSelectComponent?.(newComp.id);
+        toast({ title: "Component pasted", duration: 2000 });
         return;
       }
     }
     updateComps([...components, newComp]);
     onSelectComponent?.(newComp.id);
+    toast({ title: "Component pasted", duration: 2000 });
   }
 
   if (!isEditing) {
     return (
       <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-6 py-12" isEditing={false}>
         <div className={`${mwClass} mx-auto space-y-6`}>
-          {components.map(comp => (
+          {components.filter(c => !c.hidden).map(comp => (
             <div key={comp.id}>{renderSiteComponent(comp, settings)}</div>
           ))}
         </div>
@@ -613,6 +633,7 @@ export function ContentSection({
                   onDuplicate={() => duplicateComponent(comp.id)}
                   onDelete={() => deleteComponent(comp.id)}
                   onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
+                  onToggleHide={onToggleHide ? () => onToggleHide(comp.id) : undefined}
                   settings={settings}
                 />
               ))}

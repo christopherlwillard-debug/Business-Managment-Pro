@@ -13,6 +13,7 @@ import {
   type SiteComponent, type ComponentType,
 } from "./ContentSection";
 import { EditableWrapper } from "../EditableWrapper";
+import { useToast } from "@/hooks/use-toast";
 
 export interface RowColumn {
   id: string;
@@ -117,10 +118,11 @@ interface SortableCompItemProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onCopy?: () => void;
+  onToggleHide?: () => void;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableCompItem({ comp, colId, isSelected, onSelect, onDuplicate, onDelete, onCopy, settings }: SortableCompItemProps) {
+function SortableCompItem({ comp, colId, isSelected, onSelect, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableCompItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
 
@@ -147,9 +149,11 @@ function SortableCompItem({ comp, colId, isSelected, onSelect, onDuplicate, onDe
         id={`${colId}-${comp.id}`}
         label={label}
         isSelected={isSelected}
+        isHidden={!!comp.hidden}
         onSelect={e => { e.stopPropagation(); onSelect(); }}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
+        onToggleHide={onToggleHide}
         extraToolbar={<>{dragHandle}{copyBtn}</>}
       >
         <div className="px-2 py-2 pointer-events-none overflow-hidden max-h-28">
@@ -171,6 +175,10 @@ interface RowSectionProps {
   onSelectRowComponent?: (columnId: string, componentId: string | null) => void;
   copiedComponent?: SiteComponent | null;
   onCopyComponent?: (comp: SiteComponent) => void;
+  /** Called before any discrete mutation — push history snapshot */
+  onBeforeAction?: () => void;
+  /** Toggle component hidden state; called with colId and componentId */
+  onToggleRowComponentHide?: (colId: string, compId: string) => void;
 }
 
 export function RowSection({
@@ -184,7 +192,10 @@ export function RowSection({
   onSelectRowComponent,
   copiedComponent,
   onCopyComponent,
+  onBeforeAction,
+  onToggleRowComponentHide,
 }: RowSectionProps) {
+  const { toast } = useToast();
   const [showPickerForCol, setShowPickerForCol] = useState<string | null>(null);
   const rawId = useId();
   const gridId = rawId.replace(/:/g, "g");
@@ -217,6 +228,7 @@ export function RowSection({
   }
 
   function addComponent(colId: string, type: ComponentType) {
+    onBeforeAction?.();
     const newComp: SiteComponent = { id: uid(), type, props: defaultPropsForType(type) };
     const col = columns.find(c => c.id === colId);
     if (!col) return;
@@ -225,11 +237,12 @@ export function RowSection({
   }
 
   function duplicateComponent(colId: string, compId: string) {
+    onBeforeAction?.();
     const col = columns.find(c => c.id === colId);
     if (!col) return;
     const idx = col.components.findIndex(c => c.id === compId);
     if (idx === -1) return;
-    const copy: SiteComponent = { ...col.components[idx], id: uid() };
+    const copy: SiteComponent = { ...col.components[idx], id: uid(), hidden: false };
     const next = [...col.components];
     next.splice(idx + 1, 0, copy);
     updateColumn(colId, next);
@@ -237,6 +250,7 @@ export function RowSection({
   }
 
   function deleteComponent(colId: string, compId: string) {
+    onBeforeAction?.();
     const col = columns.find(c => c.id === colId);
     if (!col) return;
     updateColumn(colId, col.components.filter(c => c.id !== compId));
@@ -245,15 +259,17 @@ export function RowSection({
 
   function pasteComponent(colId: string) {
     if (!copiedComponent) return;
+    onBeforeAction?.();
     const col = columns.find(c => c.id === colId);
     if (!col) return;
-    const copy: SiteComponent = { ...copiedComponent, props: { ...copiedComponent.props }, id: uid() };
+    const copy: SiteComponent = { ...copiedComponent, props: { ...copiedComponent.props }, id: uid(), hidden: false };
     const selectedIdx = col.components.findIndex(c => c.id === selectedComponentId);
     const insertIdx = selectedIdx >= 0 ? selectedIdx + 1 : col.components.length;
     const next = [...col.components];
     next.splice(insertIdx, 0, copy);
     updateColumn(colId, next);
     onSelectRowComponent?.(colId, copy.id);
+    toast({ title: "Component pasted", duration: 2000 });
   }
 
   const cssTemplate = `@media (min-width: 768px) { [data-row-grid="${gridId}"] { grid-template-columns: ${gridTemplate(columns)}; } }`;
@@ -270,7 +286,7 @@ export function RowSection({
           >
             {columns.map(col => (
               <div key={col.id} className="min-w-0 space-y-6">
-                {col.components.map(comp => (
+                {col.components.filter(c => !c.hidden).map(comp => (
                   <div key={comp.id}>{renderSiteComponent(comp, settings)}</div>
                 ))}
               </div>
@@ -321,6 +337,7 @@ export function RowSection({
                           onDuplicate={() => duplicateComponent(col.id, comp.id)}
                           onDelete={() => deleteComponent(col.id, comp.id)}
                           onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
+                          onToggleHide={onToggleRowComponentHide ? () => onToggleRowComponentHide(col.id, comp.id) : undefined}
                           settings={settings}
                         />
                       ))}

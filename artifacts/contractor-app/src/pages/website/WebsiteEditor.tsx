@@ -138,6 +138,9 @@ function renderSection(
     onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
     copiedComponent?: SiteComponent | null;
     onCopyComponent?: (comp: SiteComponent) => void;
+    onBeforeAction?: () => void;
+    onToggleHide?: (compId: string) => void;
+    onToggleRowComponentHide?: (colId: string, compId: string) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -188,6 +191,8 @@ function renderSection(
         onSelectComponent={extras?.onSelectComponent}
         copiedComponent={extras?.copiedComponent}
         onCopyComponent={extras?.onCopyComponent}
+        onBeforeAction={extras?.onBeforeAction}
+        onToggleHide={extras?.onToggleHide}
       />
     );
     case "row": return (
@@ -198,6 +203,8 @@ function renderSection(
         onSelectRowComponent={extras?.onSelectRowComponent}
         copiedComponent={extras?.copiedComponent}
         onCopyComponent={extras?.onCopyComponent}
+        onBeforeAction={extras?.onBeforeAction}
+        onToggleRowComponentHide={extras?.onToggleRowComponentHide}
       />
     );
     default: return null;
@@ -2335,6 +2342,67 @@ function WebsiteEditor() {
       onCopyComponent: (comp: SiteComponent) => {
         setCopiedComponent(comp);
         toast({ title: "Component copied", duration: 2000 });
+      },
+      /** Push a snapshot before discrete component mutations so each action is individually undoable */
+      onBeforeAction: () => {
+        textEditSessionRef.current.active = false;
+        if (textEditSessionRef.current.timer) {
+          clearTimeout(textEditSessionRef.current.timer);
+          textEditSessionRef.current.timer = null;
+        }
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+      },
+      /** Toggle hidden on a content-section component */
+      onToggleHide: (compId: string) => {
+        const pageId = activePageIdRef.current;
+        setLocalPages(prev => {
+          if (!prev) return prev;
+          return prev.map(p => p.id !== pageId ? p : {
+            ...p,
+            sections: p.sections.map(s => {
+              const comps: SiteComponent[] | undefined = (s.content as any)?.components;
+              if (!comps?.some(c => c.id === compId)) return s;
+              history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+              return {
+                ...s,
+                content: {
+                  ...(s.content as Record<string, unknown>),
+                  components: comps.map(c => c.id === compId ? { ...c, hidden: !c.hidden } : c),
+                },
+              };
+            }),
+          });
+        });
+        isDirtyRef.current = true;
+        toast({ title: "Component visibility toggled", duration: 2000 });
+      },
+      /** Toggle hidden on a row-section component inside a column */
+      onToggleRowComponentHide: (colId: string, compId: string) => {
+        const pageId = activePageIdRef.current;
+        setLocalPages(prev => {
+          if (!prev) return prev;
+          return prev.map(p => p.id !== pageId ? p : {
+            ...p,
+            sections: p.sections.map(s => {
+              const cols: Array<{ id: string; components: SiteComponent[] }> | undefined = (s.content as any)?.columns;
+              const col = cols?.find(c => c.id === colId);
+              if (!col?.components.some(c => c.id === compId)) return s;
+              history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+              return {
+                ...s,
+                content: {
+                  ...(s.content as Record<string, unknown>),
+                  columns: cols!.map(c => c.id !== colId ? c : {
+                    ...c,
+                    components: c.components.map(cp => cp.id === compId ? { ...cp, hidden: !cp.hidden } : cp),
+                  }),
+                },
+              };
+            }),
+          });
+        });
+        isDirtyRef.current = true;
+        toast({ title: "Component visibility toggled", duration: 2000 });
       },
     };
 
