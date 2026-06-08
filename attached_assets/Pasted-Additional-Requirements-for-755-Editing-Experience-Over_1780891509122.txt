@@ -1,0 +1,121 @@
+Additional Requirements for #755 Editing Experience Overhaul
+
+Inline Editing Indicators
+
+When hovering over editable content:
+
+* Show "Click to Edit" tooltip
+* Show edit pencil icon
+* Show component type label
+
+Examples:
+
+* Heading
+* Paragraph
+* Button
+* Image
+* Form
+* Testimonial
+
+Users should instantly know what can be edited.
+
+Component Hierarchy Display
+
+When a component is selected, display its hierarchy:
+
+Home Page > Hero Section > Heading
+
+Home Page > Row > Column > Paragraph
+
+This should appear in the sidebar and/or floating toolbar.
+
+This prevents users from getting lost in nested layouts.
+
+Quick Edit Toolbar
+
+When text components are selected, display a compact floating toolbar:
+
+* Bold
+* Italic
+* Alignment
+* Link
+* Color
+
+Do not require users to scroll through the sidebar for basic formatting.
+
+Visual Drop Zones
+
+Empty rows and columns should show visible drop zones:
+
+* Add Component
+* Add Text
+* Add Image
+* Add Button
+
+Blank areas should never appear broken.
+
+Selection Consistency
+
+Every editable object should follow the same interaction model:
+
+Hover
+
+* Dashed outline
+* Label
+
+Selected
+
+* Solid outline
+* Toolbar
+* Sidebar editor
+
+Disabled
+
+* Muted appearance
+
+Hidden
+
+* Hidden from canvas but visible in structure tree
+
+Editing Reliability Audit
+
+Perform a full audit of every section and component.
+
+Verify:
+
+* Selectable
+* Editable
+* Duplicatable
+* Hideable
+* Deletable
+* Draggable (where supported)
+
+Create a checklist and verify every component type passes all six tests.
+
+Media Editing Improvements
+
+Images should display:
+
+* Replace Image
+* Edit Alt Text
+* Link Image
+* Delete Image
+
+directly from the component toolbar.
+
+No image should require navigating multiple panels to replace.
+
+First-Time User Test
+
+A brand-new user should be able to:
+
+* Add a paragraph
+* Edit text
+* Add an image
+* Replace the image
+* Delete a button
+* Add a new section
+
+within five minutes and without reading documentation.
+
+This should be used as the acceptance test for the editing experience.

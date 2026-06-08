@@ -1,0 +1,230 @@
+# Website Builder Editing Experience Overhaul
+
+## Problem
+
+The builder currently allows components to be added, but editing them is confusing.
+
+Users often cannot tell:
+
+* What is selected
+* Where text can be edited
+* Which controls belong to which component
+* Whether a component is editable
+* Whether a component is hidden
+* How to delete a component
+
+The result is a website builder that technically has features but does not feel intuitive.
+
+---
+
+## Goal
+
+Make editing obvious.
+
+If a user clicks something on the page, they should immediately understand:
+
+* What is selected
+* What can be edited
+* Where the editing controls are
+* How to delete it
+* How to duplicate it
+
+---
+
+## Component Selection System
+
+Every component should display a visible selection state.
+
+When selected:
+
+* Blue outline around component
+* Component name badge
+* Quick actions toolbar
+
+Example:
+
+Paragraph
+Heading
+Button
+Image
+Form
+Map
+Gallery
+Video
+
+---
+
+## Floating Component Toolbar
+
+When a component is selected show:
+
+* Edit
+* Duplicate
+* Move
+* Hide
+* Delete
+
+This toolbar should appear next to the selected component.
+
+Users should not need to search the sidebar for basic actions.
+
+---
+
+## Inline Text Editing
+
+Headings and paragraphs should support direct editing.
+
+User clicks text.
+
+Cursor appears.
+
+User types.
+
+Changes save automatically.
+
+No need to locate a hidden text field in the sidebar.
+
+This should work for:
+
+* Heading
+* Paragraph
+* CTA text
+* FAQ text
+* Testimonial text
+
+---
+
+## Right Panel Improvements
+
+When a component is selected:
+
+Display a dedicated editor.
+
+Example:
+
+Paragraph Settings
+
+Content
+
+* Text
+
+Typography
+
+* Font
+* Size
+* Weight
+* Color
+
+Spacing
+
+* Margin
+* Padding
+
+Advanced
+
+* Visibility
+* Animation
+
+Only show controls related to the selected component.
+
+---
+
+## Component Visibility
+
+Every component should support:
+
+* Show
+* Hide
+* Delete
+* Duplicate
+
+No visible component should be locked.
+
+---
+
+## Component Breadcrumbs
+
+Display current selection path.
+
+Example:
+
+Home Page > Hero Section > Paragraph
+
+or
+
+Home Page > Row > Column 2 > Button
+
+This helps users understand where they are editing.
+
+---
+
+## Hover Feedback
+
+When hovering any editable element:
+
+* Light outline
+* Component label
+
+Example:
+
+Heading
+
+Paragraph
+
+Button
+
+Image
+
+Users should instantly know what can be clicked.
+
+---
+
+## Empty Component States
+
+If a component has no content:
+
+Show placeholder text.
+
+Examples:
+
+Click to edit heading
+
+Click to edit paragraph
+
+Click to add image
+
+Click to configure button
+
+Never show blank invisible components.
+
+---
+
+## Editing Audit
+
+Review every component type.
+
+Verify:
+
+* Selectable
+* Editable
+* Duplicatable
+* Hideable
+* Deletable
+
+If a user can see it, they should be able to manage it.
+
+---
+
+## Success Criteria
+
+A first-time user should be able to:
+
+* Add a paragraph
+* Click the paragraph
+* Edit the paragraph
+* Duplicate it
+* Delete it
+
+without reading documentation or searching through sidebars.
+
+The builder should feel closer to Wix, Squarespace, Framer, and Webflow rather than a settings-driven admin panel.
