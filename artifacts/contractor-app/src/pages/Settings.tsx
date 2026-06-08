@@ -2460,6 +2460,27 @@ export default function Settings() {
           </button>
         </div>
       </form>
+
+      {isOwner && (
+        <div className="mt-8 pt-6 border-t border-border">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin</h2>
+          <a
+            href={`${BASE}/admin/errors`}
+            className="flex items-center justify-between p-4 rounded-xl border border-border bg-card hover:bg-muted/50 transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                <AlertCircle className="w-4 h-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Error Log</p>
+                <p className="text-xs text-muted-foreground">View and manage captured crash reports</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </a>
+        </div>
+      )}
     </div>
   );
 }
