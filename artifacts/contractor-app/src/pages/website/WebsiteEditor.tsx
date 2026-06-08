@@ -62,6 +62,7 @@ import { EditableWrapper } from "./EditableWrapper";
 import { useInlineEdit, InlineEditContext, InlineEditStatus } from "./InlineEditContext";
 import { nanoid } from "nanoid";
 import type { SiteSettings } from "./website-types";
+import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -75,6 +76,11 @@ class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { er
   }
   componentDidCatch(error: Error) {
     console.error("[WebsiteEditorErrorBoundary]", error.stack ?? error.message);
+    reportCrash({
+      message: error.message,
+      stack: error.stack ?? undefined,
+      location: "WebsiteEditorErrorBoundary",
+    });
   }
   render() {
     if (this.state.error) {

@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
+import { reportCrash } from "@/lib/reportCrash";
 
 interface Props {
   children: ReactNode;
@@ -24,6 +25,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: unknown, info: { componentStack: string }) {
     console.error("[ErrorBoundary] caught:", error, info.componentStack);
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? (error.stack ?? undefined) : undefined;
+    reportCrash({ message, stack, componentStack: info.componentStack, location: "ErrorBoundary" });
   }
 
   render() {

@@ -65,6 +65,7 @@ import subHoursAliasRouter from "./sub-hours-alias";
 import jobTypeBenchmarksRouter from "./job-type-benchmarks";
 import wixIntegrationRouter from "./wix-integration";
 import { websiteRouter, websitePublicRouter } from "./website";
+import errorsRouter from "./errors";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -166,6 +167,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(errorsRouter);
 
 router.use("/portal", portalRouter);
 router.use("/pay", payPublicRouter);
