@@ -50,6 +50,11 @@ export interface InspectorPanelProps {
   autoCollapsed?: boolean;
   onClearAutoCollapse?: () => void;
   specialContent?: React.ReactNode;
+  /**
+   * When set, switches the inspector to this tab (context-aware routing from right-click menu).
+   * The `id` field is a nonce (Date.now()) so repeated same-tab clicks still fire the effect.
+   */
+  initialTab?: { tab: InspectorTab; id: number };
 }
 
 // ── Context passed into every field renderer ───────────────────────────────────
@@ -536,7 +541,7 @@ export function InspectorPanel({
   onToggleSection, onDuplicateSection, onDeleteSection,
   onChangeComponent, onComponentImageUpload, onChangeRowData,
   collapsed, onCollapse, onExpand, autoCollapsed, onClearAutoCollapse,
-  specialContent,
+  specialContent, initialTab,
 }: InspectorPanelProps) {
   const hasComponent = !!selectedComponent;
 
@@ -578,6 +583,15 @@ export function InspectorPanel({
     if (TABS.includes(saved as InspectorTab)) setActiveTab(saved as InspectorTab);
     else setActiveTab(hasComponent ? "content" : "quick");
   }, [hasComponent, tabKey]);
+
+  // When the parent requests a specific tab (from right-click Inspect routing), honour it.
+  // id is a nonce so repeated same-tab Inspect clicks re-trigger the effect.
+  useEffect(() => {
+    if (initialTab && TABS.includes(initialTab.tab)) {
+      switchTab(initialTab.tab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTab]);
 
   function switchTab(t: InspectorTab) {
     setActiveTab(t);

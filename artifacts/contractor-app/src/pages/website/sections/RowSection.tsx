@@ -8,7 +8,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, GripVertical, Trash2, Copy, AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, LayoutGrid, ClipboardPaste, Link2, FileText, MousePointer } from "lucide-react";
+import { Plus, GripVertical, Trash2, Copy, AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, LayoutGrid, ClipboardPaste, Link2, FileText, MousePointer, Type, Lock, EyeOff } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import {
   renderSiteComponent, renderSiteComponentEditable, CONTENT_COMPONENT_TYPES, defaultPropsForType,
@@ -23,6 +23,10 @@ export interface RowColumn {
   id: string;
   widthRatio: number;
   components: SiteComponent[];
+  /** When true the column is hidden from the canvas and public site */
+  hidden?: boolean;
+  /** When true the column is locked — context menu shows only Unlock */
+  locked?: boolean;
 }
 
 export interface RowSectionData {
@@ -126,10 +130,11 @@ interface SortableCompItemProps {
   onDelete: () => void;
   onCopy?: () => void;
   onToggleHide?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableCompItem({ comp, colId, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableCompItemProps) {
+function SortableCompItem({ comp, colId, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, settings }: SortableCompItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
 
@@ -225,11 +230,14 @@ function SortableCompItem({ comp, colId, isSelected, onSelect, onEdit, onUpdate,
         label={label}
         isSelected={isSelected}
         isHidden={!!comp.hidden}
+        locked={!!comp.locked}
         onSelect={e => { e.stopPropagation(); onSelect(); }}
         onEdit={onEdit}
+        onDoubleClick={onEdit ? e => { e.stopPropagation(); onEdit!(); } : undefined}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
         onToggleHide={onToggleHide}
+        onContextMenu={onContextMenu}
         extraToolbar={<>{typeToolbar}{copyBtn}{dragHandle}</>}
       >
         <div className="px-2 py-2 pointer-events-none overflow-hidden max-h-28">
@@ -256,6 +264,12 @@ interface RowSectionProps {
   onBeforeAction?: () => void;
   /** Toggle component hidden state; called with colId and componentId */
   onToggleRowComponentHide?: (colId: string, compId: string) => void;
+  /** Parent section id — used to pass context to the canvas context menu */
+  sectionId?: string;
+  /** Called when user right-clicks a component — opens the canvas context menu */
+  onComponentContextMenu?: (sectionId: string, colId: string, compId: string, compType: string, e: React.MouseEvent) => void;
+  /** Called when user right-clicks a column header — opens column context menu */
+  onColumnContextMenu?: (sectionId: string, colId: string, e: React.MouseEvent) => void;
 }
 
 export function RowSection({
@@ -272,6 +286,9 @@ export function RowSection({
   onCopyComponent,
   onBeforeAction,
   onToggleRowComponentHide,
+  sectionId,
+  onComponentContextMenu,
+  onColumnContextMenu,
 }: RowSectionProps) {
   const { toast } = useToast();
   const [showPickerForCol, setShowPickerForCol] = useState<string | null>(null);
@@ -325,7 +342,7 @@ export function RowSection({
     if (!col) return;
     const idx = col.components.findIndex(c => c.id === compId);
     if (idx === -1) return;
-    const copy: SiteComponent = { ...col.components[idx], id: uid(), hidden: false };
+    const copy: SiteComponent = { ...col.components[idx], id: uid(), hidden: false, locked: false };
     const next = [...col.components];
     next.splice(idx + 1, 0, copy);
     updateColumn(colId, next);
@@ -404,15 +421,26 @@ export function RowSection({
                 <div
                   key={col.id}
                   className={`rounded-lg border-2 transition-all p-2 min-h-[72px] bg-white ${
-                    isColActive
+                    col.locked
+                      ? "border-amber-400"
+                      : col.hidden
+                      ? "border-dashed border-gray-300 opacity-50"
+                      : isColActive
                       ? "border-primary/60 shadow-sm"
                       : "border-gray-200 hover:border-gray-300"
                   }`}
                   onClick={() => onSelectRowComponent?.(col.id, null)}
+                  onContextMenu={onColumnContextMenu && sectionId ? e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onColumnContextMenu(sectionId, col.id, e);
+                  } : undefined}
                 >
                   <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1 select-none">
                     <LayoutGrid className="w-2.5 h-2.5" />
                     Col {idx + 1}
+                    {col.locked && <Lock className="w-2.5 h-2.5 text-amber-500 ml-0.5" title="Locked" />}
+                    {col.hidden && <EyeOff className="w-2.5 h-2.5 text-gray-400 ml-0.5" title="Hidden" />}
                     <span className="ml-auto text-gray-300">{col.widthRatio}fr</span>
                   </div>
 
@@ -445,6 +473,9 @@ export function RowSection({
                           onDelete={() => deleteComponent(col.id, comp.id)}
                           onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
                           onToggleHide={onToggleRowComponentHide ? () => onToggleRowComponentHide(col.id, comp.id) : undefined}
+                          onContextMenu={onComponentContextMenu && sectionId
+                            ? (e) => onComponentContextMenu(sectionId, col.id, comp.id, comp.type, e)
+                            : undefined}
                           settings={settings}
                         />
                       ))}

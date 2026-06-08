@@ -104,6 +104,8 @@ export interface SiteComponent {
   props: SiteComponentProps;
   /** When true the component is hidden from the public site; dimmed on canvas */
   hidden?: boolean;
+  /** When true the component is locked: cannot be edited, moved, or deleted until unlocked */
+  locked?: boolean;
 }
 
 export interface ContentSectionData {
@@ -507,10 +509,11 @@ interface SortableItemProps {
   onDelete: () => void;
   onCopy?: () => void;
   onToggleHide?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableItemProps) {
+function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, settings }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
 
@@ -617,11 +620,14 @@ function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicat
         label={label}
         isSelected={isSelected}
         isHidden={!!comp.hidden}
+        locked={!!comp.locked}
         onSelect={e => { e.stopPropagation(); onSelect(); }}
         onEdit={onEdit}
+        onDoubleClick={onEdit ? e => { e.stopPropagation(); onEdit!(); } : undefined}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
         onToggleHide={onToggleHide}
+        onContextMenu={onContextMenu}
         extraToolbar={<>{typeToolbar}{copyBtn}{dragHandle}</>}
       >
         <div className="px-3 py-3 pointer-events-none select-none overflow-hidden max-h-40">
@@ -681,6 +687,10 @@ interface ContentSectionProps {
   onBeforeAction?: () => void;
   /** Toggle component hidden state; called with component id */
   onToggleHide?: (id: string) => void;
+  /** Parent section id — used to pass context to the canvas context menu */
+  sectionId?: string;
+  /** Called when user right-clicks a component — opens the canvas context menu */
+  onComponentContextMenu?: (sectionId: string, compId: string, compType: string, e: React.MouseEvent) => void;
 }
 
 export function ContentSection({
@@ -696,6 +706,8 @@ export function ContentSection({
   onCopyComponent,
   onBeforeAction,
   onToggleHide,
+  sectionId,
+  onComponentContextMenu,
 }: ContentSectionProps) {
   const { toast } = useToast();
   const [showPicker, setShowPicker] = useState(false);
@@ -820,6 +832,9 @@ export function ContentSection({
                   onDelete={() => deleteComponent(comp.id)}
                   onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
                   onToggleHide={onToggleHide ? () => onToggleHide(comp.id) : undefined}
+                  onContextMenu={onComponentContextMenu && sectionId
+                    ? (e) => onComponentContextMenu(sectionId, comp.id, comp.type, e)
+                    : undefined}
                   settings={settings}
                 />
               ))}

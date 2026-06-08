@@ -37,8 +37,13 @@ import { FAQSection, defaultFAQContent } from "./sections/FAQSection";
 import { CTASection, defaultCTAContent } from "./sections/CTASection";
 import { StatsSection, defaultStatsContent } from "./sections/StatsSection";
 import { HeaderSection, defaultHeaderContent } from "./sections/HeaderSection";
-import { ContentSection, defaultContentSectionData, type SiteComponent } from "./sections/ContentSection";
-import { RowSection, defaultRowSectionData, type RowSectionData } from "./sections/RowSection";
+import { ContentSection, defaultContentSectionData, type SiteComponent, type ComponentType, type SiteComponentProps, defaultPropsForType } from "./sections/ContentSection";
+import { RowSection, defaultRowSectionData, type RowSectionData, type RowColumn } from "./sections/RowSection";
+import { CanvasContextMenu, type ContextMenuGroup } from "./CanvasContextMenu";
+import {
+  buildSectionActions, buildComponentActions, buildColumnActions,
+  type SectionActionParams, type ComponentActionParams, type ColumnActionParams,
+} from "./actionRegistry";
 import { ComponentEditorPanel } from "./ComponentEditorPanel";
 import { RowEditorPanel } from "./RowEditorPanel";
 import { TextSection, defaultTextContent } from "./sections/TextSection";
@@ -47,6 +52,7 @@ import { ImageSection, defaultImageContent } from "./sections/ImageSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { InspectorPanel } from "./InspectorPanel";
+import { type InspectorTab } from "./inspectorFields";
 import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
@@ -99,6 +105,7 @@ interface Section {
    * Non-functional until responsive editing ships; persisted so data round-trips safely.
    */
   breakpoints?: import("./website-types").SectionBreakpoints;
+  locked?: boolean;
 }
 
 export interface SitePage {
@@ -149,6 +156,9 @@ function renderSection(
     onBeforeAction?: () => void;
     onToggleHide?: (sectionId: string, compId: string) => void;
     onToggleRowComponentHide?: (sectionId: string, colId: string, compId: string) => void;
+    onContentComponentContextMenu?: (sectionId: string, compId: string, compType: string, e: React.MouseEvent) => void;
+    onRowComponentContextMenu?: (sectionId: string, colId: string, compId: string, compType: string, e: React.MouseEvent) => void;
+    onColumnContextMenu?: (sectionId: string, colId: string, e: React.MouseEvent) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -195,19 +205,20 @@ function renderSection(
     case "content": return (
       <ContentSection
         {...props}
-        sectionId={extras?.sectionId}
+        sectionId={extras?.sectionId ?? section.id}
         selectedComponentId={extras?.selectedComponentId}
         onSelectComponent={extras?.onSelectComponent}
         copiedComponent={extras?.copiedComponent}
         onCopyComponent={extras?.onCopyComponent}
         onBeforeAction={extras?.onBeforeAction}
         onToggleHide={extras?.onToggleHide ? (compId) => extras.onToggleHide!(section.id, compId) : undefined}
+        onComponentContextMenu={extras?.onContentComponentContextMenu}
       />
     );
     case "row": return (
       <RowSection
         {...props}
-        sectionId={extras?.sectionId}
+        sectionId={extras?.sectionId ?? section.id}
         selectedColumnId={extras?.selectedRowColumnId}
         selectedComponentId={extras?.selectedRowComponentId}
         onSelectRowComponent={extras?.onSelectRowComponent}
@@ -215,6 +226,8 @@ function renderSection(
         onCopyComponent={extras?.onCopyComponent}
         onBeforeAction={extras?.onBeforeAction}
         onToggleRowComponentHide={extras?.onToggleRowComponentHide ? (colId, compId) => extras.onToggleRowComponentHide!(section.id, colId, compId) : undefined}
+        onComponentContextMenu={extras?.onRowComponentContextMenu}
+        onColumnContextMenu={extras?.onColumnContextMenu}
       />
     );
     default: return null;
@@ -914,6 +927,12 @@ function WebsiteEditor() {
   const [faviconUploading, setFaviconUploading] = useState(false);
   const [copiedBlockStyle, setCopiedBlockStyle] = useState<BlockStyle | null>(null);
   const [copiedComponent, setCopiedComponent] = useState<SiteComponent | null>(null);
+  const [copiedComponentStyle, setCopiedComponentStyle] = useState<Record<string, unknown> | null>(null);
+  const [copiedColumn, setCopiedColumn] = useState<RowColumn | null>(null);
+  const [copiedColumnStyle, setCopiedColumnStyle] = useState<{ widthRatio: number } | null>(null);
+  const [copiedSection, setCopiedSection] = useState<Section | null>(null);
+  const [contextInspectorTab, setContextInspectorTab] = useState<{ tab: InspectorTab; id: number } | undefined>(undefined);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; groups: ContextMenuGroup[] } | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
@@ -2435,6 +2454,742 @@ function WebsiteEditor() {
       : `${window.location.origin}${BASE}/site/${activeBusiness.slug}?draft=1`
     : "";
 
+  function convertComponentType(comp: SiteComponent, targetType: ComponentType): SiteComponent {
+    const newProps = { ...(defaultPropsForType(targetType) as any) };
+    const src = comp.props as any;
+    if ("text" in src) {
+      if ("text" in newProps) newProps.text = src.text;
+      if ("label" in newProps) newProps.label = src.text;
+    }
+    if ("label" in src && "text" in newProps) newProps.text = src.label;
+    if ("style" in src && "style" in newProps) newProps.style = src.style;
+    if ("align" in src && "align" in newProps) newProps.align = src.align;
+    return { ...comp, type: targetType, props: newProps as SiteComponentProps };
+  }
+
+  function updateComponentInSection(
+    sectionId: string,
+    columnId: string | undefined,
+    componentId: string,
+    updater: (comp: SiteComponent) => SiteComponent | null
+  ) {
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            if (columnId) {
+              return {
+                ...s,
+                content: {
+                  ...(s.content as Record<string, unknown>),
+                  columns: ((s.content as any).columns ?? []).map((col: any) => {
+                    if (col.id !== columnId) return col;
+                    const newComps: SiteComponent[] = [];
+                    for (const c of col.components as SiteComponent[]) {
+                      if (c.id === componentId) {
+                        const result = updater(c);
+                        if (result !== null) newComps.push(result);
+                      } else {
+                        newComps.push(c);
+                      }
+                    }
+                    return { ...col, components: newComps };
+                  }),
+                }
+              };
+            } else {
+              return {
+                ...s,
+                content: {
+                  ...(s.content as Record<string, unknown>),
+                  components: ((s.content as any).components ?? []).flatMap((c: SiteComponent) => {
+                    if (c.id !== componentId) return [c];
+                    const result = updater(c);
+                    return result !== null ? [result] : [];
+                  }),
+                }
+              };
+            }
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+  }
+
+  function insertComponentAfterInSection(
+    sectionId: string,
+    columnId: string | undefined,
+    afterComponentId: string,
+    newComp: SiteComponent
+  ) {
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            if (columnId) {
+              return {
+                ...s,
+                content: {
+                  ...(s.content as Record<string, unknown>),
+                  columns: ((s.content as any).columns ?? []).map((col: any) => {
+                    if (col.id !== columnId) return col;
+                    const comps = col.components as SiteComponent[];
+                    const idx = comps.findIndex(c => c.id === afterComponentId);
+                    const next = [...comps];
+                    if (idx === -1) next.push(newComp); else next.splice(idx + 1, 0, newComp);
+                    return { ...col, components: next };
+                  }),
+                }
+              };
+            } else {
+              const comps = ((s.content as any).components ?? []) as SiteComponent[];
+              const idx = comps.findIndex(c => c.id === afterComponentId);
+              const next = [...comps];
+              if (idx === -1) next.push(newComp); else next.splice(idx + 1, 0, newComp);
+              return { ...s, content: { ...(s.content as Record<string, unknown>), components: next } };
+            }
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+  }
+
+  function pasteSection(afterSectionId: string) {
+    if (!copiedSection) return;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        const idx = p.sections.findIndex(s => s.id === afterSectionId);
+        if (idx === -1) return p;
+        const cloned = JSON.parse(JSON.stringify(copiedSection)) as Section;
+        const newSection: Section = { ...cloned, id: nanoid(), locked: false, order: 0 };
+        const inserted = [...p.sections.slice(0, idx + 1), newSection, ...p.sections.slice(idx + 1)];
+        return { ...p, sections: inserted.map((s, i) => ({ ...s, order: i })) };
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Section pasted", duration: 2000 });
+  }
+
+  // ─── Context menu helpers (Action Registry) ─────────────────────────────────
+
+  function moveSectionToPage(sectionId: string, targetPageId: string) {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      const sourcePage = prev.find(p => p.sections.some(s => s.id === sectionId));
+      if (!sourcePage || sourcePage.id === targetPageId) return prev;
+      const section = sourcePage.sections.find(s => s.id === sectionId);
+      if (!section) return prev;
+      return prev.map(p => {
+        if (p.id === sourcePage.id) {
+          const remaining = p.sections.filter(s => s.id !== sectionId);
+          return { ...p, sections: remaining.map((s, i) => ({ ...s, order: i })) };
+        }
+        if (p.id === targetPageId) {
+          return { ...p, sections: [...p.sections, { ...section, order: p.sections.length }] };
+        }
+        return p;
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Section moved", duration: 2000 });
+  }
+
+  function addComponentToColumn(sectionId: string, colId: string, type: ComponentType) {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            return {
+              ...s,
+              content: {
+                ...(s.content as Record<string, unknown>),
+                columns: ((s.content as any).columns ?? []).map((col: any) => {
+                  if (col.id !== colId) return col;
+                  const newComp: SiteComponent = { id: nanoid(), type, props: defaultPropsForType(type) };
+                  return { ...col, components: [...col.components, newComp] };
+                }),
+              }
+            };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+  }
+
+  function pasteComponentToColumn(sectionId: string, colId: string) {
+    if (!copiedComponent) return;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            return {
+              ...s,
+              content: {
+                ...(s.content as Record<string, unknown>),
+                columns: ((s.content as any).columns ?? []).map((col: any) => {
+                  if (col.id !== colId) return col;
+                  const pasted: SiteComponent = {
+                    ...JSON.parse(JSON.stringify(copiedComponent)), id: nanoid(), hidden: false, locked: false,
+                  };
+                  return { ...col, components: [...col.components, pasted] };
+                }),
+              }
+            };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Component pasted", duration: 2000 });
+  }
+
+  function openSectionContextMenu(x: number, y: number, s: Section) {
+    const nonHeader = sections.filter(sec => sec.type !== "header");
+    const idx = nonHeader.findIndex(sec => sec.id === s.id);
+    const prevId = idx > 0 ? nonHeader[idx - 1].id : null;
+
+    const groups = buildSectionActions({
+      locked: !!s.locked,
+      enabled: s.enabled,
+      hasCopiedSection: !!copiedSection,
+      hasCopiedComponent: !!copiedComponent,
+      hasCopiedStyles: !!copiedBlockStyle,
+      allPages: pages.map(pg => ({ id: pg.id, name: pg.name })),
+      currentPageId: activePageId,
+      onAddAbove: () => { setInsertAfterSectionId(prevId); setShowAddSection(true); },
+      onAddBelow: () => { setInsertAfterSectionId(s.id); setShowAddSection(true); },
+      onDuplicate: () => duplicateSection(s.id),
+      onCopy: () => { setCopiedSection(JSON.parse(JSON.stringify(s))); toast({ title: "Section copied", duration: 1500 }); },
+      onPasteBelow: () => pasteSection(s.id),
+      onMismatchPaste: () => toast({ title: "Clipboard has a component — right-click a component to paste it", duration: 3000 }),
+      onToggleHide: () => toggleSection(s.id),
+      onLock: () => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        const pid = activePageIdRef.current;
+        setLocalPages(prev => prev ? prev.map(p => p.id !== pid ? p : {
+          ...p, sections: p.sections.map(sec => sec.id === s.id ? { ...sec, locked: true } : sec),
+        }) : prev);
+        isDirtyRef.current = true;
+      },
+      onUnlock: () => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        const pid = activePageIdRef.current;
+        setLocalPages(prev => prev ? prev.map(p => p.id !== pid ? p : {
+          ...p, sections: p.sections.map(sec => sec.id === s.id ? { ...sec, locked: false } : sec),
+        }) : prev);
+        isDirtyRef.current = true;
+      },
+      onDelete: () => handleDeleteSectionClick(s.id),
+      onCopyStyles: () => { setCopiedBlockStyle(s.blockStyle ?? {}); toast({ title: "Styles copied", duration: 1500 }); },
+      onPasteStyles: () => {
+        if (copiedBlockStyle) { updateBlockStyle(s.id, copiedBlockStyle); toast({ title: "Styles pasted", duration: 2000 }); }
+      },
+      onInspect: (tab?: InspectorTab) => {
+        setActiveSection(s.id);
+        setActiveTab("editor");
+        if (tab) setContextInspectorTab({ tab, id: Date.now() });
+        requestAnimationFrame(() => selectSectionAndScroll(s.id));
+      },
+      onMoveToPage: (targetPageId: string) => moveSectionToPage(s.id, targetPageId),
+    });
+
+    setContextMenu({ x, y, groups });
+  }
+
+  function openComponentContextMenu(
+    x: number, y: number,
+    sectionId: string, componentId: string, compType: string, columnId?: string
+  ) {
+    const sec = sections.find(s => s.id === sectionId);
+    if (!sec) return;
+
+    let comp: SiteComponent | undefined;
+    if (columnId) {
+      const col = (sec.content as any)?.columns?.find((c: any) => c.id === columnId);
+      comp = col?.components?.find((c: any) => c.id === componentId);
+    } else {
+      comp = (sec.content as any)?.components?.find((c: any) => c.id === componentId);
+    }
+    if (!comp) return;
+    const compRef = comp;
+
+    const focusInspector = () => {
+      setActiveSection(sectionId);
+      setActiveTab("editor");
+      if (columnId) setSelectedRowState({ sectionId, columnId, componentId });
+      else setSelectedComponentState({ sectionId, componentId });
+    };
+
+    const sectionTypeLabel = (type: string) =>
+      ({ hero: "Hero", services: "Services", about: "About", contact: "Contact",
+         footer: "Footer", content: "Content", row: "Row", text: "Text",
+         columns: "Columns", gallery: "Gallery", stats: "Stats", cta: "CTA",
+         testimonials: "Testimonials", faq: "FAQ" }[type]
+       ?? type.charAt(0).toUpperCase() + type.slice(1));
+
+    const movableSections = sections
+      .filter(s => s.id !== sectionId && ["content", "row", "text", "columns"].includes(s.type))
+      .map((s, i) => ({ id: s.id, label: `${sectionTypeLabel(s.type)} ${i + 1}` }));
+
+    const groups = buildComponentActions({
+      comp: compRef,
+      locked: !!compRef.locked,
+      hasCopiedComponent: !!copiedComponent,
+      hasCopiedSection: !!copiedSection,
+      hasCopiedComponentStyle: !!copiedComponentStyle,
+      allSections: movableSections,
+      onEdit: () => {
+        focusInspector();
+        requestAnimationFrame(() => {
+          const panel = document.querySelector("[data-component-editor-panel]");
+          (panel?.querySelector("input, textarea, select") as HTMLElement | null)?.focus();
+        });
+      },
+      onDuplicate: () => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        insertComponentAfterInSection(sectionId, columnId, componentId, {
+          ...JSON.parse(JSON.stringify(compRef)), id: nanoid(), hidden: false, locked: false,
+        });
+        toast({ title: "Component duplicated", duration: 2000 });
+      },
+      onCopy: () => { setCopiedComponent(compRef); toast({ title: "Component copied", duration: 1500 }); },
+      onPaste: () => {
+        if (!copiedComponent) return;
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        insertComponentAfterInSection(sectionId, columnId, componentId, {
+          ...JSON.parse(JSON.stringify(copiedComponent)), id: nanoid(), hidden: false, locked: false,
+        });
+        toast({ title: "Component pasted", duration: 2000 });
+      },
+      onMismatchPaste: () => toast({ title: "Clipboard has a section — right-click the canvas to paste it", duration: 3000 }),
+      onCopyComponentStyle: () => {
+        const p = compRef.props as any;
+        let styleOnly: Record<string, unknown> = {};
+        switch (compRef.type) {
+          case "heading": case "paragraph": styleOnly = { style: p.style, align: p.align }; break;
+          case "button":      styleOnly = { align: p.align, config: p.config }; break;
+          case "image":       styleOnly = { objectFit: p.objectFit, borderRadius: p.borderRadius }; break;
+          case "divider":     styleOnly = { color: p.color, thickness: p.thickness, borderStyle: p.borderStyle, marginY: p.marginY }; break;
+          case "icon":        styleOnly = { size: p.size, align: p.align }; break;
+          default: break;
+        }
+        setCopiedComponentStyle(styleOnly);
+        toast({ title: "Component styles copied", duration: 1500 });
+      },
+      onPasteComponentStyle: () => {
+        if (!copiedComponentStyle) return;
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        updateComponentInSection(sectionId, columnId, componentId, c => ({
+          ...c,
+          props: { ...(c.props as Record<string, unknown>), ...copiedComponentStyle },
+        }));
+        toast({ title: "Component styles pasted", duration: 2000 });
+      },
+      onMoveToSection: (targetSectionId: string) => moveComponentToSection(sectionId, columnId, componentId, targetSectionId),
+      onToggleHide: () => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        updateComponentInSection(sectionId, columnId, componentId, c => ({ ...c, hidden: !c.hidden }));
+      },
+      onLock: () => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        updateComponentInSection(sectionId, columnId, componentId, c => ({ ...c, locked: true }));
+      },
+      onUnlock: () => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        updateComponentInSection(sectionId, columnId, componentId, c => ({ ...c, locked: false }));
+      },
+      onDelete: () => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        updateComponentInSection(sectionId, columnId, componentId, () => null);
+        if (columnId) setSelectedRowState(prev => prev ? { sectionId: prev.sectionId, columnId: prev.columnId } : null);
+        else setSelectedComponentState(null);
+        toast({ title: "Component deleted", duration: 2000 });
+      },
+      onConvertTo: (targetType: ComponentType) => {
+        history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+        updateComponentInSection(sectionId, columnId, componentId, c => convertComponentType(c, targetType));
+      },
+      onInspect: (tab?: InspectorTab) => {
+        focusInspector();
+        if (tab) setContextInspectorTab({ tab, id: Date.now() });
+      },
+      onReplaceImage: compRef.type === "image" ? () => {
+        openMediaLibrary((url: string) => {
+          history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+          updateComponentInSection(sectionId, columnId, componentId, c => ({
+            ...c, props: { ...(c.props as any), url },
+          }));
+        });
+      } : undefined,
+      onEditAltText: compRef.type === "image" ? () => {
+        focusInspector();
+        if (!rightCollapsed) setContextInspectorTab({ tab: "content", id: Date.now() });
+        requestAnimationFrame(() => {
+          const panel = document.querySelector("[data-component-editor-panel]");
+          const altField = panel?.querySelector(
+            "input[placeholder*='alt' i], input[name*='alt' i], textarea[placeholder*='alt' i]"
+          ) as HTMLInputElement | null;
+          const target = altField ?? (panel?.querySelector("input, textarea") as HTMLElement | null);
+          target?.focus();
+          target?.scrollIntoView({ block: "nearest" });
+        });
+      } : undefined,
+    });
+
+    setContextMenu({ x, y, groups });
+  }
+
+  function moveComponentToSection(
+    sourceSectionId: string, sourceColId: string | undefined,
+    componentId: string, targetSectionId: string,
+  ) {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        // Pass 1: extract component from source
+        let movedComp: SiteComponent | null = null;
+        const afterRemove = p.sections.map(s => {
+          if (s.id !== sourceSectionId) return s;
+          if (sourceColId) {
+            return {
+              ...s,
+              content: {
+                ...(s.content as any),
+                columns: ((s.content as any).columns ?? []).map((col: any) => {
+                  if (col.id !== sourceColId) return col;
+                  movedComp = col.components.find((c: any) => c.id === componentId) ?? null;
+                  return { ...col, components: col.components.filter((c: any) => c.id !== componentId) };
+                }),
+              }
+            };
+          } else {
+            movedComp = ((s.content as any).components ?? []).find((c: any) => c.id === componentId) ?? null;
+            return {
+              ...s,
+              content: {
+                ...(s.content as any),
+                components: ((s.content as any).components ?? []).filter((c: any) => c.id !== componentId),
+              }
+            };
+          }
+        });
+        if (!movedComp) return p;
+        const targetComp: SiteComponent = { ...(movedComp as SiteComponent), id: nanoid() };
+        // Pass 2: insert into target section
+        return {
+          ...p,
+          sections: afterRemove.map(s => {
+            if (s.id !== targetSectionId) return s;
+            if ((s.content as any).columns) {
+              const cols = (s.content as any).columns as any[];
+              return {
+                ...s,
+                content: {
+                  ...(s.content as any),
+                  columns: cols.map((col: any, i: number) =>
+                    i === 0 ? { ...col, components: [...col.components, targetComp] } : col
+                  ),
+                }
+              };
+            } else {
+              return {
+                ...s,
+                content: {
+                  ...(s.content as any),
+                  components: [...((s.content as any).components ?? []), targetComp],
+                }
+              };
+            }
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Component moved", duration: 2000 });
+  }
+
+  function duplicateColumn(sectionId: string, colId: string) {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            const cols = (s.content as any).columns ?? [];
+            const idx = cols.findIndex((c: any) => c.id === colId);
+            if (idx === -1) return s;
+            const src = cols[idx];
+            const dup = {
+              ...JSON.parse(JSON.stringify(src)),
+              id: nanoid(),
+              components: (src.components ?? []).map((c: any) => ({ ...JSON.parse(JSON.stringify(c)), id: nanoid() })),
+            };
+            const newCols = [...cols.slice(0, idx + 1), dup, ...cols.slice(idx + 1)];
+            return { ...s, content: { ...(s.content as any), columns: newCols } };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Column duplicated", duration: 2000 });
+  }
+
+  function deleteColumn(sectionId: string, colId: string) {
+    const sec = sections.find(s => s.id === sectionId);
+    if (!sec) return;
+    const cols = (sec.content as any).columns ?? [];
+    if (cols.length <= 1) return;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            const remaining = ((s.content as any).columns ?? []).filter((c: any) => c.id !== colId);
+            return { ...s, content: { ...(s.content as any), columns: remaining } };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Column deleted", duration: 2000 });
+  }
+
+  function copyColumn(sectionId: string, colId: string) {
+    const sec = sections.find(s => s.id === sectionId);
+    if (!sec) return;
+    const col = ((sec.content as any).columns ?? []).find((c: any) => c.id === colId);
+    if (!col) return;
+    setCopiedColumn(JSON.parse(JSON.stringify(col)));
+    toast({ title: "Column copied", duration: 1500 });
+  }
+
+  function pasteColumn(sectionId: string, afterColId: string) {
+    if (!copiedColumn) return;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            const cols = (s.content as any).columns ?? [];
+            const idx = cols.findIndex((c: any) => c.id === afterColId);
+            const newCol: RowColumn = {
+              ...JSON.parse(JSON.stringify(copiedColumn)),
+              id: nanoid(),
+              components: (copiedColumn.components ?? []).map((c: SiteComponent) => ({
+                ...JSON.parse(JSON.stringify(c)), id: nanoid(),
+              })),
+            };
+            const newCols = [...cols.slice(0, idx + 1), newCol, ...cols.slice(idx + 1)];
+            return { ...s, content: { ...(s.content as any), columns: newCols } };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Column pasted", duration: 2000 });
+  }
+
+  function toggleHideColumn(sectionId: string, colId: string) {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            return {
+              ...s,
+              content: {
+                ...(s.content as any),
+                columns: ((s.content as any).columns ?? []).map((c: any) =>
+                  c.id === colId ? { ...c, hidden: !c.hidden } : c
+                ),
+              }
+            };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+  }
+
+  function setColumnLocked(sectionId: string, colId: string, locked: boolean) {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            return {
+              ...s,
+              content: {
+                ...(s.content as any),
+                columns: ((s.content as any).columns ?? []).map((c: any) =>
+                  c.id === colId ? { ...c, locked } : c
+                ),
+              }
+            };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+  }
+
+  function copyColumnStyles(sectionId: string, colId: string) {
+    const sec = sections.find(s => s.id === sectionId);
+    if (!sec) return;
+    const col = ((sec.content as any).columns ?? []).find((c: any) => c.id === colId);
+    if (!col) return;
+    setCopiedColumnStyle({ widthRatio: col.widthRatio });
+    toast({ title: "Column styles copied", duration: 1500 });
+  }
+
+  function pasteColumnStyles(sectionId: string, colId: string) {
+    if (!copiedColumnStyle) return;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            return {
+              ...s,
+              content: {
+                ...(s.content as any),
+                columns: ((s.content as any).columns ?? []).map((c: any) =>
+                  c.id === colId ? { ...c, widthRatio: copiedColumnStyle.widthRatio } : c
+                ),
+              }
+            };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+    toast({ title: "Column styles pasted", duration: 2000 });
+  }
+
+  function moveColumn(sectionId: string, colId: string, direction: "left" | "right") {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== pageId) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== sectionId) return s;
+            const cols = [...((s.content as any).columns ?? [])];
+            const idx = cols.findIndex((c: any) => c.id === colId);
+            if (idx === -1) return s;
+            const targetIdx = direction === "left" ? idx - 1 : idx + 1;
+            if (targetIdx < 0 || targetIdx >= cols.length) return s;
+            [cols[idx], cols[targetIdx]] = [cols[targetIdx], cols[idx]];
+            return { ...s, content: { ...(s.content as any), columns: cols } };
+          }),
+        };
+      });
+    });
+    isDirtyRef.current = true;
+  }
+
+  function openColumnContextMenu(x: number, y: number, sectionId: string, colId: string) {
+    const sec = sections.find(s => s.id === sectionId);
+    const cols: RowColumn[] = (sec?.content as any)?.columns ?? [];
+    const colIdx = cols.findIndex(c => c.id === colId);
+    const col = cols[colIdx];
+    const groups = buildColumnActions({
+      isColumnHidden: !!col?.hidden,
+      isColumnLocked: !!col?.locked,
+      hasCopiedComponent: !!copiedComponent,
+      hasCopiedColumn: !!copiedColumn,
+      hasCopiedColumnStyle: !!copiedColumnStyle,
+      canDeleteColumn: cols.length > 1,
+      canMoveLeft: colIdx > 0,
+      canMoveRight: colIdx < cols.length - 1,
+      onAddComponent: (type: ComponentType) => addComponentToColumn(sectionId, colId, type),
+      onPasteComponent: () => pasteComponentToColumn(sectionId, colId),
+      onCopyColumn: () => copyColumn(sectionId, colId),
+      onPasteColumn: () => pasteColumn(sectionId, colId),
+      onDuplicateColumn: () => duplicateColumn(sectionId, colId),
+      onToggleHideColumn: () => toggleHideColumn(sectionId, colId),
+      onLockColumn: () => setColumnLocked(sectionId, colId, true),
+      onUnlockColumn: () => setColumnLocked(sectionId, colId, false),
+      onCopyColumnStyles: () => copyColumnStyles(sectionId, colId),
+      onPasteColumnStyles: () => pasteColumnStyles(sectionId, colId),
+      onMoveLeft: () => moveColumn(sectionId, colId, "left"),
+      onMoveRight: () => moveColumn(sectionId, colId, "right"),
+      onDeleteColumn: () => deleteColumn(sectionId, colId),
+      onInspect: (tab?: InspectorTab) => {
+        setActiveSection(sectionId);
+        setActiveTab("editor");
+        setSelectedRowState({ sectionId, columnId: colId });
+        if (tab) setContextInspectorTab({ tab, id: Date.now() });
+      },
+    });
+    setContextMenu({ x, y, groups });
+  }
+
   function renderSections() {
     const homePageSections = pages.find(p => p.id === "home")?.sections ?? sections;
     const headerSec = homePageSections.find(s => s.type === "header");
@@ -2527,6 +3282,24 @@ function WebsiteEditor() {
         isDirtyRef.current = true;
         toast({ title: "Component visibility toggled", duration: 2000 });
       },
+      /** Context menu for a content-section component */
+      onContentComponentContextMenu: (sectionId: string, compId: string, compType: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openComponentContextMenu(e.clientX, e.clientY, sectionId, compId, compType, undefined);
+      },
+      /** Context menu for a row-section component inside a column */
+      onRowComponentContextMenu: (sectionId: string, colId: string, compId: string, compType: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openComponentContextMenu(e.clientX, e.clientY, sectionId, compId, compType, colId);
+      },
+      /** Context menu for a column itself (add component, paste, inspect) */
+      onColumnContextMenu: (sectionId: string, colId: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openColumnContextMenu(e.clientX, e.clientY, sectionId, colId);
+      },
     };
 
     function renderWrapped(s: Section, opts: { isHeader?: boolean; isFirst?: boolean; isLast?: boolean }) {
@@ -2563,6 +3336,22 @@ function WebsiteEditor() {
               firstField?.scrollIntoView({ block: "nearest" });
             });
           }}
+          locked={!!s.locked}
+          onContextMenu={!isHeader ? (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openSectionContextMenu(e.clientX, e.clientY, s);
+          } : undefined}
+          onDoubleClick={!isHeader ? (e) => {
+            e.stopPropagation();
+            setActiveSection(s.id);
+            requestAnimationFrame(() => {
+              const panel = document.querySelector("[data-component-editor-panel]");
+              const firstField = panel?.querySelector("input, textarea, select") as HTMLElement | null;
+              firstField?.focus();
+              firstField?.scrollIntoView({ block: "nearest" });
+            });
+          } : undefined}
           onDuplicate={!isHeader ? () => duplicateSection(s.id) : undefined}
           onToggleHide={!isHeader ? () => toggleSection(s.id) : undefined}
           onDelete={!isHeader ? () => handleDeleteSectionClick(s.id) : undefined}
@@ -3843,12 +4632,21 @@ function WebsiteEditor() {
               autoCollapsed={autoCollapsedRight}
               onClearAutoCollapse={() => { autoCollapsedRightRef.current = false; setAutoCollapsedRight(false); }}
               specialContent={specialContent}
+              initialTab={contextInspectorTab}
             />
           );
         })()}
         </>)}
       </div>
     </div>
+    {contextMenu && (
+      <CanvasContextMenu
+        x={contextMenu.x}
+        y={contextMenu.y}
+        groups={contextMenu.groups}
+        onClose={() => setContextMenu(null)}
+      />
+    )}
     </>
   );
 }

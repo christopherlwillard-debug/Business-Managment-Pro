@@ -16,6 +16,8 @@ import {
  * Universal toolbar contract: Edit · Move ↑↓ · Duplicate · Hide · Delete
  * (move, duplicate, hide, insert-below, and delete are all optional so the
  * same wrapper works for both the locked header and free-floating items).
+ *
+ * Interaction model: Single Click = Select, Double Click = Edit, Right Click = Actions
  */
 export interface EditableWrapperProps {
   /** Stable unique id — used for data-section-canvas-id */
@@ -35,6 +37,11 @@ export interface EditableWrapperProps {
    * Hides move/hide/delete controls and shows "Edit nav & CTA" hint.
    */
   isHeader?: boolean;
+  /**
+   * When true, shows a lock badge and suppresses all toolbar actions.
+   * Only the context-menu unlock action is available.
+   */
+  locked?: boolean;
   /** Optional extra toolbar buttons inserted before the Delete button */
   extraToolbar?: ReactNode;
   children: ReactNode;
@@ -60,6 +67,10 @@ export interface EditableWrapperProps {
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onInsertBelow?: () => void;
+  /** Called on double-click — mirrors the Edit action (Double Click = Edit contract) */
+  onDoubleClick?: (e: React.MouseEvent) => void;
+  /** Called on right-click — opens the canvas context menu */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function EditableWrapper({
@@ -70,6 +81,7 @@ export function EditableWrapper({
   isFirst,
   isLast,
   isHeader,
+  locked,
   extraToolbar,
   children,
   onSelect,
@@ -81,17 +93,25 @@ export function EditableWrapper({
   onMoveUp,
   onMoveDown,
   onInsertBelow,
+  onDoubleClick,
+  onContextMenu,
 }: EditableWrapperProps) {
   return (
     <div
       data-section-canvas-id={id}
-      className={`group/sec relative cursor-pointer transition-all ${
-        isSelected
+      className={`group/sec relative transition-all ${
+        locked
+          ? "cursor-not-allowed"
+          : "cursor-pointer"
+      } ${
+        isSelected && !locked
           ? "ring-2 ring-inset ring-primary/60"
-          : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
+          : !locked
+          ? "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
+          : "ring-2 ring-inset ring-slate-400/40"
       } ${isHidden ? "opacity-50" : ""}`}
-      onClick={onSelect}
-      onDoubleClick={(e) => {
+      onClick={locked ? undefined : onSelect}
+      onDoubleClick={locked ? undefined : (e) => {
         // If the user double-clicked directly on an InlineEditableText element,
         // that element's own handleDoubleClick has already called e.stopPropagation()
         // and started editing — nothing to do here. Only proceed when the target is
@@ -112,7 +132,10 @@ export function EditableWrapper({
         });
         // Also call the legacy prop if provided (kept for compatibility).
         onDoubleClickPrimary?.();
+        // Also call the right-click-system's onDoubleClick if provided.
+        onDoubleClick?.(e);
       }}
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e); }}
     >
       {/* Type label badge — faint on hover, solid primary when selected */}
       <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">
@@ -123,7 +146,7 @@ export function EditableWrapper({
               : "bg-foreground/70 text-background opacity-0 group-hover/sec:opacity-100"
           }`}
         >
-          {isHeader && <Lock className="w-2.5 h-2.5" />}
+          {(isHeader || locked) && <Lock className="w-2.5 h-2.5" />}
           {label}
         </span>
 
@@ -131,6 +154,14 @@ export function EditableWrapper({
         {isSelected && isHeader && (
           <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
             Edit nav &amp; CTA
+          </span>
+        )}
+
+        {/* Locked-state badge */}
+        {locked && !isHeader && (
+          <span className="text-[10px] bg-slate-600/80 text-white px-1.5 py-0.5 rounded flex items-center gap-0.5">
+            <Lock className="w-2.5 h-2.5" />
+            Locked
           </span>
         )}
 
@@ -145,8 +176,8 @@ export function EditableWrapper({
 
       {/* Floating action toolbar — invisible until hover/selection.
           Universal contract: Edit · Move ↑↓ · Duplicate · Hide · Delete
-          Not shown for the locked header section. */}
-      {!isHeader && (
+          Not shown for the locked header section or locked items. */}
+      {!isHeader && !locked && (
         <div
           className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity ${
             isSelected ? "opacity-100" : "opacity-0 group-hover/sec:opacity-100"
