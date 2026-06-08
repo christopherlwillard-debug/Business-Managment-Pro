@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2, ChevronDown } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
+import { InlineEditableText } from "../InlineEditableText";
 
 export interface FAQItem {
   id: string;
@@ -37,6 +38,7 @@ interface FAQSectionProps {
   isEditing?: boolean;
   onChange?: (content: FAQContent) => void;
   blockStyle?: BlockStyle;
+  sectionId?: string;
 }
 
 function FAQAccordionItem({ item, brandColor }: { item: FAQItem; brandColor: string }) {
@@ -69,8 +71,9 @@ function FAQAccordionItem({ item, brandColor }: { item: FAQItem; brandColor: str
   );
 }
 
-export function FAQSection({ content, settings, isEditing, onChange, blockStyle }: FAQSectionProps) {
+export function FAQSection({ content, settings, isEditing, onChange, blockStyle, sectionId }: FAQSectionProps) {
   const items = content.items ?? [];
+  const sid = sectionId ?? "faq";
 
   function update(patch: Partial<FAQContent>) {
     onChange?.({ ...content, ...patch });
@@ -115,59 +118,79 @@ export function FAQSection({ content, settings, isEditing, onChange, blockStyle 
   }
 
   return (
-    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-8" isEditing={true}>
-      <div onClick={e => e.stopPropagation()} className="space-y-4">
-        <div className="space-y-2">
-          <input
-            type="text"
-            className="w-full text-lg font-bold bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-2 outline-none focus:border-white/60"
-            placeholder="Section heading"
+    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-6 py-12" isEditing={true}>
+      <div onClick={e => e.stopPropagation()} className="max-w-2xl mx-auto space-y-6">
+        {/* Section headings */}
+        <div className="text-center space-y-1">
+          <InlineEditableText
+            id={`${sid}-heading`}
+            as="h2"
             value={content.heading}
-            onChange={e => update({ heading: e.target.value })}
+            placeholder="Section heading"
+            className="text-3xl font-bold"
+            style={{ color: "var(--theme-text, #111827)" }}
+            onCommit={v => update({ heading: v })}
           />
-          <input
-            type="text"
-            className="w-full text-sm bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-1.5 outline-none focus:border-white/60"
-            placeholder="Subheading (optional)"
+          <InlineEditableText
+            id={`${sid}-subheading`}
+            as="p"
             value={content.subheading ?? ""}
-            onChange={e => update({ subheading: e.target.value })}
+            placeholder="Subheading (optional)"
+            className="text-lg"
+            style={{ color: "var(--theme-text-muted, #6b7280)" }}
+            onCommit={v => update({ subheading: v || undefined })}
           />
         </div>
 
-        <div className="space-y-2">
+        {/* FAQ items — expanded in edit mode so both Q and A are always visible */}
+        <div className="space-y-3">
           {items.map((item, idx) => (
-            <div key={item.id} className="bg-white/10 border border-white/20 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wide">Q{idx + 1}</span>
+            <div
+              key={item.id}
+              className="relative overflow-hidden bg-white"
+              style={{
+                border: "var(--theme-card-border, 1px solid #e5e7eb)",
+                borderRadius: "var(--theme-card-radius, 0.75rem)",
+              }}
+            >
+              <div className="flex items-start gap-2 px-5 pt-4 pb-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest mt-1 flex-shrink-0" style={{ color: settings.brandColor }}>Q{idx + 1}</span>
+                <InlineEditableText
+                  id={`${sid}-faq-${item.id}-q`}
+                  as="span"
+                  value={item.question}
+                  placeholder="Question"
+                  className="font-semibold text-sm flex-1"
+                  style={{ color: "var(--theme-text, #111827)" }}
+                  onCommit={v => updateItem(item.id, { question: v })}
+                />
                 <button
                   type="button"
                   onClick={() => removeItem(item.id)}
-                  className="p-1 text-white/40 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                  className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors flex-shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <input
-                type="text"
-                className="w-full text-sm font-semibold bg-white/10 border border-white/20 text-white placeholder-white/40 rounded px-2 py-1.5 outline-none focus:border-white/50"
-                placeholder="Question"
-                value={item.question}
-                onChange={e => updateItem(item.id, { question: e.target.value })}
-              />
-              <textarea
-                rows={2}
-                className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/40 rounded px-2 py-1.5 outline-none focus:border-white/50 resize-none"
-                placeholder="Answer"
-                value={item.answer}
-                onChange={e => updateItem(item.id, { answer: e.target.value })}
-              />
+              <div className="px-5 pb-4 pl-10">
+                <InlineEditableText
+                  id={`${sid}-faq-${item.id}-a`}
+                  as="p"
+                  value={item.answer}
+                  placeholder="Answer…"
+                  multiline
+                  className="text-sm leading-relaxed"
+                  style={{ color: "var(--theme-text-muted, #4b5563)" }}
+                  onCommit={v => updateItem(item.id, { answer: v })}
+                />
+              </div>
             </div>
           ))}
 
           <button
             type="button"
             onClick={addItem}
-            className="flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors py-1"
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-blue-500 transition-colors py-1"
           >
             <Plus className="w-4 h-4" />
             Add Question

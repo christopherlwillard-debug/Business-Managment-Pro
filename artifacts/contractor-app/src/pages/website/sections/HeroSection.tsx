@@ -3,6 +3,7 @@ import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
 import { TextStyleToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { ButtonEditor, buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
+import { InlineEditableText } from "../InlineEditableText";
 
 interface HeroContent {
   headline: string;
@@ -24,6 +25,7 @@ interface HeroSectionProps {
   onChange?: (content: HeroContent) => void;
   businessName?: string;
   blockStyle?: BlockStyle;
+  sectionId?: string;
 }
 
 function InlineToggle({
@@ -52,9 +54,10 @@ function InlineToggle({
   );
 }
 
-export function HeroSection({ content, settings, isEditing, onChange, businessName, blockStyle }: HeroSectionProps) {
+export function HeroSection({ content, settings, isEditing, onChange, businessName, blockStyle, sectionId }: HeroSectionProps) {
   const bg = content.bgColor || settings.brandColor || "#1a1a2e";
   const biz = businessName ?? "a contractor business";
+  const sid = sectionId ?? "hero";
 
   const showHeadline = content.showHeadline !== false;
   const showSubheadline = content.showSubheadline !== false;
@@ -86,13 +89,14 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         <div className="relative">
           {showHeadline ? (
             <>
-              <input
-                data-edit-field="headline"
-                className="w-full text-center text-4xl font-bold bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
-                style={headlineCSS}
+              <InlineEditableText
+                id={`${sid}-headline`}
+                as="h1"
                 value={content.headline}
                 placeholder="Your headline here"
-                onChange={e => update({ headline: e.target.value })}
+                className="text-4xl md:text-5xl font-bold mb-1 leading-tight w-full text-white"
+                style={headlineCSS}
+                onCommit={v => update({ headline: v })}
               />
               <TextStyleToolbar
                 style={content.headlineStyle}
@@ -126,13 +130,14 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         <div className="relative">
           {showSubheadline ? (
             <>
-              <input
-                data-edit-field="subheadline"
-                className="w-full text-center text-lg bg-transparent border-b border-white/30 focus:border-white outline-none mb-1 placeholder-white/40"
-                style={subheadlineCSS}
+              <InlineEditableText
+                id={`${sid}-subheadline`}
+                as="p"
                 value={content.subheadline}
                 placeholder="Subheadline text"
-                onChange={e => update({ subheadline: e.target.value })}
+                className="text-lg md:text-xl text-white/80 mb-1 max-w-2xl mx-auto"
+                style={subheadlineCSS}
+                onCommit={v => update({ subheadline: v })}
               />
               <TextStyleToolbar
                 style={content.subheadlineStyle}
@@ -166,13 +171,24 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         <div className="relative">
           {showCta ? (
             <>
-              <input
-                data-edit-field="ctaLabel"
-                className="inline-block text-sm font-semibold px-6 py-3 rounded-full bg-white/20 border border-white/40 focus:border-white outline-none text-center placeholder-white/40"
-                value={content.ctaLabel}
-                placeholder="Button label"
-                onChange={e => update({ ctaLabel: e.target.value })}
-              />
+              <div
+                className={`inline-block ${ctaBtnClasses}`}
+                style={{
+                  backgroundColor: ctaBg,
+                  color: ctaText,
+                  borderRadius: ctaBorderRadius,
+                  fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                  boxShadow: "var(--theme-btn-shadow, none)",
+                }}
+              >
+                <InlineEditableText
+                  id={`${sid}-cta`}
+                  as="span"
+                  value={content.ctaLabel}
+                  placeholder="Button label"
+                  onCommit={v => update({ ctaLabel: v })}
+                />
+              </div>
               <ButtonEditor
                 config={content.ctaButton}
                 onChange={cfg => update({ ctaButton: cfg })}

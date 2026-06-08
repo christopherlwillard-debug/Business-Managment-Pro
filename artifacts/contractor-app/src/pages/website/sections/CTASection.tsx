@@ -1,5 +1,6 @@
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { ButtonEditor, buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
+import { InlineEditableText } from "../InlineEditableText";
 
 export interface CTAContent {
   heading: string;
@@ -27,9 +28,12 @@ interface CTASectionProps {
   isEditing?: boolean;
   onChange?: (content: CTAContent) => void;
   blockStyle?: BlockStyle;
+  sectionId?: string;
 }
 
-export function CTASection({ content, settings, isEditing, onChange, blockStyle }: CTASectionProps) {
+export function CTASection({ content, settings, isEditing, onChange, blockStyle, sectionId }: CTASectionProps) {
+  const sid = sectionId ?? "cta";
+
   function update(patch: Partial<CTAContent>) {
     onChange?.({ ...content, ...patch });
   }
@@ -90,26 +94,28 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle 
   }
 
   return (
-    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-8" isEditing={true}>
-      <div onClick={e => e.stopPropagation()} className="space-y-4">
-        <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wide">CTA Banner</p>
-
-        <input
-          type="text"
-          className="w-full text-xl font-bold bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-2 outline-none focus:border-white/60"
-          placeholder="Call to action headline"
+    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-6 py-16" isEditing={true} defaultBg={settings.brandColor}>
+      <div onClick={e => e.stopPropagation()} className="max-w-2xl mx-auto text-center space-y-4">
+        {/* Heading and subheading — inline editable, styled like the public view */}
+        <InlineEditableText
+          id={`${sid}-heading`}
+          as="h2"
           value={content.heading}
-          onChange={e => update({ heading: e.target.value })}
+          placeholder="Call to action headline"
+          className="text-3xl font-bold text-white"
+          onCommit={v => update({ heading: v })}
         />
-        <input
-          type="text"
-          className="w-full text-sm bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-1.5 outline-none focus:border-white/60"
-          placeholder="Subheading text (optional)"
+        <InlineEditableText
+          id={`${sid}-subheading`}
+          as="p"
           value={content.subheading ?? ""}
-          onChange={e => update({ subheading: e.target.value })}
+          placeholder="Subheading text (optional — double-click to add)"
+          className="text-white/80 text-lg"
+          onCommit={v => update({ subheading: v || undefined })}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Button editors */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-left">
           <div className="bg-white/10 border border-white/20 rounded-xl p-3 space-y-2">
             <p className="text-[10px] font-semibold text-white/60 uppercase tracking-wide">Primary Button</p>
             <input

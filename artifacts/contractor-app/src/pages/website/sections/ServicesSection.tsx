@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
+import { InlineEditableText } from "../InlineEditableText";
 
 interface ServiceItem {
   id: string;
@@ -20,10 +21,12 @@ interface ServicesSectionProps {
   onChange?: (content: ServicesContent) => void;
   businessName?: string;
   blockStyle?: BlockStyle;
+  sectionId?: string;
 }
 
-export function ServicesSection({ content, settings, isEditing, onChange, businessName, blockStyle }: ServicesSectionProps) {
+export function ServicesSection({ content, settings, isEditing, onChange, businessName, blockStyle, sectionId }: ServicesSectionProps) {
   const biz = businessName ?? "a contractor business";
+  const sid = sectionId ?? "services";
 
   function update(patch: Partial<ServicesContent>) {
     onChange?.({ ...content, ...patch });
@@ -49,11 +52,14 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
     >
       <div className="max-w-5xl mx-auto">
         {isEditing ? (
-          <input
-            data-edit-field="heading"
-            className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-10 w-full"
+          <InlineEditableText
+            id={`${sid}-heading`}
+            as="h2"
             value={content.heading}
-            onChange={e => update({ heading: e.target.value })}
+            placeholder="Section heading"
+            className="text-3xl font-bold mb-10 text-center w-full"
+            style={{ color: "var(--theme-text, #111827)" }}
+            onCommit={v => update({ heading: v })}
           />
         ) : (
           <h2 data-edit-field="heading" className="text-3xl font-bold mb-10 text-center" style={{ color: "var(--theme-text, #111827)" }}>{content.heading}</h2>
@@ -70,24 +76,39 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
                 border: "var(--theme-card-border, 1px solid #f3f4f6)",
               }}
             >
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={() => removeItem(item.id)}
+                  className="absolute top-2 right-2 p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              {/* Icon block — always visible so editing mode looks like the final site */}
+              <div className="w-10 h-10 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: (settings.accentColor ?? settings.brandColor) + "20" }}>
+                <div className="w-5 h-5 rounded-sm" style={{ backgroundColor: settings.accentColor ?? settings.brandColor }} />
+              </div>
               {isEditing ? (
                 <>
-                  <button
-                    onClick={() => removeItem(item.id)}
-                    className="absolute top-2 right-2 p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <input
-                    className="font-semibold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 focus:border-blue-500 outline-none mb-2 w-full"
+                  <InlineEditableText
+                    id={`${sid}-svc-${item.id}-title`}
+                    as="h3"
                     value={item.title}
-                    onChange={e => updateItem(item.id, { title: e.target.value })}
+                    placeholder="Service title"
+                    className="font-semibold mb-2"
+                    style={{ color: settings.secondaryColor || "#111827" }}
+                    onCommit={v => updateItem(item.id, { title: v })}
                   />
-                  <textarea
-                    className="text-sm text-gray-600 dark:text-gray-300 bg-transparent border border-gray-200 focus:border-blue-500 outline-none resize-none w-full rounded p-1"
+                  <InlineEditableText
+                    id={`${sid}-svc-${item.id}-desc`}
+                    as="p"
                     value={item.description}
-                    rows={3}
-                    onChange={e => updateItem(item.id, { description: e.target.value })}
+                    placeholder="Describe this service…"
+                    multiline
+                    className="text-sm"
+                    style={{ color: "var(--theme-text-muted, #4b5563)" }}
+                    onCommit={v => updateItem(item.id, { description: v })}
                   />
                   <AiCopyPopover
                     label={item.title}
@@ -97,9 +118,6 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
                 </>
               ) : (
                 <>
-                  <div className="w-10 h-10 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: (settings.accentColor ?? settings.brandColor) + "20" }}>
-                    <div className="w-5 h-5 rounded-sm" style={{ backgroundColor: settings.accentColor ?? settings.brandColor }} />
-                  </div>
                   <h3 className="font-semibold mb-2" style={{ color: settings.secondaryColor || "#111827" }}>{item.title}</h3>
                   <p className="text-sm" style={{ color: "var(--theme-text-muted, #4b5563)" }}>{item.description}</p>
                 </>
@@ -108,6 +126,7 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
           ))}
           {isEditing && (
             <button
+              type="button"
               onClick={addItem}
               className="flex flex-col items-center justify-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border-2 border-dashed border-gray-200 dark:border-gray-600 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
             >

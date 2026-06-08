@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
+import { InlineEditableText } from "../InlineEditableText";
 
 export interface StatItem {
   id: string;
@@ -35,10 +36,12 @@ interface StatsSectionProps {
   isEditing?: boolean;
   onChange?: (content: StatsContent) => void;
   blockStyle?: BlockStyle;
+  sectionId?: string;
 }
 
-export function StatsSection({ content, settings, isEditing, onChange, blockStyle }: StatsSectionProps) {
+export function StatsSection({ content, settings, isEditing, onChange, blockStyle, sectionId }: StatsSectionProps) {
   const stats = content.stats ?? [];
+  const sid = sectionId ?? "stats";
 
   function update(patch: Partial<StatsContent>) {
     onChange?.({ ...content, ...patch });
@@ -91,48 +94,57 @@ export function StatsSection({ content, settings, isEditing, onChange, blockStyl
   }
 
   return (
-    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-8" isEditing={true}>
-      <div onClick={e => e.stopPropagation()} className="space-y-4">
-        <div className="space-y-2">
-          <input
-            type="text"
-            className="w-full text-lg font-bold bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-2 outline-none focus:border-white/60"
-            placeholder="Section heading (optional)"
+    <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-6 py-12" isEditing={true}>
+      <div onClick={e => e.stopPropagation()} className="max-w-5xl mx-auto space-y-6">
+        {/* Section headings */}
+        <div className="text-center space-y-1">
+          <InlineEditableText
+            id={`${sid}-heading`}
+            as="h2"
             value={content.heading ?? ""}
-            onChange={e => update({ heading: e.target.value })}
+            placeholder="Section heading (optional)"
+            className="text-3xl font-bold"
+            style={{ color: "var(--theme-text, #111827)" }}
+            onCommit={v => update({ heading: v || undefined })}
           />
-          <input
-            type="text"
-            className="w-full text-sm bg-white/10 border border-white/20 text-white placeholder-white/40 rounded-lg px-3 py-1.5 outline-none focus:border-white/60"
-            placeholder="Subheading (optional)"
+          <InlineEditableText
+            id={`${sid}-subheading`}
+            as="p"
             value={content.subheading ?? ""}
-            onChange={e => update({ subheading: e.target.value })}
+            placeholder="Subheading (optional)"
+            style={{ color: "var(--theme-text-muted, #6b7280)" }}
+            onCommit={v => update({ subheading: v || undefined })}
           />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Stats grid — looks like the public view with InlineEditableText */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           {stats.map(stat => (
-            <div key={stat.id} className="bg-white/10 border border-white/20 rounded-xl p-3 space-y-2 relative">
+            <div key={stat.id} className="relative text-center group">
               <button
                 type="button"
                 onClick={() => removeStat(stat.id)}
-                className="absolute top-2 right-2 p-0.5 text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                className="absolute -top-2 -right-2 p-0.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 z-10 bg-white shadow-sm border border-gray-100"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
-              <input
-                type="text"
-                className="w-full text-xl font-bold bg-white/10 border border-white/20 text-white placeholder-white/40 rounded px-2 py-1 outline-none focus:border-white/50 text-center"
-                placeholder="500+"
+              <InlineEditableText
+                id={`${sid}-stat-${stat.id}-value`}
+                as="div"
                 value={stat.value}
-                onChange={e => updateStat(stat.id, { value: e.target.value })}
+                placeholder="500+"
+                className="text-4xl font-bold mb-1 text-center"
+                style={{ color: settings.brandColor }}
+                onCommit={v => updateStat(stat.id, { value: v })}
               />
-              <input
-                type="text"
-                className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/40 rounded px-2 py-1 outline-none focus:border-white/50 text-center"
-                placeholder="Label"
+              <InlineEditableText
+                id={`${sid}-stat-${stat.id}-label`}
+                as="div"
                 value={stat.label}
-                onChange={e => updateStat(stat.id, { label: e.target.value })}
+                placeholder="Stat Label"
+                className="text-sm font-medium uppercase tracking-wide text-center"
+                style={{ color: "var(--theme-text-muted, #4b5563)" }}
+                onCommit={v => updateStat(stat.id, { label: v })}
               />
             </div>
           ))}
@@ -141,7 +153,7 @@ export function StatsSection({ content, settings, isEditing, onChange, blockStyl
             <button
               type="button"
               onClick={addStat}
-              className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-white/30 rounded-xl p-4 text-white/50 hover:text-white hover:border-white/60 transition-colors min-h-[90px]"
+              className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-200 rounded-xl p-4 text-gray-400 hover:text-blue-500 hover:border-blue-300 transition-colors min-h-[80px] bg-gray-50"
             >
               <Plus className="w-5 h-5" />
               <span className="text-xs">Add Stat</span>

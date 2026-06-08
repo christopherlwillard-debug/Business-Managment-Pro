@@ -3,6 +3,7 @@ import { ImagePlus, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
 import { TextStyleToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
+import { InlineEditableText } from "../InlineEditableText";
 
 const SHADOW_CLASSES: Record<string, string> = {
   none: "shadow-none",
@@ -38,6 +39,7 @@ interface AboutSectionProps {
   isPhotoUploading?: boolean;
   businessName?: string;
   blockStyle?: BlockStyle;
+  sectionId?: string;
 }
 
 function PhotoSettingsPanel({
@@ -128,8 +130,9 @@ function PhotoSettingsPanel({
   );
 }
 
-export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading, businessName, blockStyle }: AboutSectionProps) {
+export function AboutSection({ content, settings, isEditing, onChange, onPhotoUpload, isPhotoUploading, businessName, blockStyle, sectionId }: AboutSectionProps) {
   const biz = businessName ?? "a contractor business";
+  const sid = sectionId ?? "about";
   const ps = content.photoSettings ?? {};
 
   function update(patch: Partial<AboutContent>) {
@@ -154,25 +157,29 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
         <div className="flex-1">
           {isEditing ? (
             <>
-              <input
-                data-edit-field="heading"
-                className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-1 w-full"
-                style={textStyleToCSS(content.headingStyle)}
+              <InlineEditableText
+                id={`${sid}-heading`}
+                as="h2"
                 value={content.heading}
-                onChange={e => update({ heading: e.target.value })}
+                placeholder="Section heading"
+                className="text-3xl font-bold mb-1 w-full"
+                style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
+                onCommit={v => update({ heading: v })}
               />
               <TextStyleToolbar
                 dark={false}
                 style={content.headingStyle}
                 onChange={s => update({ headingStyle: s })}
               />
-              <textarea
-                data-edit-field="body"
-                className="text-gray-600 dark:text-gray-300 bg-transparent border border-gray-200 focus:border-blue-500 outline-none resize-none w-full rounded p-2 text-sm leading-relaxed mt-1"
-                style={textStyleToCSS(content.bodyStyle)}
+              <InlineEditableText
+                id={`${sid}-body`}
+                as="p"
                 value={content.body}
-                rows={6}
-                onChange={e => update({ body: e.target.value })}
+                placeholder="Write your About Us paragraph here…"
+                multiline
+                className="leading-relaxed mt-2 w-full"
+                style={{ color: "var(--theme-text-muted, #4b5563)", ...textStyleToCSS(content.bodyStyle) }}
+                onCommit={v => update({ body: v })}
               />
               <TextStyleToolbar
                 dark={false}

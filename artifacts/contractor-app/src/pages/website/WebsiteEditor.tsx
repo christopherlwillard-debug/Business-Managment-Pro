@@ -53,6 +53,7 @@ import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
 import { useEditorHistory } from "./useEditorHistory";
 import { EditableWrapper } from "./EditableWrapper";
+import { useInlineEdit, InlineEditContext, InlineEditStatus } from "./InlineEditContext";
 import { nanoid } from "nanoid";
 import type { SiteSettings } from "./website-types";
 
@@ -152,9 +153,9 @@ function renderSection(
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
   switch (section.type) {
-    case "hero":    return <HeroSection {...props} businessName={extras?.businessName} />;
-    case "services": return <ServicesSection {...props} businessName={extras?.businessName} />;
-    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} />;
+    case "hero":    return <HeroSection {...props} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
+    case "services": return <ServicesSection {...props} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
+    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
     case "footer":  return <FooterSection {...props} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
     case "image":   return <ImageSection {...props} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
@@ -175,10 +176,10 @@ function renderSection(
         uploadingImageKeys={extras?.uploadingColumnImageKeys}
       />
     );
-    case "testimonials": return <TestimonialsSection {...props} />;
-    case "faq": return <FAQSection {...props} />;
-    case "cta": return <CTASection {...props} />;
-    case "stats": return <StatsSection {...props} />;
+    case "testimonials": return <TestimonialsSection {...props} sectionId={extras?.sectionId} />;
+    case "faq": return <FAQSection {...props} sectionId={extras?.sectionId} />;
+    case "cta": return <CTASection {...props} sectionId={extras?.sectionId} />;
+    case "stats": return <StatsSection {...props} sectionId={extras?.sectionId} />;
     case "text": return <TextSection {...props} />;
     case "gallery": return (
       <ImageGallerySection
@@ -865,6 +866,7 @@ function WebsiteEditor() {
   const [addSectionTab, setAddSectionTab] = useState<"sections" | "templates">("sections");
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
+  const { contextValue, editingId, editingIdRef } = useInlineEdit();
   const pagesRef = useRef<SitePage[]>([]);
   const settingsRef = useRef<SiteSettings>({ brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" });
   const activePageIdRef = useRef<string>("home");
@@ -1052,6 +1054,7 @@ function WebsiteEditor() {
     function onKeyDown(e: KeyboardEvent) {
       const ctrl = e.ctrlKey || e.metaKey;
       if (!ctrl) return;
+      if (editingIdRef.current) return;
       if (e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         const prev = history.undo({ sections: pagesRef.current, settings: settingsRef.current });
@@ -2545,6 +2548,7 @@ function WebsiteEditor() {
         >
           {renderSection(s, settings, isActive, content => updateContent(s.id, content), {
             ...sectionExtras,
+            sectionId: s.id,
             selectedComponentId: selectedComponentState?.sectionId === s.id ? selectedComponentState.componentId : null,
             onSelectComponent: (id: string | null) => {
               if (id) {
@@ -2591,22 +2595,24 @@ function WebsiteEditor() {
     }
 
     return (
-      <div style={previewBodyStyle}>
-        {settings.headingFont && (
-          <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
-        )}
-        {headerSec && renderWrapped(headerSec, { isHeader: true })}
-        {canvasSections.length === 0 && !headerSec && (
-          <div className="py-20 text-center text-muted-foreground text-sm">
-            Add a section to start building your page.
-          </div>
-        )}
-        {canvasSections.flatMap((s, idx) => [
-          addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : canvasSections[idx - 1]?.id, `ins-${idx}`),
-          renderWrapped(s, { isFirst: idx === 0, isLast: idx === canvasSections.length - 1 }),
-        ])}
-        {canvasSections.length > 0 && addBetween(canvasSections[canvasSections.length - 1]?.id, "ins-end")}
-      </div>
+      <InlineEditContext.Provider value={contextValue}>
+        <div style={previewBodyStyle}>
+          {settings.headingFont && (
+            <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+          )}
+          {headerSec && renderWrapped(headerSec, { isHeader: true })}
+          {canvasSections.length === 0 && !headerSec && (
+            <div className="py-20 text-center text-muted-foreground text-sm">
+              Add a section to start building your page.
+            </div>
+          )}
+          {canvasSections.flatMap((s, idx) => [
+            addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : canvasSections[idx - 1]?.id, `ins-${idx}`),
+            renderWrapped(s, { isFirst: idx === 0, isLast: idx === canvasSections.length - 1 }),
+          ])}
+          {canvasSections.length > 0 && addBetween(canvasSections[canvasSections.length - 1]?.id, "ins-end")}
+        </div>
+      </InlineEditContext.Provider>
     );
   }
 
@@ -2855,6 +2861,9 @@ function WebsiteEditor() {
             </button>
           ))}
         </div>
+
+        {/* Inline edit status badge */}
+        <InlineEditStatus editingId={editingId} />
 
         {/* Undo / Redo */}
         <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
