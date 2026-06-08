@@ -1,0 +1,167 @@
+And focus entirely on editor experience.
+
+If I were you, my next roadmap would be:
+
+Phase 1: Make Editing Obvious
+
+(#755)
+
+The builder should answer these questions instantly:
+
+What am I editing?
+Where do I click?
+What is selected?
+How do I delete it?
+How do I duplicate it?
+
+If a user has to think, the editor still needs work.
+
+Phase 2: Make Editing Fast
+
+After #755 I'd create:
+
+#756 Quick Actions System
+
+Every component gets:
+
+Right click menu
+Duplicate
+Copy
+Paste
+Hide
+Delete
+Copy styles
+Paste styles
+
+No sidebar hunting.
+
+Phase 3: True Inline Editing
+
+Right now you're still editing through forms.
+
+What you eventually want:
+
+Click heading
+→ Type
+
+Click paragraph
+→ Type
+
+Click button text
+→ Type
+
+Just like Google Docs.
+
+This is probably the single biggest improvement after #755.
+
+Phase 4: Better Visual Editing
+
+When you click something:
+
+Show:
+
+Blue outline
+Component name
+Quick toolbar
+
+Example:
+
+"Paragraph"
+
+with:
+
+Edit
+Duplicate
+Delete
+
+right there.
+
+No scrolling through settings.
+
+Phase 5: Better Structure Tree
+
+Current:
+
+Pages
+Sections
+
+Future:
+
+Home
+
+Header
+Hero
+Heading
+Paragraph
+Button
+Services
+Footer
+
+Users should always know where they are.
+
+Phase 6: Inspector Panel
+
+Make the right sidebar feel like professional software.
+
+Tabs:
+
+Content
+
+Text
+Links
+Images
+
+Style
+
+Colors
+Fonts
+Spacing
+
+Layout
+
+Width
+Columns
+Alignment
+
+Advanced
+
+Visibility
+Animation
+Custom classes
+
+No giant scrolling panel.
+
+Phase 7: Undo Everything
+
+This is huge.
+
+Every action:
+
+Text edit
+Delete
+Add section
+Replace image
+
+should be undoable.
+
+Users become much less afraid to experiment.
+
+If you ask me what will make the builder feel dramatically better right now:
+#755 Universal Editing Framework
+Inline text editing
+Better structure tree
+Inspector tabs instead of giant scrolling panels
+Right-click context menus
+Undo/Redo
+
+Those six things will improve the experience far more than adding another 50 templates or 20 new section types.
+
+The biggest complaint you've had through this whole process hasn't been:
+
+"I can't build enough things."
+
+It's been:
+
+"I can't figure out how to edit the things that are already there."
+
+That's the problem I'd solve first. Once the editor feels smooth, everything else becomes much easier to build on top of it.

@@ -1,0 +1,201 @@
+import { type ReactNode } from "react";
+import {
+  ChevronUp, ChevronDown, Copy, EyeOff, Plus, Trash2, Lock,
+} from "lucide-react";
+
+/**
+ * EditableWrapper — the shared architectural foundation for every editable
+ * object in the website editor canvas: sections, rows, columns, and
+ * individual components. All hover/selection/toolbar state is driven here —
+ * never re-implemented per-section or per-component.
+ *
+ * Usage: wrap any editable canvas element with this component and pass the
+ * relevant callbacks. Future section types automatically inherit all
+ * interactions with zero custom implementation.
+ */
+export interface EditableWrapperProps {
+  /** Stable unique id — used for data-section-canvas-id */
+  id: string;
+  /** Human-readable type label shown in the badge (e.g. "Hero Section") */
+  label: string;
+  /** Whether this object is currently selected / active */
+  isSelected: boolean;
+  /** When true the canvas renders it dimmed and with a "Hidden" badge */
+  isHidden?: boolean;
+  /** Suppresses move-up when the item is first in its container */
+  isFirst?: boolean;
+  /** Suppresses move-down when the item is last in its container */
+  isLast?: boolean;
+  /**
+   * Marks the wrapper as the locked header section.
+   * Hides move/hide/delete controls and shows "Edit nav & CTA" hint.
+   */
+  isHeader?: boolean;
+  /** Optional extra toolbar buttons inserted before the Delete button */
+  extraToolbar?: ReactNode;
+  children: ReactNode;
+  /** Called when the user clicks the element to select it */
+  onSelect: (e: React.MouseEvent) => void;
+  onDuplicate?: () => void;
+  onToggleHide?: () => void;
+  onDelete?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onInsertBelow?: () => void;
+}
+
+export function EditableWrapper({
+  id,
+  label,
+  isSelected,
+  isHidden,
+  isFirst,
+  isLast,
+  isHeader,
+  extraToolbar,
+  children,
+  onSelect,
+  onDuplicate,
+  onToggleHide,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  onInsertBelow,
+}: EditableWrapperProps) {
+  return (
+    <div
+      data-section-canvas-id={id}
+      className={`group/sec relative cursor-pointer transition-all ${
+        isSelected
+          ? "ring-2 ring-inset ring-primary/60"
+          : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
+      } ${isHidden ? "opacity-50" : ""}`}
+      onClick={onSelect}
+    >
+      {/* Type label badge — faint on hover, solid primary when selected */}
+      <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">
+        <span
+          className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 transition-all duration-150 ${
+            isSelected
+              ? "bg-primary text-primary-foreground opacity-100"
+              : "bg-foreground/70 text-background opacity-0 group-hover/sec:opacity-100"
+          }`}
+        >
+          {isHeader && <Lock className="w-2.5 h-2.5" />}
+          {label}
+        </span>
+
+        {/* Hint text for the locked header */}
+        {isSelected && isHeader && (
+          <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
+            Edit nav &amp; CTA
+          </span>
+        )}
+
+        {/* Hidden-state badge */}
+        {isHidden && (
+          <span className="text-[10px] bg-orange-500/80 text-white px-1.5 py-0.5 rounded flex items-center gap-0.5">
+            <EyeOff className="w-2.5 h-2.5" />
+            Hidden
+          </span>
+        )}
+      </div>
+
+      {/* Floating action toolbar — invisible until hover/selection; not shown for the locked header */}
+      {!isHeader && (
+        <div
+          className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity ${
+            isSelected ? "opacity-100" : "opacity-0 group-hover/sec:opacity-100"
+          }`}
+        >
+          {/* Move controls */}
+          {onMoveUp && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onMoveUp(); }}
+              disabled={isFirst}
+              title="Move up"
+              className={`p-1 rounded text-white transition-colors ${
+                isFirst ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"
+              }`}
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onMoveDown && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onMoveDown(); }}
+              disabled={isLast}
+              title="Move down"
+              className={`p-1 rounded text-white transition-colors ${
+                isLast ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"
+              }`}
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Separator between move controls and action controls */}
+          {(onMoveUp || onMoveDown) && <div className="w-px h-3.5 bg-white/20 mx-0.5" />}
+
+          {/* Duplicate */}
+          {onDuplicate && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onDuplicate(); }}
+              title="Duplicate"
+              className="p-1 rounded text-white hover:bg-white/20 transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Hide / Show */}
+          {onToggleHide && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onToggleHide(); }}
+              title={isHidden ? "Show section" : "Hide section"}
+              className="p-1 rounded text-white/70 hover:bg-white/20 hover:text-white transition-colors"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Add section below */}
+          {onInsertBelow && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onInsertBelow(); }}
+              title="Add section below"
+              className="p-1 rounded text-white hover:bg-white/20 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Extra toolbar items (e.g. image Replace button) */}
+          {extraToolbar}
+
+          {/* Delete */}
+          {onDelete && (
+            <>
+              <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onDelete(); }}
+                title="Delete (Del)"
+                className="p-1 rounded text-red-300 hover:bg-red-500/20 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {children}
+    </div>
+  );
+}

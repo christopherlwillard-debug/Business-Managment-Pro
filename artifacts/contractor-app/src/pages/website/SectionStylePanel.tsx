@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ImagePlus, Loader2, X, Images, ChevronDown, ChevronUp } from "lucide-react";
+import { ImagePlus, Loader2, X, Images, ChevronDown, ChevronUp, Copy, ClipboardPaste } from "lucide-react";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 function SliderRow({
@@ -89,6 +89,12 @@ interface SectionStylePanelProps {
   onBgImageUpload?: (file: File) => void;
   isBgUploading?: boolean;
   onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+  /** The previously copied style (if any) — enables Paste button */
+  copiedStyle?: BlockStyle | null;
+  /** Called when the user clicks Copy Styles */
+  onCopyStyle?: () => void;
+  /** Called when the user clicks Paste Styles */
+  onPasteStyle?: () => void;
 }
 
 export function SectionStylePanel({
@@ -99,6 +105,9 @@ export function SectionStylePanel({
   onBgImageUpload,
   isBgUploading,
   onOpenMediaLibrary,
+  copiedStyle,
+  onCopyStyle,
+  onPasteStyle,
 }: SectionStylePanelProps) {
   const [tab, setTab] = useState<"style" | "advanced">("style");
 
@@ -133,8 +142,39 @@ export function SectionStylePanel({
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-3 border-b border-border flex-shrink-0">
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Section Style</p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">{SECTION_LABELS[sectionType] ?? sectionType}</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Section Style</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{SECTION_LABELS[sectionType] ?? sectionType}</p>
+          </div>
+          <div className="flex items-center gap-0.5">
+            {onCopyStyle && (
+              <button
+                type="button"
+                onClick={onCopyStyle}
+                title="Copy styles"
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onPasteStyle && (
+              <button
+                type="button"
+                onClick={onPasteStyle}
+                disabled={!copiedStyle}
+                title={copiedStyle ? "Paste styles" : "No styles copied yet"}
+                className={`p-1.5 rounded transition-colors ${
+                  copiedStyle
+                    ? "hover:bg-muted text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground/30 cursor-not-allowed"
+                }`}
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="flex border-b border-border flex-shrink-0">

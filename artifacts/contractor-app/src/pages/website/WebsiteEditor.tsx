@@ -51,7 +51,9 @@ import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
 import { useEditorHistory } from "./useEditorHistory";
+import { EditableWrapper } from "./EditableWrapper";
 import { nanoid } from "nanoid";
+import type { BlockStyle } from "./sections/BlockStyleWrapper";
 import type { SiteSettings } from "./website-types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -875,6 +877,7 @@ function WebsiteEditor() {
   const pendingFocusFieldRef = useRef<string | null>(null);
   const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
   const [faviconUploading, setFaviconUploading] = useState(false);
+  const [copiedBlockStyle, setCopiedBlockStyle] = useState<BlockStyle | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
@@ -1051,20 +1054,48 @@ function WebsiteEditor() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Delete key shortcut — delete active section (skips if typing in an input)
+  // Non-ctrl keyboard shortcuts — Delete, Escape, Enter (skips when typing in an input/textarea)
   useEffect(() => {
-    function onDeleteKey(e: KeyboardEvent) {
-      if (e.key !== "Delete") return;
+    function onNavKey(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey) return;
       const tag = (document.activeElement as HTMLElement)?.tagName ?? "";
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
-      if ((document.activeElement as HTMLElement)?.isContentEditable) return;
-      if (!activeSection) return;
-      e.preventDefault();
-      handleDeleteSectionClick(activeSection);
+      const isTyping =
+        ["INPUT", "TEXTAREA", "SELECT"].includes(tag) ||
+        (document.activeElement as HTMLElement)?.isContentEditable;
+
+      if (e.key === "Escape") {
+        // Deselect everything — always fires even when typing (mirrors Escape behavior in editors)
+        setActiveSection(null);
+        setSelectedComponentState(null);
+        setSelectedRowState(null);
+        return;
+      }
+      if (isTyping) return;
+      if (e.key === "Delete" && activeSection) {
+        e.preventDefault();
+        handleDeleteSectionClick(activeSection);
+      }
     }
-    window.addEventListener("keydown", onDeleteKey);
-    return () => window.removeEventListener("keydown", onDeleteKey);
+    window.addEventListener("keydown", onNavKey);
+    return () => window.removeEventListener("keydown", onNavKey);
   }, [activeSection, sections]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * selectSectionAndScroll — sets the active section AND scrolls the canvas
+   * to make it visible. Used by the structure tree (tree→canvas sync) and
+   * wherever we want bidirectional highlighting.
+   */
+  function selectSectionAndScroll(id: string | null) {
+    setActiveSection(id);
+    setSelectedComponentState(null);
+    setSelectedRowState(null);
+    if (!id) return;
+    setTimeout(() => {
+      document
+        .querySelector(`[data-section-canvas-id="${id}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 40);
+  }
 
   const { data: config, isLoading } = useQuery<WebsiteConfig>({
     queryKey: ["website-config", bizId],
@@ -2224,18 +2255,18 @@ function WebsiteEditor() {
       const isActive = activeSection === s.id;
       const { isHeader = false, isFirst = false, isLast = false } = opts;
       return (
-        <div
+        <EditableWrapper
           key={s.id}
-          data-section-canvas-id={s.id}
-          className={`group/sec relative cursor-pointer ${
-            isActive
-              ? "ring-2 ring-inset ring-primary/60"
-              : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
-          }`}
-          onClick={e => {
+          id={s.id}
+          label={isHeader ? "Header" : SECTION_LABELS[s.type]}
+          isSelected={isActive}
+          isHidden={!s.enabled}
+          isFirst={isFirst}
+          isLast={isLast}
+          isHeader={isHeader}
+          onSelect={e => {
             e.stopPropagation();
             const tgt = e.target as HTMLElement;
-            // Prevent anchor links from navigating while inside the editor
             if (tgt.closest("a[href]")) e.preventDefault();
             if (isActive && tgt.closest("input, textarea, select, button, a[href], [role=button]")) return;
             if (!isActive) {
@@ -2244,74 +2275,13 @@ function WebsiteEditor() {
               setActiveSection(s.id);
             }
           }}
+          onDuplicate={!isHeader ? () => duplicateSection(s.id) : undefined}
+          onToggleHide={!isHeader ? () => toggleSection(s.id) : undefined}
+          onDelete={!isHeader ? () => handleDeleteSectionClick(s.id) : undefined}
+          onMoveUp={!isHeader ? () => moveSection(s.id, "up") : undefined}
+          onMoveDown={!isHeader ? () => moveSection(s.id, "down") : undefined}
+          onInsertBelow={!isHeader ? () => { setInsertAfterSectionId(s.id); setShowAddSection(true); } : undefined}
         >
-          {/* Type label badge — muted on hover, primary when active */}
-          <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 transition-all duration-150 ${
-              isActive
-                ? "bg-primary text-primary-foreground opacity-100"
-                : "bg-foreground/70 text-background opacity-0 group-hover/sec:opacity-100"
-            }`}>
-              {isHeader && <Lock className="w-2.5 h-2.5" />}
-              {isHeader ? "Header" : SECTION_LABELS[s.type]}
-            </span>
-            {isActive && isHeader && (
-              <span className="text-[10px] text-primary-foreground/70 bg-primary/60 px-1.5 py-0.5 rounded">
-                Edit nav &amp; CTA
-              </span>
-            )}
-          </div>
-          {/* Floating action bar — visible on hover or when active (non-header only) */}
-          {!isHeader && (
-            <div className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity ${
-              isActive ? "opacity-100" : "opacity-0 group-hover/sec:opacity-100"
-            }`}>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); moveSection(s.id, "up"); }}
-                disabled={isFirst}
-                title="Move up"
-                className={`p-1 rounded text-white transition-colors ${isFirst ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"}`}
-              ><ChevronUp className="w-3.5 h-3.5" /></button>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); moveSection(s.id, "down"); }}
-                disabled={isLast}
-                title="Move down"
-                className={`p-1 rounded text-white transition-colors ${isLast ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"}`}
-              ><ChevronDown className="w-3.5 h-3.5" /></button>
-              <div className="w-px h-3.5 bg-white/20 mx-0.5" />
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); duplicateSection(s.id); }}
-                title="Duplicate section"
-                className="p-1 rounded text-white hover:bg-white/20 transition-colors"
-              ><Copy className="w-3.5 h-3.5" /></button>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); toggleSection(s.id); }}
-                title="Hide section"
-                className="p-1 rounded text-white/70 hover:bg-white/20 hover:text-white transition-colors"
-              ><EyeOff className="w-3.5 h-3.5" /></button>
-              <button
-                type="button"
-                onClick={e => {
-                  e.stopPropagation();
-                  setInsertAfterSectionId(s.id);
-                  setShowAddSection(true);
-                }}
-                title="Add section below"
-                className="p-1 rounded text-white hover:bg-white/20 transition-colors"
-              ><Plus className="w-3.5 h-3.5" /></button>
-              <div className="w-px h-3.5 bg-white/20 mx-0.5" />
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); handleDeleteSectionClick(s.id); }}
-                title="Delete section (Del)"
-                className="p-1 rounded text-red-300 hover:bg-red-500/20 transition-colors"
-              ><Trash2 className="w-3.5 h-3.5" /></button>
-            </div>
-          )}
           {renderSection(s, settings, isActive, content => updateContent(s.id, content), {
             ...sectionExtras,
             selectedComponentId: selectedComponentState?.sectionId === s.id ? selectedComponentState.componentId : null,
@@ -2331,7 +2301,7 @@ function WebsiteEditor() {
               );
             },
           })}
-        </div>
+        </EditableWrapper>
       );
     }
 
@@ -2891,7 +2861,7 @@ function WebsiteEditor() {
                 switchPage,
                 editingPageId, setEditingPageId, editingPageName, setEditingPageName,
                 renamePage, deletePage, setPageTemplatePickerMode, setShowPageTemplatePicker,
-                sensors, handleDragEnd, toggleSection, setActiveSection, sections,
+                sensors, handleDragEnd, toggleSection, setActiveSection: selectSectionAndScroll, sections,
                 setInsertAfterSectionId, setShowAddSection, showAddSection,
                 addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
               };
@@ -3634,6 +3604,14 @@ function WebsiteEditor() {
                       onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                       isBgUploading={!!bgUploading[sec.id]}
                       onOpenMediaLibrary={openMediaLibrary}
+                      copiedStyle={copiedBlockStyle}
+                      onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                      onPasteStyle={() => {
+                        if (copiedBlockStyle) {
+                          updateBlockStyle(sec.id, copiedBlockStyle);
+                          toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                        }
+                      }}
                     />
                   </div>
                 </div>
@@ -3667,6 +3645,14 @@ function WebsiteEditor() {
                     onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                     isBgUploading={!!bgUploading[sec.id]}
                     onOpenMediaLibrary={openMediaLibrary}
+                    copiedStyle={copiedBlockStyle}
+                    onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                    onPasteStyle={() => {
+                      if (copiedBlockStyle) {
+                        updateBlockStyle(sec.id, copiedBlockStyle);
+                        toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -3723,6 +3709,14 @@ function WebsiteEditor() {
                   onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                   isBgUploading={!!bgUploading[sec.id]}
                   onOpenMediaLibrary={openMediaLibrary}
+                  copiedStyle={copiedBlockStyle}
+                  onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                  onPasteStyle={() => {
+                    if (copiedBlockStyle) {
+                      updateBlockStyle(sec.id, copiedBlockStyle);
+                      toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                    }
+                  }}
                 />
               </div>
             );
