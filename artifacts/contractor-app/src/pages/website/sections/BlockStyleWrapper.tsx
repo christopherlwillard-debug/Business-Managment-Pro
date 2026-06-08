@@ -17,7 +17,12 @@ export interface BlockStyle {
   marginTop?: number;
   marginBottom?: number;
   minHeight?: number;
+  maxWidth?: number;
+  alignment?: "left" | "center" | "right" | "full";
   borderRadius?: number;
+  borderWidth?: number;
+  borderStyle?: "none" | "solid" | "dashed" | "dotted";
+  borderColor?: string;
   shadow?: "none" | "sm" | "md" | "lg" | "xl";
   animation?: "none" | "fadeIn" | "slideUp" | "slideLeft";
   hideOnMobile?: boolean;
@@ -25,6 +30,14 @@ export interface BlockStyle {
   customClass?: string;
   anchorId?: string;
   customAttrs?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  lineHeight?: number;
+  letterSpacing?: number;
+  textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
+  textColor?: string;
+  accentColor?: string;
 }
 
 const SHADOW_MAP: Record<string, string> = {
@@ -105,7 +118,22 @@ export function BlockStyleWrapper({
   if (bs.marginTop !== undefined) style.marginTop = bs.marginTop;
   if (bs.marginBottom !== undefined) style.marginBottom = bs.marginBottom;
   if (bs.minHeight) style.minHeight = bs.minHeight;
+  if (bs.maxWidth) style.maxWidth = bs.maxWidth;
+  if (bs.alignment === "center") { style.marginLeft = "auto"; style.marginRight = "auto"; }
+  if (bs.alignment && bs.alignment !== "full") style.textAlign = bs.alignment as React.CSSProperties["textAlign"];
   if (bs.borderRadius !== undefined) style.borderRadius = bs.borderRadius;
+  if (bs.borderWidth) {
+    style.borderWidth = bs.borderWidth;
+    style.borderStyle = (bs.borderStyle && bs.borderStyle !== "none") ? bs.borderStyle : "solid";
+    if (bs.borderColor) style.borderColor = bs.borderColor;
+  }
+  if (bs.textColor) style.color = bs.textColor;
+  if (bs.fontFamily) style.fontFamily = bs.fontFamily;
+  if (bs.fontSize) style.fontSize = bs.fontSize;
+  if (bs.fontWeight) style.fontWeight = bs.fontWeight;
+  if (bs.lineHeight) style.lineHeight = bs.lineHeight;
+  if (bs.letterSpacing !== undefined) style.letterSpacing = bs.letterSpacing;
+  if (bs.textTransform && bs.textTransform !== "none") style.textTransform = bs.textTransform as React.CSSProperties["textTransform"];
 
   const shadowClass = bs.shadow && bs.shadow !== "none" ? (SHADOW_MAP[bs.shadow] ?? "") : "";
   const hideClasses = [

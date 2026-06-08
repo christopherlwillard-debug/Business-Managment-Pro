@@ -37,7 +37,7 @@ export interface InspectorPanelProps {
   copiedStyle: BlockStyle | null;
   onCopyStyle: () => void;
   onPasteStyle: () => void;
-  onApplyStyleTo: (scope: "page" | "site", style: BlockStyle) => void;
+  onApplyStyleTo: (scope: "section" | "page" | "site", style: BlockStyle) => void;
   onToggleSection: () => void;
   onDuplicateSection: () => void;
   onDeleteSection: () => void;
@@ -125,22 +125,31 @@ function AccordionBlock({
 }
 
 function FieldWrap({
-  fieldId, label, onPin, pinned, children,
+  fieldId, label, onPin, pinned, onReset, children,
 }: {
   fieldId: string; label: string; onPin: (id: string) => void;
-  pinned: boolean; children: React.ReactNode;
+  pinned: boolean; onReset?: () => void; children: React.ReactNode;
 }) {
   return (
     <div className="group mb-3">
       <div className="flex items-center justify-between mb-1.5">
         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{label}</label>
-        <button type="button" onClick={() => onPin(fieldId)}
-          title={pinned ? "Unpin" : "Pin to Quick tab"}
-          className={`opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all ${
-            pinned ? "opacity-100 text-amber-500 hover:text-amber-600" : "text-muted-foreground hover:text-foreground"
-          }`}>
-          <Star className="w-2.5 h-2.5" fill={pinned ? "currentColor" : "none"} />
-        </button>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onReset && (
+            <button type="button" onClick={onReset}
+              title="Reset to default"
+              className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors">
+              <RotateCcw className="w-2.5 h-2.5" />
+            </button>
+          )}
+          <button type="button" onClick={() => onPin(fieldId)}
+            title={pinned ? "Unpin" : "Pin to Quick tab"}
+            className={`p-0.5 rounded transition-colors ${
+              pinned ? "!opacity-100 text-amber-500 hover:text-amber-600" : "text-muted-foreground hover:text-foreground"
+            }`}>
+            <Star className="w-2.5 h-2.5" fill={pinned ? "currentColor" : "none"} />
+          </button>
+        </div>
       </div>
       {children}
     </div>
@@ -236,7 +245,7 @@ export function InspectorPanel({
   }
 
   // ── Apply Style To scope ───────────────────────────────────────────────────
-  const [applyScope, setApplyScope] = useState<"page" | "site">("page");
+  const [applyScope, setApplyScope] = useState<"section" | "page" | "site">("section");
 
   // ── Collapsed view ─────────────────────────────────────────────────────────
   if (collapsed) {
@@ -317,15 +326,30 @@ export function InspectorPanel({
           </div>
         )}
 
-        {/* Core controls */}
+        {/* Core controls — the 8 most-used settings */}
         <div>
           <div className="flex items-center gap-1.5 mb-3">
             <Zap className="w-3 h-3 text-muted-foreground/60" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Core</p>
           </div>
 
+          {/* Text / Image / Link — shortcuts to Content tab */}
+          {(["text", "image", "link"] as const).map(fid => {
+            const labels: Record<string, string> = { text: "Text Content", image: "Image", link: "Link URL" };
+            return (
+              <FieldWrap key={fid} fieldId={fid} label={labels[fid]} onPin={handlePin} pinned={pins.includes(fid)}>
+                <button type="button" onClick={() => switchTab("content")}
+                  className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors">
+                  <span>Edit in Content tab</span>
+                  <span className="text-[9px] font-bold uppercase opacity-50">Content →</span>
+                </button>
+              </FieldWrap>
+            );
+          })}
+
           {/* Background Color */}
-          <FieldWrap fieldId="bg-color" label="Background Color" onPin={handlePin} pinned={pins.includes("bg-color")}>
+          <FieldWrap fieldId="bg-color" label="Background Color" onPin={handlePin} pinned={pins.includes("bg-color")}
+            onReset={() => { patch({ bgColor: undefined, bgType: undefined }); trackRecent("bg-color"); }}>
             <div className="flex items-center gap-2">
               <input type="color" value={bs.bgColor ?? "#ffffff"}
                 onChange={e => { patch({ bgColor: e.target.value, bgType: "color" }); trackRecent("bg-color"); }}
@@ -335,7 +359,7 @@ export function InspectorPanel({
                 placeholder="#ffffff"
                 className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
               {bs.bgColor && (
-                <button onClick={() => patch({ bgColor: undefined })}
+                <button onClick={() => { patch({ bgColor: undefined }); trackRecent("bg-color"); }}
                   className="flex-shrink-0 text-muted-foreground hover:text-foreground">
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -344,7 +368,8 @@ export function InspectorPanel({
           </FieldWrap>
 
           {/* Padding top + bottom quick sliders */}
-          <FieldWrap fieldId="padding" label="Padding" onPin={handlePin} pinned={pins.includes("padding")}>
+          <FieldWrap fieldId="padding" label="Padding" onPin={handlePin} pinned={pins.includes("padding")}
+            onReset={() => { patch({ paddingTop: undefined, paddingBottom: undefined }); trackRecent("padding"); }}>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
@@ -365,41 +390,42 @@ export function InspectorPanel({
             </div>
           </FieldWrap>
 
-          {/* Shadow */}
-          <FieldWrap fieldId="shadow" label="Shadow" onPin={handlePin} pinned={pins.includes("shadow")}>
-            <div className="flex gap-1 flex-wrap">
-              {(["none", "sm", "md", "lg", "xl"] as const).map(s => (
-                <button key={s} onClick={() => { patch({ shadow: s }); trackRecent("shadow"); }}
-                  className={`px-2 py-1 text-xs rounded capitalize transition-colors ${
-                    (bs.shadow ?? "none") === s
+          {/* Alignment */}
+          <FieldWrap fieldId="alignment" label="Alignment" onPin={handlePin} pinned={pins.includes("alignment")}
+            onReset={() => { patch({ alignment: undefined }); trackRecent("alignment"); }}>
+            <div className="flex gap-1">
+              {(["left", "center", "right", "full"] as const).map(a => (
+                <button key={a} onClick={() => { patch({ alignment: a }); trackRecent("alignment"); }}
+                  className={`flex-1 py-1.5 text-[10px] rounded capitalize transition-colors ${
+                    (bs.alignment ?? "left") === a
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:text-foreground"
-                  }`}>{s}</button>
+                  }`}>{a}</button>
               ))}
             </div>
           </FieldWrap>
 
-          {/* Animation */}
-          <FieldWrap fieldId="animation" label="Animation" onPin={handlePin} pinned={pins.includes("animation")}>
-            <div className="grid grid-cols-2 gap-1">
-              {([["none","None"],["fadeIn","Fade In"],["slideUp","Slide Up"],["slideLeft","Slide Left"]] as const).map(([v, l]) => (
-                <button key={v} onClick={() => { patch({ animation: v }); trackRecent("animation"); }}
-                  className={`py-1.5 text-xs rounded transition-colors ${
-                    (bs.animation ?? "none") === v
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:text-foreground"
-                  }`}>{l}</button>
-              ))}
+          {/* Width / Max Width */}
+          <FieldWrap fieldId="width" label="Width / Max Width" onPin={handlePin} pinned={pins.includes("width")}
+            onReset={() => { patch({ maxWidth: undefined }); trackRecent("width"); }}>
+            <div>
+              <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                <span>Max Width</span><span>{bs.maxWidth ? `${bs.maxWidth}px` : "Full width"}</span>
+              </div>
+              <input type="range" min={0} max={1440} step={40} value={bs.maxWidth ?? 0}
+                onChange={e => { const v = parseInt(e.target.value); patch({ maxWidth: v || undefined }); trackRecent("width"); }}
+                className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
             </div>
           </FieldWrap>
 
           {/* Visibility */}
-          <FieldWrap fieldId="visibility" label="Visibility" onPin={handlePin} pinned={pins.includes("visibility")}>
+          <FieldWrap fieldId="visibility" label="Visibility" onPin={handlePin} pinned={pins.includes("visibility")}
+            onReset={() => { onToggleSection(); trackRecent("visibility"); }}>
             <div className="flex items-center justify-between">
               <span className="text-xs text-foreground">
                 {section.enabled ? "Visible on published site" : "Hidden on published site"}
               </span>
-              <Toggle checked={section.enabled} onChange={onToggleSection} />
+              <Toggle checked={section.enabled} onChange={() => { onToggleSection(); trackRecent("visibility"); }} />
             </div>
           </FieldWrap>
 
@@ -470,6 +496,110 @@ export function InspectorPanel({
             <RotateCcw className="w-3 h-3" /> Reset
           </button>
         </div>
+
+        <AccordionBlock title="Typography">
+          <FieldWrap fieldId="font-family" label="Font Family" onPin={handlePin} pinned={pins.includes("font-family")}
+            onReset={() => { patch({ fontFamily: undefined }); trackRecent("font-family"); }}>
+            <select value={bs.fontFamily ?? ""}
+              onChange={e => { patch({ fontFamily: e.target.value || undefined }); trackRecent("font-family"); }}
+              className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+              <option value="">Inherit from theme</option>
+              {["Inter","Roboto","Open Sans","Lato","Montserrat","Poppins","Playfair Display","Merriweather","Georgia","Times New Roman","Arial","Helvetica"].map(f => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </FieldWrap>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FieldWrap fieldId="font-size" label="Size (px)" onPin={handlePin} pinned={pins.includes("font-size")}
+              onReset={() => { patch({ fontSize: undefined }); trackRecent("font-size"); }}>
+              <input type="number" min={10} max={96} value={bs.fontSize ?? ""}
+                onChange={e => { patch({ fontSize: parseInt(e.target.value) || undefined }); trackRecent("font-size"); }}
+                placeholder="Inherit"
+                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+            </FieldWrap>
+
+            <FieldWrap fieldId="font-weight" label="Weight" onPin={handlePin} pinned={pins.includes("font-weight")}
+              onReset={() => { patch({ fontWeight: undefined }); trackRecent("font-weight"); }}>
+              <select value={bs.fontWeight ?? ""}
+                onChange={e => { patch({ fontWeight: e.target.value || undefined }); trackRecent("font-weight"); }}
+                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                <option value="">Inherit</option>
+                {[["300","Light"],["400","Regular"],["500","Medium"],["600","Semi-bold"],["700","Bold"],["800","Extra bold"],["900","Black"]].map(([v,l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            </FieldWrap>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FieldWrap fieldId="line-height" label="Line Ht." onPin={handlePin} pinned={pins.includes("line-height")}
+              onReset={() => { patch({ lineHeight: undefined }); trackRecent("line-height"); }}>
+              <input type="number" min={1} max={3} step={0.1} value={bs.lineHeight ?? ""}
+                onChange={e => { patch({ lineHeight: parseFloat(e.target.value) || undefined }); trackRecent("line-height"); }}
+                placeholder="Inherit"
+                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+            </FieldWrap>
+
+            <FieldWrap fieldId="letter-spacing" label="Spacing" onPin={handlePin} pinned={pins.includes("letter-spacing")}
+              onReset={() => { patch({ letterSpacing: undefined }); trackRecent("letter-spacing"); }}>
+              <input type="number" min={-2} max={20} step={0.5} value={bs.letterSpacing ?? ""}
+                onChange={e => { patch({ letterSpacing: parseFloat(e.target.value) || undefined }); trackRecent("letter-spacing"); }}
+                placeholder="0"
+                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono" />
+            </FieldWrap>
+          </div>
+
+          <FieldWrap fieldId="text-transform" label="Transform" onPin={handlePin} pinned={pins.includes("text-transform")}
+            onReset={() => { patch({ textTransform: undefined }); trackRecent("text-transform"); }}>
+            <div className="flex gap-1">
+              {(["none","uppercase","lowercase","capitalize"] as const).map(t => (
+                <button key={t} onClick={() => { patch({ textTransform: t }); trackRecent("text-transform"); }}
+                  className={`flex-1 py-1.5 text-[10px] rounded transition-colors ${
+                    (bs.textTransform ?? "none") === t
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:text-foreground"
+                  }`}>{t === "none" ? "—" : t === "uppercase" ? "AA" : t === "lowercase" ? "aa" : "Aa"}</button>
+              ))}
+            </div>
+          </FieldWrap>
+        </AccordionBlock>
+
+        <AccordionBlock title="Colors">
+          <FieldWrap fieldId="text-color" label="Text Color" onPin={handlePin} pinned={pins.includes("text-color")}
+            onReset={() => { patch({ textColor: undefined }); trackRecent("text-color"); }}>
+            <div className="flex items-center gap-2">
+              <input type="color" value={bs.textColor ?? "#000000"}
+                onChange={e => { patch({ textColor: e.target.value }); trackRecent("text-color"); }}
+                className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
+              <input type="text" value={bs.textColor ?? ""}
+                onChange={e => { patch({ textColor: e.target.value || undefined }); trackRecent("text-color"); }}
+                placeholder="Inherit from theme"
+                className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+              {bs.textColor && (
+                <button onClick={() => { patch({ textColor: undefined }); trackRecent("text-color"); }}
+                  className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
+              )}
+            </div>
+          </FieldWrap>
+
+          <FieldWrap fieldId="accent-color" label="Accent / Button Color" onPin={handlePin} pinned={pins.includes("accent-color")}
+            onReset={() => { patch({ accentColor: undefined }); trackRecent("accent-color"); }}>
+            <div className="flex items-center gap-2">
+              <input type="color" value={bs.accentColor ?? "#3b82f6"}
+                onChange={e => { patch({ accentColor: e.target.value }); trackRecent("accent-color"); }}
+                className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0" />
+              <input type="text" value={bs.accentColor ?? ""}
+                onChange={e => { patch({ accentColor: e.target.value || undefined }); trackRecent("accent-color"); }}
+                placeholder="Inherit from theme"
+                className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+              {bs.accentColor && (
+                <button onClick={() => { patch({ accentColor: undefined }); trackRecent("accent-color"); }}
+                  className="text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>
+              )}
+            </div>
+          </FieldWrap>
+        </AccordionBlock>
 
         <AccordionBlock title="Backgrounds" defaultOpen>
           <div className="flex gap-1 mb-3">
@@ -583,28 +713,61 @@ export function InspectorPanel({
         </AccordionBlock>
 
         <AccordionBlock title="Borders">
-          <SliderRow label="Border Radius" value={bs.borderRadius} min={0} max={48}
-            onChange={v => patch({ borderRadius: v || undefined })} />
+          <FieldWrap fieldId="border-radius" label="Border Radius" onPin={handlePin} pinned={pins.includes("border-radius")}
+            onReset={() => { patch({ borderRadius: undefined }); trackRecent("border-radius"); }}>
+            <SliderRow label="Radius" value={bs.borderRadius} min={0} max={48}
+              onChange={v => { patch({ borderRadius: v || undefined }); trackRecent("border-radius"); }} />
+          </FieldWrap>
+
+          <FieldWrap fieldId="border-width" label="Border Width" onPin={handlePin} pinned={pins.includes("border-width")}
+            onReset={() => { patch({ borderWidth: undefined }); trackRecent("border-width"); }}>
+            <SliderRow label="Width" value={bs.borderWidth} min={0} max={16} unit="px"
+              onChange={v => { patch({ borderWidth: v || undefined }); trackRecent("border-width"); }} />
+          </FieldWrap>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FieldWrap fieldId="border-style" label="Style" onPin={handlePin} pinned={pins.includes("border-style")}
+              onReset={() => { patch({ borderStyle: undefined }); trackRecent("border-style"); }}>
+              <select value={bs.borderStyle ?? "none"}
+                onChange={e => { patch({ borderStyle: e.target.value as BlockStyle["borderStyle"] }); trackRecent("border-style"); }}
+                className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                {(["none","solid","dashed","dotted"] as const).map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </FieldWrap>
+
+            <FieldWrap fieldId="border-color" label="Color" onPin={handlePin} pinned={pins.includes("border-color")}
+              onReset={() => { patch({ borderColor: undefined }); trackRecent("border-color"); }}>
+              <input type="color" value={bs.borderColor ?? "#e5e7eb"}
+                onChange={e => { patch({ borderColor: e.target.value }); trackRecent("border-color"); }}
+                className="w-full h-8 rounded cursor-pointer border border-border bg-transparent" />
+            </FieldWrap>
+          </div>
         </AccordionBlock>
 
         {/* Bulk Apply */}
         <div className="pt-3 mt-2 border-t border-border">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Apply Style To</p>
           <div className="flex gap-1 mb-2">
-            {(["page", "site"] as const).map(s => (
+            {([
+              ["section", "This Section"],
+              ["page",    "This Page"],
+              ["site",    "Entire Website"],
+            ] as const).map(([s, label]) => (
               <button key={s} onClick={() => setApplyScope(s)}
-                className={`flex-1 py-1.5 text-xs rounded capitalize transition-colors ${
+                className={`flex-1 py-1.5 text-[10px] rounded transition-colors ${
                   applyScope === s
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:text-foreground"
                 }`}>
-                {s === "page" ? "This Page" : "Entire Website"}
+                {label}
               </button>
             ))}
           </div>
           <button type="button" onClick={() => onApplyStyleTo(applyScope, bs)}
             className="w-full py-1.5 text-xs font-medium rounded bg-muted hover:bg-muted/80 text-foreground transition-colors">
-            Apply background &amp; spacing to {applyScope === "page" ? "all sections on this page" : "all pages"}
+            Apply styles to {applyScope === "section" ? "this section" : applyScope === "page" ? "all sections on this page" : "all sections on all pages"}
           </button>
         </div>
       </div>
@@ -612,35 +775,74 @@ export function InspectorPanel({
   }
 
   function renderLayoutTab() {
+    const colGrid = "grid grid-cols-[1fr_52px_52px_52px] gap-1";
     return (
       <div className="p-3">
         {/* Responsive column headers */}
-        <div className="grid grid-cols-[1fr_60px_60px] gap-1 mb-2">
+        <div className={`${colGrid} mb-2`}>
           <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Field</div>
-          <div className="flex items-center justify-center gap-0.5 text-[9px] text-muted-foreground">
-            <Monitor className="w-2.5 h-2.5" /><span>Desktop</span>
+          <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground">
+            <Monitor className="w-2.5 h-2.5" /><span>Desk</span>
           </div>
-          <div className="flex items-center justify-center gap-0.5 text-[9px] text-muted-foreground/50" title="Responsive breakpoints coming soon">
+          <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground/40" title="Responsive breakpoints coming soon">
             <Tablet className="w-2.5 h-2.5" /><span>Tab</span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground/40" title="Responsive breakpoints coming soon">
+            <Smartphone className="w-2.5 h-2.5" /><span>Mob</span>
           </div>
         </div>
 
+        {/* Alignment & Max Width */}
+        <div className={`${colGrid} items-start mb-2`}>
+          <div>
+            <div className="text-[10px] text-muted-foreground mb-1">Alignment</div>
+            <div className="flex gap-0.5">
+              {(["left","center","right","full"] as const).map(a => (
+                <button key={a} onClick={() => { patch({ alignment: a }); trackRecent("alignment"); }}
+                  className={`flex-1 py-1 text-[9px] rounded transition-colors ${
+                    (bs.alignment ?? "left") === a ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                  }`}>{a[0].toUpperCase()}</button>
+              ))}
+            </div>
+          </div>
+          <ComingSoonPlaceholder />
+          <ComingSoonPlaceholder />
+          <ComingSoonPlaceholder />
+        </div>
+
+        <div className={`${colGrid} items-center mb-2`}>
+          <div>
+            <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+              <span>Max Width</span><span>{bs.maxWidth ? `${bs.maxWidth}px` : "Full"}</span>
+            </div>
+            <input type="range" min={0} max={1440} step={40} value={bs.maxWidth ?? 0}
+              onChange={e => { const v = parseInt(e.target.value); patch({ maxWidth: v || undefined }); trackRecent("width"); }}
+              className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
+          </div>
+          <ComingSoonPlaceholder />
+          <ComingSoonPlaceholder />
+          <ComingSoonPlaceholder />
+        </div>
+
+        <div className="border-t border-border my-3" />
+
         {([
-          ["Padding Top",    "paddingTop",    0, 200],
-          ["Padding Right",  "paddingRight",  0, 100],
-          ["Padding Bottom", "paddingBottom", 0, 200],
-          ["Padding Left",   "paddingLeft",   0, 100],
-        ] as const).map(([lbl, key, min, max]) => (
-          <div key={key} className="grid grid-cols-[1fr_60px_60px] gap-1 items-center mb-2">
+          ["Padding Top",    "paddingTop",    0, 200, "padding"],
+          ["Padding Right",  "paddingRight",  0, 100, "padding"],
+          ["Padding Bottom", "paddingBottom", 0, 200, "padding"],
+          ["Padding Left",   "paddingLeft",   0, 100, "padding"],
+        ] as const).map(([lbl, key, min, max, recent]) => (
+          <div key={key} className={`${colGrid} items-center mb-2`}>
             <div>
               <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
                 <span>{lbl}</span><span>{(bs as Record<string, number | undefined>)[key] ?? 0}px</span>
               </div>
               <input type="range" min={min} max={max}
                 value={(bs as Record<string, number | undefined>)[key] ?? 0}
-                onChange={e => { patch({ [key]: parseInt(e.target.value) }); trackRecent("padding"); }}
+                onChange={e => { patch({ [key]: parseInt(e.target.value) }); trackRecent(recent); }}
                 className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
             </div>
+            <ComingSoonPlaceholder />
             <ComingSoonPlaceholder />
             <ComingSoonPlaceholder />
           </div>
@@ -649,19 +851,20 @@ export function InspectorPanel({
         <div className="border-t border-border my-3" />
 
         {([
-          ["Margin Top",    "marginTop",    0, 200],
-          ["Margin Bottom", "marginBottom", 0, 200],
-        ] as const).map(([lbl, key, min, max]) => (
-          <div key={key} className="grid grid-cols-[1fr_60px_60px] gap-1 items-center mb-2">
+          ["Margin Top",    "marginTop",    0, 200, "margin-top"],
+          ["Margin Bottom", "marginBottom", 0, 200, "margin-bottom"],
+        ] as const).map(([lbl, key, min, max, recent]) => (
+          <div key={key} className={`${colGrid} items-center mb-2`}>
             <div>
               <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
                 <span>{lbl}</span><span>{(bs as Record<string, number | undefined>)[key] ?? 0}px</span>
               </div>
               <input type="range" min={min} max={max}
                 value={(bs as Record<string, number | undefined>)[key] ?? 0}
-                onChange={e => { patch({ [key]: parseInt(e.target.value) || undefined }); trackRecent("margin-top"); }}
+                onChange={e => { patch({ [key]: parseInt(e.target.value) || undefined }); trackRecent(recent); }}
                 className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
             </div>
+            <ComingSoonPlaceholder />
             <ComingSoonPlaceholder />
             <ComingSoonPlaceholder />
           </div>
@@ -669,7 +872,7 @@ export function InspectorPanel({
 
         <div className="border-t border-border my-3" />
 
-        <div className="grid grid-cols-[1fr_60px_60px] gap-1 items-center mb-2">
+        <div className={`${colGrid} items-center mb-2`}>
           <div>
             <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
               <span>Min Height</span><span>{bs.minHeight ?? 0}px</span>
@@ -678,6 +881,7 @@ export function InspectorPanel({
               onChange={e => { patch({ minHeight: parseInt(e.target.value) || undefined }); trackRecent("min-height"); }}
               className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-border accent-primary" />
           </div>
+          <ComingSoonPlaceholder />
           <ComingSoonPlaceholder />
           <ComingSoonPlaceholder />
         </div>

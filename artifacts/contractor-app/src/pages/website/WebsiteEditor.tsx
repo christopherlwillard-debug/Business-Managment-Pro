@@ -1462,7 +1462,7 @@ function WebsiteEditor() {
     });
   }
 
-  function applyStyleTo(scope: "page" | "site", style: BlockStyle) {
+  function applyStyleTo(scope: "section" | "page" | "site", style: BlockStyle) {
     const styleOnly: Partial<BlockStyle> = {
       bgType: style.bgType,
       bgColor: style.bgColor,
@@ -1480,12 +1480,30 @@ function WebsiteEditor() {
       marginTop: style.marginTop,
       marginBottom: style.marginBottom,
       minHeight: style.minHeight,
+      maxWidth: style.maxWidth,
       borderRadius: style.borderRadius,
+      borderWidth: style.borderWidth,
+      borderStyle: style.borderStyle,
+      borderColor: style.borderColor,
       shadow: style.shadow,
       animation: style.animation,
     };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
+    if (scope === "section") {
+      const secId = activeSection;
+      setLocalPages(prev => {
+        if (!prev) return prev;
+        return prev.map(p => ({
+          ...p,
+          sections: p.sections.map(s =>
+            s.id === secId ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), ...styleOnly } } : s
+          ),
+        }));
+      });
+      toast({ title: "Styles applied to this section", duration: 2000 });
+      return;
+    }
     setLocalPages(prev => {
       if (!prev) return prev;
       return prev.map(p => {

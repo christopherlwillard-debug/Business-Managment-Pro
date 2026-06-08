@@ -1,3 +1,15 @@
+import type { BlockStyle } from "./sections/BlockStyleWrapper";
+
+/**
+ * Responsive breakpoint overrides — reserved for future implementation.
+ * Currently non-functional; fields are persisted so they round-trip safely
+ * once responsive editing ships. Tablet = 768–1023px; Mobile = <768px.
+ */
+export interface SectionBreakpoints {
+  tablet?: Partial<BlockStyle>;
+  mobile?: Partial<BlockStyle>;
+}
+
 export interface SiteSettings {
   brandColor: string;
   secondaryColor?: string;
