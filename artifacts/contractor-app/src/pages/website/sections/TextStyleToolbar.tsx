@@ -5,6 +5,7 @@ export interface TextStyle {
   fontFamily?: string;
   fontSize?: string;
   fontWeight?: string;
+  fontStyle?: string;
   color?: string;
   textAlign?: "left" | "center" | "right";
 }
@@ -15,6 +16,7 @@ export function textStyleToCSS(ts?: TextStyle): React.CSSProperties {
   if (ts.fontFamily) css.fontFamily = ts.fontFamily;
   if (ts.fontSize) css.fontSize = ts.fontSize;
   if (ts.fontWeight) css.fontWeight = ts.fontWeight as React.CSSProperties["fontWeight"];
+  if (ts.fontStyle) css.fontStyle = ts.fontStyle;
   if (ts.color) css.color = ts.color;
   if (ts.textAlign) css.textAlign = ts.textAlign;
   return css;

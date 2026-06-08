@@ -7,7 +7,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Plus, GripVertical, Trash2, Copy, Type, AlignLeft, MousePointer,
+  Plus, GripVertical, Trash2, Copy, Type, AlignLeft, AlignCenter, AlignRight, MousePointer,
   Image as ImageIcon, Minus, Smile, PlayCircle, Square, Quote, Mail, MapPin, Layers,
   ClipboardPaste,
 } from "lucide-react";
@@ -416,6 +416,8 @@ interface SortableItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onEdit?: () => void;
+  /** Update this component's props directly from the toolbar (e.g. bold, align). */
+  onUpdate?: (props: SiteComponentProps) => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onCopy?: () => void;
@@ -423,7 +425,7 @@ interface SortableItemProps {
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableItem({ comp, isSelected, onSelect, onEdit, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableItemProps) {
+function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
 
@@ -450,6 +452,55 @@ function SortableItem({ comp, isSelected, onSelect, onEdit, onDuplicate, onDelet
     </button>
   ) : null;
 
+  /** Type-specific toolbar: text formatting for heading/paragraph; Replace for image.
+   *  These buttons mutate props immediately (no sidebar needed) via onUpdate. */
+  let typeToolbar: React.ReactNode = null;
+  if (onUpdate && (comp.type === "heading" || comp.type === "paragraph")) {
+    const p = comp.props as HeadingProps | ParagraphProps;
+    const style = p.style ?? {};
+    const isBold = style.fontWeight === "700";
+    const isItalic = style.fontStyle === "italic";
+    const align = style.textAlign ?? "left";
+    const patchStyle = (patch: Partial<TextStyle>) =>
+      onUpdate({ ...p, style: { ...style, ...patch } });
+    typeToolbar = (
+      <>
+        <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+        <button type="button" title="Bold" onClick={e => { e.stopPropagation(); patchStyle({ fontWeight: isBold ? "400" : "700" }); }}
+          className={`p-1 rounded text-xs font-bold leading-none transition-colors ${isBold ? "bg-white/30 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          B
+        </button>
+        <button type="button" title="Italic" onClick={e => { e.stopPropagation(); patchStyle({ fontStyle: isItalic ? "normal" : "italic" }); }}
+          className={`p-1 rounded text-xs italic leading-none transition-colors ${isItalic ? "bg-white/30 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          I
+        </button>
+        <button type="button" title="Align left" onClick={e => { e.stopPropagation(); patchStyle({ textAlign: "left" }); }}
+          className={`p-1 rounded transition-colors ${align === "left" ? "bg-white/30 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          <AlignLeft className="w-3 h-3" />
+        </button>
+        <button type="button" title="Align center" onClick={e => { e.stopPropagation(); patchStyle({ textAlign: "center" }); }}
+          className={`p-1 rounded transition-colors ${align === "center" ? "bg-white/30 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          <AlignCenter className="w-3 h-3" />
+        </button>
+        <button type="button" title="Align right" onClick={e => { e.stopPropagation(); patchStyle({ textAlign: "right" }); }}
+          className={`p-1 rounded transition-colors ${align === "right" ? "bg-white/30 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          <AlignRight className="w-3 h-3" />
+        </button>
+      </>
+    );
+  } else if (comp.type === "image") {
+    // Replace: opens the inspector and focuses the URL / media field
+    typeToolbar = (
+      <>
+        <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+        <button type="button" title="Replace image" onClick={e => { e.stopPropagation(); onEdit?.(); }}
+          className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors">
+          <ImageIcon className="w-3.5 h-3.5" />
+        </button>
+      </>
+    );
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -465,7 +516,7 @@ function SortableItem({ comp, isSelected, onSelect, onEdit, onDuplicate, onDelet
         onDuplicate={onDuplicate}
         onDelete={onDelete}
         onToggleHide={onToggleHide}
-        extraToolbar={<>{copyBtn}{dragHandle}</>}
+        extraToolbar={<>{typeToolbar}{copyBtn}{dragHandle}</>}
       >
         <div className="px-3 py-3 pointer-events-none select-none overflow-hidden max-h-40">
           {renderSiteComponent(comp, settings)}
@@ -640,6 +691,12 @@ export function ContentSection({
                       const panel = document.querySelector("[data-component-editor-panel]");
                       (panel?.querySelector("input, textarea, select") as HTMLElement | null)?.focus();
                     });
+                  }}
+                  onUpdate={(newProps) => {
+                    // Direct prop update from the type-specific toolbar (bold, align, etc.)
+                    // Each toolbar click is a discrete action — push a snapshot first.
+                    onBeforeAction?.();
+                    updateComps(components.map(c => c.id === comp.id ? { ...c, props: newProps } : c));
                   }}
                   onDuplicate={() => duplicateComponent(comp.id)}
                   onDelete={() => deleteComponent(comp.id)}
