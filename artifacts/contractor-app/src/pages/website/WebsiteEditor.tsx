@@ -1507,7 +1507,8 @@ function WebsiteEditor() {
   }
 
   function moveSection(id: string, direction: "up" | "down") {
-    const enabled = sections.filter(s => s.enabled && s.type !== "header");
+    // Include hidden sections — they're visible on canvas and should be reorderable
+    const enabled = sections.filter(s => s.type !== "header");
     const enabledIdx = enabled.findIndex(s => s.id === id);
     if (direction === "up" && enabledIdx <= 0) return;
     if (direction === "down" && enabledIdx >= enabled.length - 1) return;
@@ -2319,7 +2320,10 @@ function WebsiteEditor() {
   function renderSections() {
     const homePageSections = pages.find(p => p.id === "home")?.sections ?? sections;
     const headerSec = homePageSections.find(s => s.type === "header");
-    const enabled = sections.filter(s => s.enabled && s.type !== "header");
+    // Include ALL non-header sections (even hidden ones) — hidden sections render
+    // dimmed with a "Hidden" badge on the canvas via EditableWrapper.isHidden.
+    // Only the public site (PublicSite.tsx) filters out s.enabled === false.
+    const canvasSections = sections.filter(s => s.type !== "header");
     const previewBodyStyle = settings.bodyFont
       ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
       : undefined;
@@ -2490,16 +2494,16 @@ function WebsiteEditor() {
           <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
         )}
         {headerSec && renderWrapped(headerSec, { isHeader: true })}
-        {enabled.length === 0 && !headerSec && (
+        {canvasSections.length === 0 && !headerSec && (
           <div className="py-20 text-center text-muted-foreground text-sm">
-            Enable at least one section to preview your site.
+            Add a section to start building your page.
           </div>
         )}
-        {enabled.flatMap((s, idx) => [
-          addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : enabled[idx - 1]?.id, `ins-${idx}`),
-          renderWrapped(s, { isFirst: idx === 0, isLast: idx === enabled.length - 1 }),
+        {canvasSections.flatMap((s, idx) => [
+          addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : canvasSections[idx - 1]?.id, `ins-${idx}`),
+          renderWrapped(s, { isFirst: idx === 0, isLast: idx === canvasSections.length - 1 }),
         ])}
-        {enabled.length > 0 && addBetween(enabled[enabled.length - 1]?.id, "ins-end")}
+        {canvasSections.length > 0 && addBetween(canvasSections[canvasSections.length - 1]?.id, "ins-end")}
       </div>
     );
   }

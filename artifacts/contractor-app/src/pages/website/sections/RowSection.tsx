@@ -222,6 +222,7 @@ export function RowSection({
       if (oldIdx === -1) continue;
       const newIdx = col.components.findIndex(c => c.id === over.id);
       if (newIdx === -1) continue;
+      onBeforeAction?.();
       updateColumn(col.id, arrayMove(col.components, oldIdx, newIdx));
       return;
     }
