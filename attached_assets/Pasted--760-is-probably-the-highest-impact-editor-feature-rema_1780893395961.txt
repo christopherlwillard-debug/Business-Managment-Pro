@@ -1,0 +1,142 @@
+#760 is probably the highest-impact editor feature remaining.
+
+If #755 makes editing understandable, #760 makes editing feel natural.
+
+When people use Wix, Squarespace, Framer, Notion, Google Docs, Canva, etc., they expect:
+
+Click text → Type.
+
+Not:
+
+Click text → Find sidebar → Find field → Type.
+
+So I'd absolutely build this.
+
+A few additions I'd make
+Add Enter vs Shift+Enter Behavior
+
+For multi-line text:
+
+Enter = New line
+Escape = Commit and exit
+Click outside = Commit and exit
+
+For single-line elements:
+
+Enter = Commit
+Escape = Cancel
+
+Examples:
+
+Single-line:
+
+Button label
+Stat value
+Navigation item
+
+Multi-line:
+
+Heading
+Paragraph
+FAQ answer
+Testimonial
+Add Autosave Indicator
+
+When editing:
+
+Editing...
+
+When committed:
+
+Saved
+
+Small but important confidence signal.
+
+Add Placeholder Text
+
+Empty text should never disappear.
+
+Examples:
+
+Click to edit heading
+Click to edit paragraph
+Click to edit button text
+Click to edit testimonial
+
+Otherwise users think the component is broken.
+
+Add Text Selection Protection
+
+While editing:
+
+Disable section dragging
+Disable component dragging
+Disable keyboard shortcuts that conflict
+
+Otherwise users will accidentally move sections while trying to edit text.
+
+Add Future Rich Text Compatibility
+
+Even if rich text is out of scope, I'd tell Replit:
+
+Design InlineEditableText so future formatting can be layered onto it.
+
+Future:
+
+Bold
+Italic
+Underline
+Links
+Color
+Lists
+
+You don't want to rewrite the editor later.
+
+One Thing I'd Change
+
+I would actually reverse this:
+
+Single click selected item enters edit mode.
+
+Instead I'd do:
+
+Single Click
+
+Select
+
+Double Click
+
+Edit
+
+This is how most builders work and it prevents accidental editing when users are trying to move things around.
+
+Priority Check
+
+At this point your editor roadmap is looking very strong:
+
+✅ #755 Universal Editing Framework
+
+✅ #759 Right-Click Actions
+
+✅ #761 Tabbed Inspector
+
+🔄 #760 True Inline Editing
+
+After #760, I honestly think the next biggest pain point will be images, not text.
+
+So I'd immediately follow with:
+
+#762 Media Library 2.0
+Upload once
+Use anywhere
+Search images
+Organize folders
+Recently used
+Replace image from library
+Drag image onto canvas
+
+Because you've already mentioned several times:
+
+I can upload images but can't really use them everywhere.
+
+Once #760 and a proper Media Library are done, your editor will start feeling much closer to what users expect from a modern website builder.

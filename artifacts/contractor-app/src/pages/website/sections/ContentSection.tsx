@@ -9,10 +9,12 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Plus, GripVertical, Trash2, Copy, Type, AlignLeft, MousePointer,
   Image as ImageIcon, Minus, Smile, PlayCircle, Square, Quote, Mail, MapPin, Layers,
+  ClipboardPaste,
 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
 import { textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
+import { EditableWrapper } from "../EditableWrapper";
 
 export type ComponentType =
   | "heading" | "paragraph" | "button" | "image" | "divider"
@@ -412,50 +414,55 @@ interface SortableItemProps {
   onSelect: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onCopy?: () => void;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableItem({ comp, isSelected, onSelect, onDuplicate, onDelete, settings }: SortableItemProps) {
+function SortableItem({ comp, isSelected, onSelect, onDuplicate, onDelete, onCopy, settings }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
+
+  const dragHandle = (
+    <div
+      {...attributes}
+      {...listeners}
+      className="p-1 cursor-grab active:cursor-grabbing text-white/60 hover:text-white"
+      title="Drag to reorder"
+      onClick={e => e.stopPropagation()}
+    >
+      <GripVertical className="w-3.5 h-3.5" />
+    </div>
+  );
+
+  const copyBtn = onCopy ? (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); onCopy(); }}
+      title="Copy component"
+      className="p-1 rounded text-white hover:bg-white/20 transition-colors"
+    >
+      <Copy className="w-3.5 h-3.5" />
+    </button>
+  ) : null;
+
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className={`group relative rounded-lg border-2 transition-all cursor-pointer ${
-        isSelected ? "border-primary/70 bg-primary/5 shadow-sm" : "border-gray-200 hover:border-primary/40"
-      }`}
-      onClick={e => { e.stopPropagation(); onSelect(); }}
     >
-      <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-t border-b transition-colors ${
-        isSelected ? "bg-primary/10 border-primary/20" : "bg-gray-50 border-gray-100"
-      }`}>
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600" onClick={e => e.stopPropagation()}>
-          <GripVertical className="w-3.5 h-3.5" />
+      <EditableWrapper
+        id={comp.id}
+        label={label}
+        isSelected={isSelected}
+        onSelect={e => { e.stopPropagation(); onSelect(); }}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+        extraToolbar={<>{copyBtn}{dragHandle}</>}
+      >
+        <div className="px-3 py-3 pointer-events-none select-none overflow-hidden max-h-40">
+          {renderSiteComponent(comp, settings)}
         </div>
-        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide flex-1">{label}</span>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onDuplicate(); }}
-            className="p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors"
-            title="Duplicate"
-          >
-            <Copy className="w-3 h-3" />
-          </button>
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-            title="Delete"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-        </div>
-      </div>
-      <div className="px-3 py-3 pointer-events-none select-none overflow-hidden max-h-40">
-        {renderSiteComponent(comp, settings)}
-      </div>
+      </EditableWrapper>
     </div>
   );
 }
@@ -500,6 +507,10 @@ interface ContentSectionProps {
   blockStyle?: BlockStyle;
   selectedComponentId?: string | null;
   onSelectComponent?: (id: string | null) => void;
+  /** The component currently on the clipboard — enables Paste button */
+  copiedComponent?: SiteComponent | null;
+  /** Called when the user copies a component via the toolbar Copy button */
+  onCopyComponent?: (comp: SiteComponent) => void;
 }
 
 export function ContentSection({
@@ -510,6 +521,8 @@ export function ContentSection({
   blockStyle,
   selectedComponentId,
   onSelectComponent,
+  copiedComponent,
+  onCopyComponent,
 }: ContentSectionProps) {
   const [showPicker, setShowPicker] = useState(false);
   const components = content.components ?? [];
@@ -551,6 +564,24 @@ export function ContentSection({
     if (selectedComponentId === id) onSelectComponent?.(null);
   }
 
+  /** Insert the clipboard component below the currently selected component (or at the end) */
+  function pasteComponent() {
+    if (!copiedComponent) return;
+    const newComp: SiteComponent = { ...copiedComponent, id: uid() };
+    if (selectedComponentId) {
+      const idx = components.findIndex(c => c.id === selectedComponentId);
+      if (idx !== -1) {
+        const next = [...components];
+        next.splice(idx + 1, 0, newComp);
+        updateComps(next);
+        onSelectComponent?.(newComp.id);
+        return;
+      }
+    }
+    updateComps([...components, newComp]);
+    onSelectComponent?.(newComp.id);
+  }
+
   if (!isEditing) {
     return (
       <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-6 py-12" isEditing={false}>
@@ -562,6 +593,10 @@ export function ContentSection({
       </BlockStyleWrapper>
     );
   }
+
+  const pasteLabel = copiedComponent
+    ? (CONTENT_COMPONENT_TYPES.find(t => t.type === copiedComponent.type)?.label ?? "Component")
+    : null;
 
   return (
     <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-6" isEditing={true} defaultBg="#f8fafc">
@@ -577,6 +612,7 @@ export function ContentSection({
                   onSelect={() => onSelectComponent?.(selectedComponentId === comp.id ? null : comp.id)}
                   onDuplicate={() => duplicateComponent(comp.id)}
                   onDelete={() => deleteComponent(comp.id)}
+                  onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
                   settings={settings}
                 />
               ))}
@@ -592,7 +628,7 @@ export function ContentSection({
           </div>
         )}
 
-        <div className="mt-3 relative">
+        <div className="mt-3 relative flex gap-2">
           {showPicker && (
             <div className="absolute bottom-full left-0 mb-1 z-50 w-80">
               <AddComponentPicker onAdd={addComponent} onClose={() => setShowPicker(false)} />
@@ -601,11 +637,22 @@ export function ContentSection({
           <button
             type="button"
             onClick={() => setShowPicker(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors w-full justify-center border border-primary/20"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex-1 justify-center border border-primary/20"
           >
             <Plus className="w-4 h-4" />
             Add Component
           </button>
+          {copiedComponent && (
+            <button
+              type="button"
+              onClick={pasteComponent}
+              title={`Paste ${pasteLabel} below selection`}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors border border-border"
+            >
+              <ClipboardPaste className="w-4 h-4" />
+              Paste
+            </button>
+          )}
         </div>
       </div>
     </BlockStyleWrapper>

@@ -1,0 +1,110 @@
+#759 looks solid and I would approve it with only a few additions.
+
+The biggest thing I would add is that right-click menus should become the primary power-user workflow, not just another way to access existing actions.
+
+Add these menu items
+
+For Sections:
+
+Add Section Above
+Add Section Below
+Duplicate
+Copy
+Paste
+Hide
+Delete
+Copy Styles
+Paste Styles
+
+For Components:
+
+Edit
+Duplicate
+Copy
+Paste
+Hide
+Delete
+Copy Styles
+Paste Styles
+
+For Images:
+
+Replace Image
+Edit Alt Text
+Copy
+Duplicate
+Delete
+Add Double Click Support
+
+Right now #755 covers selection.
+
+I'd add:
+
+Single Click = Select
+Double Click = Edit
+Right Click = Actions
+
+This creates a very predictable editing model.
+
+Add Smart Paste
+
+Current:
+
+Paste inserts below target.
+
+I'd improve it:
+
+Right-click Section → Paste Section below
+Right-click Row → Paste Row below
+Right-click Column → Paste into column
+Right-click Component → Paste into same container
+
+Users won't have to think about where pasted items go.
+
+Add Keyboard Shortcuts to Context Menu
+
+Show them directly in the menu:
+
+Duplicate      Ctrl+D
+Copy           Ctrl+C
+Paste          Ctrl+V
+Delete         Del
+
+Even if keyboard support comes later, users learn what's available.
+
+Add Undo Integration Requirement
+
+I know #755 covers history, but I'd explicitly state:
+
+Every context-menu action automatically registers with the Undo/Redo system.
+
+Because context menus are often implemented separately and accidentally bypass history.
+
+One More Thing I'd Add
+"Inspect"
+
+For debugging layouts:
+
+Right Click →
+
+Inspect Component
+Inspect Row
+Inspect Section
+
+This jumps directly to the appropriate tab in #761.
+
+Very useful once the builder gets larger.
+
+My Current Priority Order
+
+At this point I'd build:
+
+#755 Universal Editing Framework
+#761 Tabbed Inspector Panel
+#759 Right-Click Quick Actions
+#757 True Inline Text Editing
+#759 Media Library 2.0 (I'd actually renumber this to avoid duplicate IDs)
+
+The reason I'd put #761 ahead of #759 is because once users can right-click, they'll immediately need a better place to edit settings. The tabbed inspector solves that.
+
+Overall though, #759 is exactly the kind of feature that makes a builder feel professional. Users stop hunting through sidebars and start interacting directly with the page, which is the direction you've been moving the entire editor.

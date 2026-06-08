@@ -37,7 +37,7 @@ import { FAQSection, defaultFAQContent } from "./sections/FAQSection";
 import { CTASection, defaultCTAContent } from "./sections/CTASection";
 import { StatsSection, defaultStatsContent } from "./sections/StatsSection";
 import { HeaderSection, defaultHeaderContent } from "./sections/HeaderSection";
-import { ContentSection, defaultContentSectionData } from "./sections/ContentSection";
+import { ContentSection, defaultContentSectionData, type SiteComponent } from "./sections/ContentSection";
 import { RowSection, defaultRowSectionData, type RowSectionData } from "./sections/RowSection";
 import { ComponentEditorPanel } from "./ComponentEditorPanel";
 import { RowEditorPanel } from "./RowEditorPanel";
@@ -136,6 +136,8 @@ function renderSection(
     selectedRowComponentId?: string | null;
     onSelectRowComponent?: (columnId: string, componentId: string | null) => void;
     onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+    copiedComponent?: SiteComponent | null;
+    onCopyComponent?: (comp: SiteComponent) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -184,6 +186,8 @@ function renderSection(
         {...props}
         selectedComponentId={extras?.selectedComponentId}
         onSelectComponent={extras?.onSelectComponent}
+        copiedComponent={extras?.copiedComponent}
+        onCopyComponent={extras?.onCopyComponent}
       />
     );
     case "row": return (
@@ -877,6 +881,7 @@ function WebsiteEditor() {
   const [bgUploading, setBgUploading] = useState<Record<string, boolean>>({});
   const [faviconUploading, setFaviconUploading] = useState(false);
   const [copiedBlockStyle, setCopiedBlockStyle] = useState<BlockStyle | null>(null);
+  const [copiedComponent, setCopiedComponent] = useState<SiteComponent | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
@@ -1070,14 +1075,41 @@ function WebsiteEditor() {
         return;
       }
       if (isTyping) return;
-      if (e.key === "Delete" && activeSection) {
+      if (e.key === "Delete") {
         e.preventDefault();
-        handleDeleteSectionClick(activeSection);
+        if (selectedComponentState) {
+          // Delete the selected component from its ContentSection
+          const { sectionId, componentId } = selectedComponentState;
+          setLocalPages(prev => {
+            if (!prev) return prev;
+            return prev.map(p =>
+              p.id !== activePageIdRef.current ? p : {
+                ...p,
+                sections: p.sections.map(s =>
+                  s.id !== sectionId ? s : {
+                    ...s,
+                    content: {
+                      ...(s.content as Record<string, unknown>),
+                      components: ((s.content as any)?.components ?? []).filter((c: { id: string }) => c.id !== componentId),
+                    },
+                  }
+                ),
+              }
+            );
+          });
+          isDirtyRef.current = true;
+          setSelectedComponentState(null);
+          toast({ title: "Component deleted", duration: 2000 });
+          return;
+        }
+        if (activeSection) {
+          handleDeleteSectionClick(activeSection);
+        }
       }
     }
     window.addEventListener("keydown", onNavKey);
     return () => window.removeEventListener("keydown", onNavKey);
-  }, [activeSection, sections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSection, selectedComponentState, sections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * selectSectionAndScroll — sets the active section AND scrolls the canvas
@@ -2248,6 +2280,11 @@ function WebsiteEditor() {
       siteSlug: activeBusiness?.slug,
       pages: pages.filter(p => p.id !== "home").map(p => ({ id: p.id, name: p.name, slug: p.slug })),
       onOpenMediaLibrary: openMediaLibrary,
+      copiedComponent,
+      onCopyComponent: (comp: SiteComponent) => {
+        setCopiedComponent(comp);
+        toast({ title: "Component copied", duration: 2000 });
+      },
     };
 
     function renderWrapped(s: Section, opts: { isHeader?: boolean; isFirst?: boolean; isLast?: boolean }) {
