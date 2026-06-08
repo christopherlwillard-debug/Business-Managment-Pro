@@ -38,6 +38,7 @@ const BusinessSelector = lazy(() => import("./pages/BusinessSelector"));
 const NotFound = lazy(() => import("./pages/not-found"));
 const WebsiteEditor = lazy(() => import("./pages/website/WebsiteEditor"));
 const PublicSite = lazy(() => import("./pages/website/PublicSite"));
+const AdminErrorLog = lazy(() => import("./pages/AdminErrorLog"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -308,6 +309,9 @@ function AdminApp() {
           </Route>
           <Route path="/website">
             <PermissionGuard ownerOnly><WebsiteEditor /></PermissionGuard>
+          </Route>
+          <Route path="/admin/errors">
+            <PermissionGuard ownerOnly><AdminErrorLog /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

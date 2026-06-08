@@ -38,3 +38,4 @@ export * from "./contacts";
 export * from "./job-sub-hours";
 export * from "./job-type-benchmarks";
 export * from "./website";
+export * from "./client-errors";
