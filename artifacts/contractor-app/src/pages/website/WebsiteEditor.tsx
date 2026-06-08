@@ -53,7 +53,6 @@ import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
 import { useEditorHistory } from "./useEditorHistory";
 import { EditableWrapper } from "./EditableWrapper";
 import { nanoid } from "nanoid";
-import type { BlockStyle } from "./sections/BlockStyleWrapper";
 import type { SiteSettings } from "./website-types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1054,7 +1053,7 @@ function WebsiteEditor() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Non-ctrl keyboard shortcuts — Delete, Escape, Enter (skips when typing in an input/textarea)
+  // Non-ctrl keyboard shortcuts — Delete (active section), Escape (deselect all)
   useEffect(() => {
     function onNavKey(e: KeyboardEvent) {
       if (e.ctrlKey || e.metaKey) return;
