@@ -9,7 +9,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Plus, GripVertical, Trash2, Copy, Type, AlignLeft, AlignCenter, AlignRight, MousePointer,
   Image as ImageIcon, Minus, Smile, PlayCircle, Square, Quote, Mail, MapPin, Layers,
-  ClipboardPaste,
+  ClipboardPaste, Link2, FileText,
 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
@@ -26,11 +26,13 @@ export interface HeadingProps {
   level?: 1 | 2 | 3 | 4;
   align?: "left" | "center" | "right";
   style?: TextStyle;
+  link?: string;
 }
 export interface ParagraphProps {
   text: string;
   align?: "left" | "center" | "right";
   style?: TextStyle;
+  link?: string;
 }
 export interface ButtonCompProps {
   label: string;
@@ -44,6 +46,7 @@ export interface ImageCompProps {
   width?: "full" | "half" | "quarter" | "auto";
   borderRadius?: number;
   caption?: string;
+  link?: string;
 }
 export interface DividerCompProps {
   color?: string;
@@ -188,7 +191,7 @@ export function renderSiteComponent(
       const p = comp.props as HeadingProps;
       const Tag = (`h${p.level ?? 2}`) as "h1" | "h2" | "h3" | "h4";
       const sizes: Record<number, string> = { 1: "text-4xl", 2: "text-3xl", 3: "text-2xl", 4: "text-xl" };
-      return (
+      const el = (
         <Tag
           style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", color: "var(--theme-text, #111827)", ...textStyleToCSS(p.style) }}
           className={`font-bold ${sizes[p.level ?? 2] ?? "text-3xl"} leading-tight`}
@@ -196,10 +199,11 @@ export function renderSiteComponent(
           {p.text}
         </Tag>
       );
+      return p.link ? <a href={p.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "inherit" }}>{el}</a> : el;
     }
     case "paragraph": {
       const p = comp.props as ParagraphProps;
-      return (
+      const el = (
         <p
           style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", color: "var(--theme-text-muted, #374151)", ...textStyleToCSS(p.style) }}
           className="leading-relaxed"
@@ -207,6 +211,7 @@ export function renderSiteComponent(
           {p.text}
         </p>
       );
+      return p.link ? <a href={p.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "inherit" }}>{el}</a> : el;
     }
     case "button": {
       const p = comp.props as ButtonCompProps;
@@ -245,7 +250,7 @@ export function renderSiteComponent(
           </div>
         );
       }
-      return (
+      const figure = (
         <figure>
           <img
             src={p.url}
@@ -256,6 +261,7 @@ export function renderSiteComponent(
           {p.caption && <figcaption className="text-xs mt-1 text-center" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{p.caption}</figcaption>}
         </figure>
       );
+      return p.link ? <a href={p.link} target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>{figure}</a> : figure;
     }
     case "divider": {
       const p = comp.props as DividerCompProps;
@@ -486,16 +492,37 @@ function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicat
           className={`p-1 rounded transition-colors ${align === "right" ? "bg-white/30 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
           <AlignRight className="w-3 h-3" />
         </button>
+        <label title="Text color" onClick={e => e.stopPropagation()}
+          className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors cursor-pointer flex items-center">
+          <span className="w-3.5 h-3.5 rounded-full border border-white/40 inline-block flex-shrink-0"
+            style={{ backgroundColor: style.color || "#374151" }} />
+          <input type="color" value={style.color || "#374151"}
+            onChange={e => patchStyle({ color: e.target.value })}
+            className="sr-only" />
+        </label>
+        <button type="button" title={p.link ? `Link: ${p.link}` : "Add link"} onClick={e => { e.stopPropagation(); onEdit?.(); }}
+          className={`p-1 rounded transition-colors ${p.link ? "bg-blue-500/40 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          <Link2 className="w-3 h-3" />
+        </button>
       </>
     );
   } else if (comp.type === "image") {
-    // Replace: opens the inspector and focuses the URL / media field
+    const imgP = comp.props as ImageCompProps;
+    // Replace / Alt Text / Link: each opens the inspector focused on the relevant field
     typeToolbar = (
       <>
         <div className="w-px h-3.5 bg-white/20 mx-0.5" />
         <button type="button" title="Replace image" onClick={e => { e.stopPropagation(); onEdit?.(); }}
           className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors">
           <ImageIcon className="w-3.5 h-3.5" />
+        </button>
+        <button type="button" title="Alt text" onClick={e => { e.stopPropagation(); onEdit?.(); }}
+          className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors">
+          <FileText className="w-3.5 h-3.5" />
+        </button>
+        <button type="button" title={imgP.link ? `Link: ${imgP.link}` : "Add link"} onClick={e => { e.stopPropagation(); onEdit?.(); }}
+          className={`p-1 rounded transition-colors ${imgP.link ? "bg-blue-500/40 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          <Link2 className="w-3.5 h-3.5" />
         </button>
       </>
     );
@@ -710,10 +737,23 @@ export function ContentSection({
         </DndContext>
 
         {components.length === 0 && (
-          <div className="text-center py-12 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl mb-2">
-            <Layers className="w-8 h-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm font-medium">No components yet</p>
-            <p className="text-xs mt-0.5">Click "Add Component" below to get started</p>
+          <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-xl mb-2">
+            <Layers className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+            <p className="text-sm font-medium text-gray-400 mb-3">+ Add content</p>
+            <div className="flex justify-center gap-2">
+              <button type="button" onClick={() => addComponent("heading")}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-colors">
+                <Type className="w-3 h-3" />Text
+              </button>
+              <button type="button" onClick={() => addComponent("image")}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-colors">
+                <ImageIcon className="w-3 h-3" />Image
+              </button>
+              <button type="button" onClick={() => addComponent("button")}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 shadow-sm transition-colors">
+                <MousePointer className="w-3 h-3" />Button
+              </button>
+            </div>
           </div>
         )}
 

@@ -105,6 +105,7 @@ export function ComponentEditorPanel({ component, onChange, onImageUpload, onOpe
               </Field>
               <Field label="Alignment"><AlignBtns value={pp.align} onChange={v => set({ align: v })} /></Field>
               <Field label="Style"><TextStyleToolbar style={pp.style} onChange={s => set({ style: s })} /></Field>
+              <Field label="Link URL">{textInput(pp.link ?? "", v => set({ link: v || undefined }), "https://…")}</Field>
             </>
           );
         })()}
@@ -116,6 +117,7 @@ export function ComponentEditorPanel({ component, onChange, onImageUpload, onOpe
               <Field label="Text">{textArea(pp.text, v => set({ text: v }), 6)}</Field>
               <Field label="Alignment"><AlignBtns value={pp.align} onChange={v => set({ align: v })} /></Field>
               <Field label="Style"><TextStyleToolbar style={pp.style} onChange={s => set({ style: s })} /></Field>
+              <Field label="Link URL">{textInput(pp.link ?? "", v => set({ link: v || undefined }), "https://…")}</Field>
             </>
           );
         })()}
@@ -168,6 +170,7 @@ export function ComponentEditorPanel({ component, onChange, onImageUpload, onOpe
               )}
               <Field label="Image URL">{textInput(pp.url ?? "", v => set({ url: v }), "https://…")}</Field>
               <Field label="Alt Text">{textInput(pp.alt ?? "", v => set({ alt: v }), "Describe the image…")}</Field>
+              <Field label="Link URL">{textInput(pp.link ?? "", v => set({ link: v || undefined }), "https://…")}</Field>
               <Field label="Caption">{textInput(pp.caption ?? "", v => set({ caption: v }), "Optional caption")}</Field>
               <Field label="Width">
                 <div className="flex gap-1 flex-wrap">

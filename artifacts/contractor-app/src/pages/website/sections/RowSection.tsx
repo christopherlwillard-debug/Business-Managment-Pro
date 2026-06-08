@@ -6,7 +6,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, GripVertical, Trash2, Copy, AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, LayoutGrid, ClipboardPaste } from "lucide-react";
+import { Plus, GripVertical, Trash2, Copy, AlignLeft, AlignCenter, AlignRight, Image as ImageIcon, LayoutGrid, ClipboardPaste, Link2, FileText, MousePointer } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import {
   renderSiteComponent, CONTENT_COMPONENT_TYPES, defaultPropsForType,
@@ -177,15 +177,36 @@ function SortableCompItem({ comp, colId, isSelected, onSelect, onEdit, onUpdate,
           className={`p-1 rounded transition-colors ${align === "right" ? "bg-white/30 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
           <AlignRight className="w-3 h-3" />
         </button>
+        <label title="Text color" onClick={e => e.stopPropagation()}
+          className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors cursor-pointer flex items-center">
+          <span className="w-3.5 h-3.5 rounded-full border border-white/40 inline-block flex-shrink-0"
+            style={{ backgroundColor: style.color || "#374151" }} />
+          <input type="color" value={style.color || "#374151"}
+            onChange={e => patchStyle({ color: e.target.value })}
+            className="sr-only" />
+        </label>
+        <button type="button" title={p.link ? `Link: ${p.link}` : "Add link"} onClick={e => { e.stopPropagation(); onEdit?.(); }}
+          className={`p-1 rounded transition-colors ${p.link ? "bg-blue-500/40 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          <Link2 className="w-3 h-3" />
+        </button>
       </>
     );
   } else if (comp.type === "image") {
+    const imgP = comp.props as ImageCompProps;
     typeToolbar = (
       <>
         <div className="w-px h-3.5 bg-white/20 mx-0.5" />
         <button type="button" title="Replace image" onClick={e => { e.stopPropagation(); onEdit?.(); }}
           className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors">
           <ImageIcon className="w-3.5 h-3.5" />
+        </button>
+        <button type="button" title="Alt text" onClick={e => { e.stopPropagation(); onEdit?.(); }}
+          className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors">
+          <FileText className="w-3.5 h-3.5" />
+        </button>
+        <button type="button" title={imgP.link ? `Link: ${imgP.link}` : "Add link"} onClick={e => { e.stopPropagation(); onEdit?.(); }}
+          className={`p-1 rounded transition-colors ${imgP.link ? "bg-blue-500/40 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+          <Link2 className="w-3.5 h-3.5" />
         </button>
       </>
     );
@@ -415,7 +436,23 @@ export function RowSection({
                   </SortableContext>
 
                   {col.components.length === 0 && (
-                    <p className="text-gray-400 text-[10px] text-center py-3 italic">Empty column</p>
+                    <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg mb-1">
+                      <p className="text-[10px] text-gray-400 mb-2">+ Add content</p>
+                      <div className="flex justify-center gap-1.5">
+                        <button type="button" title="Add heading" onClick={e => { e.stopPropagation(); addComponent(col.id, "heading"); }}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
+                          <Type className="w-2.5 h-2.5" />Text
+                        </button>
+                        <button type="button" title="Add image" onClick={e => { e.stopPropagation(); addComponent(col.id, "image"); }}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
+                          <ImageIcon className="w-2.5 h-2.5" />Image
+                        </button>
+                        <button type="button" title="Add button" onClick={e => { e.stopPropagation(); addComponent(col.id, "button"); }}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
+                          <MousePointer className="w-2.5 h-2.5" />Btn
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   <div className="mt-1.5 space-y-1">
