@@ -139,8 +139,8 @@ function renderSection(
     copiedComponent?: SiteComponent | null;
     onCopyComponent?: (comp: SiteComponent) => void;
     onBeforeAction?: () => void;
-    onToggleHide?: (compId: string) => void;
-    onToggleRowComponentHide?: (colId: string, compId: string) => void;
+    onToggleHide?: (sectionId: string, compId: string) => void;
+    onToggleRowComponentHide?: (sectionId: string, colId: string, compId: string) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -192,7 +192,7 @@ function renderSection(
         copiedComponent={extras?.copiedComponent}
         onCopyComponent={extras?.onCopyComponent}
         onBeforeAction={extras?.onBeforeAction}
-        onToggleHide={extras?.onToggleHide}
+        onToggleHide={extras?.onToggleHide ? (compId) => extras.onToggleHide!(section.id, compId) : undefined}
       />
     );
     case "row": return (
@@ -204,7 +204,7 @@ function renderSection(
         copiedComponent={extras?.copiedComponent}
         onCopyComponent={extras?.onCopyComponent}
         onBeforeAction={extras?.onBeforeAction}
-        onToggleRowComponentHide={extras?.onToggleRowComponentHide}
+        onToggleRowComponentHide={extras?.onToggleRowComponentHide ? (colId, compId) => extras.onToggleRowComponentHide!(section.id, colId, compId) : undefined}
       />
     );
     default: return null;
@@ -1523,11 +1523,31 @@ function WebsiteEditor() {
     updatePageSections(arrayMove(sections, idxA, idxB));
   }
 
+  function regenerateNestedIds(content: unknown): unknown {
+    if (!content || typeof content !== "object") return content;
+    const c = content as Record<string, unknown>;
+    const result: Record<string, unknown> = { ...c };
+    if (Array.isArray(c.components)) {
+      result.components = (c.components as Array<Record<string, unknown>>).map(comp => ({ ...comp, id: nanoid() }));
+    }
+    if (Array.isArray(c.columns)) {
+      result.columns = (c.columns as Array<Record<string, unknown>>).map(col => ({
+        ...col,
+        id: nanoid(),
+        components: Array.isArray(col.components)
+          ? (col.components as Array<Record<string, unknown>>).map(comp => ({ ...comp, id: nanoid() }))
+          : col.components,
+      }));
+    }
+    return result;
+  }
+
   function duplicateSection(id: string) {
     const sec = sections.find(s => s.id === id);
     if (!sec) return;
     const idx = sections.indexOf(sec);
-    const dup: Section = { ...JSON.parse(JSON.stringify(sec)), id: nanoid() };
+    const cloned = JSON.parse(JSON.stringify(sec));
+    const dup: Section = { ...cloned, id: nanoid(), content: regenerateNestedIds(cloned.content) };
     const inserted = [...sections.slice(0, idx + 1), dup, ...sections.slice(idx + 1)];
     const newSections = inserted.map((s, i) => ({ ...s, order: i }));
     history.pushSnapshot({ sections: pagesRef.current, settings });
@@ -2359,16 +2379,17 @@ function WebsiteEditor() {
         }
         history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
       },
-      /** Toggle hidden on a content-section component */
-      onToggleHide: (compId: string) => {
+      /** Toggle hidden on a content-section component — scoped to the exact section to prevent cross-section ID collisions */
+      onToggleHide: (sectionId: string, compId: string) => {
         const pageId = activePageIdRef.current;
         setLocalPages(prev => {
           if (!prev) return prev;
           return prev.map(p => p.id !== pageId ? p : {
             ...p,
             sections: p.sections.map(s => {
+              if (s.id !== sectionId) return s;
               const comps: SiteComponent[] | undefined = (s.content as any)?.components;
-              if (!comps?.some(c => c.id === compId)) return s;
+              if (!comps) return s;
               history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
               return {
                 ...s,
@@ -2383,23 +2404,23 @@ function WebsiteEditor() {
         isDirtyRef.current = true;
         toast({ title: "Component visibility toggled", duration: 2000 });
       },
-      /** Toggle hidden on a row-section component inside a column */
-      onToggleRowComponentHide: (colId: string, compId: string) => {
+      /** Toggle hidden on a row-section component inside a column — scoped to the exact section */
+      onToggleRowComponentHide: (sectionId: string, colId: string, compId: string) => {
         const pageId = activePageIdRef.current;
         setLocalPages(prev => {
           if (!prev) return prev;
           return prev.map(p => p.id !== pageId ? p : {
             ...p,
             sections: p.sections.map(s => {
+              if (s.id !== sectionId) return s;
               const cols: Array<{ id: string; components: SiteComponent[] }> | undefined = (s.content as any)?.columns;
-              const col = cols?.find(c => c.id === colId);
-              if (!col?.components.some(c => c.id === compId)) return s;
+              if (!cols) return s;
               history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
               return {
                 ...s,
                 content: {
                   ...(s.content as Record<string, unknown>),
-                  columns: cols!.map(c => c.id !== colId ? c : {
+                  columns: cols.map(c => c.id !== colId ? c : {
                     ...c,
                     components: c.components.map(cp => cp.id === compId ? { ...cp, hidden: !cp.hidden } : cp),
                   }),

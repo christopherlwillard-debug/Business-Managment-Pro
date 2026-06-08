@@ -11,7 +11,7 @@ import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import {
   renderSiteComponent, CONTENT_COMPONENT_TYPES, defaultPropsForType,
   type SiteComponent, type ComponentType, type SiteComponentProps,
-  type HeadingProps, type ParagraphProps,
+  type HeadingProps, type ParagraphProps, type ImageCompProps,
 } from "./ContentSection";
 import { type TextStyle } from "./TextStyleToolbar";
 import { EditableWrapper } from "../EditableWrapper";
