@@ -46,6 +46,7 @@ import { ImageGallerySection, defaultImageGalleryContent } from "./sections/Imag
 import { ImageSection, defaultImageContent } from "./sections/ImageSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
+import { InspectorPanel } from "./InspectorPanel";
 import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
@@ -1458,6 +1459,49 @@ function WebsiteEditor() {
         }
         return p;
       });
+    });
+  }
+
+  function applyStyleTo(scope: "page" | "site", style: BlockStyle) {
+    const styleOnly: Partial<BlockStyle> = {
+      bgType: style.bgType,
+      bgColor: style.bgColor,
+      bgImageUrl: style.bgImageUrl,
+      bgImageObjectPath: style.bgImageObjectPath,
+      bgGradientFrom: style.bgGradientFrom,
+      bgGradientTo: style.bgGradientTo,
+      bgGradientAngle: style.bgGradientAngle,
+      overlayColor: style.overlayColor,
+      overlayOpacity: style.overlayOpacity,
+      paddingTop: style.paddingTop,
+      paddingBottom: style.paddingBottom,
+      paddingLeft: style.paddingLeft,
+      paddingRight: style.paddingRight,
+      marginTop: style.marginTop,
+      marginBottom: style.marginBottom,
+      minHeight: style.minHeight,
+      borderRadius: style.borderRadius,
+      shadow: style.shadow,
+      animation: style.animation,
+    };
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (scope === "page" && p.id !== activePageIdRef.current) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => ({
+            ...s,
+            blockStyle: { ...(s.blockStyle ?? {}), ...styleOnly },
+          })),
+        };
+      });
+    });
+    toast({
+      title: scope === "page" ? "Styles applied to this page" : "Styles applied to entire website",
+      duration: 2000,
     });
   }
 
@@ -3658,270 +3702,82 @@ function WebsiteEditor() {
           const sec = sections.find(s => s.id === activeSection);
           if (!sec || sec.type === "header") return null;
 
-          const rightCollapseBtn = (
-            <button
-              type="button"
-              onClick={() => setRightCollapsed(true)}
-              title="Collapse panel"
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-            >
-              <ChevronsRight className="w-3.5 h-3.5" />
-            </button>
-          );
+          let selectedComponent: SiteComponent | undefined;
+          let rowData: RowSectionData | undefined;
+          let selectedRowColumnId: string | undefined;
+          let onChangeComponent: ((comp: SiteComponent) => void) | undefined;
+          let onChangeRowData: ((data: RowSectionData) => void) | undefined;
+          let specialContent: React.ReactNode | undefined;
 
-          let panelContent: React.ReactNode;
-
-          if (rightCollapsed) {
-            panelContent = (
-              <div className="flex flex-col items-center py-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => { autoCollapsedRightRef.current = false; setAutoCollapsedRight(false); setRightCollapsed(false); }}
-                  title={autoCollapsedRight ? "Expand panel (auto-collapsed for canvas space)" : "Expand panel"}
-                  className="relative p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <ChevronsLeft className="w-4 h-4" />
-                  {autoCollapsedRight && (
-                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-primary" />
-                  )}
-                </button>
-                <Layers className="w-4 h-4 text-muted-foreground/40" />
-              </div>
-            );
-          } else if (
-            sec.type === "content" &&
-            selectedComponentState?.sectionId === sec.id
-          ) {
-            const contentData = sec.content as { components?: Array<{ id: string; type: string; props: Record<string, unknown> }> };
-            const selectedComp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
-            if (selectedComp) {
-              panelContent = (
-                <div className="flex flex-col overflow-hidden h-full">
-                  <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
-                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
-                      <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
-                      <ChevronRight className="w-2.5 h-2.5" />
-                      <span>{SECTION_LABELS[sec.type] ?? "Section"}</span>
-                      <ChevronRight className="w-2.5 h-2.5" />
-                      <span className="font-medium text-muted-foreground">Component</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
-                      {rightCollapseBtn}
-                    </div>
-                  </div>
-                  <div className="overflow-y-auto flex-1 min-h-0" data-component-editor-panel>
-                    <ComponentEditorPanel
-                      component={selectedComp as any}
-                      onChange={updatedComp => {
-                        const newComponents = (contentData.components ?? []).map(c =>
-                          c.id === updatedComp.id ? updatedComp : c
-                        );
-                        updateContent(sec.id, { ...contentData, components: newComponents });
-                      }}
-                      onImageUpload={handleContentComponentImageUpload}
-                      onOpenMediaLibrary={openMediaLibrary}
-                    />
-                  </div>
-                </div>
-              );
+          if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
+            const contentData = sec.content as { components?: SiteComponent[] };
+            const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
+            if (comp) {
+              selectedComponent = comp as SiteComponent;
+              onChangeComponent = (updatedComp: SiteComponent) => {
+                const newComponents = (contentData.components ?? []).map(c =>
+                  c.id === updatedComp.id ? updatedComp : c
+                );
+                updateContent(sec.id, { ...contentData, components: newComponents });
+              };
             }
           } else if (sec.type === "row") {
-            const rowData = sec.content as RowSectionData;
+            rowData = sec.content as RowSectionData;
+            onChangeRowData = (newData: RowSectionData) =>
+              updateContent(sec.id, newData as unknown as Record<string, unknown>);
             if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
               const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
               const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
               if (selComp) {
-                panelContent = (
-                  <div className="flex flex-col overflow-hidden h-full">
-                    <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
-                      <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
-                        <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
-                        <ChevronRight className="w-2.5 h-2.5" />
-                        <span>Row</span>
-                        <ChevronRight className="w-2.5 h-2.5" />
-                        <span className="font-medium text-muted-foreground">Component</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Component</span>
-                        {rightCollapseBtn}
-                      </div>
-                    </div>
-                    <div className="overflow-y-auto flex-1 min-h-0" data-component-editor-panel>
-                      <ComponentEditorPanel
-                        component={selComp as any}
-                        onChange={updatedComp => {
-                          const newCols = (rowData.columns ?? []).map(col =>
-                            col.id === selectedRowState.columnId
-                              ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
-                              : col
-                          );
-                          updateContent(sec.id, { ...rowData, columns: newCols } as unknown as Record<string, unknown>);
-                        }}
-                        onImageUpload={handleContentComponentImageUpload}
-                        onOpenMediaLibrary={openMediaLibrary}
-                      />
-                    </div>
-                  </div>
-                );
+                selectedComponent = selComp as SiteComponent;
+                selectedRowColumnId = selectedRowState.columnId;
+                onChangeComponent = (updatedComp: SiteComponent) => {
+                  const newCols = (rowData!.columns ?? []).map(col =>
+                    col.id === selectedRowState.columnId
+                      ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
+                      : col
+                  );
+                  updateContent(sec.id, { ...rowData!, columns: newCols } as unknown as Record<string, unknown>);
+                };
               }
             }
-            if (!panelContent) {
-              panelContent = (
-                <div className="flex flex-col overflow-hidden h-full">
-                  <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
-                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
-                      <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
-                      <ChevronRight className="w-2.5 h-2.5" />
-                      <span className="font-medium text-muted-foreground">Row</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Row</span>
-                      <div className="flex items-center gap-0.5">
-                        <button type="button" onClick={() => duplicateSection(sec.id)} title="Duplicate section" className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"><Copy className="w-3.5 h-3.5" /></button>
-                        <button type="button" onClick={() => handleDeleteSectionClick(sec.id)} title="Delete section (Del)" className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                        {rightCollapseBtn}
-                      </div>
-                    </div>
-                  </div>
-                  <RowEditorPanel
-                    data={rowData}
-                    onChange={newData => updateContent(sec.id, newData as unknown as Record<string, unknown>)}
-                  />
-                  <div className="flex-1 min-h-0">
-                    <SectionStylePanel
-                      sectionId={sec.id}
-                      sectionType="row"
-                      blockStyle={sec.blockStyle ?? {}}
-                      onChange={bs => updateBlockStyle(sec.id, bs)}
-                      onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                      isBgUploading={!!bgUploading[sec.id]}
-                      onOpenMediaLibrary={openMediaLibrary}
-                      copiedStyle={copiedBlockStyle}
-                      onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
-                      onPasteStyle={() => {
-                        if (copiedBlockStyle) {
-                          updateBlockStyle(sec.id, copiedBlockStyle);
-                          toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            }
-          }
-
-          if (sec.type === "deposit") {
-            panelContent = (
-              <div className="flex flex-col overflow-hidden h-full">
-                <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
-                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
-                    <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
-                    <ChevronRight className="w-2.5 h-2.5" />
-                    <span className="font-medium text-muted-foreground">Pay Deposit</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                      Pay Deposit
-                    </span>
-                    {rightCollapseBtn}
-                  </div>
-                </div>
-                <div className="overflow-y-auto flex-1 min-h-0">
-                  <DepositSubmissionsPanel businessId={bizId} />
-                  <SectionStylePanel
-                    sectionId={sec.id}
-                    sectionType={sec.type}
-                    blockStyle={sec.blockStyle ?? {}}
-                    onChange={bs => updateBlockStyle(sec.id, bs)}
-                    onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                    isBgUploading={!!bgUploading[sec.id]}
-                    onOpenMediaLibrary={openMediaLibrary}
-                    copiedStyle={copiedBlockStyle}
-                    onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
-                    onPasteStyle={() => {
-                      if (copiedBlockStyle) {
-                        updateBlockStyle(sec.id, copiedBlockStyle);
-                        toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          }
-
-          if (!panelContent) {
-            panelContent = (
-              <div className="flex flex-col overflow-y-auto h-full">
-                <div className="px-3 pt-2 pb-1.5 flex-shrink-0 border-b border-border">
-                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1">
-                    <span>{pages.find(p => p.id === activePageId)?.name ?? "Home"}</span>
-                    <ChevronRight className="w-2.5 h-2.5" />
-                    <span className="font-medium text-muted-foreground">{SECTION_LABELS[sec.type] ?? "Section"}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-                      {SECTION_LABELS[sec.type] ?? "Section"}
-                    </span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => toggleSection(sec.id)}
-                        title={sec.enabled ? "Hide section" : "Show section"}
-                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {sec.enabled ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => duplicateSection(sec.id)}
-                        title="Duplicate section"
-                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSectionClick(sec.id)}
-                        title="Delete section (Del)"
-                        className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                      {rightCollapseBtn}
-                    </div>
-                  </div>
-                </div>
-                <SectionStylePanel
-                  sectionId={sec.id}
-                  sectionType={sec.type}
-                  blockStyle={sec.blockStyle ?? {}}
-                  onChange={bs => updateBlockStyle(sec.id, bs)}
-                  onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                  isBgUploading={!!bgUploading[sec.id]}
-                  onOpenMediaLibrary={openMediaLibrary}
-                  copiedStyle={copiedBlockStyle}
-                  onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
-                  onPasteStyle={() => {
-                    if (copiedBlockStyle) {
-                      updateBlockStyle(sec.id, copiedBlockStyle);
-                      toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
-                    }
-                  }}
-                />
-              </div>
-            );
+          } else if (sec.type === "deposit") {
+            specialContent = <DepositSubmissionsPanel businessId={bizId} />;
           }
 
           return (
-            <div
-              className="flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out"
-              style={{ width: rightCollapsed ? '36px' : 'clamp(200px, 15%, 288px)' }}
-            >
-              {panelContent}
-            </div>
+            <InspectorPanel
+              pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
+              section={sec}
+              selectedComponent={selectedComponent}
+              rowData={rowData}
+              selectedRowColumnId={selectedRowColumnId}
+              onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+              onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+              isBgUploading={!!bgUploading[sec.id]}
+              onOpenMediaLibrary={openMediaLibrary}
+              copiedStyle={copiedBlockStyle}
+              onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+              onPasteStyle={() => {
+                if (copiedBlockStyle) {
+                  updateBlockStyle(sec.id, copiedBlockStyle);
+                  toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                }
+              }}
+              onApplyStyleTo={applyStyleTo}
+              onToggleSection={() => toggleSection(sec.id)}
+              onDuplicateSection={() => duplicateSection(sec.id)}
+              onDeleteSection={() => handleDeleteSectionClick(sec.id)}
+              onChangeComponent={onChangeComponent}
+              onComponentImageUpload={handleContentComponentImageUpload}
+              onChangeRowData={onChangeRowData}
+              collapsed={rightCollapsed}
+              onCollapse={() => setRightCollapsed(true)}
+              onExpand={() => { autoCollapsedRightRef.current = false; setAutoCollapsedRight(false); setRightCollapsed(false); }}
+              autoCollapsed={autoCollapsedRight}
+              onClearAutoCollapse={() => { autoCollapsedRightRef.current = false; setAutoCollapsedRight(false); }}
+              specialContent={specialContent}
+            />
           );
         })()}
         </>)}

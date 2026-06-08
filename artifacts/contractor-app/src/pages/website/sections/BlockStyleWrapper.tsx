@@ -23,6 +23,8 @@ export interface BlockStyle {
   hideOnMobile?: boolean;
   hideOnTablet?: boolean;
   customClass?: string;
+  anchorId?: string;
+  customAttrs?: string;
 }
 
 const SHADOW_MAP: Record<string, string> = {
@@ -124,8 +126,22 @@ export function BlockStyleWrapper({
     .filter(Boolean)
     .join(" ");
 
+  let extraDataAttrs: Record<string, string> = {};
+  if (bs.customAttrs) {
+    try {
+      const parsed = JSON.parse(bs.customAttrs);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        Object.entries(parsed).forEach(([k, v]) => {
+          if (typeof v === "string") {
+            extraDataAttrs[k.startsWith("data-") ? k : `data-${k}`] = v;
+          }
+        });
+      }
+    } catch {}
+  }
+
   return (
-    <div ref={ref} id={id} className={`relative ${combined}`} style={style}>
+    <div ref={ref} id={bs.anchorId || id} className={`relative ${combined}`} style={style} {...extraDataAttrs}>
       {hasOverlay && (
         <div
           className="absolute inset-0 pointer-events-none z-0"
