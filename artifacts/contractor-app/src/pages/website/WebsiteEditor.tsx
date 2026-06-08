@@ -73,6 +73,9 @@ class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { er
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
+  componentDidCatch(error: Error) {
+    console.error("[WebsiteEditorErrorBoundary]", error.stack ?? error.message);
+  }
   render() {
     if (this.state.error) {
       return (
