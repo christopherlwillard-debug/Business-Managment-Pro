@@ -681,3 +681,22 @@ pool.query(\`
 \`).then(() => { console.log('deposit_submissions table ensured'); pool.end(); })
   .catch(e => { console.error('deposit_submissions migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #775/#783: create client_errors table for crash reporting (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS client_errors (
+    id serial PRIMARY KEY NOT NULL,
+    message text NOT NULL,
+    stack text,
+    component_stack text,
+    location text,
+    user_agent text,
+    created_at timestamp DEFAULT now() NOT NULL,
+    count integer DEFAULT 1 NOT NULL
+  )
+\`).then(() => { console.log('client_errors table ensured'); pool.end(); })
+  .catch(e => { console.error('client_errors migration error:', e.message); pool.end(); process.exit(1); });
+")

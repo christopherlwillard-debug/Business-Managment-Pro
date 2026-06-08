@@ -39,13 +39,20 @@ interface FooterSectionProps {
   sectionId?: string;
 }
 
-const SOCIAL_PLATFORMS: Array<{ key: SocialLink["platform"]; label: string; icon: React.ReactNode }> = [
-  { key: "facebook",  label: "Facebook",  icon: <Facebook  className="w-4 h-4" /> },
-  { key: "instagram", label: "Instagram", icon: <Instagram className="w-4 h-4" /> },
-  { key: "linkedin",  label: "LinkedIn",  icon: <Linkedin  className="w-4 h-4" /> },
-  { key: "twitter",   label: "X / Twitter", icon: <Twitter className="w-4 h-4" /> },
-  { key: "youtube",   label: "YouTube",   icon: <Youtube   className="w-4 h-4" /> },
-];
+let _socialPlatforms: Array<{ key: SocialLink["platform"]; label: string; icon: React.ReactNode }> | null = null;
+
+function getSocialPlatforms(): Array<{ key: SocialLink["platform"]; label: string; icon: React.ReactNode }> {
+  if (!_socialPlatforms) {
+    _socialPlatforms = [
+      { key: "facebook",  label: "Facebook",  icon: <Facebook  className="w-4 h-4" /> },
+      { key: "instagram", label: "Instagram", icon: <Instagram className="w-4 h-4" /> },
+      { key: "linkedin",  label: "LinkedIn",  icon: <Linkedin  className="w-4 h-4" /> },
+      { key: "twitter",   label: "X / Twitter", icon: <Twitter className="w-4 h-4" /> },
+      { key: "youtube",   label: "YouTube",   icon: <Youtube   className="w-4 h-4" /> },
+    ];
+  }
+  return _socialPlatforms;
+}
 
 const BADGE_SIZE_CLASSES: Record<string, string> = {
   sm: "h-8",
@@ -291,7 +298,7 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
           <AccordionGroup title="Social Media" groupKey="social" openGroups={openGroups} onToggle={toggleGroup}>
             <p className="text-[10px] opacity-40 mb-2">Leave a URL blank to hide that icon.</p>
             <div className="space-y-2">
-              {SOCIAL_PLATFORMS.map(({ key, label, icon }) => (
+              {getSocialPlatforms().map(({ key, label, icon }) => (
                 <div key={key} className="flex items-center gap-2">
                   <span className="flex-shrink-0 opacity-60">{icon}</span>
                   <input
@@ -374,7 +381,7 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
         {/* Social links */}
         {socialLinks.length > 0 && (
           <div className="flex flex-wrap justify-center items-center gap-4">
-            {SOCIAL_PLATFORMS.filter((p) => socialLinks.some((s) => s.platform === p.key && s.url)).map(({ key, label, icon }) => {
+            {getSocialPlatforms().filter((p) => socialLinks.some((s) => s.platform === p.key && s.url)).map(({ key, label, icon }) => {
               const url = socialLinks.find((s) => s.platform === key)?.url ?? "";
               return (
                 <a key={key} href={url} target="_blank" rel="noopener noreferrer"
