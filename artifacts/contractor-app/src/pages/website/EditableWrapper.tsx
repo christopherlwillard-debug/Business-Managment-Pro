@@ -48,6 +48,12 @@ export interface EditableWrapperProps {
    * universal Edit · Duplicate · Hide · Delete toolbar contract.
    */
   onEdit?: () => void;
+  /**
+   * Called when the user double-clicks the wrapper area (not on an
+   * InlineEditableText element directly). Allows the parent to activate
+   * inline editing on the section's primary text target.
+   */
+  onDoubleClickPrimary?: () => void;
   onDuplicate?: () => void;
   onToggleHide?: () => void;
   onDelete?: () => void;
@@ -68,6 +74,7 @@ export function EditableWrapper({
   children,
   onSelect,
   onEdit,
+  onDoubleClickPrimary,
   onDuplicate,
   onToggleHide,
   onDelete,
@@ -84,6 +91,15 @@ export function EditableWrapper({
           : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
       } ${isHidden ? "opacity-50" : ""}`}
       onClick={onSelect}
+      onDoubleClick={onDoubleClickPrimary ? (e) => {
+        // Only fire when the user double-clicked the wrapper itself, not an
+        // InlineEditableText child (those handle their own dblclick and
+        // stopPropagation() in handleDoubleClick — so this only fires on
+        // background areas of the section where no editable was targeted).
+        if ((e.target as HTMLElement).dataset.inlineEditable) return;
+        e.stopPropagation();
+        onDoubleClickPrimary();
+      } : undefined}
     >
       {/* Type label badge — faint on hover, solid primary when selected */}
       <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">

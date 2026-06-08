@@ -2552,6 +2552,15 @@ function WebsiteEditor() {
           onMoveUp={!isHeader ? () => moveSection(s.id, "up") : undefined}
           onMoveDown={!isHeader ? () => moveSection(s.id, "down") : undefined}
           onInsertBelow={!isHeader ? () => { setInsertAfterSectionId(s.id); setShowAddSection(true); } : undefined}
+          onDoubleClickPrimary={() => {
+            // When the user double-clicks a non-text background area of the section,
+            // trigger inline editing on the section's first text target.
+            requestAnimationFrame(() => {
+              const container = document.querySelector<HTMLElement>(`[data-section-canvas-id="${s.id}"]`);
+              const first = container?.querySelector<HTMLElement>("[data-inline-editable]");
+              if (first) first.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+            });
+          }}
         >
           {renderSection(s, settings, isActive, content => updateContent(s.id, content), {
             ...sectionExtras,

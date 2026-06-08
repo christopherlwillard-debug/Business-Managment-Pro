@@ -17,18 +17,18 @@ interface InlineEditableTextProps {
 /**
  * InlineEditableText
  *
- * Renders as a normal HTML element by default. When the user double-clicks
- * (inside the canvas editor where InlineEditContext.Provider wraps the tree),
- * it switches to a contenteditable element with a blue ring.
+ * Renders as a normal HTML element. When double-clicked inside the canvas
+ * editor (where InlineEditContext.Provider wraps the tree), it switches to
+ * a contenteditable element with a blue ring.
  *
  * Keyboard contract:
- *   • Escape  — commit (save current text and exit editing)
- *   • Enter   — commit for single-line; newline for multiline
- *   • Tab     — commit and advance to next editable in the same section
+ *   • Escape  — single-line: cancel/revert (stopPropagation, no section deselect)
+ *               multiline:  commit (save current text, stopPropagation)
+ *   • Enter   — single-line: commit; multiline: newline
+ *   • Tab     — commit + advance focus to next editable in same section (via context moveToNext)
  *   • Blur    — always commits
  *
- * Safe to render without the Provider (e.g. public site, preview mode) —
- * it simply renders a static element with no double-click behavior.
+ * Safe to render outside the Provider (static element, no dblclick behavior).
  */
 export function InlineEditableText({
   id,
@@ -68,37 +68,33 @@ export function InlineEditableText({
   function handleDoubleClick(e: React.MouseEvent) {
     e.stopPropagation();
     if (ctx && !ctx.editingId) {
-      ctx.startEditing(id, value, onCommit);
+      ctx.startEditing(id, value, onCommit, multiline);
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
-      // stopPropagation so the global Escape handler (which deselects the section)
-      // does not fire while the user is committing an inline edit.
+      // stopPropagation prevents the global keydown handler from deselecting the section.
       e.stopPropagation();
-      ctx?.commitEdit();
+      if (multiline) {
+        // For multiline text (paragraphs, FAQ answers): Escape = commit (save current draft).
+        // Enter inserts newlines so Escape is the only way to finish.
+        ctx?.commitEdit();
+      } else {
+        // For single-line fields (headings, button labels, stat values, etc.):
+        // Escape = cancel/revert. The original snapshot is restored via cancelEdit().
+        ctx?.cancelEdit();
+      }
     } else if (e.key === "Enter" && !multiline) {
       e.preventDefault();
       ctx?.commitEdit();
     } else if (e.key === "Tab") {
       e.preventDefault();
       ctx?.commitEdit();
-      // Advance to the next InlineEditableText within the same section container.
-      requestAnimationFrame(() => {
-        const thisEl = document.querySelector<HTMLElement>(`[data-inline-editable="${id}"]`);
-        // Walk up to the nearest section canvas wrapper; fall back to document.
-        const sectionEl: Element =
-          thisEl?.closest("[data-section-canvas-id]") ?? document.documentElement;
-        const all = Array.from(
-          sectionEl.querySelectorAll<HTMLElement>("[data-inline-editable]")
-        );
-        const idx = all.findIndex(el => el.dataset.inlineEditable === id);
-        if (idx >= 0 && idx + 1 < all.length) {
-          all[idx + 1].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-        }
-      });
+      // Navigation is delegated to context so the extension contract is not
+      // coupled to DOM event simulation inside this component.
+      ctx?.moveToNext(id);
     }
   }
 
