@@ -178,7 +178,6 @@ export function FAQSection({ content, settings, isEditing, onChange, blockStyle,
                   as="p"
                   value={item.answer}
                   placeholder="Answer…"
-                  multiline
                   className="text-sm leading-relaxed"
                   style={{ color: "var(--theme-text-muted, #4b5563)" }}
                   onCommit={v => updateItem(item.id, { answer: v })}

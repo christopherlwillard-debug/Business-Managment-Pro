@@ -178,7 +178,6 @@ export function TestimonialsSection({ content, settings, isEditing, onChange, bl
                 as="p"
                 value={t.quote}
                 placeholder="Customer quote…"
-                multiline
                 className="text-sm leading-relaxed flex-1"
                 style={{ color: "var(--theme-text-muted, #374151)" }}
                 onCommit={v => updateTestimonial(t.id, { quote: v })}

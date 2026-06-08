@@ -873,6 +873,18 @@ function WebsiteEditor() {
   const settingsRef = useRef<SiteSettings>({ brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" });
   const activePageIdRef = useRef<string>("home");
   const textEditSessionRef = useRef<{ active: boolean; timer: ReturnType<typeof setTimeout> | null }>({ active: false, timer: null });
+
+  // Wire the inline-edit commit boundary so each committed field edit gets its own undo snapshot,
+  // bypassing the 1.5-second text-edit session coalescing window used by the settings panel.
+  useEffect(() => {
+    contextValue.setCommitBoundaryCallback(() => {
+      if (textEditSessionRef.current.timer) {
+        clearTimeout(textEditSessionRef.current.timer);
+        textEditSessionRef.current.timer = null;
+      }
+      textEditSessionRef.current.active = false;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
     return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
   });

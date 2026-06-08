@@ -176,7 +176,6 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
                 as="p"
                 value={content.body}
                 placeholder="Write your About Us paragraph here…"
-                multiline
                 className="leading-relaxed mt-2 w-full"
                 style={{ color: "var(--theme-text-muted, #4b5563)", ...textStyleToCSS(content.bodyStyle) }}
                 onCommit={v => update({ body: v })}

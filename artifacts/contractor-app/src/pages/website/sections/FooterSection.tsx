@@ -415,7 +415,7 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
           <p className="text-xs opacity-50 leading-relaxed max-w-2xl mx-auto">
             {sectionId ? (
               <InlineEditableText id={`${sectionId}-footer-custom`} value={content.customText ?? ""} placeholder="Disclaimer or additional info"
-                multiline as="span" onCommit={(v) => onChange?.({ ...content, customText: v })} />
+                as="span" onCommit={(v) => onChange?.({ ...content, customText: v })} />
             ) : content.customText}
           </p>
         )}

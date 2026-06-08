@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { useInlineEditContext } from "./InlineEditContext";
+import { useInlineEditContext, type EnterBehavior, type EscapeBehavior } from "./InlineEditContext";
 
 type InlineAs = "h1" | "h2" | "h3" | "h4" | "p" | "span" | "div" | "a" | "li" | "strong";
 
@@ -7,7 +7,18 @@ interface InlineEditableTextProps {
   id: string;
   value: string;
   placeholder?: string;
-  multiline?: boolean;
+  /**
+   * Controls what the Enter key does while editing.
+   * "newline" (default) — inserts a line break (suits headings, paragraphs, all running text).
+   * "commit"            — saves and exits (suits single-line labels like button text).
+   */
+  enterBehavior?: EnterBehavior;
+  /**
+   * Controls what the Escape key does while editing.
+   * "commit" (default) — saves the current draft (the only exit key when Enter inserts newlines).
+   * "cancel"           — reverts to the original value without saving.
+   */
+  escapeBehavior?: EscapeBehavior;
   as?: InlineAs;
   className?: string;
   style?: React.CSSProperties;
@@ -22,19 +33,22 @@ interface InlineEditableTextProps {
  * a contenteditable element with a blue ring.
  *
  * Keyboard contract:
- *   • Escape  — single-line: cancel/revert (stopPropagation, no section deselect)
- *               multiline:  commit (save current text, stopPropagation)
- *   • Enter   — single-line: commit; multiline: newline
- *   • Tab     — commit + advance focus to next editable in same section (via context moveToNext)
- *   • Blur    — always commits
+ *   Escape  — escapeBehavior="commit" (default): save and exit
+ *             escapeBehavior="cancel":            revert to original, no save
+ *             stopPropagation in both cases — prevents global handler from deselecting section
+ *   Enter   — enterBehavior="newline" (default): insert newline (no action)
+ *             enterBehavior="commit":             save and exit
+ *   Tab     — save and advance focus to next editable in same section (via context moveToNext)
+ *   Blur    — always saves
  *
- * Safe to render outside the Provider (static element, no dblclick behavior).
+ * Safe to render outside the Provider (renders as a static element).
  */
 export function InlineEditableText({
   id,
   value,
   placeholder = "Double-click to edit",
-  multiline = false,
+  enterBehavior = "newline",
+  escapeBehavior = "commit",
   as: Tag = "span",
   className = "",
   style,
@@ -68,32 +82,26 @@ export function InlineEditableText({
   function handleDoubleClick(e: React.MouseEvent) {
     e.stopPropagation();
     if (ctx && !ctx.editingId) {
-      ctx.startEditing(id, value, onCommit, multiline);
+      ctx.startEditing(id, value, onCommit, enterBehavior, escapeBehavior);
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
-      // stopPropagation prevents the global keydown handler from deselecting the section.
+      // stopPropagation keeps the global keydown handler from deselecting the section.
       e.stopPropagation();
-      if (multiline) {
-        // For multiline text (paragraphs, FAQ answers): Escape = commit (save current draft).
-        // Enter inserts newlines so Escape is the only way to finish.
+      if (escapeBehavior === "commit") {
         ctx?.commitEdit();
       } else {
-        // For single-line fields (headings, button labels, stat values, etc.):
-        // Escape = cancel/revert. The original snapshot is restored via cancelEdit().
         ctx?.cancelEdit();
       }
-    } else if (e.key === "Enter" && !multiline) {
+    } else if (e.key === "Enter" && enterBehavior === "commit") {
       e.preventDefault();
       ctx?.commitEdit();
     } else if (e.key === "Tab") {
       e.preventDefault();
       ctx?.commitEdit();
-      // Navigation is delegated to context so the extension contract is not
-      // coupled to DOM event simulation inside this component.
       ctx?.moveToNext(id);
     }
   }

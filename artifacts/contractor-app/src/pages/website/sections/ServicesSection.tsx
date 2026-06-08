@@ -105,7 +105,6 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
                     as="p"
                     value={item.description}
                     placeholder="Describe this service…"
-                    multiline
                     className="text-sm"
                     style={{ color: "var(--theme-text-muted, #4b5563)" }}
                     onCommit={v => updateItem(item.id, { description: v })}

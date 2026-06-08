@@ -220,7 +220,6 @@ export function renderSiteComponentEditable(
           id={`${sectionId}-${comp.id}-paragraph`}
           value={p.text}
           placeholder="Paragraph text"
-          multiline
           as="p"
           className="leading-relaxed"
           style={{ textAlign: p.align ?? "left", whiteSpace: "pre-line", color: "var(--theme-text-muted, #374151)", ...textStyleToCSS(p.style) }}
@@ -241,6 +240,8 @@ export function renderSiteComponentEditable(
             id={`${sectionId}-${comp.id}-button`}
             value={p.label || ""}
             placeholder="Button label"
+            enterBehavior="commit"
+            escapeBehavior="cancel"
             as="span"
             className={`inline-block transition-opacity hover:opacity-90 ${bClasses}`}
             style={{
