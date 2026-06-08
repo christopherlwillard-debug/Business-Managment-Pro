@@ -171,7 +171,11 @@ export function InlineEditStatus({ editingId }: { editingId: string | null }) {
         <span className="px-2 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold tracking-wide uppercase select-none">
           Editing Text
         </span>
-        <span className="text-[11px] text-muted-foreground select-none">{hint}</span>
+        <span className="flex items-center gap-1 text-[11px] text-muted-foreground select-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse flex-shrink-0" />
+          Editing…
+        </span>
+        <span className="text-[11px] text-muted-foreground/60 select-none">{hint}</span>
       </>
     );
   }

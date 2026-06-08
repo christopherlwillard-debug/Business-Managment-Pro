@@ -1426,7 +1426,12 @@ function WebsiteEditor() {
     }
   }
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  // Suppress section-level drag entirely while a text field is being inline-edited.
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: editingId ? 99999 : 8 },
+    })
+  );
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;

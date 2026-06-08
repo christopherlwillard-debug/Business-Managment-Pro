@@ -345,6 +345,7 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
               <span>📞{" "}
                 {sectionId ? (
                   <InlineEditableText id={`${sectionId}-footer-phone`} value={content.phone} placeholder="Phone number" as="span"
+                    enterBehavior="commit" escapeBehavior="cancel"
                     onCommit={(v) => onChange?.({ ...content, phone: v })} />
                 ) : content.phone}
               </span>
@@ -353,6 +354,7 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
               <span>✉️{" "}
                 {sectionId ? (
                   <InlineEditableText id={`${sectionId}-footer-email`} value={content.email} placeholder="Email address" as="span"
+                    enterBehavior="commit" escapeBehavior="cancel"
                     onCommit={(v) => onChange?.({ ...content, email: v })} />
                 ) : content.email}
               </span>
@@ -361,6 +363,7 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
               <span>🪪 License:{" "}
                 {sectionId ? (
                   <InlineEditableText id={`${sectionId}-footer-license`} value={content.licenseNumber} placeholder="License #" as="span"
+                    enterBehavior="commit" escapeBehavior="cancel"
                     onCommit={(v) => onChange?.({ ...content, licenseNumber: v })} />
                 ) : content.licenseNumber}
               </span>

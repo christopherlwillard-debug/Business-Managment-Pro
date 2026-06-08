@@ -160,6 +160,8 @@ export function FAQSection({ content, settings, isEditing, onChange, blockStyle,
                   as="span"
                   value={item.question}
                   placeholder="Question"
+                  enterBehavior="commit"
+                  escapeBehavior="cancel"
                   className="font-semibold text-sm flex-1"
                   style={{ color: "var(--theme-text, #111827)" }}
                   onCommit={v => updateItem(item.id, { question: v })}

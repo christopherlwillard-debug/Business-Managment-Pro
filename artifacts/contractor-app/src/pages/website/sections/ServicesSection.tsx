@@ -96,6 +96,8 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
                     as="h3"
                     value={item.title}
                     placeholder="Service title"
+                    enterBehavior="commit"
+                    escapeBehavior="cancel"
                     className="font-semibold mb-2"
                     style={{ color: settings.secondaryColor || "#111827" }}
                     onCommit={v => updateItem(item.id, { title: v })}

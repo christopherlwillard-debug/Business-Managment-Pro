@@ -186,6 +186,8 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
                   as="span"
                   value={content.ctaLabel}
                   placeholder="Button label"
+                  enterBehavior="commit"
+                  escapeBehavior="cancel"
                   onCommit={v => update({ ctaLabel: v })}
                 />
               </div>

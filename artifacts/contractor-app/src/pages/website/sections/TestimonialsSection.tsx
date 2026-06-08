@@ -188,6 +188,8 @@ export function TestimonialsSection({ content, settings, isEditing, onChange, bl
                   as="p"
                   value={t.name}
                   placeholder="Customer name"
+                  enterBehavior="commit"
+                  escapeBehavior="cancel"
                   className="font-semibold text-sm"
                   style={{ color: "var(--theme-text, #111827)" }}
                   onCommit={v => updateTestimonial(t.id, { name: v })}
@@ -197,6 +199,8 @@ export function TestimonialsSection({ content, settings, isEditing, onChange, bl
                   as="p"
                   value={t.location}
                   placeholder="City, State"
+                  enterBehavior="commit"
+                  escapeBehavior="cancel"
                   className="text-xs"
                   style={{ color: "var(--theme-text-muted, #9ca3af)" }}
                   onCommit={v => updateTestimonial(t.id, { location: v })}

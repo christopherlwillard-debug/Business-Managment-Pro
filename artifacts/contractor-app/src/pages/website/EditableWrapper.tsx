@@ -91,15 +91,28 @@ export function EditableWrapper({
           : "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
       } ${isHidden ? "opacity-50" : ""}`}
       onClick={onSelect}
-      onDoubleClick={onDoubleClickPrimary ? (e) => {
-        // Only fire when the user double-clicked the wrapper itself, not an
-        // InlineEditableText child (those handle their own dblclick and
-        // stopPropagation() in handleDoubleClick — so this only fires on
-        // background areas of the section where no editable was targeted).
+      onDoubleClick={(e) => {
+        // If the user double-clicked directly on an InlineEditableText element,
+        // that element's own handleDoubleClick has already called e.stopPropagation()
+        // and started editing — nothing to do here. Only proceed when the target is
+        // a background area (no data-inline-editable attribute).
         if ((e.target as HTMLElement).dataset.inlineEditable) return;
         e.stopPropagation();
-        onDoubleClickPrimary();
-      } : undefined}
+        // Capture cursor position so we can target the correct editable after re-render.
+        const { clientX, clientY } = e;
+        requestAnimationFrame(() => {
+          // After the section activates and InlineEditableText elements render,
+          // find the element under the cursor. Prefer the exact element; fall back
+          // to the section's first editable.
+          const elAtCursor = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+          const target =
+            elAtCursor?.closest<HTMLElement>("[data-inline-editable]") ??
+            document.querySelector<HTMLElement>(`[data-section-canvas-id="${id}"] [data-inline-editable]`);
+          if (target) target.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        });
+        // Also call the legacy prop if provided (kept for compatibility).
+        onDoubleClickPrimary?.();
+      }}
     >
       {/* Type label badge — faint on hover, solid primary when selected */}
       <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">

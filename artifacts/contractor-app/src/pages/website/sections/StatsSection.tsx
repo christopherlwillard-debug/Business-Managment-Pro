@@ -133,6 +133,8 @@ export function StatsSection({ content, settings, isEditing, onChange, blockStyl
                 as="div"
                 value={stat.value}
                 placeholder="500+"
+                enterBehavior="commit"
+                escapeBehavior="cancel"
                 className="text-4xl font-bold mb-1 text-center"
                 style={{ color: settings.brandColor }}
                 onCommit={v => updateStat(stat.id, { value: v })}
@@ -142,6 +144,8 @@ export function StatsSection({ content, settings, isEditing, onChange, blockStyl
                 as="div"
                 value={stat.label}
                 placeholder="Stat Label"
+                enterBehavior="commit"
+                escapeBehavior="cancel"
                 className="text-sm font-medium uppercase tracking-wide text-center"
                 style={{ color: "var(--theme-text-muted, #4b5563)" }}
                 onCommit={v => updateStat(stat.id, { label: v })}
