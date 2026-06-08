@@ -1,17 +1,21 @@
 import { type ReactNode } from "react";
 import {
-  ChevronUp, ChevronDown, Copy, EyeOff, Plus, Trash2, Lock,
+  ChevronUp, ChevronDown, Copy, EyeOff, Eye, Plus, Trash2, Lock, Pencil,
 } from "lucide-react";
 
 /**
  * EditableWrapper — the shared architectural foundation for every editable
  * object in the website editor canvas: sections, rows, columns, and
- * individual components. All hover/selection/toolbar state is driven here —
- * never re-implemented per-section or per-component.
+ * individual components (heading, paragraph, button, image, spacer, divider,
+ * video, testimonial, FAQ item, gallery image, footer element, etc.).
  *
- * Usage: wrap any editable canvas element with this component and pass the
- * relevant callbacks. Future section types automatically inherit all
- * interactions with zero custom implementation.
+ * All hover/selection/toolbar state is driven here — never re-implemented
+ * per-section or per-component. Future section or component types inherit
+ * all interactions with zero custom implementation.
+ *
+ * Universal toolbar contract: Edit · Move ↑↓ · Duplicate · Hide · Delete
+ * (move, duplicate, hide, insert-below, and delete are all optional so the
+ * same wrapper works for both the locked header and free-floating items).
  */
 export interface EditableWrapperProps {
   /** Stable unique id — used for data-section-canvas-id */
@@ -36,6 +40,14 @@ export interface EditableWrapperProps {
   children: ReactNode;
   /** Called when the user clicks the element to select it */
   onSelect: (e: React.MouseEvent) => void;
+  /**
+   * Called when the user clicks the Edit (pencil) toolbar button or presses
+   * Enter with this item selected. For sections this opens/focuses the
+   * settings panel; for components it focuses the first editable field in
+   * the component inspector panel. Always implement this to satisfy the
+   * universal Edit · Duplicate · Hide · Delete toolbar contract.
+   */
+  onEdit?: () => void;
   onDuplicate?: () => void;
   onToggleHide?: () => void;
   onDelete?: () => void;
@@ -55,6 +67,7 @@ export function EditableWrapper({
   extraToolbar,
   children,
   onSelect,
+  onEdit,
   onDuplicate,
   onToggleHide,
   onDelete,
@@ -101,13 +114,31 @@ export function EditableWrapper({
         )}
       </div>
 
-      {/* Floating action toolbar — invisible until hover/selection; not shown for the locked header */}
+      {/* Floating action toolbar — invisible until hover/selection.
+          Universal contract: Edit · Move ↑↓ · Duplicate · Hide · Delete
+          Not shown for the locked header section. */}
       {!isHeader && (
         <div
           className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity ${
             isSelected ? "opacity-100" : "opacity-0 group-hover/sec:opacity-100"
           }`}
+          onClick={e => e.stopPropagation()}
         >
+          {/* Edit — always first in toolbar; opens inspector / focuses first editable field */}
+          {onEdit && (
+            <>
+              <button
+                type="button"
+                onClick={onEdit}
+                title="Edit (Enter)"
+                className="p-1 rounded text-white hover:bg-white/20 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+            </>
+          )}
+
           {/* Move controls */}
           {onMoveUp && (
             <button
@@ -156,10 +187,10 @@ export function EditableWrapper({
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onToggleHide(); }}
-              title={isHidden ? "Show section" : "Hide section"}
+              title={isHidden ? "Show" : "Hide"}
               className="p-1 rounded text-white/70 hover:bg-white/20 hover:text-white transition-colors"
             >
-              <EyeOff className="w-3.5 h-3.5" />
+              {isHidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
             </button>
           )}
 
@@ -175,10 +206,10 @@ export function EditableWrapper({
             </button>
           )}
 
-          {/* Extra toolbar items (e.g. image Replace button) */}
+          {/* Extra toolbar items (caller-supplied, e.g. image Replace button) */}
           {extraToolbar}
 
-          {/* Delete */}
+          {/* Delete — always last, with red accent */}
           {onDelete && (
             <>
               <div className="w-px h-3.5 bg-white/20 mx-0.5" />

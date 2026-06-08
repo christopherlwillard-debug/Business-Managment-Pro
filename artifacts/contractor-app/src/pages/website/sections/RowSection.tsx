@@ -115,6 +115,7 @@ interface SortableCompItemProps {
   colId: string;
   isSelected: boolean;
   onSelect: () => void;
+  onEdit?: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onCopy?: () => void;
@@ -122,7 +123,7 @@ interface SortableCompItemProps {
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableCompItem({ comp, colId, isSelected, onSelect, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableCompItemProps) {
+function SortableCompItem({ comp, colId, isSelected, onSelect, onEdit, onDuplicate, onDelete, onCopy, onToggleHide, settings }: SortableCompItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = CONTENT_COMPONENT_TYPES.find(t => t.type === comp.type)?.label ?? comp.type;
 
@@ -151,6 +152,7 @@ function SortableCompItem({ comp, colId, isSelected, onSelect, onDuplicate, onDe
         isSelected={isSelected}
         isHidden={!!comp.hidden}
         onSelect={e => { e.stopPropagation(); onSelect(); }}
+        onEdit={onEdit}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
         onToggleHide={onToggleHide}
@@ -335,6 +337,15 @@ export function RowSection({
                           colId={col.id}
                           isSelected={isColActive && selectedComponentId === comp.id}
                           onSelect={() => onSelectRowComponent?.(col.id, comp.id)}
+                          onEdit={() => {
+                            // Always select this component then focus first field
+                            // in the inspector panel (satisfies Enter contract)
+                            onSelectRowComponent?.(col.id, comp.id);
+                            requestAnimationFrame(() => {
+                              const panel = document.querySelector("[data-component-editor-panel]");
+                              (panel?.querySelector("input, textarea, select") as HTMLElement | null)?.focus();
+                            });
+                          }}
                           onDuplicate={() => duplicateComponent(col.id, comp.id)}
                           onDelete={() => deleteComponent(col.id, comp.id)}
                           onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}

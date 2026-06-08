@@ -1085,12 +1085,15 @@ function WebsiteEditor() {
       }
       if (isTyping) return;
       if (e.key === "Enter") {
-        // Focus first editable field in the component editor panel
+        // Begin editing: focus and scroll to first editable field in the inspector panel.
+        // This satisfies the universal Edit contract — the same action as the toolbar's
+        // Edit (pencil) button — without requiring contenteditable on the canvas.
         const panel = document.querySelector("[data-component-editor-panel]");
         const firstField = panel?.querySelector("input, textarea, select") as HTMLElement | null;
         if (firstField) {
           e.preventDefault();
           firstField.focus();
+          firstField.scrollIntoView({ block: "nearest" });
         }
         return;
       }
@@ -2433,6 +2436,16 @@ function WebsiteEditor() {
               pendingFocusFieldRef.current = fieldEl?.dataset.editField ?? null;
               setActiveSection(s.id);
             }
+          }}
+          onEdit={() => {
+            // Ensure section is selected then focus its first settings field
+            setActiveSection(s.id);
+            requestAnimationFrame(() => {
+              const panel = document.querySelector("[data-component-editor-panel]");
+              const firstField = panel?.querySelector("input, textarea, select") as HTMLElement | null;
+              firstField?.focus();
+              firstField?.scrollIntoView({ block: "nearest" });
+            });
           }}
           onDuplicate={!isHeader ? () => duplicateSection(s.id) : undefined}
           onToggleHide={!isHeader ? () => toggleSection(s.id) : undefined}
