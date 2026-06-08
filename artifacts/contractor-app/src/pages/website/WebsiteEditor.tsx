@@ -1241,7 +1241,7 @@ function WebsiteEditor() {
     }
     window.addEventListener("keydown", onNavKey);
     return () => window.removeEventListener("keydown", onNavKey);
-  }, [activeSection, selectedComponentState, selectedRowState, sections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSection, selectedComponentState, selectedRowState]);
 
   /**
    * selectSectionAndScroll — sets the active section AND scrolls the canvas
