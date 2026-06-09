@@ -547,8 +547,8 @@ export function InspectorPanel({
 
   // ── Panel width (resizable) ────────────────────────────────────────────────
   const [panelWidth, setPanelWidth] = useState(() => {
-    const saved = parseInt(localStorage.getItem(PANEL_WIDTH_KEY) ?? "288", 10);
-    return Math.max(280, Math.min(520, isNaN(saved) ? 288 : saved));
+    const saved = parseInt(localStorage.getItem(PANEL_WIDTH_KEY) ?? "280", 10);
+    return Math.max(240, Math.min(300, isNaN(saved) ? 280 : saved));
   });
   const panelWidthRef = useRef(panelWidth);
   panelWidthRef.current = panelWidth;
@@ -559,7 +559,7 @@ export function InspectorPanel({
     const startWidth = panelWidthRef.current;
     function onMove(ev: MouseEvent) {
       const delta = startX - ev.clientX;
-      setPanelWidth(Math.max(280, Math.min(520, startWidth + delta)));
+      setPanelWidth(Math.max(240, Math.min(300, startWidth + delta)));
     }
     function onUp() {
       localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidthRef.current));
@@ -593,7 +593,20 @@ export function InspectorPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTab]);
 
+  // ── Tab scroll memory — preserve per-tab scroll position across switches ──
+  const tabScrollRef = useRef<Map<string, number>>(new Map());
+  const tabContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (tabContentRef.current) {
+      tabContentRef.current.scrollTop = tabScrollRef.current.get(activeTab) ?? 0;
+    }
+  }, [activeTab]);
+
   function switchTab(t: InspectorTab) {
+    if (tabContentRef.current) {
+      tabScrollRef.current.set(activeTab, tabContentRef.current.scrollTop);
+    }
     setActiveTab(t);
     localStorage.setItem(tabKey, t);
   }
@@ -735,7 +748,7 @@ export function InspectorPanel({
         />
       );
     }
-    if (specialContent) return <div className="overflow-y-auto">{specialContent}</div>;
+    if (specialContent) return <>{specialContent}</>;
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mb-3">
@@ -975,7 +988,7 @@ export function InspectorPanel({
             )}
           </div>
         ) : (
-          <>
+          <div className="flex flex-col flex-1 min-h-0">
             <div className="flex border-b border-border flex-shrink-0 bg-card">
               {TABS.map(t => (
                 <button key={t} onClick={() => switchTab(t)}
@@ -984,14 +997,14 @@ export function InspectorPanel({
                 </button>
               ))}
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div ref={tabContentRef} className="flex-1 overflow-y-auto min-h-0">
               {activeTab === "quick"    && renderQuickTab()}
               {activeTab === "content"  && renderContentTab()}
               {activeTab === "style"    && renderStyleTab()}
               {activeTab === "layout"   && renderLayoutTab()}
               {activeTab === "advanced" && renderAdvancedTab()}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

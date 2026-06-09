@@ -370,24 +370,24 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-colors ${
         active ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
       }`}
       onClick={onActivate}
     >
       <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={e => e.stopPropagation()}>
-        <GripVertical className="w-4 h-4" />
+        <GripVertical className="w-3 h-3" />
       </div>
-      <span className={`flex-1 flex items-center gap-1.5 text-sm font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`}>
+      <span className={`flex-1 flex items-center gap-1 text-[11px] font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`}>
         <span className="opacity-50">{getSectionTypeIcons()[section.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />}</span>
         {SECTION_LABELS[section.type] ?? section.type}
       </span>
       <button
         onClick={e => { e.stopPropagation(); onToggle(); }}
-        className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+        className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
         title={section.enabled ? "Hide section" : "Show section"}
       >
-        {section.enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+        {section.enabled ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
       </button>
     </div>
   );
@@ -522,11 +522,11 @@ function SiteTreeNode({
     }
     return (
       <div
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-muted transition-colors opacity-60"
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer hover:bg-muted transition-colors opacity-60"
         onClick={() => { switchPage(parentPageId); if (!expandedIds.has(parentPageId)) onToggleExpand(parentPageId); }}
       >
         <span className="opacity-60 flex-shrink-0">{node.icon}</span>
-        <span className="flex-1 text-xs font-medium text-foreground">{node.label}</span>
+        <span className="flex-1 text-[11px] font-medium text-foreground">{node.label}</span>
       </div>
     );
   }
@@ -539,7 +539,7 @@ function SiteTreeNode({
   return (
     <div>
       <div
-        className={`group flex items-center gap-1 px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+        className={`group flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors ${
           isActivePage ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
         }`}
         onClick={() => { switchPage(node.id); if (!expandedIds.has(node.id)) onToggleExpand(node.id); }}
@@ -561,7 +561,7 @@ function SiteTreeNode({
             autoFocus onClick={e => e.stopPropagation()}
           />
         ) : (
-          <span className="flex-1 text-xs font-medium truncate">{node.label}</span>
+          <span className="flex-1 text-[11px] font-medium truncate">{node.label}</span>
         )}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button type="button" onClick={e => { e.stopPropagation(); setEditingPageId(node.id); setEditingPageName(node.label); }}
@@ -585,13 +585,13 @@ function SiteTreeNode({
         <div className="ml-3 mt-0.5 space-y-0.5">
           {lockedHeader && (
             <div data-section-id={lockedHeader.id}
-              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-colors ${
                 activeSection === lockedHeader.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
               }`}
               onClick={() => setActiveSection(lockedHeader.id)}
             >
               <Lock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
-              <span className="flex-1 text-xs font-medium text-foreground">Header</span>
+              <span className="flex-1 text-[11px] font-medium text-foreground">Header</span>
               <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
             </div>
           )}
@@ -919,6 +919,10 @@ function WebsiteEditor() {
   const qc = useQueryClient();
   const { setBlocker } = useNavigationBlocker();
 
+  // ── SELECTION-CRITICAL STATE ───────────────────────────────────────────────
+  // These four values own the editor's selection model. Layout restructures,
+  // scroll container changes, and panel refactors must NEVER reset or redeclare
+  // these at a lower level. They live here and are passed down as props only.
   const [activeSection, setActiveSection] = useState<string | null>("hero");
   const [localPages, setLocalPages] = useState<SitePage[] | null>(null);
   const [localSettings, setLocalSettings] = useState<SiteSettings | null>(null);
@@ -977,9 +981,9 @@ function WebsiteEditor() {
     setMediaPickerState({ onSelect });
   }
   const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | null | undefined>(undefined);
-  const [selectedComponentState, setSelectedComponentState] = useState<{ sectionId: string; componentId: string } | null>(null);
+  const [selectedComponentState, setSelectedComponentState] = useState<{ sectionId: string; componentId: string } | null>(null); // selection-critical
   const [selectedRowState, setSelectedRowState] = useState<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
-  const [selectedCardState, setSelectedCardState] = useState<{ sectionId: string; cardId: string } | null>(null);
+  const [selectedCardState, setSelectedCardState] = useState<{ sectionId: string; cardId: string } | null>(null); // selection-critical
   const pickerShownRef = useRef(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const pendingFocusFieldRef = useRef<string | null>(null);
@@ -3863,7 +3867,7 @@ function WebsiteEditor() {
         {focusMode ? null : (
         <div
           className="flex-shrink-0 border-r border-border bg-card flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out"
-          style={{ width: leftCollapsed ? '36px' : 'clamp(180px, 15%, 240px)' }}
+          style={{ width: leftCollapsed ? '36px' : 'clamp(160px, 13%, 200px)' }}
         >
           {leftCollapsed ? (
             <div className="flex flex-col items-center py-2 gap-3">
@@ -3943,6 +3947,9 @@ function WebsiteEditor() {
             </div>
           </div>
 
+          {/* Scrollable body — tree + theme designer scroll together; header & search stay sticky above */}
+          <div ref={sidebarListRef} className="flex-1 min-h-0 overflow-y-auto">
+
           {/* Inline add-page form */}
           {showAddPage && (
             <div className="px-3 pt-2 pb-1 border-b border-border space-y-1">
@@ -3989,7 +3996,7 @@ function WebsiteEditor() {
           )}
 
           {/* Unified tree — pages + their sections */}
-          <div ref={sidebarListRef} className="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0">
+          <div className="p-2 space-y-0.5">
             {(() => {
               const q = treeSearch.toLowerCase();
               const filteredPages = treeSearch
@@ -4044,54 +4051,8 @@ function WebsiteEditor() {
           {/* Theme Designer */}
           <div className="border-t border-border">
 
-            {/* Presets */}
-            <details className="group" open>
-              <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
-                <Palette className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Theme Presets</span>
-                <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
-              </summary>
-              <div className="px-3 pb-3 space-y-2">
-                <div className="grid grid-cols-3 gap-1.5">
-                  {SITE_THEMES.map(theme => (
-                    <button
-                      key={theme.id}
-                      onClick={() => applyTheme(theme)}
-                      title={`${theme.name}: ${theme.description}`}
-                      className={`rounded-lg overflow-hidden border-2 transition-all text-left ${
-                        settings.themeId === theme.id
-                          ? "border-primary shadow-sm"
-                          : "border-transparent hover:border-muted-foreground/40"
-                      }`}
-                    >
-                      <div className="h-7 w-full" style={{ backgroundColor: theme.brandColor }} />
-                      <div className="h-1.5 w-full" style={{ backgroundColor: theme.secondaryColor }} />
-                      <div className="h-1 w-full" style={{ backgroundColor: theme.accentColor }} />
-                      <div className="px-1 py-0.5 bg-muted/40">
-                        <p className="text-[9px] font-medium text-foreground truncate">{theme.name}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                {settings.themeId ? (
-                  <p className="text-[9px] text-muted-foreground leading-relaxed">
-                    {SITE_THEMES.find(t => t.id === settings.themeId)?.description}
-                    {" · "}
-                    <button
-                      onClick={() => patchSettings({ themeId: undefined })}
-                      className="underline hover:text-foreground transition-colors"
-                    >
-                      Clear
-                    </button>
-                  </p>
-                ) : (
-                  <p className="text-[9px] text-muted-foreground">Pick a theme to instantly apply fonts &amp; colors.</p>
-                )}
-              </div>
-            </details>
-
             {/* Colors */}
-            <details className="group border-t border-border" open>
+            <details className="group" open>
               <summary className="list-none flex items-center gap-1.5 px-3 py-2.5 cursor-pointer hover:bg-muted/50 select-none">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex-1">Colors</span>
                 <ChevronRight className="w-3 h-3 text-muted-foreground group-open:rotate-90 transition-transform flex-shrink-0" />
@@ -4574,6 +4535,8 @@ function WebsiteEditor() {
             onChange={domain => patchSettings({ customDomain: domain })}
             onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
           />
+
+          </div>{/* end scrollable body */}
         </>
         )}
         </div>
