@@ -1,0 +1,148 @@
+so all that editing and still not helping with editing so when i go to my service cards a screen pops up on the right but it doesnt fit in the screen 
+
+Looking at your screenshot, the problem isn't really the scrolling anymore.
+
+The bigger issue is that you're trying to edit a Service Card, but the inspector is still showing the Section Inspector.
+
+Notice on the right side:
+
+Background Color
+Padding
+Alignment
+Width / Max Width
+Visibility
+
+Those are section-level settings, not card-level settings.
+
+When you click the "Veteran Owned" card, I would expect to see:
+
+Card Content
+Title
+Description
+Button Text
+Button Link
+Icon / Image
+Change icon
+Icon color
+Icon background
+Icon size
+Upload image
+Media Library
+Design
+Card background
+Border
+Radius
+Shadow
+Hover effect
+Layout
+Icon Top
+Icon Left
+Horizontal
+Image Background
+Presets
+Contractor
+Certification
+Service Tile
+Modern
+Elevated
+
+Instead, you're getting the Services Section editor.
+
+What I think is happening
+
+The selection system is still doing:
+
+selectedSectionId = services-section
+
+instead of:
+
+selectedCardId = veteran-owned-card
+
+So the inspector never switches modes.
+
+What I'd tell Replit
+Service Card Inspector Bug
+
+Current Behavior
+
+When a user clicks a Service Card (e.g. "Veteran Owned"), the card receives a visual selection outline, but the right inspector panel continues displaying the Services Section settings.
+
+The inspector does not switch into card-editing mode.
+
+As a result:
+
+Icons cannot be changed
+Card backgrounds cannot be changed
+Card layouts cannot be changed
+Card badges cannot be edited
+Card click actions cannot be configured
+
+The user can visually select a card but cannot actually edit the card.
+
+Expected Behavior
+
+When a card is selected:
+
+selectedCardId becomes active.
+The inspector switches from ServicesSection settings to CardItemEditorPanel.
+The card editor fills the entire inspector panel.
+The user sees:
+
+Content
+
+Title
+Description
+Button Text
+Button URL
+
+Icon / Image
+
+Icon Picker
+Icon Color
+Icon Background
+Icon Size
+Media Library
+
+Design
+
+Background
+Border
+Radius
+Shadow
+Hover Effects
+
+Layout
+
+Icon Top
+Icon Left
+Horizontal
+Image Background
+
+Presets
+
+Contractor
+Certification
+Service Tile
+Modern
+Elevated
+
+Selection Logic
+
+Inspector priority should be:
+
+selectedCardId
+→ CardItemEditorPanel
+
+selectedComponentId
+→ ComponentEditorPanel
+
+selectedSectionId
+→ InspectorPanel
+
+Currently the Services section remains selected even after selecting a card.
+
+Selecting a card must override section-level inspector rendering.
+
+This is actually a #806 Universal Card Engine wiring issue, not a #813 layout issue.
+
+The screenshot tells me the layout is improving, but the card editor is not taking control of the inspector when a card is selected. That's the next thing I'd fix.

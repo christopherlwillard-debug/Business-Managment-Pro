@@ -1,0 +1,107 @@
+Yes — this is a much better diagnosis than the previous layout tasks.
+
+Based on your screenshot, the card is clearly being selected (blue outline around "Veteran Owned"), but the inspector is still showing:
+
+Background Color
+Padding
+Alignment
+Width
+Visibility
+
+Those are section controls, not card controls.
+
+The plan you've written identifies the likely root cause correctly:
+
+Problem 1: specialContent only renders in the Content tab
+
+If CardItemEditorPanel is being passed as specialContent but InspectorPanel.tsx only renders it inside:
+
+if (activeTab === "content") {
+  return renderContentTab();
+}
+
+then the card editor will never appear when the user is on:
+
+Quick
+Style
+Layout
+Advanced
+
+which is exactly what your screenshot shows.
+
+Problem 2: Card click isn't activating the parent section
+
+If:
+
+setSelectedCardState(cardId)
+
+runs but:
+
+setActiveSection(sectionId)
+
+does not,
+
+then the inspector may still think nothing is selected at the section level and fail to render the card editor.
+
+One improvement I'd add to #817
+
+Add a forced tab reset when a card is selected:
+
+if (selectedCardId) {
+   setActiveInspectorTab("content");
+}
+
+Not because the card editor depends on the Content tab anymore, but because users mentally expect:
+
+Click card
+See editing controls
+
+If they were previously buried in Advanced or Style, the UI can feel inconsistent.
+
+Expected behavior after #817
+
+When you click the Veteran Owned card:
+
+The entire right panel should immediately change to something like:
+
+CARD EDITOR
+
+[Content]
+[Icon/Image]
+[Design]
+[Layout]
+[Presets]
+
+Title
+Description
+Button Label
+Button URL
+
+Icon Picker
+Icon Color
+Icon Background
+
+Card Background
+Border
+Radius
+Shadow
+
+...
+
+and the existing section controls disappear until you deselect the card.
+
+When you click the blank area of the Services section:
+
+SERVICES SECTION
+
+Quick
+Content
+Style
+Layout
+Advanced
+
+returns.
+
+That's the behavior users expect from Webflow, Wix Studio, Framer, and Shopify page builders.
+
+So I would move forward with #817 before spending any more time on workspace layout. The layout improvements are useful, but until the card editor can actually take over the inspector, users still won't be able to edit those service cards the way you're trying to build them.
