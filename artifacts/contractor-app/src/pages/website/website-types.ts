@@ -111,8 +111,8 @@ export interface CardComponent {
   description: string;
   hidden?: boolean;
 
-  /** Typed template identifier — drives initial content and default settings */
-  templateType?: CardTemplateType;
+  /** Typed template identifier — drives initial content and default settings; null clears a prior template */
+  templateType?: CardTemplateType | null;
 
   // ── Media ──────────────────────────────────────────────────────────────────
   mediaType?: CardMediaType;
@@ -154,7 +154,7 @@ export interface CardComponent {
   /** null = white */
   badgeTextColor?: string | null;
   /** null = brand color */
-  badgeBgColor?: string | null;
+  badgeColor?: string | null;
   /** Defaults to "top-right" */
   badgePosition?: CardBadgePosition;
 

@@ -33,6 +33,8 @@ const CARD_TEMPLATES: CardTemplate[] = [
     apply: {
       title: "Licensed & Insured", description: "Fully licensed and insured for your peace of mind.",
       mediaType: "icon", iconName: "Shield", layout: "icon-top", textAlign: "center",
+      badgeEnabled: true, badgeText: "Licensed & Insured", badgePosition: "top-right",
+      hoverEffect: "none",
       templateType: "trust",
     },
   },
@@ -67,7 +69,7 @@ const CARD_TEMPLATES: CardTemplate[] = [
     id: "team", label: "Team Member", iconName: "Users",
     apply: {
       title: "Team Member", description: "Expert craftsman with 10+ years of experience.",
-      mediaType: "image", layout: "icon-left",
+      mediaType: "image", layout: "icon-top", textAlign: "center",
       templateType: "team",
     },
   },
@@ -445,16 +447,16 @@ export function CardItemEditorPanel({
             <div className="space-y-2 pl-1">
               <Field label="Badge Text">
                 <TextInput value={card.badgeText ?? ""} onChange={v => patch({ badgeText: v || undefined })} placeholder="e.g. Popular, New, #1" />
-                {card.templateType === "trust" || card.templateType === "certification" ? (
+                {(card.templateType === "trust" || card.templateType === "certification") && (
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {["Certified","Licensed","Insured","Bonded","SBA","Veteran","5-Star","BBB A+","OSHA"].map(t => (
+                    {TRUST_PACK.map(({ label: t }) => (
                       <button key={t} type="button" onClick={() => patch({ badgeText: t })}
                         className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${card.badgeText === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"}`}>
                         {t}
                       </button>
                     ))}
                   </div>
-                ) : null}
+                )}
               </Field>
               <Field label="Badge Position">
                 <div className="grid grid-cols-2 gap-1">
@@ -467,7 +469,7 @@ export function CardItemEditorPanel({
                 </div>
               </Field>
               <div className="grid grid-cols-2 gap-2">
-                <ColorInput label="Badge BG"   value={card.badgeBgColor}   onChange={v => patch({ badgeBgColor: v })} />
+                <ColorInput label="Badge BG"   value={card.badgeColor}   onChange={v => patch({ badgeColor: v })} />
                 <ColorInput label="Badge Text" value={card.badgeTextColor} onChange={v => patch({ badgeTextColor: v })} />
               </div>
             </div>
@@ -601,52 +603,7 @@ export function CardItemEditorPanel({
             ))}
           </div>
         </Field>
-        <div className="border-t border-border pt-3">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Scheduled Visibility</p>
-          <label className="flex items-center gap-2 cursor-pointer mb-2">
-            <input
-              type="checkbox"
-              checked={card.visibilityRule?.enabled ?? false}
-              onChange={e => {
-                const prev = card.visibilityRule;
-                patch({ visibilityRule: { enabled: e.target.checked, type: prev?.type ?? "always", startDate: prev?.startDate, endDate: prev?.endDate } });
-              }}
-              className="w-3.5 h-3.5 accent-primary"
-            />
-            <span className="text-xs text-foreground">Enable visibility rule</span>
-          </label>
-          {card.visibilityRule?.enabled && (
-            <div className="pl-1 space-y-2">
-              <Field label="Rule Type">
-                <select
-                  value={card.visibilityRule.type}
-                  onChange={e => {
-                    const t = e.target.value as "always" | "date-range";
-                    patch({ visibilityRule: { ...card.visibilityRule!, type: t } });
-                  }}
-                  className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  <option value="always">Always visible</option>
-                  <option value="date-range">Date range (scheduled)</option>
-                </select>
-              </Field>
-              {card.visibilityRule.type === "date-range" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="Start Date">
-                    <input type="date" value={card.visibilityRule.startDate ?? ""}
-                      onChange={e => patch({ visibilityRule: { ...card.visibilityRule!, startDate: e.target.value || undefined } })}
-                      className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-                  </Field>
-                  <Field label="End Date">
-                    <input type="date" value={card.visibilityRule.endDate ?? ""}
-                      onChange={e => patch({ visibilityRule: { ...card.visibilityRule!, endDate: e.target.value || undefined } })}
-                      className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-                  </Field>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Visibility rule editing deferred to a future milestone; rule data is persisted and evaluated at public render time */}
       </div>
     );
   }

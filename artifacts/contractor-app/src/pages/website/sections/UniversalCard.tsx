@@ -166,7 +166,7 @@ export function UniversalCard({
       <span
         className={`absolute ${posClass} text-[10px] font-bold px-2 py-0.5 rounded-full z-10`}
         style={{
-          backgroundColor: card.badgeBgColor  ?? brandColor,
+          backgroundColor: card.badgeColor  ?? brandColor,
           color:           card.badgeTextColor ?? "#ffffff",
         }}
       >
