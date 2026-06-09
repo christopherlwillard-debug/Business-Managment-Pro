@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import { InlineEditableText } from "../InlineEditableText";
 import {
   Pencil, Copy, EyeOff, Eye, Trash2, GripVertical, ArrowRight,
   Wrench, Home, Truck, Shield, Hammer, Building2, Drill, Zap, Droplet, Flame,
@@ -66,6 +67,8 @@ interface UniversalCardProps {
   onDuplicate?: () => void;
   onDelete?: () => void;
   onToggleHide?: () => void;
+  /** Called when the user commits an inline edit on the card's title or description */
+  onUpdateCard?: (patch: Partial<CardComponent>) => void;
   /** Drag handle element injected by the parent SortableCardWrapper */
   dragHandle?: React.ReactNode;
 }
@@ -79,6 +82,7 @@ export function UniversalCard({
   onDuplicate,
   onDelete,
   onToggleHide,
+  onUpdateCard,
   dragHandle,
 }: UniversalCardProps) {
   const [hovered, setHovered] = useState(false);
@@ -218,12 +222,40 @@ export function UniversalCard({
 
     return (
       <div className={`flex-1 ${alignClass}`}>
-        <h3 className="font-semibold text-base mb-1.5" style={{ color: titleColor }}>
-          {card.title}
-        </h3>
-        <p className="text-sm leading-relaxed" style={{ color: descColor }}>
-          {card.description}
-        </p>
+        {isEditing && onUpdateCard ? (
+          <InlineEditableText
+            id={`${card.id}-title`}
+            as="h3"
+            value={card.title}
+            placeholder="Card title"
+            enterBehavior="commit"
+            escapeBehavior="commit"
+            className="font-semibold text-base mb-1.5 w-full"
+            style={{ color: titleColor }}
+            onCommit={v => onUpdateCard({ title: v })}
+          />
+        ) : (
+          <h3 className="font-semibold text-base mb-1.5" style={{ color: titleColor }}>
+            {card.title}
+          </h3>
+        )}
+        {isEditing && onUpdateCard ? (
+          <InlineEditableText
+            id={`${card.id}-desc`}
+            as="p"
+            value={card.description ?? ""}
+            placeholder="Card description"
+            enterBehavior="commit"
+            escapeBehavior="commit"
+            className="text-sm leading-relaxed w-full"
+            style={{ color: descColor }}
+            onCommit={v => onUpdateCard({ description: v })}
+          />
+        ) : (
+          <p className="text-sm leading-relaxed" style={{ color: descColor }}>
+            {card.description}
+          </p>
+        )}
         {card.buttonLabel && (
           <a
             href={isEditing ? undefined : (card.buttonUrl || "#")}
@@ -297,6 +329,7 @@ export function UniversalCard({
 
   // ── image-bg layout ──────────────────────────────────────────────────────
   if (layout === "image-bg") {
+    const alignClass = textAlign === "center" ? "text-center" : textAlign === "right" ? "text-right" : "text-left";
     return (
       <div
         className={`group/card relative flex flex-col justify-end overflow-hidden ${hasPaddingOverride ? "" : defaultPadding} min-h-[220px] ${hoverTransformClass} ${selectedRing} ${hiddenOpacity} ${cursorClass}`}
@@ -311,9 +344,35 @@ export function UniversalCard({
         />
         <div className="relative z-10 flex flex-col">
           {renderMedia("mb-3")}
-          <div className={textAlign === "center" ? "text-center" : textAlign === "right" ? "text-right" : "text-left"}>
-            <h3 className="font-semibold text-base mb-1.5 text-white">{card.title}</h3>
-            <p className="text-sm text-white/80 leading-relaxed">{card.description}</p>
+          <div className={alignClass}>
+            {isEditing && onUpdateCard ? (
+              <InlineEditableText
+                id={`${card.id}-title`}
+                as="h3"
+                value={card.title}
+                placeholder="Card title"
+                enterBehavior="commit"
+                escapeBehavior="commit"
+                className="font-semibold text-base mb-1.5 w-full text-white"
+                onCommit={v => onUpdateCard({ title: v })}
+              />
+            ) : (
+              <h3 className="font-semibold text-base mb-1.5 text-white">{card.title}</h3>
+            )}
+            {isEditing && onUpdateCard ? (
+              <InlineEditableText
+                id={`${card.id}-desc`}
+                as="p"
+                value={card.description ?? ""}
+                placeholder="Card description"
+                enterBehavior="commit"
+                escapeBehavior="commit"
+                className="text-sm leading-relaxed w-full text-white/80"
+                onCommit={v => onUpdateCard({ description: v })}
+              />
+            ) : (
+              <p className="text-sm text-white/80 leading-relaxed">{card.description}</p>
+            )}
             {card.buttonLabel && (
               <a href={isEditing ? undefined : (card.buttonUrl || "#")} onClick={isEditing ? (e) => e.preventDefault() : undefined}
                 className="inline-flex items-center gap-1 mt-3 text-sm font-medium text-white/90 hover:text-white transition-colors">

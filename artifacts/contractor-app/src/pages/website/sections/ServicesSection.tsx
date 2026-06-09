@@ -68,6 +68,7 @@ interface SortableCardProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleHide: () => void;
+  onUpdateCard: (patch: Partial<CardComponent>) => void;
 }
 
 function SortableCard({
@@ -79,6 +80,7 @@ function SortableCard({
   onDuplicate,
   onDelete,
   onToggleHide,
+  onUpdateCard,
 }: SortableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
@@ -115,6 +117,7 @@ function SortableCard({
         onDuplicate={onDuplicate}
         onDelete={onDelete}
         onToggleHide={onToggleHide}
+        onUpdateCard={onUpdateCard}
         dragHandle={dragHandle}
       />
     </div>
@@ -246,6 +249,7 @@ export function ServicesSection({
                     onDuplicate={() => duplicateCard(item.id)}
                     onDelete={() => deleteCard(item.id)}
                     onToggleHide={() => toggleHide(item.id)}
+                    onUpdateCard={patch => updateCard(item.id, patch)}
                   />
                 </div>
               ))}
