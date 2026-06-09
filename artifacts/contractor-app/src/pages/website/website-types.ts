@@ -48,15 +48,60 @@ export interface SiteSettings {
 
 // ── Universal Card Engine ─────────────────────────────────────────────────────
 
-export type CardClickAction = "none" | "scroll" | "page" | "url" | "contact-form" | "tel" | "email";
+export type CardClickAction =
+  | "none" | "scroll" | "page" | "url" | "contact-form" | "tel" | "email";
+
 export type CardMediaType = "icon" | "image" | "none";
+
 export type CardHoverEffect = "none" | "lift" | "glow" | "border";
+
 export type CardLayout = "icon-top" | "icon-left" | "image-bg" | "horizontal";
+
 export type CardTextAlign = "left" | "center" | "right";
 
+export type CardIconSize = "sm" | "md" | "lg" | "xl";
+
+export type CardBadgePosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
 /**
- * Universal card primitive — used by ServicesSection and any future
- * section that renders a grid of cards.
+ * Typed template identifiers — drives preset content and default settings.
+ * "process-step" not "process"; kept as a branded union so consumers can
+ * discriminate without runtime surprises.
+ */
+export type CardTemplateType =
+  | "service"
+  | "team"
+  | "trust"
+  | "pricing"
+  | "testimonial"
+  | "process-step"
+  | "portfolio"
+  | "feature";
+
+/**
+ * Visibility evaluation — evaluated at public render time only; ignored in
+ * the editor (hidden cards show as dimmed).
+ *
+ * - `always`     — always render (default when undefined)
+ * - `date-range` — render only when now is within [startDate, endDate];
+ *                  omitting either bound means open-ended.
+ * - `custom`     — arbitrary JS condition string (eval'd in public site scope);
+ *                  reserved for power users, silently falls back to visible on
+ *                  eval error.
+ */
+export type CardVisibilityRule =
+  | { type: "always" }
+  | { type: "date-range"; startDate?: string; endDate?: string }
+  | { type: "custom"; condition: string };
+
+/**
+ * Universal card primitive — the atomic unit for any section that renders a
+ * grid of cards (ServicesSection, future CardCollection, etc.).
+ *
+ * Design philosophy:
+ *   • All color/spacing fields accept `null` to mean "inherit from theme CSS var".
+ *   • Fields are additive — old data that lacks new fields safely uses defaults.
+ *   • No field is ever truly deleted; fields are deprecated and kept as optional.
  */
 export interface CardComponent {
   id: string;
@@ -64,8 +109,8 @@ export interface CardComponent {
   description: string;
   hidden?: boolean;
 
-  /** Set when the card was created from a template */
-  templateType?: string;
+  /** Typed template identifier — drives initial content and default settings */
+  templateType?: CardTemplateType;
 
   // ── Media ──────────────────────────────────────────────────────────────────
   mediaType?: CardMediaType;
@@ -73,17 +118,23 @@ export interface CardComponent {
   iconName?: string;
   /** null = inherit theme accent color */
   iconColor?: string | null;
-  /** null = inherit computed icon bg */
+  /** null = computed from iconColor at 15% opacity */
   iconBgColor?: string | null;
+  /** Icon (and inline image) size — defaults to "md" */
+  iconSize?: CardIconSize;
   imageUrl?: string;
   imageObjectPath?: string;
+  imageAlt?: string;
 
   // ── Card background image ─────────────────────────────────────────────────
-  bgImageUrl?: string;
-  bgImageObjectPath?: string;
+  cardBgImage?: string;
+  cardBgImageObjectPath?: string;
   /** null = #000 */
-  bgOverlayColor?: string | null;
-  bgOverlayOpacity?: number;
+  cardBgOverlayColor?: string | null;
+  /** 0–1; defaults to 0.5 */
+  cardBgOverlayOpacity?: number;
+  /** CSS background-position value; defaults to "center" */
+  cardBgPosition?: string;
 
   // ── Button / CTA ──────────────────────────────────────────────────────────
   buttonLabel?: string;
@@ -95,16 +146,32 @@ export interface CardComponent {
   clickTarget?: string;
 
   // ── Badge ─────────────────────────────────────────────────────────────────
+  /** Master toggle; badge is hidden when false/undefined regardless of text */
+  badgeEnabled?: boolean;
   badgeText?: string;
   /** null = white */
-  badgeColor?: string | null;
+  badgeTextColor?: string | null;
   /** null = brand color */
   badgeBgColor?: string | null;
+  /** Defaults to "top-right" */
+  badgePosition?: CardBadgePosition;
 
   // ── Per-card design overrides (null = inherit theme CSS var) ──────────────
+  /** null = var(--theme-surface) */
   cardBgColor?: string | null;
+  /** null = var(--theme-card-border-color) */
   cardBorderColor?: string | null;
+  /** CSS border-width value, e.g. "1px", "2px"; null = theme default */
+  cardBorderWidth?: string | null;
+  /** CSS border-radius value, e.g. "0.75rem", "0"; null = var(--theme-card-radius) */
+  cardBorderRadius?: string | null;
+  /** CSS box-shadow value; null = var(--theme-card-shadow) */
+  cardShadow?: string | null;
+  /** CSS padding value, e.g. "1.5rem", "1rem 1.25rem"; null = section default */
+  cardPadding?: string | null;
+  /** null = var(--theme-text-muted) */
   cardTextColor?: string | null;
+  /** null = var(--theme-text) */
   cardTitleColor?: string | null;
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -113,13 +180,21 @@ export interface CardComponent {
   textAlign?: CardTextAlign;
 
   // ── Visibility (evaluated at public render time only) ─────────────────────
-  visibilityRule?: string;
+  visibilityRule?: CardVisibilityRule;
 
   // ── Analytics ────────────────────────────────────────────────────────────
   trackClicks?: boolean;
   analyticsLabel?: string;
 }
 
-// TODO: CardCollection — section-level primitive for multi-card layouts with
-// filtering, pagination, categories, and rich grid controls. Planned for a
-// future milestone. CardComponent is the atomic unit; CardCollection groups them.
+/**
+ * CardCollection — section-level primitive for multi-card layouts with
+ * filtering, pagination, categories, and rich grid controls. Planned for a
+ * future milestone. CardComponent is the atomic unit; CardCollection groups them.
+ *
+ * Reserved fields (do not use as CardComponent field names):
+ *   collectionId, collectionTitle, filterEnabled, filterCategories,
+ *   paginationMode, itemsPerPage, sortField, sortDirection
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _CardCollectionReserved = never;

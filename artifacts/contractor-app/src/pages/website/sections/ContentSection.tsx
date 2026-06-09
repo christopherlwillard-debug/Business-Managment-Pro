@@ -18,6 +18,7 @@ import { buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from ".
 import { textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { EditableWrapper } from "../EditableWrapper";
 import { useToast } from "@/hooks/use-toast";
+import type { CardComponent } from "../website-types";
 
 export type ComponentType =
   | "heading" | "paragraph" | "button" | "image" | "divider"
@@ -66,11 +67,26 @@ export interface VideoCompProps {
   caption?: string;
   aspectRatio?: "16/9" | "4/3" | "1/1";
 }
-export interface CardCompProps {
-  title: string;
+/**
+ * Card component props for the ContentSection row/column builder.
+ * Extends the shared CardComponent design fields so ContentSection cards
+ * inherit universal per-card design overrides (shadow, radius, padding, etc.)
+ * while keeping backward-compatible aliases (body → description, ctaLabel → buttonLabel).
+ */
+export interface CardCompProps extends Pick<CardComponent,
+  | "title"
+  | "mediaType" | "iconName" | "iconColor" | "iconBgColor" | "iconSize"
+  | "imageUrl"
+  | "buttonLabel" | "buttonUrl"
+  | "hoverEffect" | "layout" | "textAlign"
+  | "cardBgColor" | "cardBorderColor" | "cardBorderWidth" | "cardBorderRadius"
+  | "cardShadow" | "cardPadding" | "cardTextColor" | "cardTitleColor"
+> {
+  /** Card body / description text */
   body: string;
-  imageUrl?: string;
+  /** @deprecated Use buttonLabel */
   ctaLabel?: string;
+  /** @deprecated Use buttonUrl */
   ctaUrl?: string;
 }
 export interface TestimonialCompProps {

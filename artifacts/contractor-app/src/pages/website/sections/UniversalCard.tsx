@@ -9,7 +9,9 @@ import {
   Camera, FileText, Globe, Lock, Anchor, Mountain, Scissors, Gauge, Paintbrush,
   TreePine, Lightbulb, Banknote, HardHat,
 } from "lucide-react";
-import type { CardComponent } from "../website-types";
+import type {
+  CardComponent, CardBadgePosition, CardIconSize, CardVisibilityRule,
+} from "../website-types";
 
 // ── Icon registry ─────────────────────────────────────────────────────────────
 
@@ -21,6 +23,46 @@ export const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
   Camera, FileText, Globe, Lock, Anchor, Mountain, Scissors, Gauge, Paintbrush,
   TreePine, Lightbulb, Banknote, HardHat,
 };
+
+// ── Icon size lookup ──────────────────────────────────────────────────────────
+
+const ICON_SIZE: Record<CardIconSize, { wrap: string; icon: string; img: string }> = {
+  sm: { wrap: "w-8 h-8",  icon: "w-4 h-4",  img: "w-10 h-10" },
+  md: { wrap: "w-10 h-10", icon: "w-5 h-5", img: "w-14 h-14" },
+  lg: { wrap: "w-12 h-12", icon: "w-6 h-6", img: "w-16 h-16" },
+  xl: { wrap: "w-16 h-16", icon: "w-8 h-8", img: "w-20 h-20" },
+};
+
+// ── Badge position lookup ─────────────────────────────────────────────────────
+
+const BADGE_POS_CLASS: Record<CardBadgePosition, string> = {
+  "top-left":     "top-3 left-3",
+  "top-right":    "top-3 right-3",
+  "bottom-left":  "bottom-3 left-3",
+  "bottom-right": "bottom-3 right-3",
+};
+
+// ── Visibility evaluation ─────────────────────────────────────────────────────
+
+function evaluateVisibility(rule: CardVisibilityRule | undefined): boolean {
+  if (!rule) return true;
+  if (rule.type === "always") return true;
+  if (rule.type === "date-range") {
+    const now = new Date();
+    if (rule.startDate && new Date(rule.startDate) > now) return false;
+    if (rule.endDate   && new Date(rule.endDate)   < now) return false;
+    return true;
+  }
+  if (rule.type === "custom") {
+    try {
+      // eslint-disable-next-line no-eval
+      return eval(rule.condition) === true;
+    } catch {
+      return true; // fail open
+    }
+  }
+  return true;
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -50,26 +92,22 @@ export function UniversalCard({
 }: UniversalCardProps) {
   const [hovered, setHovered] = useState(false);
 
-  const brandColor = settings.brandColor;
+  const brandColor  = settings.brandColor;
   const accentColor = settings.accentColor ?? brandColor;
 
-  // Visibility check (public site only)
+  // ── Visibility ───────────────────────────────────────────────────────────
   if (!isEditing && card.hidden) return null;
-  if (!isEditing && card.visibilityRule) {
-    try { if (card.visibilityRule.trim() === "false") return null; } catch {}
-  }
+  if (!isEditing && !evaluateVisibility(card.visibilityRule)) return null;
 
-  const layout = card.layout ?? "icon-top";
-  const textAlign = card.textAlign ?? "left";
+  const layout      = card.layout      ?? "icon-top";
+  const textAlign   = card.textAlign   ?? "left";
   const hoverEffect = card.hoverEffect ?? "none";
-  const hasBgImage = !!card.bgImageUrl;
+  const iconSize    = card.iconSize    ?? "md";
+  const hasBgImage  = !!card.cardBgImage;
 
   // ── Click handler ────────────────────────────────────────────────────────
   function handleClick(e: React.MouseEvent) {
-    if (isEditing) {
-      onSelect?.();
-      return;
-    }
+    if (isEditing) { onSelect?.(); return; }
     if (card.trackClicks) {
       (window as any).__buildpro_track?.("card_click", {
         label: card.analyticsLabel || card.title,
@@ -81,10 +119,10 @@ export function UniversalCard({
       document.getElementById(card.clickTarget)?.scrollIntoView({ behavior: "smooth" });
     } else if (action === "contact-form") {
       e.preventDefault();
-      const el =
+      (
         document.getElementById("contact") ??
-        document.querySelector<HTMLElement>('[data-section-type="contact"]');
-      el?.scrollIntoView({ behavior: "smooth" });
+        document.querySelector<HTMLElement>('[data-section-type="contact"]')
+      )?.scrollIntoView({ behavior: "smooth" });
     } else if (action === "tel" && card.clickTarget) {
       window.location.href = `tel:${card.clickTarget.replace(/\s/g, "")}`;
     } else if (action === "email" && card.clickTarget) {
@@ -95,70 +133,97 @@ export function UniversalCard({
     }
   }
 
-  const isClickable = !!(isEditing || (card.clickAction && card.clickAction !== "none"));
-
   // ── Hover effect styles ──────────────────────────────────────────────────
   const hoverTransformClass =
-    hoverEffect === "lift" ? "hover:-translate-y-1 transition-all duration-200" :
+    hoverEffect === "lift"   ? "hover:-translate-y-1 transition-all duration-200" :
     hoverEffect === "border" ? "hover:ring-2 hover:ring-primary transition-all duration-200" : "";
 
   const glowStyle: React.CSSProperties =
     hoverEffect === "glow" && hovered && !isEditing
-      ? { boxShadow: `0 0 20px ${accentColor}50, var(--theme-card-shadow, 0 2px 8px rgba(0,0,0,0.08))` }
+      ? { boxShadow: `0 0 20px ${accentColor}50, ${card.cardShadow ?? "var(--theme-card-shadow, none)"}` }
       : {};
 
-  // ── Card base style ──────────────────────────────────────────────────────
-  const cardBg = card.cardBgColor ?? "var(--theme-surface, #f9fafb)";
-  const cardBorderVal = card.cardBorderColor
-    ? `1px solid ${card.cardBorderColor}`
-    : "var(--theme-card-border, 1px solid #f3f4f6)";
+  // ── Per-card design ──────────────────────────────────────────────────────
+  const borderVal = card.cardBorderWidth
+    ? `${card.cardBorderWidth} solid ${card.cardBorderColor ?? "currentColor"}`
+    : card.cardBorderColor
+      ? `1px solid ${card.cardBorderColor}`
+      : "var(--theme-card-border, 1px solid #f3f4f6)";
 
   const baseStyle: React.CSSProperties = {
-    backgroundColor: hasBgImage ? undefined : cardBg,
-    borderRadius: "var(--theme-card-radius, 0.75rem)",
-    boxShadow: `var(--theme-card-shadow, none)`,
-    border: cardBorderVal,
+    backgroundColor: hasBgImage ? undefined : (card.cardBgColor ?? "var(--theme-surface, #f9fafb)"),
+    borderRadius:    card.cardBorderRadius ?? "var(--theme-card-radius, 0.75rem)",
+    boxShadow:       hoverEffect === "glow" ? undefined : (card.cardShadow ?? "var(--theme-card-shadow, none)"),
+    border:          borderVal,
+    ...(card.cardPadding ? { padding: card.cardPadding } : {}),
     ...glowStyle,
   };
 
-  // ── Sub-renderers ────────────────────────────────────────────────────────
+  const hasPaddingOverride = !!card.cardPadding;
+  const defaultPadding = "p-6";
 
-  function renderIcon(extraClass = "") {
+  // ── Selection/state helpers ──────────────────────────────────────────────
+  const selectedRing  = selected && isEditing ? "ring-2 ring-primary ring-offset-2" : "";
+  const hiddenOpacity = isEditing && card.hidden ? "opacity-40" : "";
+  const cursorClass   = (isEditing || (card.clickAction && card.clickAction !== "none")) ? "cursor-pointer" : "";
+
+  // ── Badge ────────────────────────────────────────────────────────────────
+  function renderBadge() {
+    if (!card.badgeEnabled || !card.badgeText) return null;
+    const posClass = BADGE_POS_CLASS[card.badgePosition ?? "top-right"];
+    return (
+      <span
+        className={`absolute ${posClass} text-[10px] font-bold px-2 py-0.5 rounded-full z-10`}
+        style={{
+          backgroundColor: card.badgeBgColor  ?? brandColor,
+          color:           card.badgeTextColor ?? "#ffffff",
+        }}
+      >
+        {card.badgeText}
+      </span>
+    );
+  }
+
+  // ── Icon / image media ───────────────────────────────────────────────────
+  function renderMedia(extraClass = "") {
     const mt = card.mediaType ?? "icon";
     if (mt === "none") return null;
 
     if (mt === "image") {
       if (!card.imageUrl) return null;
+      const sz = ICON_SIZE[iconSize].img;
       return (
         <img
           src={card.imageUrl}
-          alt={card.title}
-          className={`w-14 h-14 object-cover rounded-lg flex-shrink-0 ${extraClass}`}
+          alt={card.imageAlt ?? card.title}
+          className={`${sz} object-cover rounded-lg flex-shrink-0 ${extraClass}`}
         />
       );
     }
 
-    const iconKey = card.iconName && LUCIDE_ICON_MAP[card.iconName] ? card.iconName : "Wrench";
+    const iconKey  = card.iconName && LUCIDE_ICON_MAP[card.iconName] ? card.iconName : "Wrench";
     const IconComp = LUCIDE_ICON_MAP[iconKey]!;
-    const iconBg = card.iconBgColor ?? accentColor + "20";
-    const iconColor = card.iconColor ?? accentColor;
+    const { wrap, icon } = ICON_SIZE[iconSize];
+    const iconBg    = card.iconBgColor ?? `${accentColor}20`;
+    const iconColor = card.iconColor   ?? accentColor;
 
     return (
       <div
-        className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${extraClass}`}
+        className={`${wrap} rounded-lg flex items-center justify-center flex-shrink-0 ${extraClass}`}
         style={{ backgroundColor: iconBg }}
       >
-        <IconComp className="w-5 h-5" style={{ color: iconColor }} />
+        <IconComp className={icon} style={{ color: iconColor }} />
       </div>
     );
   }
 
-  function renderTextContent() {
+  // ── Text block ───────────────────────────────────────────────────────────
+  function renderText() {
     const titleColor = card.cardTitleColor ?? settings.secondaryColor ?? "var(--theme-text, #111827)";
-    const descColor = card.cardTextColor ?? "var(--theme-text-muted, #4b5563)";
+    const descColor  = card.cardTextColor  ?? "var(--theme-text-muted, #4b5563)";
     const alignClass =
       textAlign === "center" ? "text-center" :
-      textAlign === "right" ? "text-right" : "text-left";
+      textAlign === "right"  ? "text-right"  : "text-left";
 
     return (
       <div className={`flex-1 ${alignClass}`}>
@@ -183,21 +248,7 @@ export function UniversalCard({
     );
   }
 
-  function renderBadge() {
-    if (!card.badgeText) return null;
-    return (
-      <span
-        className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full z-10"
-        style={{
-          backgroundColor: card.badgeBgColor ?? brandColor,
-          color: card.badgeColor ?? "#ffffff",
-        }}
-      >
-        {card.badgeText}
-      </span>
-    );
-  }
-
+  // ── Edit toolbar ─────────────────────────────────────────────────────────
   function renderEditToolbar() {
     if (!isEditing) return null;
     return (
@@ -207,83 +258,75 @@ export function UniversalCard({
             {dragHandle}
           </span>
         )}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onSelect?.(); }}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title="Edit card"
-        >
+        <button type="button" onClick={(e) => { e.stopPropagation(); onSelect?.(); }}
+          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit card">
           <Pencil className="w-3 h-3" />
         </button>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onDuplicate?.(); }}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title="Duplicate"
-        >
+        <button type="button" onClick={(e) => { e.stopPropagation(); onDuplicate?.(); }}
+          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Duplicate">
           <Copy className="w-3 h-3" />
         </button>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggleHide?.(); }}
+        <button type="button" onClick={(e) => { e.stopPropagation(); onToggleHide?.(); }}
           className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title={card.hidden ? "Show card" : "Hide card"}
-        >
+          title={card.hidden ? "Show card" : "Hide card"}>
           {card.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
         </button>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-          className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors"
-          title="Delete card"
-        >
+        <button type="button" onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+          className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors" title="Delete card">
           <Trash2 className="w-3 h-3" />
         </button>
       </div>
     );
   }
 
-  // ── Selection + hidden states ────────────────────────────────────────────
-  const selectedRing = selected && isEditing ? "ring-2 ring-primary ring-offset-2" : "";
-  const hiddenOpacity = isEditing && card.hidden ? "opacity-40" : "";
-  const cursorClass = isClickable ? "cursor-pointer" : "";
+  // ── Background image overlay helper ──────────────────────────────────────
+  function renderBgLayer() {
+    if (!hasBgImage) return null;
+    return (
+      <>
+        <div
+          className="absolute inset-0 rounded-[inherit]"
+          style={{
+            backgroundImage:    `url(${JSON.stringify(card.cardBgImage!)})`,
+            backgroundSize:     "cover",
+            backgroundPosition: card.cardBgPosition ?? "center",
+            backgroundRepeat:   "no-repeat",
+          }}
+        />
+        <div
+          className="absolute inset-0 rounded-[inherit]"
+          style={{
+            backgroundColor: card.cardBgOverlayColor  ?? "#000000",
+            opacity:          card.cardBgOverlayOpacity ?? 0.5,
+          }}
+        />
+      </>
+    );
+  }
 
   // ── image-bg layout ──────────────────────────────────────────────────────
   if (layout === "image-bg") {
-    const overlayOpacity = card.bgOverlayOpacity ?? 0.5;
-    const overlayColor = card.bgOverlayColor ?? "#000000";
-
     return (
       <div
-        className={`group/card relative flex flex-col justify-end overflow-hidden p-6 min-h-[220px] ${hoverTransformClass} ${selectedRing} ${hiddenOpacity} ${cursorClass}`}
-        style={{
-          ...baseStyle,
-          backgroundImage: card.bgImageUrl ? `url(${JSON.stringify(card.bgImageUrl)})` : undefined,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-        }}
+        className={`group/card relative flex flex-col justify-end overflow-hidden ${hasPaddingOverride ? "" : defaultPadding} min-h-[220px] ${hoverTransformClass} ${selectedRing} ${hiddenOpacity} ${cursorClass}`}
+        style={{ ...baseStyle, backgroundImage: card.cardBgImage ? `url(${JSON.stringify(card.cardBgImage)})` : undefined, backgroundSize: "cover", backgroundPosition: card.cardBgPosition ?? "center" }}
         onClick={handleClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
         <div
           className="absolute inset-0 rounded-[inherit]"
-          style={{ backgroundColor: overlayColor, opacity: overlayOpacity }}
+          style={{ backgroundColor: card.cardBgOverlayColor ?? "#000000", opacity: card.cardBgOverlayOpacity ?? 0.5 }}
         />
         <div className="relative z-10 flex flex-col">
-          {renderIcon("mb-3")}
+          {renderMedia("mb-3")}
           <div className={textAlign === "center" ? "text-center" : textAlign === "right" ? "text-right" : "text-left"}>
             <h3 className="font-semibold text-base mb-1.5 text-white">{card.title}</h3>
             <p className="text-sm text-white/80 leading-relaxed">{card.description}</p>
             {card.buttonLabel && (
-              <a
-                href={isEditing ? undefined : (card.buttonUrl || "#")}
-                onClick={isEditing ? (e) => e.preventDefault() : undefined}
-                className="inline-flex items-center gap-1 mt-3 text-sm font-medium text-white/90 hover:text-white transition-colors"
-              >
-                {card.buttonLabel}
-                <ArrowRight className="w-3.5 h-3.5" />
+              <a href={isEditing ? undefined : (card.buttonUrl || "#")} onClick={isEditing ? (e) => e.preventDefault() : undefined}
+                className="inline-flex items-center gap-1 mt-3 text-sm font-medium text-white/90 hover:text-white transition-colors">
+                {card.buttonLabel}<ArrowRight className="w-3.5 h-3.5" />
               </a>
             )}
           </div>
@@ -298,34 +341,16 @@ export function UniversalCard({
   if (layout === "icon-left" || layout === "horizontal") {
     return (
       <div
-        className={`group/card relative flex items-start p-6 overflow-hidden ${hoverTransformClass} ${selectedRing} ${hiddenOpacity} ${cursorClass}`}
+        className={`group/card relative flex items-start overflow-hidden ${hasPaddingOverride ? "" : defaultPadding} ${hoverTransformClass} ${selectedRing} ${hiddenOpacity} ${cursorClass}`}
         style={baseStyle}
         onClick={handleClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        {hasBgImage && (
-          <>
-            <div
-              className="absolute inset-0 rounded-[inherit]"
-              style={{
-                backgroundImage: `url(${JSON.stringify(card.bgImageUrl!)})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
-            />
-            <div
-              className="absolute inset-0 rounded-[inherit]"
-              style={{
-                backgroundColor: card.bgOverlayColor ?? "#000",
-                opacity: card.bgOverlayOpacity ?? 0.3,
-              }}
-            />
-          </>
-        )}
+        {renderBgLayer()}
         <div className="relative z-10 flex items-start w-full gap-4">
-          {renderIcon("mt-0.5")}
-          {renderTextContent()}
+          {renderMedia("mt-0.5")}
+          {renderText()}
         </div>
         {renderBadge()}
         {renderEditToolbar()}
@@ -336,34 +361,16 @@ export function UniversalCard({
   // ── Default: icon-top ────────────────────────────────────────────────────
   return (
     <div
-      className={`group/card relative flex flex-col p-6 overflow-hidden ${hoverTransformClass} ${selectedRing} ${hiddenOpacity} ${cursorClass}`}
+      className={`group/card relative flex flex-col overflow-hidden ${hasPaddingOverride ? "" : defaultPadding} ${hoverTransformClass} ${selectedRing} ${hiddenOpacity} ${cursorClass}`}
       style={baseStyle}
       onClick={handleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {hasBgImage && (
-        <>
-          <div
-            className="absolute inset-0 rounded-[inherit]"
-            style={{
-              backgroundImage: `url(${JSON.stringify(card.bgImageUrl!)})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          />
-          <div
-            className="absolute inset-0 rounded-[inherit]"
-            style={{
-              backgroundColor: card.bgOverlayColor ?? "#000",
-              opacity: card.bgOverlayOpacity ?? 0.3,
-            }}
-          />
-        </>
-      )}
+      {renderBgLayer()}
       <div className="relative z-10 flex flex-col">
-        {renderIcon("mb-4")}
-        {renderTextContent()}
+        {renderMedia("mb-4")}
+        {renderText()}
       </div>
       {renderBadge()}
       {renderEditToolbar()}
@@ -371,5 +378,5 @@ export function UniversalCard({
   );
 }
 
-// Re-export GripVertical for use by SortableCardWrapper
+// Re-export GripVertical for SortableCardWrapper
 export { GripVertical };
