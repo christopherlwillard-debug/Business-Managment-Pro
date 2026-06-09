@@ -1,0 +1,68 @@
+This is a good task and I'd approve it. It's focused, measurable, and fixes the exact problems visible in your screenshots without turning into a giant redesign.
+
+A few small improvements I'd add:
+
+#813 - Website Builder Workspace Layout & UX (Recommended Additions)
+
+Add to "Done looks like"
+
+Canvas-first layout target
+
+When the viewport width is ≥1280px:
+
+Left panel should occupy approximately 13-15% of available width
+Right inspector should occupy approximately 15-18% of available width
+Canvas should occupy at least 67-72% of available width
+
+The website preview should remain the dominant visual element of the workspace.
+
+Sticky inspector tabs
+
+The Quick / Content / Style / Layout / Advanced tab bar remains visible while scrolling inspector content.
+
+Only the tab content scrolls.
+
+The user never loses access to tab navigation.
+
+Inspector scroll position memory
+
+Each inspector tab remembers its scroll position while the current selection remains active.
+
+Switching between Content and Style returns the user to their previous position instead of resetting to the top.
+
+Site structure density
+
+The Site Structure tree should display approximately 25-35% more rows before requiring scrolling compared to the current implementation.
+
+This is a usability outcome rather than a specific CSS requirement.
+
+Why I'd add those
+
+Sticky tabs
+
+Huge usability improvement
+Almost free to implement
+Prevents users from constantly scrolling back up
+
+Scroll memory
+
+Webflow, Framer, and Wix all do this
+Especially important once #761 gets larger
+
+Canvas width target
+
+Gives Replit a measurable goal
+Prevents them from shrinking the left panel and accidentally giving space to the inspector instead of the canvas
+My assessment
+
+Current priorities:
+
+#755 Universal Editing Framework
+#760 Inline Editing
+#761 Inspector Panel
+#806 Universal Card Engine
+#813 Workspace Layout & UX
+
+That order makes sense because #813 is polishing the workspace around the editor architecture you've already built.
+
+I'd rate #813 as a high-value, low-risk task because it improves usability immediately without touching section rendering, themes, media, templates, or public-site behavior. It should make the builder feel noticeably more professional the same day it's merged.

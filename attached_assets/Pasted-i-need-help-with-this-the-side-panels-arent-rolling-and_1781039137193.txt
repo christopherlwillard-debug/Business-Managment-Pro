@@ -1,0 +1,256 @@
+i need help with this. the side panels arent rolling and have alot of space and not enough space is there anyway you make this better and more user friendly
+
+Yes. Looking at your screenshots, the biggest problem isn't the features anymore—it's screen real estate and panel density.
+
+You've actually reached the point where you're suffering from the same problem early versions of Webflow had:
+
+Too many controls visible at once and not enough focus on the website.
+
+What I would change immediately
+1. Make the right inspector FULL HEIGHT with independent scrolling
+
+Right now:
+
+Inspector
+├─ Search
+├─ Tabs
+├─ Controls
+├─ Controls
+├─ Controls
+├─ Controls
+└─ Cut off
+
+Instead:
+
+┌───────────────────┐
+│ Search            │
+│ Tabs              │
+├───────────────────┤
+│                   │
+│ Scroll Area       │
+│                   │
+│                   │
+│                   │
+└───────────────────┘
+
+Only the inspector contents should scroll.
+
+Not:
+
+page
+canvas
+inspector
+
+all together.
+
+2. Collapse sections by default
+
+Instead of:
+
+TEXT CONTENT
+IMAGE
+LINK
+BACKGROUND
+PADDING
+ALIGNMENT
+WIDTH
+VISIBILITY
+
+Make them:
+
+▸ Content
+▸ Design
+▸ Layout
+▸ Advanced
+
+Open only one at a time.
+
+This alone cuts visual clutter by 70%.
+
+3. Make the Site Structure narrower
+
+Your left panel is wasting space.
+
+Current:
+
+Home
+  Header
+  Hero Banner
+  Image
+  Services
+  About
+  Contact
+  Footer
+
+takes huge vertical space.
+
+Instead:
+
+▾ Home
+   Hero
+   Image
+   Services
+   About
+   Contact
+
+with 28-32px row heights.
+
+You can easily reclaim another 50-80px.
+
+4. Auto-hide inspector when nothing selected
+
+When no section is selected:
+
+Site Settings
+Theme
+Pages
+SEO
+
+When section selected:
+
+Inspector
+
+When card selected:
+
+Card Editor
+
+No mixed modes.
+
+5. Add a floating "Quick Edit" bar
+
+This would be massive.
+
+Instead of always using the sidebar:
+
+When a card is selected:
+
+✏ Edit
+🎨 Style
+📷 Image
+📋 Duplicate
+🗑 Delete
+
+right above the card.
+
+80% of edits never touch the sidebar.
+
+6. Move Theme Presets
+
+This is hurting you badly:
+
+I noticed these at the bottom left:
+
+Modern
+Corporate
+Creative
+Luxury
+Minimal
+Bold
+
+Those shouldn't live permanently in the site structure panel.
+
+Move them to:
+
+Theme Designer
+
+or
+
+Templates
+
+and reclaim that entire footer area.
+
+7. Increase canvas width
+
+This is the biggest issue visually.
+
+Your builder currently looks like:
+
+[Tree][Canvas][Inspector]
+ 20%    60%      20%
+
+I would move toward:
+
+[Tree][Canvas][Inspector]
+ 15%    70%      15%
+
+or even
+
+[Tree][Canvas][Inspector]
+ 12%    76%      12%
+
+The website should dominate the screen.
+
+The editor should feel like:
+
+"I'm editing a website"
+
+not
+
+"I'm editing settings."
+
+8. Add a resizable inspector
+
+Webflow does this really well.
+
+User drags:
+
+| Canvas | Inspector |
+
+to make the inspector wider or narrower.
+
+Some users want:
+
+300px
+
+others want:
+
+450px
+9. Better card editing for #806
+
+Instead of opening card settings in the same inspector:
+
+Click card:
+
+Services
+└── Veteran Owned Card
+
+Inspector title changes to:
+
+CARD EDITOR
+Veteran Owned
+
+Now the entire right side becomes dedicated to that card.
+
+No hunting through section settings.
+
+10. Add "Compact Mode"
+
+A toggle:
+
+Normal
+Compact
+
+Compact mode reduces:
+
+padding
+margins
+row heights
+input heights
+
+by ~25%.
+
+Power users will love it.
+
+If I were prioritizing the next UX task after #755/#760/#761/#806, I'd actually create:
+
+#807 — Adaptive Workspace Layout
+
+Independent scrolling panels
+Resizable sidebars
+Compact mode
+Collapsible inspector groups
+Canvas-first width allocation (70%+)
+Sticky inspector tabs
+Floating quick-edit toolbar
+
+That would make the editor feel dramatically more professional without adding any new website-building features.
