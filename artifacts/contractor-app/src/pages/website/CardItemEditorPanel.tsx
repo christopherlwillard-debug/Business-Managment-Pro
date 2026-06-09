@@ -52,7 +52,7 @@ const CARD_TEMPLATES: CardTemplate[] = [
     apply: {
       title: "Starter Plan", description: "Everything you need to get started.",
       buttonLabel: "Get Started", mediaType: "icon", iconName: "DollarSign",
-      layout: "icon-top", textAlign: "center", hoverEffect: "lift",
+      layout: "horizontal", textAlign: "left", hoverEffect: "lift",
       templateType: "pricing",
     },
   },
@@ -62,6 +62,7 @@ const CARD_TEMPLATES: CardTemplate[] = [
       title: "Happy Customer",
       description: '"This team was incredible — fast, professional, and affordable."',
       mediaType: "icon", iconName: "Star", layout: "icon-top", textAlign: "center",
+      badgeEnabled: true, badgeText: "5 Stars", badgePosition: "top-right",
       templateType: "testimonial",
     },
   },
@@ -86,7 +87,7 @@ const CARD_TEMPLATES: CardTemplate[] = [
     id: "portfolio", label: "Portfolio", iconName: "Camera",
     apply: {
       title: "Project Name", description: "A brief description of this project.",
-      mediaType: "image", layout: "image-bg",
+      buttonLabel: "View Project", mediaType: "image", layout: "image-bg",
       templateType: "portfolio",
     },
   },
@@ -104,39 +105,78 @@ interface StylePreset {
 const STYLE_PRESETS: StylePreset[] = [
   {
     id: "modern", label: "Modern", iconName: "Layers",
-    apply: { hoverEffect: "lift", layout: "icon-top", textAlign: "left", cardBgColor: null, cardBorderColor: null },
+    apply: {
+      hoverEffect: "lift", layout: "icon-top", textAlign: "left",
+      cardBgColor: null, cardBorderColor: null,
+      cardBorderRadius: "0.75rem", cardBorderWidth: "1px", cardPadding: "1.5rem",
+      cardShadow: null,
+    },
   },
   {
     id: "contractor", label: "Contractor", iconName: "HardHat",
-    apply: { hoverEffect: "lift", layout: "icon-left", textAlign: "left" },
+    apply: {
+      hoverEffect: "lift", layout: "icon-left", textAlign: "left",
+      cardBorderRadius: "0.5rem", cardBorderWidth: "1px", cardPadding: "1.25rem",
+      cardShadow: null,
+    },
   },
   {
     id: "minimal", label: "Minimal", iconName: "Layers",
-    apply: { hoverEffect: "none", layout: "icon-top", textAlign: "center", cardBgColor: null },
+    apply: {
+      hoverEffect: "none", layout: "icon-top", textAlign: "center",
+      cardBgColor: null, cardBorderColor: null,
+      cardBorderRadius: "1rem", cardBorderWidth: "0", cardPadding: "1.5rem",
+      cardShadow: "none",
+    },
   },
   {
     id: "outline", label: "Outline", iconName: "Layers",
-    apply: { hoverEffect: "border", layout: "icon-top", textAlign: "left" },
+    apply: {
+      hoverEffect: "border", layout: "icon-top", textAlign: "left",
+      cardBorderWidth: "2px", cardBorderRadius: "0.75rem", cardPadding: "1.5rem",
+      cardShadow: "none",
+    },
   },
   {
     id: "elevated", label: "Elevated", iconName: "Layers",
-    apply: { hoverEffect: "lift", layout: "icon-top", textAlign: "left", cardShadow: "0 8px 24px rgba(0,0,0,0.12)" },
+    apply: {
+      hoverEffect: "lift", layout: "icon-top", textAlign: "left",
+      cardBorderWidth: "0", cardBorderRadius: "1rem", cardPadding: "1.5rem",
+      cardShadow: "0 8px 24px rgba(0,0,0,0.12)",
+    },
   },
   {
     id: "feature", label: "Feature", iconName: "Star",
-    apply: { hoverEffect: "lift", layout: "horizontal", textAlign: "left" },
+    apply: {
+      hoverEffect: "lift", layout: "horizontal", textAlign: "left",
+      cardBorderRadius: "0.75rem", cardBorderWidth: "1px", cardPadding: "1.5rem 2rem",
+      cardShadow: null,
+    },
   },
   {
     id: "image-card", label: "Image Card", iconName: "Camera",
-    apply: { hoverEffect: "lift", layout: "image-bg", textAlign: "left" },
+    apply: {
+      hoverEffect: "lift", layout: "image-bg", textAlign: "left",
+      cardBorderRadius: "0.75rem", cardBorderWidth: "0", cardPadding: "0",
+      cardShadow: "0 4px 16px rgba(0,0,0,0.2)",
+    },
   },
   {
     id: "service-tile", label: "Service Tile", iconName: "Wrench",
-    apply: { hoverEffect: "none", layout: "icon-left", textAlign: "left" },
+    apply: {
+      hoverEffect: "none", layout: "icon-left", textAlign: "left",
+      cardBorderRadius: "0.5rem", cardBorderWidth: "1px", cardPadding: "1rem 1.25rem",
+      cardShadow: null,
+    },
   },
   {
     id: "trust", label: "Trust Card", iconName: "Shield",
-    apply: { hoverEffect: "none", layout: "icon-top", textAlign: "center" },
+    apply: {
+      hoverEffect: "none", layout: "icon-top", textAlign: "center",
+      cardBorderRadius: "1rem", cardBorderWidth: "2px", cardPadding: "1.5rem",
+      cardShadow: null,
+      badgeEnabled: true, badgeText: "Licensed & Insured", badgePosition: "top-right",
+    },
   },
 ];
 
@@ -271,6 +311,28 @@ export function CardItemEditorPanel({
         </div>
 
         <div className="border-t border-border pt-3">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Click Action</p>
+          <Field label="On Click">
+            <select value={card.clickAction ?? "none"} onChange={e => patch({ clickAction: e.target.value as CardClickAction })}
+              className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+              <option value="none">No action</option>
+              <option value="url">Open URL</option>
+              <option value="page">Go to page</option>
+              <option value="scroll">Scroll to section</option>
+              <option value="contact-form">Scroll to contact form</option>
+              <option value="tel">Call phone number</option>
+              <option value="email">Send email</option>
+            </select>
+          </Field>
+          {(card.clickAction && card.clickAction !== "none" && card.clickAction !== "contact-form") && (
+            <Field label={card.clickAction === "tel" ? "Phone number" : card.clickAction === "email" ? "Email address" : card.clickAction === "scroll" ? "Anchor ID" : "URL"}>
+              <TextInput value={card.clickTarget ?? ""} onChange={v => patch({ clickTarget: v || undefined })}
+                placeholder={card.clickAction === "tel" ? "555-867-5309" : card.clickAction === "email" ? "info@company.com" : card.clickAction === "scroll" ? "contact" : "https://"} />
+            </Field>
+          )}
+        </div>
+
+        <div className="border-t border-border pt-3">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Analytics</p>
           <label className="flex items-center gap-2 cursor-pointer mb-2">
             <input type="checkbox" checked={card.trackClicks ?? false} onChange={e => patch({ trackClicks: e.target.checked })} className="w-3.5 h-3.5 accent-primary" />
@@ -397,7 +459,6 @@ export function CardItemEditorPanel({
   // ── Design tab ───────────────────────────────────────────────────────────
 
   function renderDesignTab() {
-    const action = card.clickAction ?? "none";
     const badgePos = card.badgePosition ?? "top-right";
 
     return (
@@ -415,28 +476,6 @@ export function CardItemEditorPanel({
           </div>
         </Field>
 
-        {/* Click action */}
-        <div className="border-t border-border pt-3">
-          <Field label="On Click">
-            <select value={action} onChange={e => patch({ clickAction: e.target.value as CardClickAction })}
-              className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
-              <option value="none">No action</option>
-              <option value="url">Open URL</option>
-              <option value="page">Go to page</option>
-              <option value="scroll">Scroll to section</option>
-              <option value="contact-form">Scroll to contact form</option>
-              <option value="tel">Call phone number</option>
-              <option value="email">Send email</option>
-            </select>
-          </Field>
-          {action !== "none" && action !== "contact-form" && (
-            <Field label={action === "tel" ? "Phone number" : action === "email" ? "Email address" : action === "scroll" ? "Anchor ID" : "URL"}>
-              <TextInput value={card.clickTarget ?? ""} onChange={v => patch({ clickTarget: v || undefined })}
-                placeholder={action === "tel" ? "555-867-5309" : action === "email" ? "info@company.com" : action === "scroll" ? "contact" : "https://"} />
-            </Field>
-          )}
-        </div>
-
         {/* Badge */}
         <div className="border-t border-border pt-3">
           <label className="flex items-center gap-2 cursor-pointer mb-2">
@@ -447,7 +486,7 @@ export function CardItemEditorPanel({
             <div className="space-y-2 pl-1">
               <Field label="Badge Text">
                 <TextInput value={card.badgeText ?? ""} onChange={v => patch({ badgeText: v || undefined })} placeholder="e.g. Popular, New, #1" />
-                {(card.templateType === "trust" || card.templateType === "certification") && (
+                {card.templateType === "trust" && (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {TRUST_PACK.map(({ label: t }) => (
                       <button key={t} type="button" onClick={() => patch({ badgeText: t })}
