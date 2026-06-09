@@ -1385,7 +1385,7 @@ function WebsiteEditor() {
     let el = document.getElementById("__bp-theme-rules") as HTMLStyleElement | null;
     if (!el) { el = document.createElement("style"); el.id = "__bp-theme-rules"; document.head.appendChild(el); }
     let css = "";
-    if (hs) css += `h1{font-size:${hs.h1}!important}h2{font-size:${hs.h2}!important}h3{font-size:${hs.h3}!important}`;
+    if (hs) css += `h1:not([style*="font-size"]){font-size:${hs.h1}}h2:not([style*="font-size"]){font-size:${hs.h2}}h3:not([style*="font-size"]){font-size:${hs.h3}}`;
     if (bs) css += `body{font-size:${bs}}`;
     if (fr) css += `input:focus,textarea:focus,select:focus{box-shadow:0 0 0 2px ${fr};outline:none}`;
     el.textContent = css;

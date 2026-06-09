@@ -295,9 +295,9 @@ export function buildThemeCssVarBlock(
   if (bg) lines.push("body { background-color: var(--theme-bg); font-family: var(--theme-font-body, system-ui, sans-serif); }");
   if (headingFont) lines.push("h1, h2, h3, h4, h5, h6 { font-family: var(--theme-font-heading, system-ui, sans-serif); }");
   if (headingScale) {
-    lines.push(`h1 { font-size: ${headingScale.h1} !important; }`);
-    lines.push(`h2 { font-size: ${headingScale.h2} !important; }`);
-    lines.push(`h3 { font-size: ${headingScale.h3} !important; }`);
+    lines.push(`h1:not([style*="font-size"]) { font-size: ${headingScale.h1}; }`);
+    lines.push(`h2:not([style*="font-size"]) { font-size: ${headingScale.h2}; }`);
+    lines.push(`h3:not([style*="font-size"]) { font-size: ${headingScale.h3}; }`);
   }
   if (bodySize) lines.push(`body { font-size: ${bodySize}; }`);
   if (focusRing) lines.push(`input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 2px ${focusRing}; outline: none; }`);
