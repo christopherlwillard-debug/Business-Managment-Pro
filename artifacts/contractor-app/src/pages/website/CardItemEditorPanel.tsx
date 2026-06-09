@@ -72,19 +72,20 @@ const CARD_TEMPLATES: CardTemplate[] = [
     },
   },
   {
+    id: "certification", label: "Certification", iconName: "Award",
+    apply: {
+      title: "Certified Professional", description: "Industry-recognized certification demonstrates our commitment to excellence.",
+      mediaType: "icon", iconName: "Award", layout: "icon-top", textAlign: "center",
+      badgeEnabled: true, badgeText: "Certified", badgePosition: "top-right",
+      templateType: "certification",
+    },
+  },
+  {
     id: "portfolio", label: "Portfolio", iconName: "Camera",
     apply: {
       title: "Project Name", description: "A brief description of this project.",
       mediaType: "image", layout: "image-bg",
       templateType: "portfolio",
-    },
-  },
-  {
-    id: "feature", label: "Feature", iconName: "Star",
-    apply: {
-      title: "Key Feature", description: "A compelling description of this feature or benefit.",
-      mediaType: "icon", iconName: "Lightbulb", layout: "horizontal", hoverEffect: "lift",
-      templateType: "feature",
     },
   },
 ];
@@ -126,6 +127,10 @@ const STYLE_PRESETS: StylePreset[] = [
   {
     id: "image-card", label: "Image Card", iconName: "Camera",
     apply: { hoverEffect: "lift", layout: "image-bg", textAlign: "left" },
+  },
+  {
+    id: "service-tile", label: "Service Tile", iconName: "Wrench",
+    apply: { hoverEffect: "none", layout: "icon-left", textAlign: "left" },
   },
   {
     id: "trust", label: "Trust Card", iconName: "Shield",
@@ -440,6 +445,16 @@ export function CardItemEditorPanel({
             <div className="space-y-2 pl-1">
               <Field label="Badge Text">
                 <TextInput value={card.badgeText ?? ""} onChange={v => patch({ badgeText: v || undefined })} placeholder="e.g. Popular, New, #1" />
+                {card.templateType === "trust" || card.templateType === "certification" ? (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {["Certified","Licensed","Insured","Bonded","SBA","Veteran","5-Star","BBB A+","OSHA"].map(t => (
+                      <button key={t} type="button" onClick={() => patch({ badgeText: t })}
+                        className={`px-1.5 py-0.5 text-[9px] rounded border transition-colors ${card.badgeText === t ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </Field>
               <Field label="Badge Position">
                 <div className="grid grid-cols-2 gap-1">
@@ -587,43 +602,49 @@ export function CardItemEditorPanel({
           </div>
         </Field>
         <div className="border-t border-border pt-3">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Visibility Rule</p>
-          <Field label="Rule Type">
-            <select
-              value={card.visibilityRule?.type ?? "always"}
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Scheduled Visibility</p>
+          <label className="flex items-center gap-2 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              checked={card.visibilityRule?.enabled ?? false}
               onChange={e => {
-                const t = e.target.value as "always" | "date-range" | "custom";
-                if (t === "always") patch({ visibilityRule: { type: "always" } });
-                else if (t === "date-range") patch({ visibilityRule: { type: "date-range" } });
-                else patch({ visibilityRule: { type: "custom", condition: "true" } });
+                const prev = card.visibilityRule;
+                patch({ visibilityRule: { enabled: e.target.checked, type: prev?.type ?? "always", startDate: prev?.startDate, endDate: prev?.endDate } });
               }}
-              className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="always">Always visible</option>
-              <option value="date-range">Date range</option>
-              <option value="custom">Custom condition</option>
-            </select>
-          </Field>
-          {card.visibilityRule?.type === "date-range" && (
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Start Date">
-                <input type="date" value={(card.visibilityRule as any).startDate ?? ""}
-                  onChange={e => patch({ visibilityRule: { ...card.visibilityRule as any, startDate: e.target.value || undefined } })}
-                  className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+              className="w-3.5 h-3.5 accent-primary"
+            />
+            <span className="text-xs text-foreground">Enable visibility rule</span>
+          </label>
+          {card.visibilityRule?.enabled && (
+            <div className="pl-1 space-y-2">
+              <Field label="Rule Type">
+                <select
+                  value={card.visibilityRule.type}
+                  onChange={e => {
+                    const t = e.target.value as "always" | "date-range";
+                    patch({ visibilityRule: { ...card.visibilityRule!, type: t } });
+                  }}
+                  className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="always">Always visible</option>
+                  <option value="date-range">Date range (scheduled)</option>
+                </select>
               </Field>
-              <Field label="End Date">
-                <input type="date" value={(card.visibilityRule as any).endDate ?? ""}
-                  onChange={e => patch({ visibilityRule: { ...card.visibilityRule as any, endDate: e.target.value || undefined } })}
-                  className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
-              </Field>
+              {card.visibilityRule.type === "date-range" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Start Date">
+                    <input type="date" value={card.visibilityRule.startDate ?? ""}
+                      onChange={e => patch({ visibilityRule: { ...card.visibilityRule!, startDate: e.target.value || undefined } })}
+                      className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+                  </Field>
+                  <Field label="End Date">
+                    <input type="date" value={card.visibilityRule.endDate ?? ""}
+                      onChange={e => patch({ visibilityRule: { ...card.visibilityRule!, endDate: e.target.value || undefined } })}
+                      className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+                  </Field>
+                </div>
+              )}
             </div>
-          )}
-          {card.visibilityRule?.type === "custom" && (
-            <Field label="JS Condition">
-              <TextInput value={(card.visibilityRule as any).condition ?? ""}
-                onChange={v => patch({ visibilityRule: { type: "custom", condition: v } })}
-                placeholder='e.g. window.userIsLoggedIn === true' />
-            </Field>
           )}
         </div>
       </div>

@@ -72,27 +72,29 @@ export type CardTemplateType =
   | "service"
   | "team"
   | "trust"
+  | "certification"
   | "pricing"
   | "testimonial"
   | "process-step"
-  | "portfolio"
-  | "feature";
+  | "portfolio";
 
 /**
- * Visibility evaluation — evaluated at public render time only; ignored in
- * the editor (hidden cards show as dimmed).
+ * Visibility rule — evaluated at public render time only; ignored in the
+ * editor (hidden cards show as dimmed, scheduled cards show as normal).
  *
- * - `always`     — always render (default when undefined)
- * - `date-range` — render only when now is within [startDate, endDate];
- *                  omitting either bound means open-ended.
- * - `custom`     — arbitrary JS condition string (eval'd in public site scope);
- *                  reserved for power users, silently falls back to visible on
- *                  eval error.
+ * enabled: false or undefined → rule is bypassed → card is always rendered.
+ * type "always"     → always render (used to explicitly clear a prior rule).
+ * type "date-range" → render only within [startDate, endDate];
+ *                     omitting either bound makes that end open.
+ *
+ * No arbitrary JS condition is supported — security boundary.
  */
-export type CardVisibilityRule =
-  | { type: "always" }
-  | { type: "date-range"; startDate?: string; endDate?: string }
-  | { type: "custom"; condition: string };
+export interface CardVisibilityRule {
+  enabled: boolean;
+  type: "always" | "date-range";
+  startDate?: string;
+  endDate?: string;
+}
 
 /**
  * Universal card primitive — the atomic unit for any section that renders a

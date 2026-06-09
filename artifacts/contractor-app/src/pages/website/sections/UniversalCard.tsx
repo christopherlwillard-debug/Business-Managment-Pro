@@ -10,7 +10,7 @@ import {
   TreePine, Lightbulb, Banknote, HardHat,
 } from "lucide-react";
 import type {
-  CardComponent, CardBadgePosition, CardIconSize, CardVisibilityRule,
+  CardComponent, CardBadgePosition, CardIconSize,
 } from "../website-types";
 
 // ── Icon registry ─────────────────────────────────────────────────────────────
@@ -44,24 +44,15 @@ const BADGE_POS_CLASS: Record<CardBadgePosition, string> = {
 
 // ── Visibility evaluation ─────────────────────────────────────────────────────
 
-function evaluateVisibility(rule: CardVisibilityRule | undefined): boolean {
-  if (!rule) return true;
+function evaluateVisibility(rule: CardComponent["visibilityRule"]): boolean {
+  if (!rule || !rule.enabled) return true; // no rule or disabled → always show
   if (rule.type === "always") return true;
   if (rule.type === "date-range") {
     const now = new Date();
     if (rule.startDate && new Date(rule.startDate) > now) return false;
     if (rule.endDate   && new Date(rule.endDate)   < now) return false;
-    return true;
   }
-  if (rule.type === "custom") {
-    try {
-      // eslint-disable-next-line no-eval
-      return eval(rule.condition) === true;
-    } catch {
-      return true; // fail open
-    }
-  }
-  return true;
+  return true; // unknown type → fail open (safe default)
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
