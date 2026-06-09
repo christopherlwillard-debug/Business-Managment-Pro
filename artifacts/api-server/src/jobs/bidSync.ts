@@ -132,6 +132,30 @@ async function purgeNavLinkRows(businessId: number): Promise<number> {
   return count;
 }
 
+// ── Purge off-profile federal bids ───────────────────────────────────────────
+
+async function purgeIrrelevantFederalBids(
+  businessId: number,
+  allowedNaicsCodes: string[]
+): Promise<number> {
+  if (allowedNaicsCodes.length === 0) return 0;
+
+  const result = await db.execute(
+    sql`DELETE FROM bid_opportunities
+        WHERE source = 'federal'
+          AND business_id = ${businessId}
+          AND naics_code IS NOT NULL
+          AND naics_code NOT IN (${sql.raw(
+            allowedNaicsCodes.map((c) => `'${c}'`).join(", ")
+          )})`
+  );
+  const count = (result as { rowCount?: number }).rowCount ?? 0;
+  if (count > 0) {
+    console.log(`[bid-sync] Purged ${count} off-profile federal bid(s) for business ${businessId}`);
+  }
+  return count;
+}
+
 // ── Upsert ───────────────────────────────────────────────────────────────────
 
 type OppWithSource = SamOpportunity & { source?: string; sourceLabel?: string };
@@ -210,6 +234,7 @@ export async function runBidSync(
     }
   }
 
+  await purgeIrrelevantFederalBids(businessId, profile.samNaicsCodes);
   await purgeIrrelevantLocalBids(businessId, profile.localKeywords);
   await purgeNavLinkRows(businessId);
 

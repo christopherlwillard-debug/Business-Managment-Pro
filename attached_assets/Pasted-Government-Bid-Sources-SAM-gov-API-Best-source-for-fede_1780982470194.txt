@@ -1,0 +1,160 @@
+Government Bid Sources
+SAM.gov API
+
+Best source for federal contracts.
+
+Pull:
+
+NAICS codes
+Set-asides
+SDVOSB opportunities
+Small business opportunities
+Federal construction projects
+
+Store:
+
+Solicitation number
+Agency
+Due date
+Set-aside type
+Location
+USASpending API
+
+Not for active bids, but excellent for intelligence.
+
+Use it to answer:
+
+Who won similar contracts?
+How much did they win?
+Which agencies buy asphalt sealing?
+Which agencies buy manufactured home services?
+
+This is powerful because you can identify future customers.
+
+Kentucky Vendor Self Service (VSS)
+
+State opportunities.
+
+If your app supports multiple states, create state connectors.
+
+Asphalt-Specific Opportunities
+DOT Bid Sources
+
+Most asphalt work originates from:
+
+State DOTs
+Counties
+Cities
+School districts
+Airports
+
+Examples:
+
+Kentucky Transportation Cabinet
+Indiana DOT
+Tennessee DOT
+
+Many have RSS feeds or downloadable bid lists.
+
+Construction Sources
+ConstructConnect
+
+Industry standard.
+
+Paid service.
+
+Great for:
+
+Commercial construction
+Subcontracting opportunities
+Municipal projects
+Dodge Construction Network
+
+Another major source.
+
+Usually subscription based.
+
+Local Government Sources
+
+Create scrapers/connectors for:
+
+City procurement portals
+County procurement portals
+School districts
+Utilities
+Housing authorities
+
+These often have publicly available bid listings.
+
+SBA Intelligence
+
+If you become SDVOSB certified:
+
+SBA Dynamic Small Business Search (DSBS)
+
+Use for:
+
+Competitor research
+Teaming partners
+Subcontractors
+What I'd Build Into Your Bid Page
+
+Instead of a list of bids:
+
+Bid Score
+Opportunity Score: 92/100
+
+✓ Kentucky
+✓ Construction
+✓ Small Business
+✓ Within 150 miles
+✓ Asphalt Related
+✓ Under $500k
+Auto Match
+
+User selects:
+
+Business Types:
+✓ General Contracting
+✓ Asphalt Sealing
+✓ Manufactured Housing
+
+System automatically filters.
+
+Competitor Intelligence
+
+Using USASpending:
+
+Similar Contract:
+Awarded To: XYZ Paving
+Amount: $124,000
+Agency: VA Hospital
+
+This is where the real value is.
+
+AI Bid Summary
+
+For every bid:
+
+Summary:
+Reseal and stripe 4 parking lots.
+
+Estimated size:
+65,000 sq ft
+
+Likely fit:
+High
+
+Recommended:
+Submit
+APIs I'd Start With First
+
+If I were building this in your app:
+
+SAM.gov API
+USASpending API
+Kentucky VSS
+Local city/county procurement sites
+ConstructConnect (if budget allows)
+
+That combination would give you a much stronger bid page than simply showing a list of opportunities. The goal should be helping you decide which bids are actually worth pursuing, not just finding them.

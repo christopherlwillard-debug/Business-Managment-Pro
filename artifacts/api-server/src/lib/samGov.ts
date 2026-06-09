@@ -163,17 +163,13 @@ export async function fetchSamOpportunities(opts: {
     }
   }
 
-  // Search by PSC × keyword (PSC alone often misses things; pairing with keyword narrows noise)
+  // Search by PSC × keyword only — keyword keeps results on-topic; no-keyword PSC fetches produce too much noise
   for (const psc of (opts.pscCodes ?? [])) {
     for (const keyword of opts.keywords) {
       fetches.push(
         fetchPage(apiKey, { ...baseParams, psc, keyword }, `PSC ${psc} / "${keyword}"`)
       );
     }
-    // Also fetch PSC with no keyword filter to catch anything missed
-    fetches.push(
-      fetchPage(apiKey, { ...baseParams, psc }, `PSC ${psc} (no keyword)`)
-    );
   }
 
   const pages = await Promise.allSettled(fetches);
@@ -184,9 +180,26 @@ export async function fetchSamOpportunities(opts: {
 
   // Deduplicate by noticeId
   const seen = new Set<string>();
-  return all.filter((r) => {
+  const deduped = all.filter((r) => {
     if (seen.has(r.noticeId)) return false;
     seen.add(r.noticeId);
     return true;
   });
+
+  // Post-fetch NAICS guard: drop any result whose NAICS code is present but NOT
+  // in the allowed list. Results with no NAICS code are kept (PSC-only
+  // opportunities often omit it).
+  const allowedNaics = new Set(opts.naicsCodes);
+  const filtered = deduped.filter(
+    (r) => !r.naicsCode || allowedNaics.has(r.naicsCode)
+  );
+
+  if (deduped.length !== filtered.length) {
+    console.log(
+      `[sam-gov] NAICS post-filter: ${deduped.length} → ${filtered.length} ` +
+      `(dropped ${deduped.length - filtered.length} off-profile results)`
+    );
+  }
+
+  return filtered;
 }
