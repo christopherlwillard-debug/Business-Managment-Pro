@@ -5,6 +5,7 @@ import {
   useListMileageLogs,
   useGetMileageSummary,
   useCreateMileageLog,
+  useUpdateMileageLog,
   useDeleteMileageLog,
   useListJobs,
   useGetSettings,
@@ -17,6 +18,8 @@ import {
   MapPin,
   Calculator,
   Trash2,
+  Pencil,
+  X,
   Briefcase,
   User,
   AlertCircle,
@@ -65,6 +68,17 @@ interface MonthlyForm {
   month: string;
   miles: string;
   tripCount: string;
+  notes: string;
+}
+
+interface EditForm {
+  date: string;
+  startLocation: string;
+  endLocation: string;
+  miles: string;
+  purpose: string;
+  classification: "business" | "personal";
+  jobId: string;
   notes: string;
 }
 
@@ -118,9 +132,74 @@ export default function Mileage() {
   const { data: jobs = [] } = useListJobs();
   const { data: settings } = useGetSettings();
   const createMileage = useCreateMileageLog();
+  const updateMileage = useUpdateMileageLog();
   const deleteMileage = useDeleteMileageLog();
 
   const [activeTab, setActiveTab] = useState<"trip" | "monthly">("trip");
+
+  const [editingLog, setEditingLog] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({
+    date: today, startLocation: "", endLocation: "", miles: "",
+    purpose: "", classification: "business", jobId: "", notes: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const openEdit = (log: any) => {
+    setEditingLog(log);
+    setEditForm({
+      date: log.date ?? today,
+      startLocation: log.startLocation ?? "",
+      endLocation: log.endLocation ?? "",
+      miles: log.miles != null ? String(log.miles) : "",
+      purpose: log.purpose ?? "",
+      classification: log.classification === "personal" ? "personal" : "business",
+      jobId: log.jobId ? String(log.jobId) : "",
+      notes: log.notes ?? "",
+    });
+    setEditError("");
+  };
+
+  const closeEdit = () => {
+    setEditingLog(null);
+    setEditError("");
+  };
+
+  const saveEdit = async () => {
+    if (!editForm.date || !editForm.miles || parseFloat(editForm.miles) <= 0) {
+      setEditError("Date and miles are required.");
+      return;
+    }
+    setEditSaving(true);
+    setEditError("");
+    try {
+      try {
+        await updateMileage.mutateAsync({
+          id: editingLog.id,
+          data: {
+            date: editForm.date,
+            miles: parseFloat(editForm.miles),
+            classification: editForm.classification,
+            startLocation: editForm.startLocation || undefined,
+            endLocation: editForm.endLocation || undefined,
+            purpose: editForm.purpose || undefined,
+            jobId: editForm.jobId ? parseInt(editForm.jobId) : undefined,
+            notes: editForm.notes || undefined,
+            source: "manual",
+          },
+        });
+      } catch (err) {
+        if (is401(err)) { setEditError("Session expired — please sign in again."); return; }
+        setEditError(getApiErrorMessage(err, "Couldn't save changes. Check your connection and try again."));
+        return;
+      }
+      queryClient.invalidateQueries();
+      setSavedMsg("Entry updated.");
+      closeEdit();
+    } finally {
+      setEditSaving(false);
+    }
+  };
   const [savedMsg, setSavedMsg] = useState("");
   const [reminderDismissed, setReminderDismissed] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -318,6 +397,153 @@ export default function Mileage() {
 
   return (
     <div className="space-y-6">
+
+      {/* Edit slide-over panel */}
+      {editingLog && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={e => { if (e.target === e.currentTarget) closeEdit(); }}>
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={closeEdit} />
+          <div className="relative w-full max-w-md bg-background shadow-2xl flex flex-col h-full overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-lg font-display font-bold text-foreground">Edit Mileage Entry</h2>
+              <button onClick={closeEdit} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 p-6 space-y-4">
+              {editError && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" /> {editError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Date *</label>
+                  <input
+                    type="date"
+                    value={editForm.date}
+                    onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Miles *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={editForm.miles}
+                    onChange={e => setEditForm(f => ({ ...f, miles: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Start Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 123 Main St"
+                    value={editForm.startLocation}
+                    onChange={e => setEditForm(f => ({ ...f, startLocation: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">End Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 456 Oak Ave"
+                    value={editForm.endLocation}
+                    onChange={e => setEditForm(f => ({ ...f, endLocation: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Purpose</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Material run to Home Depot"
+                  value={editForm.purpose}
+                  onChange={e => setEditForm(f => ({ ...f, purpose: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditForm(f => ({ ...f, classification: "business" }))}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
+                    editForm.classification === "business"
+                      ? "border-primary bg-primary/10 text-primary font-bold"
+                      : "border-border text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  <Briefcase className="w-5 h-5" />
+                  Business
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditForm(f => ({ ...f, classification: "personal" }))}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
+                    editForm.classification === "personal"
+                      ? "border-border bg-muted text-foreground font-bold"
+                      : "border-border text-muted-foreground hover:border-border"
+                  }`}
+                >
+                  <User className="w-5 h-5" />
+                  Personal
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
+                <select
+                  value={editForm.jobId}
+                  onChange={e => setEditForm(f => ({ ...f, jobId: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">No specific job</option>
+                  {(jobs as any[]).map((j: any) => (
+                    <option key={j.id} value={j.id}>{j.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Notes</label>
+                <input
+                  type="text"
+                  placeholder="Optional notes"
+                  value={editForm.notes}
+                  onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-border flex gap-3">
+              <button
+                type="button"
+                onClick={closeEdit}
+                className="flex-1 py-2.5 rounded-xl font-semibold border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={editSaving}
+                className="flex-1 py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
+              >
+                {editSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Mileage Tracking</h1>
@@ -678,7 +904,7 @@ export default function Mileage() {
                 <th className="px-6 py-4 text-right">{mileageUnits === "km" ? "Km" : "Miles"}</th>
                 <th className="px-6 py-4 text-right">Deduction</th>
                 <th className="px-6 py-4 text-center">Type</th>
-                <th className="px-6 py-4 text-center">Delete</th>
+                <th className="px-6 py-4 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -738,13 +964,22 @@ export default function Mileage() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       {canEdit("mileage") && (
-                        <button
-                          onClick={() => handleDelete(log.id, log.classification, log)}
-                          className="text-muted-foreground hover:text-destructive transition-colors"
-                          title="Delete trip"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => openEdit(log)}
+                            className="text-muted-foreground hover:text-primary transition-colors"
+                            title="Edit entry"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(log.id, log.classification, log)}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            title="Delete trip"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
