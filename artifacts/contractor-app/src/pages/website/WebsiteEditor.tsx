@@ -1270,6 +1270,19 @@ function WebsiteEditor() {
     },
   });
 
+  // Derived constants — declared here, after useQuery, so they are in scope
+  // for every hook and callback that follows. Never reference these in a hook
+  // dep array above this line or you will hit a TDZ crash.
+  const pages: SitePage[] = localPages ?? (config
+    ? [{ id: "home", name: "Home", slug: "home", sections: [...(config.sections as Section[])].sort((a, b) => a.order - b.order) }]
+    : [{ id: "home", name: "Home", slug: "home", sections: [] }]);
+  const activePage: SitePage = pages.find(p => p.id === activePageId) ?? pages[0] ?? { id: "home", name: "Home", slug: "home", sections: [] };
+  const sections: Section[] = activePage.sections;
+  const settings: SiteSettings = localSettings ?? config?.settings ?? { brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" };
+  pagesRef.current = pages;
+  settingsRef.current = settings;
+  activePageIdRef.current = activePageId;
+
   useEffect(() => {
     if (!config || dataInitializedRef.current) return;
     dataInitializedRef.current = true;
@@ -1328,16 +1341,6 @@ function WebsiteEditor() {
       setPickerIsReset(false);
     }
   }, [config]);
-
-  const pages: SitePage[] = localPages ?? (config
-    ? [{ id: "home", name: "Home", slug: "home", sections: [...(config.sections as Section[])].sort((a, b) => a.order - b.order) }]
-    : [{ id: "home", name: "Home", slug: "home", sections: [] }]);
-  const activePage: SitePage = pages.find(p => p.id === activePageId) ?? pages[0] ?? { id: "home", name: "Home", slug: "home", sections: [] };
-  const sections: Section[] = activePage.sections;
-  const settings: SiteSettings = localSettings ?? config?.settings ?? { brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" };
-  pagesRef.current = pages;
-  settingsRef.current = settings;
-  activePageIdRef.current = activePageId;
 
   function updatePageSections(newSections: Section[]) {
     setLocalPages(prev =>
