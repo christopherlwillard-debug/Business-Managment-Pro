@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { mileageLogsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, isNull } from "drizzle-orm";
+import { mileageLogsTable, mileageImportsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, isNull, inArray } from "drizzle-orm";
+import { getRequestUserId } from "./guards";
 
 const router = Router();
 
@@ -19,6 +20,19 @@ function formatMileage(m: any, jobTitle?: string | null) {
 async function getRate() {
   const [settings] = await db.select().from(settingsTable).limit(1);
   return parseFloat(settings?.mileageRate ?? "0.725");
+}
+
+function getIrsRateForDate(dateStr: string): number {
+  const rates = [
+    { effectiveDate: "2026-01-01", rate: 0.725 },
+    { effectiveDate: "2025-01-01", rate: 0.700 },
+    { effectiveDate: "2024-01-01", rate: 0.670 },
+    { effectiveDate: "2023-01-01", rate: 0.655 },
+    { effectiveDate: "2022-07-01", rate: 0.625 },
+    { effectiveDate: "2022-01-01", rate: 0.585 },
+  ];
+  const match = rates.find(e => dateStr >= e.effectiveDate);
+  return match?.rate ?? 0.585;
 }
 
 router.get("/summary", async (req, res) => {
@@ -198,6 +212,276 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete mileage log" });
+  }
+});
+
+// ─── GET /api/mileage/imports ────────────────────────────────────────────────
+router.get("/imports", async (req, res) => {
+  try {
+    const { businessId } = req.query;
+    if (!businessId) return res.status(400).json({ error: "businessId is required" });
+    const bizId = parseInt(businessId as string);
+
+    const imports = await db
+      .select()
+      .from(mileageImportsTable)
+      .where(eq(mileageImportsTable.businessId, bizId))
+      .orderBy(mileageImportsTable.importedAt);
+
+    res.json(imports.map(i => ({
+      ...i,
+      totalMiles: i.totalMiles != null ? parseFloat(i.totalMiles) : null,
+      estimatedDeduction: i.estimatedDeduction != null ? parseFloat(i.estimatedDeduction) : null,
+      importedAt: i.importedAt instanceof Date ? i.importedAt.toISOString() : i.importedAt,
+      rolledBackAt: i.rolledBackAt instanceof Date ? i.rolledBackAt.toISOString() : i.rolledBackAt,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch mileage imports" });
+  }
+});
+
+// ─── POST /api/mileage/bulk ───────────────────────────────────────────────────
+router.post("/bulk", async (req, res) => {
+  try {
+    const { trips, businessId, filename, fileHash, source, skipPersonal } = req.body as {
+      trips: Array<{
+        date: string;
+        miles: number;
+        startLocation: string;
+        endLocation: string;
+        classification: "business" | "personal";
+        notes?: string;
+      }>;
+      businessId: number;
+      filename: string;
+      fileHash?: string;
+      source?: string;
+      skipPersonal?: boolean;
+    };
+
+    if (!Array.isArray(trips) || trips.length === 0) {
+      return res.status(400).json({ error: "No trips provided" });
+    }
+    if (!businessId) {
+      return res.status(400).json({ error: "businessId is required" });
+    }
+
+    const bizId = parseInt(String(businessId));
+    const userId = getRequestUserId(req) ?? null;
+
+    let fileAlreadyImported = false;
+    if (fileHash) {
+      const [existing] = await db
+        .select({ id: mileageImportsTable.id, importedAt: mileageImportsTable.importedAt })
+        .from(mileageImportsTable)
+        .where(and(
+          eq(mileageImportsTable.businessId, bizId),
+          eq(mileageImportsTable.fileHash, fileHash),
+        ))
+        .limit(1);
+      if (existing) {
+        fileAlreadyImported = true;
+      }
+    }
+
+    const tripsToProcess = skipPersonal
+      ? trips.filter(t => t.classification !== "personal")
+      : trips;
+
+    const existingLogs = await db
+      .select({
+        date: mileageLogsTable.date,
+        miles: mileageLogsTable.miles,
+        startLocation: mileageLogsTable.startLocation,
+        endLocation: mileageLogsTable.endLocation,
+      })
+      .from(mileageLogsTable)
+      .where(and(
+        eq(mileageLogsTable.businessId, bizId),
+        isNull(mileageLogsTable.subcontractorId),
+      ));
+
+    const dupSet = new Set(
+      existingLogs.map(l =>
+        `${l.date}|${parseFloat(l.miles ?? "0").toFixed(2)}|${(l.startLocation ?? "").toLowerCase()}|${(l.endLocation ?? "").toLowerCase()}`
+      )
+    );
+
+    const toInsert = [];
+    let duplicatesSkipped = 0;
+
+    for (const trip of tripsToProcess) {
+      const key = `${trip.date}|${trip.miles.toFixed(2)}|${trip.startLocation.toLowerCase()}|${trip.endLocation.toLowerCase()}`;
+      if (dupSet.has(key)) {
+        duplicatesSkipped++;
+        continue;
+      }
+      toInsert.push(trip);
+    }
+
+    const importSource = source ?? "mileiq";
+    let importedCount = 0;
+    let totalMiles = 0;
+    let estimatedDeduction = 0;
+    let importId: number | null = null;
+
+    const [importRecord] = await db
+      .insert(mileageImportsTable)
+      .values({
+        businessId: bizId,
+        userId,
+        source: importSource,
+        filename: filename ?? "import.csv",
+        fileHash: fileHash ?? null,
+        status: toInsert.length === 0 ? "completed" : "completed",
+        tripsFound: trips.length,
+        tripsImported: 0,
+        duplicatesSkipped,
+        totalMiles: "0",
+        estimatedDeduction: "0",
+      })
+      .returning();
+
+    importId = importRecord.id;
+
+    if (toInsert.length > 0) {
+      const rate = await getRate();
+
+      const expenseValues = toInsert
+        .filter(t => t.classification === "business")
+        .map(t => {
+          const tripRate = getIrsRateForDate(t.date);
+          const deduction = t.miles * tripRate;
+          return {
+            date: t.date,
+            description: t.notes
+              ? `Mileage: ${t.notes.slice(0, 60)} (${t.miles.toFixed(2)} mi)`
+              : `Mileage: Business trip (${t.miles.toFixed(2)} mi)`,
+            vendor: "IRS Mileage",
+            category: "mileage",
+            amount: deduction.toFixed(2),
+            businessId: bizId,
+            notes: `Imported from ${importSource}. ${t.miles.toFixed(2)} mi × $${tripRate}/mi`,
+          };
+        });
+
+      const insertedExpenses = expenseValues.length > 0
+        ? await db.insert(expensesTable).values(expenseValues).returning({ id: expensesTable.id, date: expensesTable.date, amount: expensesTable.amount })
+        : [];
+
+      let expenseIdx = 0;
+      const logValues = toInsert.map(t => {
+        const tripRate = getIrsRateForDate(t.date);
+        const deductionAmt = t.classification === "business" ? t.miles * tripRate : 0;
+        totalMiles += t.miles;
+        if (t.classification === "business") estimatedDeduction += deductionAmt;
+
+        let expenseId: number | null = null;
+        if (t.classification === "business") {
+          expenseId = insertedExpenses[expenseIdx]?.id ?? null;
+          expenseIdx++;
+        }
+
+        return {
+          date: t.date,
+          startLocation: t.startLocation || null,
+          endLocation: t.endLocation || null,
+          miles: t.miles.toString(),
+          classification: t.classification,
+          ratePerMile: tripRate.toString(),
+          deductionAmount: deductionAmt.toString(),
+          notes: t.notes || null,
+          source: importSource,
+          businessId: bizId,
+          importId,
+          expenseId,
+        };
+      });
+
+      await db.insert(mileageLogsTable).values(logValues);
+      importedCount = logValues.length;
+    }
+
+    await db
+      .update(mileageImportsTable)
+      .set({
+        tripsImported: importedCount,
+        duplicatesSkipped,
+        totalMiles: totalMiles.toFixed(2),
+        estimatedDeduction: estimatedDeduction.toFixed(2),
+        status: "completed",
+      })
+      .where(eq(mileageImportsTable.id, importId!));
+
+    res.status(201).json({
+      imported: importedCount,
+      duplicatesSkipped,
+      importId,
+      totalMiles,
+      estimatedDeduction,
+      fileAlreadyImported,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to import mileage trips" });
+  }
+});
+
+// ─── DELETE /api/mileage/imports/:id/rollback ─────────────────────────────────
+router.delete("/imports/:id/rollback", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const [importRecord] = await db
+      .select()
+      .from(mileageImportsTable)
+      .where(eq(mileageImportsTable.id, id));
+
+    if (!importRecord) {
+      return res.status(404).json({ error: "Import not found" });
+    }
+
+    if (importRecord.rolledBackAt) {
+      return res.status(400).json({ error: "Import already rolled back" });
+    }
+
+    const importedAt = importRecord.importedAt instanceof Date
+      ? importRecord.importedAt
+      : new Date(importRecord.importedAt);
+    const hoursAgo = (Date.now() - importedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursAgo > 24) {
+      return res.status(400).json({ error: "Rollback window has expired (24 hours)" });
+    }
+
+    const linkedLogs = await db
+      .select({ id: mileageLogsTable.id, expenseId: mileageLogsTable.expenseId })
+      .from(mileageLogsTable)
+      .where(eq(mileageLogsTable.importId, id));
+
+    const expenseIds = linkedLogs.map(l => l.expenseId).filter((eid): eid is number => eid != null);
+
+    if (linkedLogs.length > 0) {
+      await db.delete(mileageLogsTable).where(eq(mileageLogsTable.importId, id));
+    }
+    if (expenseIds.length > 0) {
+      await db.delete(expensesTable).where(inArray(expensesTable.id, expenseIds));
+    }
+
+    const [updated] = await db
+      .update(mileageImportsTable)
+      .set({ rolledBackAt: new Date(), status: "rolled_back" })
+      .where(eq(mileageImportsTable.id, id))
+      .returning();
+
+    res.json({
+      ...updated,
+      importedAt: updated.importedAt instanceof Date ? updated.importedAt.toISOString() : updated.importedAt,
+      rolledBackAt: updated.rolledBackAt instanceof Date ? updated.rolledBackAt.toISOString() : updated.rolledBackAt,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to rollback import" });
   }
 });
 

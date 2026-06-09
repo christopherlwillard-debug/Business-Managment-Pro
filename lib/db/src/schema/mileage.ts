@@ -5,6 +5,24 @@ import { jobsTable } from "./jobs";
 import { expensesTable } from "./expenses";
 import { businessesTable } from "./businesses";
 
+export const mileageImportsTable = pgTable("mileage_imports", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  source: text("source").notNull().default("mileiq"),
+  filename: text("filename").notNull(),
+  fileHash: text("file_hash"),
+  status: text("status").notNull().default("completed"),
+  tripsFound: integer("trips_found").notNull().default(0),
+  tripsImported: integer("trips_imported").notNull().default(0),
+  duplicatesSkipped: integer("duplicates_skipped").notNull().default(0),
+  totalMiles: numeric("total_miles", { precision: 10, scale: 2 }),
+  estimatedDeduction: numeric("estimated_deduction", { precision: 10, scale: 2 }),
+  errorSummary: text("error_summary"),
+  rolledBackAt: timestamp("rolled_back_at"),
+  importedAt: timestamp("imported_at").defaultNow().notNull(),
+});
+
 export const mileageLogsTable = pgTable("mileage_logs", {
   id: serial("id").primaryKey(),
   date: text("date").notNull(),
@@ -21,9 +39,11 @@ export const mileageLogsTable = pgTable("mileage_logs", {
   notes: text("notes"),
   source: text("source").notNull().default("gps"),
   expenseId: integer("expense_id").references(() => expensesTable.id, { onDelete: "set null" }),
+  importId: integer("import_id").references(() => mileageImportsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertMileageLogSchema = createInsertSchema(mileageLogsTable).omit({ id: true, createdAt: true });
 export type InsertMileageLog = z.infer<typeof insertMileageLogSchema>;
 export type MileageLog = typeof mileageLogsTable.$inferSelect;
+export type MileageImport = typeof mileageImportsTable.$inferSelect;

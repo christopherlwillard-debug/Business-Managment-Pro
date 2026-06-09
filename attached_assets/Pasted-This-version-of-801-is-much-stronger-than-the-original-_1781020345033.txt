@@ -1,0 +1,134 @@
+This version of #801 is much stronger than the original. It has evolved from a simple CSV import into a true migration tool, which is exactly what you want if you're trying to get contractors to switch from MileIQ to your platform.
+
+A few upgrades I'd still add:
+
+Add Import Source Tracking
+
+In mileage_imports:
+
+source
+
+Examples:
+
+mileiq
+everlance
+driversnote
+triplog
+generic_csv
+
+This fits your provider architecture and prevents future database migrations.
+
+Store Import Totals
+
+Add:
+
+totalMiles
+estimatedDeduction
+
+to mileage_imports.
+
+Then import history becomes:
+
+May2026.csv
+
+71 Trips
+1,284.3 Miles
+$930.08 Deduction
+Imported Jun 9, 2026
+
+without recalculating every time.
+
+Add Import Rollback
+
+This is the biggest thing I'd add.
+
+On the summary screen:
+
+Import Complete
+
+71 Trips Imported
+
+Undo Import
+
+for maybe 24 hours.
+
+Implementation:
+
+Store importId on every imported trip
+Delete all trips from that import if rollback is clicked
+
+This is a huge confidence booster.
+
+Smart Business Detection
+
+You already let users choose a business.
+
+Eventually add:
+
+Detected:
+Willard's GC (87% confidence)
+
+Reason:
+Trips originated from job sites assigned to GC
+
+Not required now, but a great future enhancement.
+
+IRS Rate Table
+
+Instead of using one hardcoded rate:
+
+Create:
+
+irs_mileage_rates
+
+or a constants file.
+
+Then imports from prior years calculate correctly.
+
+Example:
+
+2024 trips
+→ 2024 IRS rate
+
+2025 trips
+→ 2025 IRS rate
+
+Much more accurate.
+
+Import Dashboard Widget
+
+On Mileage page:
+
+Imported Sources
+
+MileIQ: 4 imports
+Everlance: 0
+Driversnote: 0
+
+Total Imported:
+5,824 miles
+
+This reinforces the value of the feature.
+
+Priority Assessment
+
+For your contractor platform:
+
+Critical
+Website Builder (#755, #760, #761)
+Bid Intelligence
+High
+MileIQ Import (#801)
+Why
+
+Many contractors already have:
+
+1 year
+2 years
+Sometimes 5+ years
+
+of mileage in MileIQ.
+
+If they can move all of it into your platform in minutes, that's one less reason to keep paying for MileIQ.
+
+The provider architecture, duplicate detection, business assignment, and import history make this feel like a professional migration tool instead of just a CSV uploader. The only feature I'd strongly recommend adding before implementation is Import Rollback, because users are always nervous when importing hundreds of records at once.

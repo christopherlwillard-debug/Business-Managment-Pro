@@ -9,6 +9,10 @@ import {
   useDeleteMileageLog,
   useListJobs,
   useGetSettings,
+  useListMileageImports,
+  useBulkImportMileage,
+  useRollbackMileageImport,
+  type BulkImportResult,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
@@ -28,7 +32,14 @@ import {
   CalendarDays,
   LogIn,
   Loader2,
+  Upload,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  FileText,
 } from "lucide-react";
+import { MileIQProvider, computeFileHash, type ParsedTrip, type InvalidRow } from "@/lib/mileageImport";
+import { getIrsRate } from "@/lib/irsMileageRates";
 
 async function geocodeAddress(address: string): Promise<{ lat: string; lon: string }> {
   const params = new URLSearchParams({ q: address, format: "json", limit: "1" });
@@ -118,7 +129,7 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
 
 export default function Mileage() {
   const { canEdit } = useUserPermissions();
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const businessId = activeBusiness?.id;
   const queryClient = useQueryClient();
   const { data: logs, isLoading } = useListMileageLogs(
@@ -134,6 +145,9 @@ export default function Mileage() {
   const createMileage = useCreateMileageLog();
   const updateMileage = useUpdateMileageLog();
   const deleteMileage = useDeleteMileageLog();
+  const bulkImport = useBulkImportMileage();
+  const rollbackImport = useRollbackMileageImport();
+  const { data: importHistory = [], refetch: refetchImports } = useListMileageImports(businessId);
 
   const [activeTab, setActiveTab] = useState<"trip" | "monthly">("trip");
 
@@ -203,6 +217,103 @@ export default function Mileage() {
   const [savedMsg, setSavedMsg] = useState("");
   const [reminderDismissed, setReminderDismissed] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importStep, setImportStep] = useState<"pick" | "preview" | "summary">("pick");
+  const [importTargetBizId, setImportTargetBizId] = useState<number | null>(null);
+  const [importSkipPersonal, setImportSkipPersonal] = useState(true);
+  const [importValidTrips, setImportValidTrips] = useState<ParsedTrip[]>([]);
+  const [importInvalidRows, setImportInvalidRows] = useState<InvalidRow[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
+  const [importFileHash, setImportFileHash] = useState("");
+  const [importFilename, setImportFilename] = useState("");
+  const [importFileAlreadyWarned, setImportFileAlreadyWarned] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openImportModal = () => {
+    setImportModalOpen(true);
+    setImportStep("pick");
+    setImportTargetBizId(businessId ?? null);
+    setImportSkipPersonal(true);
+    setImportValidTrips([]);
+    setImportInvalidRows([]);
+    setImportError("");
+    setImportResult(null);
+    setImportFileHash("");
+    setImportFilename("");
+    setImportFileAlreadyWarned(false);
+  };
+
+  const closeImportModal = () => {
+    setImportModalOpen(false);
+    setImportStep("pick");
+  };
+
+  const handleFileSelect = async (file: File) => {
+    setImportLoading(true);
+    setImportError("");
+    setImportFileAlreadyWarned(false);
+    try {
+      const text = await file.text();
+      const hash = await computeFileHash(text);
+      const provider = new MileIQProvider();
+      const { valid, invalid } = provider.parse(text);
+      setImportFileHash(hash);
+      setImportFilename(file.name);
+      setImportValidTrips(valid);
+      setImportInvalidRows(invalid);
+      setImportStep("preview");
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Failed to read file.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importTargetBizId) { setImportError("Select a business to import into."); return; }
+    const tripsToSend = importSkipPersonal
+      ? importValidTrips.filter(t => t.classification !== "personal")
+      : importValidTrips;
+    if (tripsToSend.length === 0) { setImportError("No business trips to import."); return; }
+    setImportLoading(true);
+    setImportError("");
+    try {
+      const result = await bulkImport.mutateAsync({
+        trips: tripsToSend,
+        businessId: importTargetBizId,
+        filename: importFilename,
+        fileHash: importFileHash,
+        source: "mileiq",
+        skipPersonal: false,
+      });
+      setImportResult(result);
+      setImportFileAlreadyWarned(result.fileAlreadyImported);
+      setImportStep("summary");
+      queryClient.invalidateQueries();
+      refetchImports();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Import failed. Please try again.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleRollback = async (importId: number) => {
+    if (!confirm("Undo this import? All trips from this import will be permanently deleted.")) return;
+    try {
+      await rollbackImport.mutateAsync({ id: importId });
+      queryClient.invalidateQueries();
+      refetchImports();
+      setSavedMsg("Import rolled back — all trips removed.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Rollback failed.");
+    }
+  };
 
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState("");
@@ -544,11 +655,255 @@ export default function Mileage() {
           </div>
         </div>
       )}
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ""; }}
+      />
+
+      {/* Import Modal */}
+      {importModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) closeImportModal(); }}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeImportModal} />
+          <div className="relative w-full max-w-2xl bg-background rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                  <Upload className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-display font-bold text-foreground">Import from MileIQ</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {importStep === "pick" && "Select your MileIQ CSV export file"}
+                    {importStep === "preview" && `${importValidTrips.length} trips found — review before importing`}
+                    {importStep === "summary" && "Import complete"}
+                  </p>
+                </div>
+              </div>
+              <button onClick={closeImportModal} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+
+              {importError && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" /> {importError}
+                </div>
+              )}
+
+              {/* Step 1: File picker */}
+              {importStep === "pick" && (
+                <div className="space-y-4">
+                  <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+                    <p className="font-semibold mb-1">How to export from MileIQ:</p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-xs">
+                      <li>Open MileIQ → Reports → Monthly Report</li>
+                      <li>Select the month(s) you want to import</li>
+                      <li>Click <strong>Download CSV/Excel</strong></li>
+                      <li>Upload the .csv file below</li>
+                    </ol>
+                  </div>
+
+                  {businesses.length > 1 && (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground">Import into</label>
+                      <select
+                        value={importTargetBizId ?? ""}
+                        onChange={e => setImportTargetBizId(parseInt(e.target.value))}
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {businesses.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={importLoading}
+                    className="w-full flex flex-col items-center gap-3 py-12 rounded-2xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/30 transition-all text-muted-foreground"
+                  >
+                    {importLoading ? (
+                      <><Loader2 className="w-8 h-8 animate-spin text-primary" /><span className="text-sm font-medium">Reading file…</span></>
+                    ) : (
+                      <><FileText className="w-8 h-8 opacity-40" /><span className="text-sm font-medium">Click to select MileIQ CSV file</span><span className="text-xs opacity-60">.csv format only</span></>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Step 2: Preview */}
+              {importStep === "preview" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="rounded-xl bg-muted/50 px-3 py-3">
+                      <p className="text-2xl font-display font-bold text-foreground">{importValidTrips.length}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Valid trips</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/50 px-3 py-3">
+                      <p className="text-2xl font-display font-bold text-foreground">
+                        {importSkipPersonal
+                          ? importValidTrips.filter(t => t.classification === "business").length
+                          : importValidTrips.length}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">To import</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/50 px-3 py-3">
+                      <p className="text-2xl font-display font-bold text-foreground">{importInvalidRows.length}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Rows skipped</p>
+                    </div>
+                  </div>
+
+                  {importInvalidRows.length > 0 && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                      <span className="font-semibold">{importInvalidRows.length} row{importInvalidRows.length > 1 ? "s" : ""} skipped: </span>
+                      {[...new Set(importInvalidRows.map(r => r.reason))].join(", ")}
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border cursor-pointer hover:bg-muted/30 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={importSkipPersonal}
+                      onChange={e => setImportSkipPersonal(e.target.checked)}
+                      className="rounded"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Skip personal trips</p>
+                      <p className="text-xs text-muted-foreground">
+                        {importValidTrips.filter(t => t.classification === "personal").length} personal trips will be excluded
+                      </p>
+                    </div>
+                  </label>
+
+                  <div className="border border-border rounded-xl overflow-hidden">
+                    <div className="bg-muted/50 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase grid grid-cols-[80px_1fr_60px_60px]">
+                      <span>Date</span><span>Route</span><span className="text-right">Miles</span><span className="text-center">Type</span>
+                    </div>
+                    <div className="divide-y divide-border/50 max-h-60 overflow-y-auto">
+                      {importValidTrips
+                        .filter(t => !importSkipPersonal || t.classification !== "personal")
+                        .slice(0, 200)
+                        .map((t, i) => (
+                        <div key={i} className="px-4 py-2.5 grid grid-cols-[80px_1fr_60px_60px] items-center gap-2 text-sm hover:bg-muted/20">
+                          <span className="text-muted-foreground text-xs">{formatDate(t.date)}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate text-foreground">{t.startLocation || "—"} → {t.endLocation || "—"}</p>
+                            {t.notes && <p className="text-xs text-muted-foreground truncate">{t.notes}</p>}
+                          </div>
+                          <span className="text-right font-bold text-xs">{t.miles.toFixed(1)}</span>
+                          <span className={`text-center text-xs font-semibold uppercase px-1 py-0.5 rounded ${t.classification === "business" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                            {t.classification === "business" ? "Biz" : "Pers"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Summary */}
+              {importStep === "summary" && importResult && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                    <span className="text-sm font-semibold">Import complete!</span>
+                  </div>
+
+                  {importFileAlreadyWarned && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      This file was previously imported. Duplicates were automatically skipped.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-muted/50 px-4 py-4 text-center">
+                      <p className="text-3xl font-display font-bold text-foreground">{importResult.imported}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Business trips imported</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/50 px-4 py-4 text-center">
+                      <p className="text-3xl font-display font-bold text-foreground">{importResult.totalMiles.toFixed(1)}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Total miles</p>
+                    </div>
+                    <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-4 text-center">
+                      <p className="text-3xl font-display font-bold text-emerald-700">{formatCurrency(importResult.estimatedDeduction)}</p>
+                      <p className="text-xs text-emerald-600 mt-1">Est. IRS deduction</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/50 px-4 py-4 text-center">
+                      <p className="text-3xl font-display font-bold text-foreground">{importResult.duplicatesSkipped}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Duplicates skipped</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-amber-900">Changed your mind?</p>
+                      <p className="text-xs text-amber-700">You can undo this import for up to 24 hours from Import History below.</p>
+                    </div>
+                    <button
+                      onClick={() => { handleRollback(importResult.importId); closeImportModal(); }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-100 border border-amber-300 text-amber-800 hover:bg-amber-200 transition-colors whitespace-nowrap"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Undo now
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-border flex gap-3">
+              <button onClick={closeImportModal} className="flex-1 py-2.5 rounded-xl font-semibold border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors text-sm">
+                {importStep === "summary" ? "Done" : "Cancel"}
+              </button>
+              {importStep === "pick" && (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importLoading}
+                  className="flex-1 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
+                >
+                  {importLoading ? "Reading…" : "Select CSV File"}
+                </button>
+              )}
+              {importStep === "preview" && (
+                <button
+                  onClick={handleConfirmImport}
+                  disabled={importLoading || (importSkipPersonal ? importValidTrips.filter(t => t.classification !== "personal").length === 0 : importValidTrips.length === 0)}
+                  className="flex-1 py-2.5 rounded-xl font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
+                >
+                  {importLoading
+                    ? "Importing…"
+                    : `Import ${importSkipPersonal ? importValidTrips.filter(t => t.classification !== "personal").length : importValidTrips.length} Trips`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Mileage Tracking</h1>
           <p className="text-muted-foreground mt-1">IRS mileage deduction tracking.</p>
         </div>
+        {canEdit("mileage") && (
+          <button
+            onClick={openImportModal}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm bg-emerald-600 text-white hover:bg-emerald-700 shadow transition-all active:scale-95"
+          >
+            <Upload className="w-4 h-4" />
+            Import from MileIQ
+          </button>
+        )}
       </div>
 
       {savedMsg && (
@@ -989,6 +1344,76 @@ export default function Mileage() {
           </table>
         </div>
       </Card>
+
+      {/* Import History */}
+      {(importHistory as any[]).length > 0 && (
+        <Card className="border-border/50 shadow-sm bg-card">
+          <button
+            onClick={() => setHistoryExpanded(h => !h)}
+            className="w-full flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors rounded-2xl"
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-muted-foreground" />
+              <span className="font-semibold text-sm text-foreground">Import History</span>
+              <span className="text-xs text-muted-foreground">({(importHistory as any[]).length} import{(importHistory as any[]).length > 1 ? "s" : ""})</span>
+            </div>
+            {historyExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+
+          {historyExpanded && (
+            <div className="border-t border-border divide-y divide-border/50">
+              {[...(importHistory as any[])].reverse().map((imp: any) => {
+                const importedAt = new Date(imp.importedAt);
+                const hoursAgo = (Date.now() - importedAt.getTime()) / (1000 * 60 * 60);
+                const canUndo = !imp.rolledBackAt && hoursAgo <= 24;
+                const statusColors: Record<string, string> = {
+                  completed: "bg-emerald-100 text-emerald-700",
+                  rolled_back: "bg-muted text-muted-foreground",
+                  failed: "bg-red-100 text-red-700",
+                  partial: "bg-amber-100 text-amber-700",
+                };
+                const statusLabels: Record<string, string> = {
+                  completed: "Completed",
+                  rolled_back: "Rolled Back",
+                  failed: "Failed",
+                  partial: "Partial",
+                };
+                return (
+                  <div key={imp.id} className="px-6 py-4 flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm text-foreground truncate">{imp.filename}</span>
+                        <span className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${statusColors[imp.status] ?? "bg-muted text-muted-foreground"}`}>
+                          {statusLabels[imp.status] ?? imp.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                        <span>{imp.tripsImported} trips</span>
+                        {imp.totalMiles != null && <span>{parseFloat(imp.totalMiles).toFixed(1)} mi</span>}
+                        {imp.estimatedDeduction != null && <span className="text-emerald-600 font-medium">{formatCurrency(parseFloat(imp.estimatedDeduction))} deduction</span>}
+                        {imp.duplicatesSkipped > 0 && <span>{imp.duplicatesSkipped} dupes skipped</span>}
+                        <span>·</span>
+                        <span>{importedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                      </div>
+                      {imp.errorSummary && (
+                        <p className="text-xs text-amber-600">{imp.errorSummary}</p>
+                      )}
+                    </div>
+                    {canEdit("mileage") && canUndo && (
+                      <button
+                        onClick={() => handleRollback(imp.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 transition-colors whitespace-nowrap flex-shrink-0"
+                      >
+                        <RotateCcw className="w-3 h-3" /> Undo
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

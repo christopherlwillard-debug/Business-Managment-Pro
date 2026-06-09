@@ -1,0 +1,144 @@
+This is now a very complete, production-quality specification. I would send this to Replit as-is, with only three small additions that will save headaches later.
+
+1. Add Import Status
+
+In mileage_imports add:
+
+status
+
+Values:
+
+completed
+rolled_back
+failed
+partial
+
+This is cleaner than relying solely on rolledBackAt.
+
+Example import history:
+
+May2026.csv
+Completed
+
+April2026.csv
+Rolled Back
+
+March2026.csv
+Partial Import
+2. Add Import Notes / Error Log
+
+In mileage_imports:
+
+errorSummary
+
+Example:
+
+2 rows skipped:
+- Missing mileage
+- Invalid date
+
+Then users can understand why imports weren't perfect.
+
+3. Future-Proof IRS Rates
+
+Instead of hardcoding:
+
+2024 = .670
+2025 = .700
+2026 = .725
+
+Create:
+
+irsMileageRates.ts
+
+with:
+
+{
+  effectiveDate: "2026-01-01",
+  rate: 0.725
+}
+
+For 2022 you can properly support:
+
+01/01/2022 - 06/30/2022
+0.585
+
+07/01/2022 - 12/31/2022
+0.625
+
+Then trip-level calculations remain accurate forever.
+
+One Feature I'd Seriously Consider
+Import File Hash
+
+Store:
+
+fileHash
+
+inside mileage_imports.
+
+When a user uploads:
+
+May2026.csv
+
+again, you can immediately warn:
+
+This file was already imported on June 9, 2026.
+Continue anyway?
+
+This is better than relying solely on duplicate trip detection.
+
+Business Value
+
+For your contractor platform this is one of those features users immediately understand:
+
+Export MileIQ
+↓
+Upload
+↓
+Done
+
+No learning curve.
+
+No training.
+
+No setup.
+
+Those are the best kinds of features.
+
+Priority Rating
+
+For your overall platform:
+
+Website Builder
+
+10/10
+
+Bid Intelligence
+
+10/10
+
+MileIQ Import
+
+9/10
+
+Why
+
+A lot of contractors already have years of mileage locked inside MileIQ.
+
+If your app can:
+
+Import it
+Calculate deductions correctly
+Track mileage by business
+Let them stop paying MileIQ
+
+that's a strong reason to adopt your platform.
+
+At this point I'd consider #801 essentially ready for implementation. The only additions I'd make are:
+
+status
+fileHash
+proper date-range IRS rate support
+
+and then I'd move it into development.

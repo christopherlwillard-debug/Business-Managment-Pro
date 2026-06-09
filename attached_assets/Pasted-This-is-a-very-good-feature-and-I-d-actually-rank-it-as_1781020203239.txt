@@ -1,0 +1,159 @@
+This is a very good feature and I'd actually rank it as a high-value business feature, because it eliminates manual data entry.
+
+A few upgrades I'd make before sending it to Replit:
+
+Add Import History
+
+Create:
+
+mileage_imports
+
+Track:
+
+Import date
+Filename
+Trips found
+Trips imported
+Duplicates skipped
+User
+Business
+
+Then users can see:
+
+Imported MileIQ_May_2026.csv
+
+72 trips found
+70 imported
+2 duplicates skipped
+
+and avoid re-importing the same file.
+
+Add Dry Run Validation
+
+Before showing the preview:
+
+Check:
+
+Missing dates
+Missing mileage
+Corrupt rows
+Invalid numbers
+
+Show:
+
+71 valid trips
+2 rows skipped
+
+instead of failing during import.
+
+Smarter Duplicate Detection
+
+Current:
+
+date + miles + startLocation
+
+I would use:
+
+date
+miles
+startLocation
+endLocation
+
+Much safer.
+
+Two trips can start at the same place on the same day.
+
+Auto Classification Mapping
+
+Map automatically:
+
+Business → business
+Personal → personal
+
+But also allow:
+
+Skip personal trips
+
+checkbox during import.
+
+Most users only want business mileage.
+
+Import Summary Screen
+
+After import:
+
+Business Trips Imported: 71
+
+Total Miles:
+1,284.3
+
+Estimated IRS Deduction:
+$857.00
+
+Duplicates Skipped:
+2
+
+This gives immediate value.
+
+Future-Proof Mileage Sources
+
+Instead of naming the internal parser:
+
+MileIQParser
+
+create:
+
+MileageImportProvider
+
+Then later you can add:
+
+MileIQ
+Everlance
+Driversnote
+TripLog
+CSV Generic
+
+without redesigning the system.
+
+One Feature I Would Add
+Auto-Business Assignment
+
+Since your app already supports multiple businesses:
+
+Willard's GC
+Asphalt
+Properties
+
+During import:
+
+Import To:
+
+○ Willard's GC
+○ Willard Asphalt
+○ Willard Properties
+
+Very useful.
+
+Nice Future Enhancement
+
+Add:
+
+Import Mileage From Bank Calendar
+
+or
+
+Import From Google Timeline
+
+later.
+
+But MileIQ first is definitely the easiest win.
+
+Priority Rating
+
+For your app specifically:
+
+Website Builder = Critical
+Bid Intelligence = Critical
+MileIQ Import = High
+
+Because every contractor who already uses MileIQ can immediately bring years of mileage data into your system instead of starting from zero. That's the kind of feature that makes people actually switch to your platform.
