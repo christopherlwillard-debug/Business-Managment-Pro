@@ -1,47 +1,182 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, useSortable, arrayMove, rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
-import { AiCopyPopover } from "./AiCopyPopover";
 import { InlineEditableText } from "../InlineEditableText";
+import { UniversalCard, GripVertical } from "./UniversalCard";
+import type { CardComponent, SiteSettings } from "../website-types";
 
-interface ServiceItem {
-  id: string;
-  title: string;
-  description: string;
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ServicesContent {
   heading: string;
-  items: ServiceItem[];
+  subheading?: string;
+  /** Stored as CardComponent[]; old ServiceItem data (id/title/desc only) is compatible */
+  items: CardComponent[];
+  columns?: 1 | 2 | 3 | 4;
 }
 
 interface ServicesSectionProps {
   content: ServicesContent;
-  settings: { brandColor: string; secondaryColor?: string; accentColor?: string };
+  settings: SiteSettings;
   isEditing?: boolean;
   onChange?: (content: ServicesContent) => void;
   businessName?: string;
   blockStyle?: BlockStyle;
   sectionId?: string;
+  selectedCardId?: string | null;
+  onSelectCard?: (id: string | null) => void;
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
 }
 
-export function ServicesSection({ content, settings, isEditing, onChange, businessName, blockStyle, sectionId }: ServicesSectionProps) {
+// ── Grid column class lookup (Tailwind needs full class strings) ───────────────
+const COL_CLASS: Record<number, string> = {
+  1: "md:grid-cols-1",
+  2: "md:grid-cols-2",
+  3: "md:grid-cols-3",
+  4: "md:grid-cols-4",
+};
+
+function createNewCard(): CardComponent {
+  return {
+    id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: "New Service",
+    description: "Describe this service.",
+    mediaType: "icon",
+    iconName: "Wrench",
+    layout: "icon-top",
+    hoverEffect: "lift",
+    clickAction: "none",
+    textAlign: "left",
+  };
+}
+
+// ── Sortable wrapper ──────────────────────────────────────────────────────────
+
+interface SortableCardProps {
+  card: CardComponent;
+  settings: SiteSettings;
+  isEditing?: boolean;
+  selected?: boolean;
+  onSelect: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onToggleHide: () => void;
+}
+
+function SortableCard({
+  card,
+  settings,
+  isEditing,
+  selected,
+  onSelect,
+  onDuplicate,
+  onDelete,
+  onToggleHide,
+}: SortableCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: card.id });
+
+  const wrapStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 999 : undefined,
+    position: "relative",
+  };
+
+  const dragHandle = isEditing ? (
+    <button
+      {...attributes}
+      {...listeners}
+      type="button"
+      className="p-1 rounded hover:bg-muted text-muted-foreground cursor-grab active:cursor-grabbing"
+      title="Drag to reorder"
+      onClick={e => e.stopPropagation()}
+    >
+      <GripVertical className="w-3 h-3" />
+    </button>
+  ) : null;
+
+  return (
+    <div ref={setNodeRef} style={wrapStyle}>
+      <UniversalCard
+        card={card}
+        settings={settings}
+        isEditing={isEditing}
+        selected={selected}
+        onSelect={onSelect}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+        onToggleHide={onToggleHide}
+        dragHandle={dragHandle}
+      />
+    </div>
+  );
+}
+
+// ── Main section ──────────────────────────────────────────────────────────────
+
+export function ServicesSection({
+  content,
+  settings,
+  isEditing,
+  onChange,
+  businessName,
+  blockStyle,
+  sectionId,
+  selectedCardId,
+  onSelectCard,
+}: ServicesSectionProps) {
   const biz = businessName ?? "a contractor business";
   const sid = sectionId ?? "services";
+  const columns = content.columns ?? 3;
+  const colClass = COL_CLASS[columns] ?? "md:grid-cols-3";
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   function update(patch: Partial<ServicesContent>) {
     onChange?.({ ...content, ...patch });
   }
 
-  function updateItem(id: string, patch: Partial<ServiceItem>) {
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIdx = content.items.findIndex(i => i.id === active.id);
+      const newIdx = content.items.findIndex(i => i.id === over.id);
+      update({ items: arrayMove(content.items, oldIdx, newIdx) });
+    }
+  }
+
+  function updateCard(id: string, patch: Partial<CardComponent>) {
     update({ items: content.items.map(i => i.id === id ? { ...i, ...patch } : i) });
   }
 
-  function addItem() {
-    update({ items: [...content.items, { id: Date.now().toString(), title: "New Service", description: "Describe this service." }] });
+  function duplicateCard(id: string) {
+    const idx = content.items.findIndex(i => i.id === id);
+    if (idx < 0) return;
+    const duped = { ...content.items[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+    const newItems = [...content.items.slice(0, idx + 1), duped, ...content.items.slice(idx + 1)];
+    update({ items: newItems });
   }
 
-  function removeItem(id: string) {
+  function deleteCard(id: string) {
     update({ items: content.items.filter(i => i.id !== id) });
+    if (selectedCardId === id) onSelectCard?.(null);
+  }
+
+  function toggleHide(id: string) {
+    updateCard(id, { hidden: !content.items.find(i => i.id === id)?.hidden });
+  }
+
+  function addItem() {
+    update({ items: [...content.items, createNewCard()] });
   }
 
   return (
@@ -50,92 +185,85 @@ export function ServicesSection({ content, settings, isEditing, onChange, busine
       blockStyle={blockStyle}
       isEditing={isEditing}
     >
-      <div className="max-w-5xl mx-auto">
+      <div
+        className="max-w-5xl mx-auto"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("[data-universal-card]")) return;
+          onSelectCard?.(null);
+        }}
+      >
         {isEditing ? (
           <InlineEditableText
             id={`${sid}-heading`}
             as="h2"
             value={content.heading}
             placeholder="Section heading"
-            className="text-3xl font-bold mb-10 text-center w-full"
+            className="text-3xl font-bold mb-3 text-center w-full"
             style={{ color: "var(--theme-text, #111827)" }}
             onCommit={v => update({ heading: v })}
           />
         ) : (
-          <h2 data-edit-field="heading" className="text-3xl font-bold mb-10 text-center" style={{ color: "var(--theme-text, #111827)" }}>{content.heading}</h2>
+          <h2
+            data-edit-field="heading"
+            className="text-3xl font-bold mb-3 text-center"
+            style={{ color: "var(--theme-text, #111827)" }}
+          >
+            {content.heading}
+          </h2>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {content.items.map(item => (
-            <div
-              key={item.id}
-              className="relative p-6"
-              style={{
-                backgroundColor: "var(--theme-surface, #f9fafb)",
-                borderRadius: "var(--theme-card-radius, 0.75rem)",
-                boxShadow: "var(--theme-card-shadow, none)",
-                border: "var(--theme-card-border, 1px solid #f3f4f6)",
-              }}
-            >
+
+        {content.subheading && (
+          isEditing ? (
+            <InlineEditableText
+              id={`${sid}-subheading`}
+              as="p"
+              value={content.subheading}
+              placeholder="Subheading (optional)"
+              className="text-center text-base mb-10 w-full"
+              style={{ color: "var(--theme-text-muted, #6b7280)" }}
+              onCommit={v => update({ subheading: v || undefined })}
+            />
+          ) : (
+            <p className="text-center text-base mb-10" style={{ color: "var(--theme-text-muted, #6b7280)" }}>
+              {content.subheading}
+            </p>
+          )
+        )}
+
+        <div className={`${content.subheading ? "" : "mt-10"}`} />
+
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={content.items.map(i => i.id)} strategy={rectSortingStrategy}>
+            <div className={`grid grid-cols-1 ${colClass} gap-6`} data-services-grid>
+              {content.items.map(item => (
+                <div key={item.id} data-universal-card>
+                  <SortableCard
+                    card={item}
+                    settings={settings}
+                    isEditing={isEditing}
+                    selected={selectedCardId === item.id}
+                    onSelect={() => onSelectCard?.(item.id)}
+                    onDuplicate={() => duplicateCard(item.id)}
+                    onDelete={() => deleteCard(item.id)}
+                    onToggleHide={() => toggleHide(item.id)}
+                  />
+                </div>
+              ))}
+
               {isEditing && (
                 <button
                   type="button"
-                  onClick={() => removeItem(item.id)}
-                  className="absolute top-2 right-2 p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10"
+                  onClick={addItem}
+                  className="flex flex-col items-center justify-center gap-2 rounded-xl p-6 border-2 border-dashed border-gray-200 dark:border-gray-600 text-gray-400 hover:border-primary hover:text-primary transition-colors min-h-[140px]"
+                  style={{ borderRadius: "var(--theme-card-radius, 0.75rem)" }}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Plus className="w-6 h-6" />
+                  <span className="text-sm">Add Card</span>
                 </button>
               )}
-              {/* Icon block — always visible so editing mode looks like the final site */}
-              <div className="w-10 h-10 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: (settings.accentColor ?? settings.brandColor) + "20" }}>
-                <div className="w-5 h-5 rounded-sm" style={{ backgroundColor: settings.accentColor ?? settings.brandColor }} />
-              </div>
-              {isEditing ? (
-                <>
-                  <InlineEditableText
-                    id={`${sid}-svc-${item.id}-title`}
-                    as="h3"
-                    value={item.title}
-                    placeholder="Service title"
-                    enterBehavior="commit"
-                    escapeBehavior="cancel"
-                    className="font-semibold mb-2"
-                    style={{ color: settings.secondaryColor || "#111827" }}
-                    onCommit={v => updateItem(item.id, { title: v })}
-                  />
-                  <InlineEditableText
-                    id={`${sid}-svc-${item.id}-desc`}
-                    as="p"
-                    value={item.description}
-                    placeholder="Describe this service…"
-                    className="text-sm"
-                    style={{ color: "var(--theme-text-muted, #4b5563)" }}
-                    onCommit={v => updateItem(item.id, { description: v })}
-                  />
-                  <AiCopyPopover
-                    label={item.title}
-                    defaultPrompt={`Write a 1-2 sentence description for the "${item.title}" service at ${biz}. Focus on the benefit to the customer, keep it under 25 words.`}
-                    onAccept={v => updateItem(item.id, { description: v })}
-                  />
-                </>
-              ) : (
-                <>
-                  <h3 className="font-semibold mb-2" style={{ color: settings.secondaryColor || "#111827" }}>{item.title}</h3>
-                  <p className="text-sm" style={{ color: "var(--theme-text-muted, #4b5563)" }}>{item.description}</p>
-                </>
-              )}
             </div>
-          ))}
-          {isEditing && (
-            <button
-              type="button"
-              onClick={addItem}
-              className="flex flex-col items-center justify-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border-2 border-dashed border-gray-200 dark:border-gray-600 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
-            >
-              <Plus className="w-6 h-6" />
-              <span className="text-sm">Add Service</span>
-            </button>
-          )}
-        </div>
+          </SortableContext>
+        </DndContext>
       </div>
     </BlockStyleWrapper>
   );

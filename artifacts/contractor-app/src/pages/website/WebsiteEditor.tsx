@@ -54,6 +54,7 @@ import { SectionStylePanel } from "./SectionStylePanel";
 import { InspectorPanel } from "./InspectorPanel";
 import { type InspectorTab } from "./inspectorFields";
 import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
+import { CardItemEditorPanel } from "./CardItemEditorPanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
@@ -61,7 +62,7 @@ import { useEditorHistory } from "./useEditorHistory";
 import { EditableWrapper } from "./EditableWrapper";
 import { useInlineEdit, InlineEditContext, InlineEditStatus } from "./InlineEditContext";
 import { nanoid } from "nanoid";
-import type { SiteSettings } from "./website-types";
+import type { SiteSettings, CardComponent } from "./website-types";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -159,6 +160,8 @@ function renderSection(
     selectedRowColumnId?: string | null;
     selectedRowComponentId?: string | null;
     onSelectRowComponent?: (columnId: string, componentId: string | null) => void;
+    selectedCardId?: string | null;
+    onSelectCard?: (id: string | null) => void;
     onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
     copiedComponent?: SiteComponent | null;
     onCopyComponent?: (comp: SiteComponent) => void;
@@ -173,7 +176,16 @@ function renderSection(
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
   switch (section.type) {
     case "hero":    return <HeroSection {...props} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
-    case "services": return <ServicesSection {...props} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
+    case "services": return (
+      <ServicesSection
+        {...props}
+        businessName={extras?.businessName}
+        sectionId={extras?.sectionId}
+        selectedCardId={extras?.selectedCardId}
+        onSelectCard={extras?.onSelectCard}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+      />
+    );
     case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
     case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
@@ -943,6 +955,7 @@ function WebsiteEditor() {
   const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | null | undefined>(undefined);
   const [selectedComponentState, setSelectedComponentState] = useState<{ sectionId: string; componentId: string } | null>(null);
   const [selectedRowState, setSelectedRowState] = useState<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
+  const [selectedCardState, setSelectedCardState] = useState<{ sectionId: string; cardId: string } | null>(null);
   const pickerShownRef = useRef(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const pendingFocusFieldRef = useRef<string | null>(null);
@@ -1152,6 +1165,7 @@ function WebsiteEditor() {
         setActiveSection(null);
         setSelectedComponentState(null);
         setSelectedRowState(null);
+        setSelectedCardState(null);
         return;
       }
       if (isTyping) return;
@@ -1241,7 +1255,7 @@ function WebsiteEditor() {
     }
     window.addEventListener("keydown", onNavKey);
     return () => window.removeEventListener("keydown", onNavKey);
-  }, [activeSection, selectedComponentState, selectedRowState]);
+  }, [activeSection, selectedComponentState, selectedRowState, selectedCardState]);
 
   /**
    * selectSectionAndScroll — sets the active section AND scrolls the canvas
@@ -1252,6 +1266,7 @@ function WebsiteEditor() {
     setActiveSection(id);
     setSelectedComponentState(null);
     setSelectedRowState(null);
+    setSelectedCardState(null);
     if (!id) return;
     setTimeout(() => {
       document
@@ -3413,6 +3428,19 @@ function WebsiteEditor() {
                 : { sectionId: s.id, columnId: colId }
               );
             },
+            selectedCardId: selectedCardState?.sectionId === s.id ? selectedCardState.cardId : null,
+            onSelectCard: (id: string | null) => {
+              if (id) {
+                setSelectedCardState({ sectionId: s.id, cardId: id });
+                if (rightCollapsedRef.current) {
+                  autoCollapsedRightRef.current = false;
+                  setAutoCollapsedRight(false);
+                  setRightCollapsed(false);
+                }
+              } else {
+                setSelectedCardState(null);
+              }
+            },
           })}
         </EditableWrapper>
       );
@@ -4624,6 +4652,44 @@ function WebsiteEditor() {
             }
           } else if (sec.type === "deposit") {
             specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+          } else if (sec.type === "services" && selectedCardState?.sectionId === sec.id) {
+            const servicesData = sec.content as { heading?: string; items?: CardComponent[] };
+            const foundCard = (servicesData.items ?? []).find(c => c.id === selectedCardState.cardId);
+            if (foundCard) {
+              specialContent = (
+                <CardItemEditorPanel
+                  card={foundCard}
+                  onChange={(updatedCard) => {
+                    const newItems = (servicesData.items ?? []).map(i =>
+                      i.id === updatedCard.id ? updatedCard : i
+                    );
+                    updateContent(sec.id, { ...servicesData, items: newItems });
+                  }}
+                  onDuplicate={() => {
+                    const items = servicesData.items ?? [];
+                    const idx = items.findIndex(i => i.id === selectedCardState.cardId);
+                    if (idx >= 0) {
+                      const duped = {
+                        ...items[idx],
+                        id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                      };
+                      const newItems = [...items.slice(0, idx + 1), duped, ...items.slice(idx + 1)];
+                      updateContent(sec.id, { ...servicesData, items: newItems });
+                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id });
+                    }
+                  }}
+                  onDelete={() => {
+                    const newItems = (servicesData.items ?? []).filter(
+                      i => i.id !== selectedCardState.cardId
+                    );
+                    updateContent(sec.id, { ...servicesData, items: newItems });
+                    setSelectedCardState(null);
+                  }}
+                  onClose={() => setSelectedCardState(null)}
+                  onOpenMediaLibrary={openMediaLibrary}
+                />
+              );
+            }
           }
 
           return (
