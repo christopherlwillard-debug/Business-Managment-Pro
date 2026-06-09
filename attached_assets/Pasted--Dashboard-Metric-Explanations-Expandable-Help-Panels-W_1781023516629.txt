@@ -1,0 +1,150 @@
+# Dashboard Metric Explanations & Expandable Help Panels
+
+## What & Why
+
+Several dashboard metrics are related but represent different financial concepts. New users may not understand why values differ or how they are calculated. Add an expandable "How is this calculated?" section inside each dashboard card so users can learn without leaving the page.
+
+## Done Looks Like
+
+Every dashboard card includes a small help icon (?) or "Learn More" link.
+
+Clicking the help icon expands a dropdown panel inside the card showing:
+
+* What the metric means
+* How it is calculated
+* Why it may differ from other dashboard numbers
+* An example calculation
+
+The expanded panel collapses when clicked again.
+
+The help content is specific to each metric.
+
+---
+
+## Net Profit — Operational (MTD)
+
+**What it means**
+
+Your business income minus operational expenses for the current month.
+
+**Formula**
+
+Revenue - Operational Expenses
+
+**Includes**
+
+* Job revenue
+* Material purchases
+* Fuel
+* Equipment
+* Software subscriptions
+* Business expenses
+
+**Does NOT include**
+
+* Owner draws
+* Unpaid subcontractor obligations
+* Future liabilities
+
+**Why this number matters**
+
+Shows whether your business operations are profitable before owner withdrawals and unpaid obligations are considered.
+
+---
+
+## Owner Distributions (MTD)
+
+**What it means**
+
+Tracks money you have personally taken out of the business.
+
+### Operating Profit
+
+Current month's operational profit.
+
+### Draws Taken
+
+Money transferred from the business to you personally.
+
+### Undrawn Balance
+
+Operating Profit - Draws Taken
+
+**Example**
+
+Profit: $5,000
+
+Owner Draws: $2,000
+
+Undrawn Balance: $3,000
+
+This shows how much profit remains available to withdraw.
+
+---
+
+## Sub Owed
+
+**What it means**
+
+Money still owed to subcontractors for completed work.
+
+**Includes**
+
+* Approved subcontractor invoices
+* Unpaid labor balances
+
+**Why it matters**
+
+This is a future obligation that reduces your true available profit.
+
+---
+
+## Sub Paid
+
+**What it means**
+
+Money already paid to subcontractors.
+
+**Why it matters**
+
+These costs have already been accounted for in operational expenses.
+
+---
+
+## Remaining
+
+**What it means**
+
+Outstanding subcontractor balances that still need to be paid.
+
+**Formula**
+
+Sub Owed - Sub Paid
+
+---
+
+## Your Actual Profit (MTD)
+
+**What it means**
+
+A more conservative profit number that accounts for unpaid subcontractor obligations.
+
+**Formula**
+
+Operational Profit - Remaining Subcontractor Obligations
+
+**Example**
+
+Operational Profit: $5,000
+
+Remaining Subs Owed: $1,500
+
+Actual Profit: $3,500
+
+**Why this differs from Net Profit**
+
+Net Profit assumes unpaid subcontractors have not been paid yet.
+
+Actual Profit assumes those obligations still belong to the business and should reduce available profit.
+
+This is generally the safer number to use when deciding how much money can be withdrawn from the business.

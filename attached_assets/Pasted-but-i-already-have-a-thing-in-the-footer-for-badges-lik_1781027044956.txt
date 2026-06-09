@@ -1,0 +1,214 @@
+but i already have a thing in the footer for badges like sba 
+
+Then I would not put certifications into the Universal Card Engine itself.
+
+If you already have a footer badge/certification system, keep that separate.
+
+The Universal Card Engine should focus on things like:
+
+Services
+Features
+Process Steps
+Team Members
+Portfolio Items
+Pricing Cards
+Benefit Cards
+CTA Cards
+
+Those are all fundamentally "cards."
+
+Your footer certifications are really a different content type:
+
+Certification / Trust Badge
+
+not
+
+Card
+
+A trust badge has:
+
+Logo/image
+Label
+Link
+Verification URL
+Display size
+Display order
+
+and usually no description, button, hover effect, background image, etc.
+
+So for your app I would do:
+
+Keep Separate
+
+Trust Badge Engine
+
+SBA
+Veteran Owned
+Disabled Veteran Owned
+BBB
+Licensed & Insured
+Bonded
+OSHA
+
+Used in:
+
+Footer
+Header
+Hero trust bar
+About section
+Use Universal Card Engine For
+
+Service Cards
+
+Home Setup
+Water Hookups
+Marriage Line Finishing
+
+Process Cards
+
+Site Prep
+Delivery
+Setup
+Final Inspection
+
+Feature Cards
+
+Veteran Owned
+Licensed & Insured
+Experienced Crew
+
+Portfolio Cards
+
+Project image
+Description
+Location
+
+Pricing Cards
+
+Package 1
+Package 2
+Package 3
+
+For your contractor-focused builder, I'd actually consider a future task called:
+
+Trust Badge Manager
+
+Where users can:
+
+Upload certifications once
+Add verification links
+Choose where they display
+Header
+Hero
+Footer
+About
+Turn badges on/off globally
+
+That would be more useful to contractors than trying to force certifications into the card system.
+
+For #806 specifically, I'd remove the Certification Card preset and let the Universal Card Engine stay focused on actual card-based content. That keeps the architecture cleaner.
+
+well we can keep it just incase people want to put it other places besides the footer
+
+I agree. If your goal is to build a website builder for all service businesses, I'd keep the Certification Card preset in #806.
+
+The key is not making it a separate card type. It should just be a preset of the Universal Card.
+
+That way:
+
+Universal Card
+├─ Service Card
+├─ Feature Card
+├─ Team Card
+├─ Pricing Card
+├─ Portfolio Card
+├─ Process Card
+└─ Certification Card
+
+All use the same underlying CardComponent.
+
+Why I'd keep it
+
+Contractors may want:
+
+Veteran Owned
+SBA Certified
+Licensed & Insured
+Bonded
+BBB Accredited
+
+displayed:
+
+In the footer
+Under the hero banner
+In an About section
+In a Certifications section
+In a side-by-side row with services
+On a landing page
+
+A footer-only badge system becomes restrictive.
+
+Even better
+
+I'd slightly rename it:
+
+Trust Card
+
+instead of
+
+Certification Card
+
+Then it covers:
+
+Veteran Owned
+Licensed & Insured
+Bonded
+BBB Accredited
+24/7 Emergency Service
+Family Owned Since 1987
+5-Star Rated
+10,000+ Projects Completed
+
+Now it's useful for every service industry, not just government contractors.
+
+What I'd add to #806
+
+Under Presets:
+
+Trust Card
+- Small compact card
+- Icon top
+- Optional badge
+- Subtle border
+- Compact padding
+- Center aligned
+
+And add:
+
+showBadge: boolean
+badgeText: string
+badgeColor: string
+badgePosition: string
+
+(which you already have).
+
+Long-term
+
+You can still keep your existing footer badge manager.
+
+Think of it this way:
+
+Badge Manager = global certifications/trust assets
+Universal Card Engine = where those assets can be displayed anywhere
+
+So a user could upload their SBA logo once into the Media Library, then drop it into:
+
+Footer
+Hero trust strip
+About page
+Certification card
+Sidebar CTA
+
+without re-uploading it.
+
+That gives you maximum flexibility without creating a second card architecture.

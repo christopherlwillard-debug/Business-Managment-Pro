@@ -1,0 +1,146 @@
+This is a strong task and I would actually move it ahead of Theme Designer (#723) and maybe even ahead of Templates (#725).
+
+Why?
+
+Looking at your screenshot, the biggest problem isn't colors or fonts. It's that users see those service cards and immediately think:
+
+"How do I change that icon?"
+
+"How do I make this card look different?"
+
+"Can I use a picture instead?"
+
+"Can I add my SBA logo here?"
+
+Right now the answer is basically "not really."
+
+The Universal Card Engine solves a huge amount of that.
+
+What I would add before sending
+
+Add a fifth tab:
+
+Presets
+
+Allow users to instantly switch card styles:
+
+Modern
+Contractor
+Minimal
+Outline
+Elevated
+Feature Card
+Image Card
+Service Tile
+
+One click updates:
+
+border
+radius
+shadow
+icon layout
+spacing
+
+This gives non-designers a shortcut.
+
+Add Badge Support
+
+A lot of service businesses want:
+
+Veteran Owned
+SBA Certified
+Licensed & Insured
+BBB Accredited
+Bonded
+
+Add:
+
+badgeText
+badgeColor
+badgePosition
+
+Then a card can display:
+
+[Veteran Owned]
+
+Manufactured Home Setup
+
+without requiring custom images.
+
+Add Card-Level Background Images
+
+For example:
+
+Asphalt Sealing
+
+could have an asphalt texture.
+
+Home Setup
+
+could have a manufactured home photo.
+
+Add:
+
+backgroundImage
+backgroundOverlay
+backgroundPosition
+Add Click Actions
+
+Every card should support:
+
+No Action
+Scroll To Section
+Open Page
+Open URL
+Open Modal
+Open Contact Form
+Call Phone Number
+Email
+
+Example:
+
+User clicks:
+
+Manufactured Home Setup
+
+and automatically opens the Quote Form.
+
+Long-Term Architecture
+
+I would actually rename:
+
+UniversalCardItem
+
+to:
+
+CardComponent
+
+because eventually you'll use it for:
+
+Services
+Features
+Team Members
+Testimonials
+Portfolio
+Pricing
+Before & After
+Certifications
+Process Steps
+
+One engine powers everything.
+
+Priority Order
+
+For the website builder specifically, I'd put them:
+
+#717 Workspace Redesign
+#755 Universal Editing Framework
+#761 Tabbed Inspector
+#760 Inline Editing
+#759 Right Click Menu
+#806 Universal Card Engine
+#762 Media Library
+#723 Theme Designer
+#725 Page Templates
+
+The reason #806 ranks so high is because those cards are everywhere in service-business websites. Once the card engine exists, half of your future website features become dramatically easier to build.

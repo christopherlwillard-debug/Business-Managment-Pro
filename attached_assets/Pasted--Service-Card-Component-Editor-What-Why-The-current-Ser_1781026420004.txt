@@ -1,0 +1,134 @@
+# Service Card Component Editor
+
+## What & Why
+
+The current Services section only allows limited editing of service cards. Users should be able to fully customize each card without editing code or modifying the section itself.
+
+Each service card should behave like an independent component with its own content, icon, image, button, colors, and layout settings.
+
+---
+
+## Done Looks Like
+
+Every service card is individually selectable.
+
+Clicking a card opens a Service Card Editor in the inspector panel.
+
+Users can edit:
+
+### Content
+
+* Service Title
+* Service Description
+* Optional Button Text
+* Optional Button Link
+
+### Icons
+
+* Icon Picker
+* Upload Custom SVG
+* Upload PNG
+* Icon Color
+* Icon Background Color
+* Icon Size
+
+### Images
+
+Replace icon with:
+
+* Uploaded image
+* Photo
+* Custom logo
+* SBA logo
+* Veteran-Owned logo
+* Company badge
+
+Image controls:
+
+* Replace
+* Crop
+* Remove
+* Alt Text
+
+### Card Design
+
+* Background Color
+* Border Color
+* Border Radius
+* Shadow
+* Padding
+* Hover Effect
+
+### Layout
+
+Choose:
+
+* Icon Top
+* Icon Left
+* Image Top
+* Image Background
+* Horizontal Card
+* Vertical Card
+
+### Visibility
+
+* Hide Card
+* Duplicate Card
+* Delete Card
+
+---
+
+## Card Toolbar
+
+Hovering a card shows:
+
+Edit
+Duplicate
+Hide
+Delete
+
+The toolbar remains visible while selected.
+
+---
+
+## Add New Card
+
+The Add Service button creates a new blank service card.
+
+New cards inherit the current section theme.
+
+---
+
+## Drag & Drop
+
+Cards can be reordered.
+
+Users drag cards left/right or up/down.
+
+Changes save automatically.
+
+---
+
+## Public Site
+
+All card settings render correctly on the live website.
+
+Custom icons, uploaded images, badges, and logos display properly.
+
+Hover effects match editor preview.
+
+---
+
+## Future Compatibility
+
+The same Card Component is reused for:
+
+* Services
+* Features
+* Benefits
+* Team Members
+* Testimonials
+* Pricing Cards
+* Portfolio Cards
+
+A single Card Component system powers all future card-based sections.

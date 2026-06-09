@@ -1,0 +1,112 @@
+This is getting very close to what Wix Studio, Squarespace, and Webflow do internally.
+
+The only major thing I'd add before calling #806 finished is:
+
+Make CardComponent a Builder-Wide Primitive
+
+Right now the task says:
+
+Services uses CardComponent now, other sections migrate later.
+
+I would make that explicit:
+
+Additional Architectural Requirement
+
+CardComponent is promoted to a first-class builder primitive alongside:
+
+Heading
+Paragraph
+Button
+Image
+Form
+Map
+Video
+
+The component registry should register:
+
+type = "card"
+
+CardComponent becomes available inside:
+
+Content Blocks
+Row Columns
+Services Sections
+Future Team Sections
+Future Pricing Sections
+Future Portfolio Sections
+Future Testimonial Sections
+
+This prevents a second card implementation from appearing elsewhere in the builder.
+
+All future card-based features must consume CardComponent rather than creating section-specific card types.
+
+That one sentence can save months of technical debt later.
+
+I would also add Card Collections
+
+Today:
+
+Services
+ ├─ Card 1
+ ├─ Card 2
+ └─ Card 3
+
+Eventually you'll want:
+
+Card Collection
+ ├─ Team Member
+ ├─ Team Member
+ ├─ Team Member
+
+Card Collection
+ ├─ Testimonial
+ ├─ Testimonial
+
+Card Collection
+ ├─ Pricing Tier
+ ├─ Pricing Tier
+ ├─ Pricing Tier
+
+So I'd reserve:
+
+CardCollection
+
+as a future container.
+
+You don't have to build it now, but designing for it now prevents rewrites later.
+
+One More Preset I'd Add
+
+For service businesses:
+
+Certification Card
+
+Example:
+
+[Veteran Owned]
+
+Willard's General Contracting
+
+or
+
+[SBA Certified]
+
+SDVOSB Pending
+
+Those badges are extremely common for contractors.
+
+Priority
+
+For your builder roadmap, I'd now rank:
+
+#717 Workspace Redesign
+#755 Universal Editing Framework
+#761 Tabbed Inspector
+#760 Inline Editing
+#759 Right-Click Actions
+#806 Universal Card Engine
+#762 Media Library
+#723 Theme Designer
+#725 Page Templates
+
+The reason #806 belongs above Theme Designer and Templates is that almost every service-business website is built from cards. Once the card engine exists, Services, Team, Portfolio, Testimonials, Certifications, Process Steps, and Pricing all become much easier to build and customize. That gives users far more visible value than new color pickers or templates.

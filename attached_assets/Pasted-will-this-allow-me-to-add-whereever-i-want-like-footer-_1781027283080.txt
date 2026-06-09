@@ -1,0 +1,99 @@
+will this allow me to add whereever i want like footer or page 
+
+Yes — if #806 is implemented exactly as written, you'll be able to place cards almost anywhere in the builder.
+
+Because you added:
+
+CardComponent is registered as type = "card" in the component registry alongside Heading, Paragraph, Button, Image, Form, Map, Video.
+
+That means a card becomes a core building block, not just something inside Services.
+
+Places you'll be able to use CardComponent
+
+✅ Services Section
+
+✅ Content Blocks
+
+✅ Row / Column Layouts
+
+✅ Team Sections (future)
+
+✅ Pricing Sections (future)
+
+✅ Portfolio Sections (future)
+
+✅ Testimonial Sections (future)
+
+Example
+
+You could create:
+
+Footer
+├─ Trust Card
+│  ├─ Veteran Owned
+│  ├─ SBA Certified
+│  └─ Licensed & Insured
+
+or
+
+Home Page Hero
+├─ Heading
+├─ CTA Button
+├─ Row
+│  ├─ Trust Card
+│  ├─ Trust Card
+│  └─ Trust Card
+
+or
+
+About Page
+├─ Team Member Card
+├─ Team Member Card
+├─ Team Member Card
+One thing to verify with Replit
+
+I would make sure #806 explicitly includes this requirement:
+
+CardComponent must be available from the Add Component panel anywhere components can currently be inserted.
+
+Users can insert a CardComponent into:
+
+Content Blocks
+Row Columns
+Footer content areas
+Any future component-enabled section
+
+CardComponent is not restricted to ServicesSection.
+
+Without that sentence, a developer could technically build the card engine but only expose it inside Services.
+
+For the footer specifically
+
+There are two possibilities:
+
+Current footer is hardcoded
+
+Card won't be available there yet.
+
+Footer uses Content Blocks / Components
+
+Card can be dropped into the footer immediately.
+
+If your footer is currently a fixed FooterSection, I'd eventually want a future task:
+
+Footer Builder
+
+where the footer itself is made of:
+
+Heading
+Text
+Button
+Image
+Trust Badge
+Card
+Social Icons
+Contact Info
+
+components.
+
+That's how Wix and Squarespace handle footers, and it would let users put SBA, Veteran-Owned, BBB, or service cards anywhere they want in the footer.

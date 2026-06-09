@@ -1,0 +1,104 @@
+This version of #806 is significantly better than the earlier versions. Looking at the uploaded spec, you've effectively turned it from a "Services Card Editor" into a true builder primitive.
+
+A few things stand out as especially strong:
+
+Keep
+
+✅ CardComponent registered as a builder-wide primitive
+
+✅ Templates and Presets separated
+
+Templates = content structure
+
+Presets = visual styling
+
+That's exactly how professional builders handle it.
+
+✅ Theme inheritance using null = inherit
+
+This will save you massive headaches when Theme Designer (#723) lands.
+
+✅ Trust Card instead of Certification Card
+
+This broadens the audience beyond contractors while still supporting your SBA/Veteran-owned use cases.
+
+✅ Analytics hooks reserved now
+
+Smart move. You don't need analytics today, but you'll be glad those fields exist later.
+
+✅ Visibility rules reserved now
+
+Also smart. Seasonal promotions, financing offers, and holiday specials become possible without future schema migrations.
+
+One thing I'd still add
+Card Collections as a real future roadmap note
+
+Right now you reserve the name:
+
+CardCollection
+
+I'd expand the comment slightly:
+
+// CardCollection — future container for card-based sections.
+// Examples:
+// Team Section -> CardCollection<CardComponent>
+// Pricing Section -> CardCollection<CardComponent>
+// Portfolio Section -> CardCollection<CardComponent>
+// Testimonial Section -> CardCollection<CardComponent>
+//
+// CardComponent is the primitive.
+// CardCollection is the container.
+
+That tells future developers exactly where you're headed.
+
+One thing I'd simplify
+
+You currently have:
+
+Open Modal
+Open Contact Form
+
+I'd consider removing:
+
+Open Modal
+
+for now and keep:
+
+Open Contact Form
+
+The moment you support arbitrary modals you're basically committing to building a modal builder.
+
+For v1:
+
+None
+Scroll
+Page
+URL
+Call
+Email
+Contact Form
+
+covers 95% of service business websites.
+
+My rating
+#755 Universal Editing Framework
+
+10/10
+
+#760 Inline Editing
+
+10/10
+
+#761 Inspector Panel
+
+10/10
+
+#762 Media Library
+
+9.5/10
+
+#806 Universal Card Engine
+
+10/10
+
+If Replit successfully builds #755, #760, #761, #762, and #806, you'll no longer have a "contractor website feature." You'll have the foundation of a legitimate drag-and-drop website builder that can be reused across all your businesses and eventually sold to other contractors.

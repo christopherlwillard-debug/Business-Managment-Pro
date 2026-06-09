@@ -1,0 +1,116 @@
+This is a strong task. The only thing I'd change is that #806 is now bigger than a Services section enhancement—it's becoming a core builder architecture task.
+
+I'd add these final improvements before sending it:
+
+1. Add Global Card Templates
+
+Right now you have presets that change styling. Add actual card templates that change content structure.
+
+Examples:
+
+Service Card
+Team Member Card
+Certification Card
+Pricing Card
+Testimonial Card
+Process Step Card
+Portfolio Card
+
+That way when you later build Team, Pricing, Testimonials, etc., they are all using the same CardComponent engine.
+
+2. Add Visibility Conditions
+
+Contractors will eventually want things like:
+
+Show Veteran-Owned badge only if enabled
+Show Financing Available card only seasonally
+Show Winter Specials card only during certain dates
+
+Add to CardComponent:
+
+visibilityRule?: {
+  enabled: boolean;
+  type: "always" | "date-range";
+  startDate?: string;
+  endDate?: string;
+}
+
+No UI needed now if you want it out of scope, but reserving the field now prevents schema migrations later.
+
+3. Add Analytics Click Tracking Hooks
+
+For your future website analytics.
+
+trackClicks?: boolean
+analyticsLabel?: string
+
+Then later you can answer:
+
+Which service card gets clicked most?
+Which certification badge converts best?
+Which CTA card performs best?
+
+without rebuilding cards.
+
+4. Add Card-Level Theme Inheritance
+
+This is the biggest one.
+
+Currently:
+
+Theme Designer (#723)
+
+will define:
+
+button radius
+colors
+shadows
+spacing
+
+Cards should inherit theme values by default.
+
+Example:
+
+cardBgColor?: string
+
+becomes:
+
+cardBgColor?: string | null
+
+If null:
+
+Use theme value
+
+If set:
+
+Override theme
+
+Otherwise you'll end up with thousands of hard-coded card settings that stop responding to Theme Designer.
+
+5. Add Certification Card Content Pack
+
+For your contractor audience specifically.
+
+Prebuilt badges:
+
+Veteran Owned
+Disabled Veteran Owned
+SBA Certified
+Licensed & Insured
+Bonded
+BBB Accredited
+OSHA Compliant
+Family Owned
+
+These should be available from the Certification Card preset immediately.
+
+That is something most website builders don't provide and is directly valuable to your target market.
+
+My final rating
+#755 Universal Editing Framework → 10/10
+#761 Inspector Panel → 10/10
+#760 Inline Editing → 10/10
+#759 Context Menu → 9/10
+#806 Universal Card Engine → 9.5/10
+
+Once #806 is completed, you'll have crossed the line from a section-based website builder into a true component-based builder. After that, Theme Designer (#723), Media Library (#762), and Templates (#725) become much easier because they're operating on a solid component architecture instead of hardcoded sections.
