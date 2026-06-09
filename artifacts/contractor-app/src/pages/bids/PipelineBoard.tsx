@@ -105,7 +105,7 @@ interface Props {
   onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
   isUpdating: boolean;
   fitOnly: boolean;
-  sourceFilter: "all" | "federal" | "local";
+  sourceFilter: "all" | "federal" | "local" | "usa-spending";
 }
 
 export default function PipelineBoard({

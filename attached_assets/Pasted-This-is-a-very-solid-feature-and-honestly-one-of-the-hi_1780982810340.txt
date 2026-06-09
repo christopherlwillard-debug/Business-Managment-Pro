@@ -1,0 +1,169 @@
+This is a very solid feature and honestly one of the highest-value additions you can make to the bid page because it gives you something most contractors don't have:
+
+Intelligence, not just opportunities.
+
+I'd make a few upgrades before sending it to Replit.
+
+Add Competitor Profile View
+
+When clicking an awardee:
+
+Show:
+
+Company name
+Total awards won
+Total dollar value
+Agencies worked with
+States worked in
+NAICS codes
+Most recent awards
+
+Example:
+
+XYZ Paving LLC
+
+Total Awards:
+$4.2M
+
+Awards:
+38
+
+Top Agency:
+VA
+
+Top NAICS:
+237310 Highway, Street & Bridge Construction
+
+Last Award:
+May 2026
+
+This turns the feature into competitor research.
+
+Add Agency Intelligence
+
+Most contractors chase bids.
+
+Smarter contractors chase buyers.
+
+Each agency should show:
+
+VA Medical Center Louisville
+
+Awards Last 24 Months:
+47
+
+Total Spend:
+$8.4M
+
+Construction Spend:
+$2.1M
+
+Asphalt Related:
+$450,000
+
+This tells you who regularly buys your services.
+
+Add "Similar Opportunities" Scoring
+
+On every award:
+
+Similarity Score: 92%
+
+✓ Asphalt
+✓ Kentucky
+✓ Small Business
+✓ Under $500k
+✓ Local Government
+
+Makes the intelligence actionable.
+
+Add Award Trend Charts
+
+For each business line:
+
+Asphalt Sealing
+General Contracting
+Manufactured Housing
+
+Show:
+
+2023 - $1.2M
+2024 - $2.0M
+2025 - $3.1M
+2026 - $4.4M
+
+You instantly see where spending is growing.
+
+Add Geographic Heat Map
+
+Since you're focused around Kentucky and surrounding states:
+
+Show:
+
+Kentucky - 42 Awards
+Indiana - 19 Awards
+Tennessee - 15 Awards
+Ohio - 11 Awards
+
+This helps prioritize expansion.
+
+Add Winner-to-Bid Conversion Insight
+
+Future enhancement:
+
+When a SAM.gov bid later becomes an award:
+
+Store:
+
+Solicitation
+↓
+Award
+↓
+Winner
+↓
+Award Amount
+
+Over time your system learns:
+
+Who wins
+What agencies pay
+Typical award size
+
+That's extremely valuable.
+
+Database Suggestion
+
+Instead of storing awards only in bid_opportunities, I'd eventually create:
+
+contract_awards
+
+Table:
+
+id
+awardee_name
+agency
+award_amount
+naics
+state
+award_date
+source
+
+Then relate awards to bids.
+
+This scales much better long-term.
+
+Priority Score
+
+Out of all the business tools you're building:
+
+Bid scraping = 8/10
+SAM.gov integration = 9/10
+USASpending intelligence = 10/10
+
+Because most contractors can find bids.
+
+Very few can answer:
+
+Who keeps winning these contracts and what agencies should I target?
+
+That's where this feature becomes a real competitive advantage for your app.

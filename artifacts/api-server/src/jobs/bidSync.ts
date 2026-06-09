@@ -11,6 +11,7 @@ import {
   GENERAL_CONTRACTING_PSC_CODES,
 } from "../lib/samGov.js";
 import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS } from "../lib/kyLocalBids.js";
+import { fetchUsaSpendingAwards, UsaSpendingAward } from "../lib/usaSpending.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 
 // ── Business profiles ────────────────────────────────────────────────────────
@@ -132,6 +133,24 @@ async function purgeNavLinkRows(businessId: number): Promise<number> {
   return count;
 }
 
+// ── Purge stale USA Spending awards ──────────────────────────────────────────
+
+async function purgeOldUsaSpendingAwards(businessId: number): Promise<number> {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - 24);
+  const result = await db.execute(
+    sql`DELETE FROM bid_opportunities
+        WHERE source = 'usa-spending'
+          AND business_id = ${businessId}
+          AND (posted_date IS NULL OR posted_date::date < ${cutoff.toISOString().slice(0, 10)}::date)`
+  );
+  const count = (result as { rowCount?: number }).rowCount ?? 0;
+  if (count > 0) {
+    console.log(`[bid-sync] Purged ${count} outdated USASpending award(s) for business ${businessId}`);
+  }
+  return count;
+}
+
 // ── Purge off-profile federal bids ───────────────────────────────────────────
 
 async function purgeIrrelevantFederalBids(
@@ -164,7 +183,8 @@ async function upsertOpportunities(
   opportunities: OppWithSource[],
   defaultSource: string,
   defaultSourceLabel: string,
-  businessId: number
+  businessId: number,
+  overrides?: { status?: string; stage?: string }
 ): Promise<OppWithSource[]> {
   const newOnes: OppWithSource[] = [];
 
@@ -191,11 +211,53 @@ async function upsertOpportunities(
         postedDate: opp.postedDate,
         responseDeadline: opp.responseDeadline,
         url: opp.url,
-        status: "new",
+        status: overrides?.status ?? "new",
+        stage: overrides?.stage ?? "new",
         source: opp.source ?? defaultSource,
         sourceLabel: opp.sourceLabel ?? defaultSourceLabel,
       });
       newOnes.push(opp);
+    }
+  }
+
+  return newOnes;
+}
+
+async function upsertUsaSpendingAwards(
+  awards: UsaSpendingAward[],
+  businessId: number
+): Promise<UsaSpendingAward[]> {
+  const newOnes: UsaSpendingAward[] = [];
+
+  for (const award of awards) {
+    const existing = await db
+      .select({ id: bidOpportunitiesTable.id })
+      .from(bidOpportunitiesTable)
+      .where(
+        and(
+          eq(bidOpportunitiesTable.noticeId, award.noticeId),
+          eq(bidOpportunitiesTable.businessId, businessId)
+        )
+      )
+      .then((rows) => rows[0] ?? null);
+
+    if (!existing) {
+      await db.insert(bidOpportunitiesTable).values({
+        businessId,
+        noticeId: award.noticeId,
+        title: award.title,
+        agency: award.agency,
+        naicsCode: award.naicsCode,
+        description: award.description,
+        postedDate: award.postedDate,
+        responseDeadline: null,
+        url: award.url,
+        status: "dismissed",
+        stage: "no_bid",
+        source: "usa-spending",
+        sourceLabel: "Awards Intel",
+      });
+      newOnes.push(award);
     }
   }
 
@@ -237,24 +299,31 @@ export async function runBidSync(
   await purgeIrrelevantFederalBids(businessId, profile.samNaicsCodes);
   await purgeIrrelevantLocalBids(businessId, profile.localKeywords);
   await purgeNavLinkRows(businessId);
+  await purgeOldUsaSpendingAwards(businessId);
 
-  const [fedOpps, localOpps] = await Promise.allSettled([
+  const [fedOpps, localOpps, awardsOpps] = await Promise.allSettled([
     process.env["SAM_GOV_API_KEY"]
       ? fetchSamOpportunities({ keywords: profile.samKeywords, naicsCodes: profile.samNaicsCodes, pscCodes: profile.samPscCodes })
       : Promise.resolve([] as SamOpportunity[]),
     fetchKyLocalBids(),
+    fetchUsaSpendingAwards({ naicsCodes: profile.samNaicsCodes }),
   ]);
 
   const federal: OppWithSource[] =
     fedOpps.status === "fulfilled" ? fedOpps.value : [];
   const allLocal: OppWithSource[] =
     localOpps.status === "fulfilled" ? localOpps.value : [];
+  const awards =
+    awardsOpps.status === "fulfilled" ? awardsOpps.value : [];
 
   if (fedOpps.status === "rejected") {
     console.error("[bid-sync] SAM.gov fetch error:", fedOpps.reason);
   }
   if (localOpps.status === "rejected") {
     console.error("[bid-sync] KY local fetch error:", localOpps.reason);
+  }
+  if (awardsOpps.status === "rejected") {
+    console.error("[bid-sync] USASpending fetch error:", awardsOpps.reason);
   }
 
   if (!process.env["SAM_GOV_API_KEY"]) {
@@ -276,14 +345,16 @@ export async function runBidSync(
     );
   }
 
-  const [newFederal, newLocal] = await Promise.all([
+  const [newFederal, newLocal, newAwards] = await Promise.all([
     upsertOpportunities(federal, "federal", "Federal", businessId),
     upsertOpportunities(local, "state-local", "KY Local", businessId),
+    upsertUsaSpendingAwards(awards, businessId),
   ]);
 
   console.log(
     `[bid-sync] "${business.name}": Federal ${federal.length} fetched, ${newFederal.length} new` +
-    ` | KY Local: ${local.length} fetched, ${newLocal.length} new`
+    ` | KY Local: ${local.length} fetched, ${newLocal.length} new` +
+    ` | USASpending Awards: ${awards.length} fetched, ${newAwards.length} new`
   );
 
   const allNew = [...newFederal, ...newLocal];

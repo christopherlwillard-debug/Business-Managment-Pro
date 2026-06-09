@@ -14,6 +14,7 @@ import BidFilterBar from "./bids/BidFilterBar";
 import BidStatsBar from "./bids/BidStatsBar";
 import BidCard from "./bids/BidCard";
 import PipelineBoard from "./bids/PipelineBoard";
+import AwardsPanel from "./bids/AwardsPanel";
 import type { BidFilter, SourceFilter } from "./bids/BidFilterBar";
 import type { QuickLink, AiSummary, BidOpportunity, BidStage } from "./bids/types";
 import { RotateCcw } from "lucide-react";
@@ -21,6 +22,17 @@ import { RotateCcw } from "lucide-react";
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const VIEW_KEY = "bid-view-preference";
+
+// NAICS codes associated with each business type — used to flag "Similar to your work" awards
+const BUSINESS_NAICS: Record<string, string[]> = {
+  asphalt_sealing: ["237310"],
+  general_contracting: [
+    "236220", "236210", "236115", "236116", "236118",
+    "238110", "238140", "238150", "238160", "238170", "238190",
+    "238210", "238220", "238310", "238320", "238330", "238340",
+    "238350", "238390", "238910", "238990",
+  ],
+};
 
 export default function BidOpportunities() {
   const queryClient = useQueryClient();
@@ -98,7 +110,7 @@ export default function BidOpportunities() {
     onSuccess: () => {
       toast({
         title: "Syncing bids…",
-        description: "Checking federal and local sources. New bids will appear shortly.",
+        description: "Checking federal, local, and USASpending sources. New bids will appear shortly.",
       });
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 15_000);
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 60_000);
@@ -220,32 +232,43 @@ export default function BidOpportunities() {
     }
   }
 
+  // ── Split awards from pipeline bids ──────────────────────────────────────
+
+  const awards = bids.filter((b) => b.source === "usa-spending");
+  const pipelineBids = bids.filter((b) => b.source !== "usa-spending");
+  const profileNaicsCodes = activeBusiness?.type ? BUSINESS_NAICS[activeBusiness.type] : undefined;
+
   // ── Filtering ─────────────────────────────────────────────────────────────
 
   const counts: Partial<Record<BidFilter, number>> = {
-    all: bids.filter((b) => b.stage !== "no_bid").length,
-    new:       bids.filter((b) => b.stage === "new").length,
-    reviewing: bids.filter((b) => b.stage === "reviewing").length,
-    bidding:   bids.filter((b) => b.stage === "bidding").length,
-    submitted: bids.filter((b) => b.stage === "submitted").length,
-    won:       bids.filter((b) => b.stage === "won").length,
-    lost:      bids.filter((b) => b.stage === "lost").length,
-    no_bid:    bids.filter((b) => b.stage === "no_bid").length,
+    all:       pipelineBids.filter((b) => b.stage !== "no_bid").length,
+    new:       pipelineBids.filter((b) => b.stage === "new").length,
+    reviewing: pipelineBids.filter((b) => b.stage === "reviewing").length,
+    bidding:   pipelineBids.filter((b) => b.stage === "bidding").length,
+    submitted: pipelineBids.filter((b) => b.stage === "submitted").length,
+    won:       pipelineBids.filter((b) => b.stage === "won").length,
+    lost:      pipelineBids.filter((b) => b.stage === "lost").length,
+    no_bid:    pipelineBids.filter((b) => b.stage === "no_bid").length,
   };
 
   const stageFiltered = filter === "all"
-    ? bids.filter((b) => b.stage !== "no_bid")
-    : bids.filter((b) => b.stage === filter);
+    ? pipelineBids.filter((b) => b.stage !== "no_bid")
+    : pipelineBids.filter((b) => b.stage === filter);
 
-  const sourceFiltered = sourceFilter === "all" ? stageFiltered
-    : sourceFilter === "federal" ? stageFiltered.filter((b) => b.source !== "state-local")
-    : stageFiltered.filter((b) => b.source === "state-local");
+  const sourceFiltered = sourceFilter === "federal"
+    ? stageFiltered.filter((b) => b.source === "federal")
+    : sourceFilter === "local"
+    ? stageFiltered.filter((b) => b.source === "state-local")
+    : stageFiltered;
 
   const fitCount = sourceFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true).length;
 
   const displayedBids = fitOnly
     ? sourceFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true)
     : sourceFiltered;
+
+  const showPipeline = sourceFilter !== "usa-spending";
+  const showAwards = sourceFilter === "all" || sourceFilter === "usa-spending";
 
   return (
     <div className="space-y-6">
@@ -284,33 +307,35 @@ export default function BidOpportunities() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* View toggle */}
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            <button
-              onClick={() => switchView("list")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
-                view === "list"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <List className="w-3.5 h-3.5" />
-              List
-            </button>
-            <button
-              onClick={() => switchView("pipeline")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l border-border",
-                view === "pipeline"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Columns className="w-3.5 h-3.5" />
-              Pipeline
-            </button>
-          </div>
+          {/* View toggle — only relevant when showing pipeline bids */}
+          {showPipeline && (
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              <button
+                onClick={() => switchView("list")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
+                  view === "list"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <List className="w-3.5 h-3.5" />
+                List
+              </button>
+              <button
+                onClick={() => switchView("pipeline")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l border-border",
+                  view === "pipeline"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Columns className="w-3.5 h-3.5" />
+                Pipeline
+              </button>
+            </div>
+          )}
           <button
             onClick={() => syncBids.mutate()}
             disabled={syncBids.isPending || !businessId}
@@ -324,7 +349,7 @@ export default function BidOpportunities() {
       </div>
 
       {/* Stats bar */}
-      <BidStatsBar bids={bids} />
+      <BidStatsBar bids={pipelineBids} />
 
       {/* Quick Links panel */}
       <QuickLinksPanel
@@ -334,7 +359,7 @@ export default function BidOpportunities() {
         isOwner={isOwner}
       />
 
-      {/* Filter bar — shown in list view; source/fit also apply in pipeline */}
+      {/* Filter bar */}
       <BidFilterBar
         filter={filter}
         setFilter={setFilter}
@@ -344,6 +369,7 @@ export default function BidOpportunities() {
         fitCount={fitCount}
         sourceFilter={sourceFilter}
         setSourceFilter={setSourceFilter}
+        awardsCount={awards.length}
       />
 
       {/* Content */}
@@ -351,48 +377,76 @@ export default function BidOpportunities() {
         <div className="flex items-center justify-center py-16">
           <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
         </div>
-      ) : bids.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
-          <FileSearch className="w-10 h-10 text-muted-foreground/40" />
-          <p className="text-muted-foreground font-medium">No bid opportunities yet</p>
-          <p className="text-sm text-muted-foreground/70 max-w-sm">
-            The system checks SAM.gov and Kentucky county bid pages daily at 7 AM. New opportunities will appear here automatically.
-          </p>
-        </div>
-      ) : view === "pipeline" ? (
-        <PipelineBoard
-          bids={bids}
-          summaryCache={summaryCache}
-          onSummarize={openSummaryPanel}
-          onStageChange={(bid, stage) => {
-            if (stage === "no_bid") dismissBid(bid);
-            else updateStage.mutate({ id: bid.id, stage });
-          }}
-          isUpdating={updateStage.isPending}
-          fitOnly={fitOnly}
-          sourceFilter={sourceFilter}
-        />
-      ) : displayedBids.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
-          <FileSearch className="w-8 h-8 text-muted-foreground/30" />
-          <p className="text-muted-foreground font-medium">No bids match your filters</p>
-          <p className="text-sm text-muted-foreground/60">Try adjusting the stage, source, or fit filter.</p>
-        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {displayedBids.map((bid) => (
-            <BidCard
-              key={bid.id}
-              bid={bid}
-              summary={summaryCache[bid.id] ?? bid.aiSummary}
-              onSummarize={openSummaryPanel}
-              onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage })}
-              onDismiss={dismissBid}
-              onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new" })}
-              isUpdating={updateStage.isPending}
+        <>
+          {/* Pipeline / list view — hidden when Awards Intel filter is active */}
+          {showPipeline && (
+            <>
+              {pipelineBids.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+                  <FileSearch className="w-10 h-10 text-muted-foreground/40" />
+                  <p className="text-muted-foreground font-medium">No bid opportunities yet</p>
+                  <p className="text-sm text-muted-foreground/70 max-w-sm">
+                    The system checks SAM.gov and Kentucky county bid pages daily at 7 AM. New opportunities will appear here automatically.
+                  </p>
+                </div>
+              ) : view === "pipeline" ? (
+                <PipelineBoard
+                  bids={pipelineBids}
+                  summaryCache={summaryCache}
+                  onSummarize={openSummaryPanel}
+                  onStageChange={(bid, stage) => {
+                    if (stage === "no_bid") dismissBid(bid);
+                    else updateStage.mutate({ id: bid.id, stage });
+                  }}
+                  isUpdating={updateStage.isPending}
+                  fitOnly={fitOnly}
+                  sourceFilter={sourceFilter}
+                />
+              ) : displayedBids.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+                  <FileSearch className="w-8 h-8 text-muted-foreground/30" />
+                  <p className="text-muted-foreground font-medium">No bids match your filters</p>
+                  <p className="text-sm text-muted-foreground/60">Try adjusting the stage, source, or fit filter.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {displayedBids.map((bid) => (
+                    <BidCard
+                      key={bid.id}
+                      bid={bid}
+                      summary={summaryCache[bid.id] ?? bid.aiSummary}
+                      onSummarize={openSummaryPanel}
+                      onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage })}
+                      onDismiss={dismissBid}
+                      onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new" })}
+                      isUpdating={updateStage.isPending}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Awards Intelligence panel */}
+          {showAwards && (
+            <AwardsPanel
+              awards={awards}
+              profileNaicsCodes={profileNaicsCodes}
             />
-          ))}
-        </div>
+          )}
+
+          {/* Empty state when Awards Intel filter is active and no awards exist yet */}
+          {sourceFilter === "usa-spending" && awards.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+              <FileSearch className="w-10 h-10 text-muted-foreground/40" />
+              <p className="text-muted-foreground font-medium">No award intelligence yet</p>
+              <p className="text-sm text-muted-foreground/70 max-w-sm">
+                Click "Refresh Bids" to fetch recent awarded contracts from USASpending.gov for your NAICS codes.
+              </p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
