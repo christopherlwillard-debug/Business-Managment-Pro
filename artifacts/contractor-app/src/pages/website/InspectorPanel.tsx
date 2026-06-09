@@ -987,6 +987,10 @@ export function InspectorPanel({
               </>
             )}
           </div>
+        ) : specialContent ? (
+          <div ref={tabContentRef} className="flex-1 overflow-y-auto min-h-0">
+            {specialContent}
+          </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-0">
             <div className="flex border-b border-border flex-shrink-0 bg-card">

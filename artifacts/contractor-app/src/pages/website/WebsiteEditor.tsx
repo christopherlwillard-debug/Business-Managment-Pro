@@ -3460,6 +3460,8 @@ function WebsiteEditor() {
             onSelectCard: (id: string | null) => {
               if (id) {
                 setSelectedCardState({ sectionId: s.id, cardId: id });
+                setActiveSection(s.id);
+                setContextInspectorTab({ tab: "content", id: Date.now() });
                 if (rightCollapsedRef.current) {
                   autoCollapsedRightRef.current = false;
                   setAutoCollapsedRight(false);
