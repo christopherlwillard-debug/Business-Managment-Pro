@@ -1,0 +1,57 @@
+This version is much stronger. The only thing I'd add is one more issue that is obvious from your screenshots:
+
+The canvas itself doesn't scroll independently from the sidebars.
+The user should be able to scroll the website preview while keeping the Site Structure and Inspector visible.
+
+I'd add this under "Done looks like":
+
+#813 - Website Builder Workspace Layout & UX
+
+Additional Requirement
+
+Independent Panel Scrolling
+
+The left Site Structure panel, center canvas, and right Inspector panel must each maintain independent scroll containers.
+
+Scrolling the website preview does not move the Site Structure tree.
+Scrolling the website preview does not move the Inspector panel.
+Scrolling the Inspector panel does not affect the canvas position.
+Scrolling the Site Structure tree does not affect the canvas position.
+
+The builder behaves like professional design tools (Webflow, Framer, Figma) where each workspace region manages its own scrolling independently.
+
+Implementation
+
+WebsiteEditor.tsx should use a full-height flex layout:
+
+Left panel: overflow-y-auto
+Canvas wrapper: overflow-y-auto
+Inspector panel: overflow-hidden with internal tab-content overflow-y-auto
+
+No panel should rely on page-level scrolling.
+
+One more improvement
+
+I'd also modify this line:
+
+Verify the inspector's default saved width (from localStorage) is at most 280px.
+
+to:
+
+Clamp inspector width between 240px and 300px, with a default of 280px.
+
+That prevents somebody from previously saving a huge inspector width and breaking the canvas layout.
+
+Priority
+
+Of all the builder tasks you've written recently, I'd put them:
+
+#755 Universal Editing Framework
+#760 True Inline Editing
+#806 Universal Card Engine
+#761 Inspector Panel
+#813 Workspace Layout & UX
+
+The reason I'd move #806 ahead of #761 is because your screenshots show that cards are currently the biggest editing limitation. Being able to fully edit service cards, SBA badges, Veteran-Owned cards, certification cards, feature cards, etc. will immediately improve every contractor website built with the platform.
+
+#813 is still worth doing because it will make the entire builder feel much less cramped and more professional, especially on 1080p and 1440p monitors.

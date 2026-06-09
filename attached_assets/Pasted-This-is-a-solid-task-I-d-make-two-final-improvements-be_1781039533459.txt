@@ -1,0 +1,75 @@
+This is a solid task. I'd make two final improvements before giving it to Replit.
+
+1. Add Canvas Scroll Position Preservation
+
+Right now if a user selects a section near the bottom of a long page and the inspector rerenders, there's a risk the canvas scroll position jumps.
+
+Add:
+
+Additional Requirement
+
+Canvas Scroll Preservation
+
+Selecting sections, switching inspector tabs, opening card editors, or updating inspector settings must not reset or alter the current canvas scroll position.
+
+Done looks like
+
+User scrolls halfway down a page.
+Selects a section.
+Switches between Quick, Content, Style, Layout, and Advanced tabs.
+Makes edits.
+
+The canvas remains at the same scroll position throughout the workflow.
+
+Implementation
+
+Store canvas scroll position independently from inspector state.
+
+Avoid remounting the canvas container when selection state changes.
+
+Inspector updates should only affect inspector state and never recreate the canvas wrapper.
+
+2. Add Sticky Site Structure Header
+
+The search bar and "Site Structure" title should stay visible while scrolling.
+
+Add:
+
+Additional Requirement
+
+Sticky Site Structure Header
+
+The Site Structure title, collapse controls, and search input remain visible while scrolling the section tree.
+
+Done looks like
+
+User has 50+ sections.
+Scrolls deep into the structure tree.
+Search box remains accessible.
+No need to scroll back to the top to search or collapse sections.
+
+Implementation
+
+The Site Structure header becomes:
+
+flex-shrink-0 sticky top-0 z-10
+
+The tree itself becomes:
+
+flex-1 overflow-y-auto
+
+Priority Change
+
+After seeing your screenshots, I'd actually move this task higher.
+
+Current order I'd tackle:
+
+#755 Universal Editing Framework
+#813 Workspace Layout & UX
+#760 True Inline Editing
+#806 Universal Card Engine
+#761 Inspector Panel
+
+Reason:
+
+Your editor already has a lot of features, but the layout is actively fighting the user. Fixing the scrolling, widths, sticky panels, and wasted space will immediately make every other feature easier to use. The screenshots show that usability issue more than missing functionality right now.
