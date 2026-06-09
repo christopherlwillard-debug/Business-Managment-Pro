@@ -206,7 +206,7 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
         {isEditing ? (
           <>
             <input
-              className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-1 w-full"
+              className={`font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-gray-200 focus:border-blue-500 outline-none mb-1 w-full${!content.headingStyle?.fontSize ? " text-3xl" : ""}`}
               style={textStyleToCSS(content.headingStyle)}
               value={content.heading}
               onChange={e => update({ heading: e.target.value })}
@@ -271,7 +271,7 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
         ) : (
           <>
             <h2
-              className="text-3xl font-bold mb-2 text-center"
+              className={`font-bold mb-2 text-center${!content.headingStyle?.fontSize ? " text-3xl" : ""}`}
               style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
             >
               {content.heading}

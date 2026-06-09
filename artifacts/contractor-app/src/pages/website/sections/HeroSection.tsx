@@ -94,7 +94,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
                 as="h1"
                 value={content.headline}
                 placeholder="Your headline here"
-                className="text-4xl md:text-5xl font-bold mb-1 leading-tight w-full text-white"
+                className={`font-bold mb-1 leading-tight w-full text-white${!content.headlineStyle?.fontSize ? " text-4xl md:text-5xl" : ""}`}
                 style={headlineCSS}
                 onCommit={v => update({ headline: v })}
               />
@@ -135,7 +135,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
                 as="p"
                 value={content.subheadline}
                 placeholder="Subheadline text"
-                className="text-lg md:text-xl text-white/80 mb-1 max-w-2xl mx-auto"
+                className={`text-white/80 mb-1 max-w-2xl mx-auto${!content.subheadlineStyle?.fontSize ? " text-lg md:text-xl" : ""}`}
                 style={subheadlineCSS}
                 onCommit={v => update({ subheadline: v })}
               />
@@ -238,7 +238,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
       {showHeadline && (
         <h1
           data-edit-field="headline"
-          className="text-4xl md:text-5xl font-bold mb-4 leading-tight"
+          className={`font-bold mb-4 leading-tight${!content.headlineStyle?.fontSize ? " text-4xl md:text-5xl" : ""}`}
           style={headlineCSS}
         >
           {content.headline}
@@ -247,7 +247,7 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
       {showSubheadline && (
         <p
           data-edit-field="subheadline"
-          className="text-lg md:text-xl text-white/80 mb-8 max-w-2xl mx-auto"
+          className={`text-white/80 mb-8 max-w-2xl mx-auto${!content.subheadlineStyle?.fontSize ? " text-lg md:text-xl" : ""}`}
           style={subheadlineCSS}
         >
           {content.subheadline}

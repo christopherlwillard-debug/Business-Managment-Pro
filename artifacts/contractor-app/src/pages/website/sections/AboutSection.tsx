@@ -162,7 +162,7 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
                 as="h2"
                 value={content.heading}
                 placeholder="Section heading"
-                className="text-3xl font-bold mb-1 w-full"
+                className={`font-bold mb-1 w-full${!content.headingStyle?.fontSize ? " text-3xl" : ""}`}
                 style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
                 onCommit={v => update({ heading: v })}
               />
@@ -195,7 +195,7 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
             <>
               <h2
                 data-edit-field="heading"
-                className="text-3xl font-bold mb-4"
+                className={`font-bold mb-4${!content.headingStyle?.fontSize ? " text-3xl" : ""}`}
                 style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
               >
                 {content.heading}
