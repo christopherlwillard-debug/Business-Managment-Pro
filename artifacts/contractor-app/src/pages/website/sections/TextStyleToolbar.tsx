@@ -31,15 +31,18 @@ const FONT_OPTIONS = [
 ];
 
 const SIZE_OPTIONS = [
-  { label: "XS", value: "0.75rem" },
-  { label: "SM", value: "0.875rem" },
-  { label: "MD", value: "1rem" },
-  { label: "LG", value: "1.25rem" },
-  { label: "XL", value: "1.5rem" },
-  { label: "2XL", value: "2rem" },
-  { label: "3XL", value: "2.5rem" },
-  { label: "4XL", value: "3rem" },
-  { label: "5XL", value: "4rem" },
+  { label: "12", value: "12px" },
+  { label: "14", value: "14px" },
+  { label: "16", value: "16px" },
+  { label: "18", value: "18px" },
+  { label: "20", value: "20px" },
+  { label: "24", value: "24px" },
+  { label: "30", value: "30px" },
+  { label: "36", value: "36px" },
+  { label: "48", value: "48px" },
+  { label: "60", value: "60px" },
+  { label: "72", value: "72px" },
+  { label: "96", value: "96px" },
 ];
 
 const WEIGHT_OPTIONS = [
@@ -85,7 +88,7 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
       <select
         value={style.fontFamily ?? ""}
         onChange={e => patch({ fontFamily: e.target.value || undefined })}
-        className="text-[10px] bg-white/10 text-white border-0 rounded px-1 py-0.5 outline-none cursor-pointer max-w-[90px]"
+        className="text-[10px] bg-gray-800 text-white border-0 rounded px-1 py-0.5 outline-none cursor-pointer max-w-[90px]"
       >
         <option value="">Font</option>
         {FONT_OPTIONS.map(f => (
@@ -98,7 +101,7 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
       <select
         value={style.fontSize ?? ""}
         onChange={e => patch({ fontSize: e.target.value || undefined })}
-        className="text-[10px] bg-white/10 text-white border-0 rounded px-1 py-0.5 outline-none cursor-pointer max-w-[60px]"
+        className="text-[10px] bg-gray-800 text-white border-0 rounded px-1 py-0.5 outline-none cursor-pointer max-w-[60px]"
       >
         <option value="">Size</option>
         {SIZE_OPTIONS.map(s => (
