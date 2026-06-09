@@ -9,7 +9,8 @@ import { startPlaidSyncJob } from "./jobs/plaidSync.js";
 import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
-import { businessesTable } from "@workspace/db/schema";
+import { businessesTable, mileageLogsTable, expensesTable } from "@workspace/db/schema";
+import { isNull, and, inArray, asc } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -61,6 +62,37 @@ async function ensureChrome(): Promise<void> {
   console.log("Chrome download complete.");
 }
 
+async function backfillMileageBusiness(): Promise<void> {
+  try {
+    const orphans = await db
+      .select({ id: mileageLogsTable.id, expenseId: mileageLogsTable.expenseId })
+      .from(mileageLogsTable)
+      .where(and(isNull(mileageLogsTable.businessId), isNull(mileageLogsTable.subcontractorId)));
+
+    if (orphans.length === 0) return;
+
+    const [primary] = await db
+      .select({ id: businessesTable.id })
+      .from(businessesTable)
+      .orderBy(asc(businessesTable.sortOrder), asc(businessesTable.id))
+      .limit(1);
+
+    if (!primary) return;
+
+    const ids = orphans.map(r => r.id);
+    const expenseIds = orphans.map(r => r.expenseId).filter((x): x is number => x != null);
+
+    await db.update(mileageLogsTable).set({ businessId: primary.id }).where(inArray(mileageLogsTable.id, ids));
+    if (expenseIds.length > 0) {
+      await db.update(expensesTable).set({ businessId: primary.id }).where(inArray(expensesTable.id, expenseIds));
+    }
+
+    console.log(`[startup] Backfilled ${ids.length} mileage log(s) and ${expenseIds.length} linked expense(s) → businessId=${primary.id}`);
+  } catch (err) {
+    console.error("[startup] Mileage backfill failed (non-fatal):", err);
+  }
+}
+
 async function seedDefaultBusinesses(): Promise<void> {
   try {
     const existing = await db.select({ id: businessesTable.id }).from(businessesTable).limit(1);
@@ -79,6 +111,7 @@ async function seedDefaultBusinesses(): Promise<void> {
 async function start() {
   await ensureChrome();
   await seedDefaultBusinesses();
+  await backfillMileageBusiness();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     startRecurringExpensesJob();

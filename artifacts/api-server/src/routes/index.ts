@@ -67,6 +67,7 @@ import wixIntegrationRouter from "./wix-integration";
 import { websiteRouter, websitePublicRouter } from "./website";
 import errorsRouter from "./errors";
 import adminErrorsRouter from "./admin-errors";
+import adminMigrationsRouter from "./admin-migrations";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -232,6 +233,7 @@ router.use("/sub-hours", sectionGuard("jobs"), subHoursAliasRouter);
 router.use("/job-type-benchmarks", requireOwner, jobTypeBenchmarksRouter);
 router.use("/website", requireOwner, websiteRouter);
 router.use("/admin/errors", requireOwner, adminErrorsRouter);
+router.use("/admin/migrations", requireOwner, adminMigrationsRouter);
 
 router.get("/integrations/wix/config", requireOwner, (req, res) => {
   const token = process.env["WIX_WEBHOOK_SECRET"] ?? null;
