@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { mileageLogsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, isNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -23,16 +23,22 @@ async function getRate() {
 
 router.get("/summary", async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    const conditions: any[] = [eq(mileageLogsTable.classification, "business")];
-    if (startDate) conditions.push(gte(mileageLogsTable.date, startDate as string));
-    if (endDate) conditions.push(lte(mileageLogsTable.date, endDate as string));
+    const { startDate, endDate, businessId } = req.query;
+    if (!businessId) return res.status(400).json({ error: "businessId is required" });
+    const bizId = parseInt(businessId as string);
 
-    const allConditions: any[] = [];
-    if (startDate) allConditions.push(gte(mileageLogsTable.date, startDate as string));
-    if (endDate) allConditions.push(lte(mileageLogsTable.date, endDate as string));
+    const baseConditions: any[] = [
+      eq(mileageLogsTable.businessId, bizId),
+      isNull(mileageLogsTable.subcontractorId),
+    ];
+    if (startDate) baseConditions.push(gte(mileageLogsTable.date, startDate as string));
+    if (endDate) baseConditions.push(lte(mileageLogsTable.date, endDate as string));
 
-    const all = await db.select().from(mileageLogsTable).where(allConditions.length ? and(...allConditions) : undefined);
+    const all = await db
+      .select()
+      .from(mileageLogsTable)
+      .where(and(...baseConditions));
+
     const rate = await getRate();
     const businessMiles = all.filter(m => m.classification === "business").reduce((s, m) => s + parseFloat(m.miles), 0);
     const personalMiles = all.filter(m => m.classification === "personal").reduce((s, m) => s + parseFloat(m.miles), 0);
@@ -53,8 +59,14 @@ router.get("/summary", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { startDate, endDate, classified } = req.query;
-    const conditions: any[] = [];
+    const { startDate, endDate, businessId } = req.query;
+    if (!businessId) return res.status(400).json({ error: "businessId is required" });
+    const bizId = parseInt(businessId as string);
+
+    const conditions: any[] = [
+      eq(mileageLogsTable.businessId, bizId),
+      isNull(mileageLogsTable.subcontractorId),
+    ];
     if (startDate) conditions.push(gte(mileageLogsTable.date, startDate as string));
     if (endDate) conditions.push(lte(mileageLogsTable.date, endDate as string));
 
@@ -62,7 +74,7 @@ router.get("/", async (req, res) => {
       .select({ ...mileageLogsTable, jobTitle: jobsTable.title })
       .from(mileageLogsTable)
       .leftJoin(jobsTable, eq(mileageLogsTable.jobId, jobsTable.id))
-      .where(conditions.length ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(mileageLogsTable.date);
 
     res.json(logs.map(m => formatMileage(m, m.jobTitle)));

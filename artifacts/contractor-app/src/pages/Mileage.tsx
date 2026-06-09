@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useBusiness } from "@/contexts/BusinessContext";
 import {
   useListMileageLogs,
   useGetMileageSummary,
@@ -103,9 +104,17 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
 
 export default function Mileage() {
   const { canEdit } = useUserPermissions();
+  const { activeBusiness } = useBusiness();
+  const businessId = activeBusiness?.id;
   const queryClient = useQueryClient();
-  const { data: logs, isLoading } = useListMileageLogs();
-  const { data: summary } = useGetMileageSummary();
+  const { data: logs, isLoading } = useListMileageLogs(
+    businessId ? { businessId } : undefined,
+    { query: { enabled: !!businessId } }
+  );
+  const { data: summary } = useGetMileageSummary(
+    businessId ? { businessId } : undefined,
+    { query: { enabled: !!businessId } }
+  );
   const { data: jobs = [] } = useListJobs();
   const { data: settings } = useGetSettings();
   const createMileage = useCreateMileageLog();
@@ -225,6 +234,7 @@ export default function Mileage() {
             endLocation: manual.endLocation || undefined,
             purpose: manual.purpose || undefined,
             jobId: manual.jobId ? parseInt(manual.jobId) : undefined,
+            businessId: businessId ?? undefined,
             source: "manual",
           },
         });
@@ -273,6 +283,7 @@ export default function Mileage() {
             classification: "business",
             purpose: purposeNote,
             notes: monthlyForm.notes || undefined,
+            businessId: businessId ?? undefined,
             source: "manual",
           },
         });

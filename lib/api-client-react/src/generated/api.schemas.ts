@@ -446,6 +446,7 @@ export interface CreateMileageLogRequest {
   miles: number;
   purpose?: string | null;
   jobId?: number | null;
+  businessId?: number | null;
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
   source?: CreateMileageLogRequestSource;
@@ -855,11 +856,13 @@ export type ListMileageLogsParams = {
   startDate?: string;
   endDate?: string;
   classified?: boolean;
+  businessId?: number;
 };
 
 export type GetMileageSummaryParams = {
   startDate?: string;
   endDate?: string;
+  businessId?: number;
 };
 
 export type Get1099ReportParams = {
