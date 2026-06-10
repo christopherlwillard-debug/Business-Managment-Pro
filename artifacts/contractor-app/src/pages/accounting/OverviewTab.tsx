@@ -556,10 +556,14 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
               {/* Net profit */}
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">+ Net Profit (YTD)</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {netProfit >= 0 ? "+ Net Profit (YTD)" : "− Net Loss (YTD)"}
+                  </p>
                   <p className="text-[10px] text-muted-foreground">Revenue minus all business expenses</p>
                 </div>
-                <span className={`text-sm font-bold ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{netProfit >= 0 ? "+" : ""}{formatCurrency(netProfit)}</span>
+                <span className={`text-sm font-bold ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                  {netProfit >= 0 ? `+${formatCurrency(netProfit)}` : `−${formatCurrency(Math.abs(netProfit))}`}
+                </span>
               </div>
 
               {/* Owner draws */}
