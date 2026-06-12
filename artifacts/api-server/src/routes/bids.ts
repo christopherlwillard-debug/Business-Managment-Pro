@@ -239,7 +239,7 @@ router.post("/:id/summarize", async (req, res) => {
     const prompt = buildSummarizePrompt(doc, businessType);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       max_completion_tokens: 1024,
       messages: [{ role: "user", content: prompt }],
     });
