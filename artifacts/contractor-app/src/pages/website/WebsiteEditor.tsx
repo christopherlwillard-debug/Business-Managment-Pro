@@ -10,7 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
-  Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette,
+  Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
 } from "lucide-react";
 import {
@@ -330,6 +330,7 @@ function getSectionTypeIcons(): Record<string, React.ReactNode> {
 type AddableSectionEntry = {
   type: Section["type"];
   label: string;
+  description: string;
   icon: React.ReactNode;
   allowMultiple?: boolean;
 };
@@ -338,17 +339,18 @@ let _addableSectionTypes: AddableSectionEntry[] | null = null;
 function getAddableSectionTypes(): AddableSectionEntry[] {
   if (!_addableSectionTypes) {
     _addableSectionTypes = [
-      { type: "hero",         label: "Hero Banner",    icon: <ImagePlus  className="w-4 h-4" />, allowMultiple: true },
-      { type: "text",         label: "Text Block",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
-      { type: "gallery",      label: "Image Gallery",  icon: <Images     className="w-4 h-4" />, allowMultiple: true },
-      { type: "image",        label: "Image",          icon: <Images     className="w-4 h-4" />, allowMultiple: true },
-      { type: "testimonials", label: "Testimonials",   icon: <Star       className="w-4 h-4" />, allowMultiple: true },
-      { type: "faq",          label: "FAQ",            icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
-      { type: "cta",          label: "CTA Banner",     icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
-      { type: "stats",        label: "Stats / Numbers",icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
-      { type: "columns",      label: "Columns",        icon: <Columns    className="w-4 h-4" />, allowMultiple: true },
-      { type: "content",      label: "Content Block",  icon: <Layers     className="w-4 h-4" />, allowMultiple: true },
-      { type: "row",          label: "Row",            icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
+      { type: "services",     label: "Services",       description: "Showcase what you offer with a grid of service cards",       icon: <Briefcase  className="w-4 h-4" />, allowMultiple: true },
+      { type: "hero",         label: "Hero Banner",    description: "Full-width headline, subtext, and a call-to-action button",  icon: <ImagePlus  className="w-4 h-4" />, allowMultiple: true },
+      { type: "text",         label: "Text Block",     description: "Simple heading and paragraph for announcements or copy",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
+      { type: "gallery",      label: "Image Gallery",  description: "A responsive photo grid — great for portfolio or projects",  icon: <Images     className="w-4 h-4" />, allowMultiple: true },
+      { type: "image",        label: "Image",          description: "A single full-width or constrained image with caption",      icon: <Images     className="w-4 h-4" />, allowMultiple: true },
+      { type: "testimonials", label: "Testimonials",   description: "Customer reviews in a card or carousel layout",              icon: <Star       className="w-4 h-4" />, allowMultiple: true },
+      { type: "faq",          label: "FAQ",            description: "Accordion-style Q&A to answer common questions",             icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
+      { type: "cta",          label: "CTA Banner",     description: "Bold call-to-action strip with headline and buttons",        icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
+      { type: "stats",        label: "Stats / Numbers",description: "Highlight key numbers like years in business or jobs done",  icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
+      { type: "columns",      label: "Columns",        description: "Two or three side-by-side columns of mixed content",         icon: <Columns    className="w-4 h-4" />, allowMultiple: true },
+      { type: "content",      label: "Content Block",  description: "Rich content area with text, images, and components",        icon: <Layers     className="w-4 h-4" />, allowMultiple: true },
+      { type: "row",          label: "Row",            description: "Flexible row for custom component layouts",                  icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
     ];
   }
   return _addableSectionTypes;
@@ -635,8 +637,12 @@ function SiteTreeNode({
                     <div className="py-1 max-h-72 overflow-y-auto">
                       {getAddableSectionTypes().map(opt => (
                         <button key={opt.type} type="button" onClick={() => addSection(opt.type)}
-                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs hover:bg-muted transition-colors">
-                          {opt.icon}{opt.label}
+                          className="flex items-start gap-2 w-full px-3 py-2 text-left hover:bg-muted transition-colors group">
+                          <span className="mt-0.5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0">{opt.icon}</span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{opt.label}</span>
+                            <span className="block text-[10px] text-muted-foreground leading-snug">{opt.description}</span>
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -935,6 +941,7 @@ function WebsiteEditor() {
   const [deletePageConfirm, setDeletePageConfirm] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [aboutPhotoUploading, setAboutPhotoUploading] = useState(false);
   const [uploadingPortfolioPhotoIds, setUploadingPortfolioPhotoIds] = useState<Set<string>>(new Set());
@@ -1479,6 +1486,7 @@ function WebsiteEditor() {
   useEffect(() => {
     if (!isDirtyRef.current) return;
     if (!bizId) return;
+    setHasUnpublishedChanges(true);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveMutation.mutate();
@@ -1507,6 +1515,7 @@ function WebsiteEditor() {
       });
       if (!res.ok) throw new Error("Publish failed");
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+      setHasUnpublishedChanges(false);
       setShowPublished(true);
       setTimeout(() => setShowPublished(false), 5000);
       toast({ title: "Website published!" });
@@ -2268,7 +2277,16 @@ function WebsiteEditor() {
   function addSection(type: Section["type"]) {
     const id = Math.random().toString(36).slice(2, 9);
     let content: Record<string, unknown> = {};
-    if (type === "columns") {
+    if (type === "services") {
+      content = {
+        heading: "Our Services",
+        items: [
+          { id: `s-${Math.random().toString(36).slice(2,7)}`, title: "Service One", description: "Describe what this service includes and why clients choose it.", mediaType: "none", layout: "card", textAlign: "left", hoverEffect: "none", clickAction: "none" },
+          { id: `s-${Math.random().toString(36).slice(2,7)}`, title: "Service Two", description: "Highlight the key benefits and what sets this service apart.", mediaType: "none", layout: "card", textAlign: "left", hoverEffect: "none", clickAction: "none" },
+          { id: `s-${Math.random().toString(36).slice(2,7)}`, title: "Service Three", description: "Explain the process, timeline, or guarantee for this service.", mediaType: "none", layout: "card", textAlign: "left", hoverEffect: "none", clickAction: "none" },
+        ],
+      } as Record<string, unknown>;
+    } else if (type === "columns") {
       content = defaultColumnsContent() as unknown as Record<string, unknown>;
     } else if (type === "testimonials") {
       content = defaultTestimonialsContent() as unknown as Record<string, unknown>;
@@ -2299,6 +2317,7 @@ function WebsiteEditor() {
     const newSection: Section = { id, type, enabled: true, order: sections.length, content };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
+    setHasUnpublishedChanges(true);
     const afterId = insertAfterSectionId;
     if (afterId === null) {
       updatePageSections([newSection, ...sections].map((s, i) => ({ ...s, order: i })));
@@ -2308,10 +2327,20 @@ function WebsiteEditor() {
         const inserted = [...sections.slice(0, idx + 1), newSection, ...sections.slice(idx + 1)];
         updatePageSections(inserted.map((s, i) => ({ ...s, order: i })));
       } else {
-        updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+        // fallback: insert before footer if present
+        const footerIdx = sections.findIndex(s => s.type === "footer");
+        const base = footerIdx >= 0
+          ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+          : [...sections, newSection];
+        updatePageSections(base.map((s, i) => ({ ...s, order: i })));
       }
     } else {
-      updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+      // Default append — insert before footer so it doesn't land below it
+      const footerIdx = sections.findIndex(s => s.type === "footer");
+      const base = footerIdx >= 0
+        ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+        : [...sections, newSection];
+      updatePageSections(base.map((s, i) => ({ ...s, order: i })));
     }
     setActiveSection(id);
     setShowAddSection(false);
@@ -2332,6 +2361,7 @@ function WebsiteEditor() {
     };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
+    setHasUnpublishedChanges(true);
     const afterId = insertAfterSectionId;
     if (afterId === null) {
       updatePageSections([newSection, ...sections].map((s, i) => ({ ...s, order: i })));
@@ -2341,10 +2371,18 @@ function WebsiteEditor() {
         const inserted = [...sections.slice(0, idx + 1), newSection, ...sections.slice(idx + 1)];
         updatePageSections(inserted.map((s, i) => ({ ...s, order: i })));
       } else {
-        updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+        const footerIdx = sections.findIndex(s => s.type === "footer");
+        const base = footerIdx >= 0
+          ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+          : [...sections, newSection];
+        updatePageSections(base.map((s, i) => ({ ...s, order: i })));
       }
     } else {
-      updatePageSections([...sections, newSection].map((s, i) => ({ ...s, order: i })));
+      const footerIdx = sections.findIndex(s => s.type === "footer");
+      const base = footerIdx >= 0
+        ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+        : [...sections, newSection];
+      updatePageSections(base.map((s, i) => ({ ...s, order: i })));
     }
     setActiveSection(sectionId);
     setShowAddSection(false);
@@ -3871,10 +3909,20 @@ function WebsiteEditor() {
           <Save className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Save Draft</span>
         </button>
+        {hasUnpublishedChanges && !publishing && (
+          <span className="hidden sm:flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-full px-2 py-0.5 select-none">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            Unpublished changes
+          </span>
+        )}
         <button
           onClick={() => setShowPublishConfirm(true)}
           disabled={publishing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 ${
+            hasUnpublishedChanges
+              ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm shadow-primary/30"
+              : "bg-primary/80 text-primary-foreground hover:bg-primary/70"
+          }`}
         >
           <Upload className="w-3.5 h-3.5" />
           {publishing ? "Publishing…" : "Publish"}
