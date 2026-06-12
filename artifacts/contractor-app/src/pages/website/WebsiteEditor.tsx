@@ -463,15 +463,7 @@ interface TreeNodeData {
   children: TreeNodeData[];
 }
 
-function SiteTreeNode({
-  node, depth, expandedIds, onToggleExpand,
-  activePageId, activeSection,
-  switchPage, editingPageId, setEditingPageId, editingPageName, setEditingPageName,
-  renamePage, deletePage, setPageTemplatePickerMode, setShowPageTemplatePicker,
-  sensors, handleDragEnd, toggleSection, setActiveSection, sections: activeSections,
-  setInsertAfterSectionId, setShowAddSection, showAddSection,
-  addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
-}: {
+type SiteTreeNodeProps = {
   node: TreeNodeData; depth: number;
   expandedIds: Set<string>; onToggleExpand: (id: string) => void;
   activePageId: string; activeSection: string | null;
@@ -494,10 +486,30 @@ function SiteTreeNode({
   setAddSectionTab: (tab: "sections" | "templates") => void;
   addSection: (type: Section["type"]) => void;
   addSectionFromTemplate: (id: string) => void;
-}) {
+};
+
+function PageNodeWithSortable(props: SiteTreeNodeProps) {
+  const {
+    node, depth, expandedIds, onToggleExpand,
+    activePageId, activeSection,
+    switchPage, editingPageId, setEditingPageId, editingPageName, setEditingPageName,
+    renamePage, deletePage, setPageTemplatePickerMode, setShowPageTemplatePicker,
+    sensors, handleDragEnd, toggleSection, setActiveSection, sections: activeSections,
+    setInsertAfterSectionId, setShowAddSection, showAddSection,
+    addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
+  } = props;
+
   const isExpanded = expandedIds.has(node.id);
-  const isActivePage = node.type === "page" && node.id === activePageId;
-  const isActiveSection = node.type === "section" && activeSection === node.id;
+  const isActivePage = node.id === activePageId;
+  const page = node.page!;
+  const lockedHeader = node.id === "home"
+    ? (isActivePage ? activeSections : (page.sections ?? [])).find(s => s.type === "header")
+    : null;
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: node.id,
+    disabled: node.id === "home",
+  });
 
   const sharedProps = {
     depth, expandedIds, onToggleExpand, activePageId, activeSection,
@@ -508,44 +520,28 @@ function SiteTreeNode({
     addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
   };
 
-  if (node.type === "section") {
-    const parentPageId = node.pageId ?? "";
-    if (parentPageId === activePageId) {
-      return (
-        <div data-section-id={node.id}>
-          <SortableRow
-            section={node.section!}
-            active={isActiveSection}
-            onToggle={() => toggleSection(node.id)}
-            onActivate={() => setActiveSection(node.id)}
-          />
-        </div>
-      );
-    }
-    return (
-      <div
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer hover:bg-muted transition-colors opacity-60"
-        onClick={() => { switchPage(parentPageId); if (!expandedIds.has(parentPageId)) onToggleExpand(parentPageId); }}
-      >
-        <span className="opacity-60 flex-shrink-0">{node.icon}</span>
-        <span className="flex-1 text-[11px] font-medium text-foreground">{node.label}</span>
-      </div>
-    );
-  }
-
-  const page = node.page!;
-  const lockedHeader = node.id === "home"
-    ? (isActivePage ? activeSections : (page.sections ?? [])).find(s => s.type === "header")
-    : null;
-
   return (
-    <div>
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+    >
       <div
         className={`group flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors ${
           isActivePage ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
         }`}
         onClick={() => { switchPage(node.id); if (!expandedIds.has(node.id)) onToggleExpand(node.id); }}
       >
+        {node.id !== "home" && (
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground flex-shrink-0"
+            onClick={e => e.stopPropagation()}
+            title="Drag to reorder"
+          >
+            <GripVertical className="w-3 h-3" />
+          </div>
+        )}
         <button type="button" className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
           onClick={e => { e.stopPropagation(); onToggleExpand(node.id); }}>
           <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
@@ -668,6 +664,40 @@ function SiteTreeNode({
       )}
     </div>
   );
+}
+
+function SiteTreeNode(props: SiteTreeNodeProps) {
+  const { node, depth, expandedIds, onToggleExpand, activePageId, activeSection,
+    switchPage, toggleSection, setActiveSection, sections: activeSections } = props;
+
+  const isActiveSection = node.type === "section" && activeSection === node.id;
+
+  if (node.type === "section") {
+    const parentPageId = node.pageId ?? "";
+    if (parentPageId === activePageId) {
+      return (
+        <div data-section-id={node.id}>
+          <SortableRow
+            section={node.section!}
+            active={isActiveSection}
+            onToggle={() => toggleSection(node.id)}
+            onActivate={() => setActiveSection(node.id)}
+          />
+        </div>
+      );
+    }
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer hover:bg-muted transition-colors opacity-60"
+        onClick={() => { switchPage(parentPageId); if (!expandedIds.has(parentPageId)) onToggleExpand(parentPageId); }}
+      >
+        <span className="opacity-60 flex-shrink-0">{node.icon}</span>
+        <span className="flex-1 text-[11px] font-medium text-foreground">{node.label}</span>
+      </div>
+    );
+  }
+
+  return <PageNodeWithSortable {...props} />;
 }
 
 function PageTemplatePicker({
@@ -1545,6 +1575,41 @@ function WebsiteEditor() {
       const reordered = arrayMove(nonHeader, oldIdx, newIdx);
       updatePageSections(header ? [header, ...reordered] : reordered);
     }
+  }
+
+  function handlePageDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => {
+      const base = prev ?? pages;
+      const oldIdx = base.findIndex(p => p.id === active.id);
+      const newIdx = base.findIndex(p => p.id === over.id);
+      if (oldIdx < 0 || newIdx < 0) return base;
+      const reordered = arrayMove(base, oldIdx, newIdx);
+      return reordered.map(p => {
+        if (p.id !== "home") return p;
+        const navLinks = (p.sections.find(s => s.type === "header")?.content?.navLinks as any[]) ?? [];
+        const pageOrder = reordered.filter(pg => pg.id !== "home").map(pg => pg.id);
+        const sortedLinks = [...navLinks].sort((a, b) => {
+          const ai = pageOrder.indexOf(a.pageId ?? "");
+          const bi = pageOrder.indexOf(b.pageId ?? "");
+          if (ai < 0 && bi < 0) return 0;
+          if (ai < 0) return 1;
+          if (bi < 0) return -1;
+          return ai - bi;
+        });
+        return {
+          ...p,
+          sections: p.sections.map(s =>
+            s.type === "header"
+              ? { ...s, content: { ...s.content, navLinks: sortedLinks } }
+              : s
+          ),
+        };
+      });
+    });
   }
 
   function toggleSection(id: string) {
@@ -4122,9 +4187,18 @@ function WebsiteEditor() {
                 setInsertAfterSectionId, setShowAddSection, showAddSection,
                 addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
               };
-              return treeData.map(node => (
-                <SiteTreeNode key={node.id} node={node} depth={0} {...treeNodeProps} />
-              ));
+              const sortablePageIds = treeData
+                .filter(n => n.type === "page" && n.id !== "home")
+                .map(n => n.id);
+              return (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePageDragEnd}>
+                  <SortableContext items={sortablePageIds} strategy={verticalListSortingStrategy}>
+                    {treeData.map(node => (
+                      <SiteTreeNode key={node.id} node={node} depth={0} {...treeNodeProps} />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              );
             })()}
           </div>
 
