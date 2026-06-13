@@ -1,0 +1,122 @@
+The only thing I'd change is the title.
+
+Right now:
+
+#835 - Fix Hero Background Image Bleeding into Text
+
+But the ticket is no longer Hero-specific.
+
+A better title would be:
+
+#835 - Separate Background Image Layer From Content
+
+or
+
+#835 - Refactor BlockStyleWrapper Background Images Into Independent Layers
+
+Because what you're actually doing is a rendering architecture change for the entire editor.
+
+Why this version is good
+
+You've covered:
+
+✅ Root cause
+
+✅ Desired architecture
+
+✅ UI controls
+
+✅ Validation requirements
+
+✅ Cross-section implementation
+
+✅ Mobile/tablet verification
+
+✅ Regression prevention
+
+✅ Future extensibility (bgImageEffects)
+
+✅ Explicit prohibition against applying filters to the wrapper
+
+What I would expect after implementation
+
+If you set:
+
+Brightness = 10%
+Opacity = 25%
+Blur = 20px
+
+The image should become:
+
+Dark
+Transparent
+Blurry
+
+while the content remains:
+
+100% opacity
+100% brightness
+Perfectly sharp
+
+No matter whether it's:
+
+Hero
+Services
+CTA
+Columns
+Future section
+One thing to watch for after they implement it
+
+I would test this immediately:
+
+Upload a hero image.
+Set blur to 20px.
+Set brightness to 10%.
+Set opacity to 20%.
+Switch between:
+Desktop
+Tablet
+Mobile
+Save.
+Refresh page.
+Reopen project.
+
+Make sure:
+
+Settings persist.
+Preview persists.
+Published site persists.
+
+Sometimes developers implement the rendering but forget to wire the new fields into serialization/persistence.
+
+If that happens, you'll see the controls work until refresh, then everything resets.
+
+What I'd queue next
+
+After #835, I'd put these in order:
+
+#836 — Media-Based Service Cards
+
+Upload images instead of only icons
+SVG upload support
+Logo support
+
+#837 — Canvas Zoom Controls
+
+50%
+75%
+100%
+125%
+Fit Width
+Fit Page
+
+#838 — Element Selection
+
+Click image
+Click heading
+Click button
+Edit independently
+
+That third one is where the editor starts feeling like Canva, Framer, or Webflow instead of a section-based editor.
+
+As written, #835 is detailed enough that Replit should have very little room for interpretation. It should solve the washed-out text issue across the entire editor if implemented correctly.

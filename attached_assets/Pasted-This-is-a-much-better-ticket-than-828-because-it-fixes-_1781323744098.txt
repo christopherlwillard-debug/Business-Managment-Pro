@@ -1,0 +1,105 @@
+This is a much better ticket than #828 because it fixes an actual architecture problem instead of just a UI problem.
+
+A few improvements I'd make before sending it to Replit:
+
+Add Background Position Controls
+
+Right now you'll have:
+
+Brightness
+Opacity
+Blur
+
+But users will immediately want:
+
+Background Position
+○ Center
+○ Top
+○ Bottom
+○ Left
+○ Right
+
+and
+
+Background Scale
+○ Cover
+○ Contain
+○ Fill
+
+Otherwise people will upload an image and wonder why the important part is cropped.
+
+Add Mobile-Specific Preview
+
+Hero images often look great on desktop and terrible on mobile.
+
+Add:
+
+Background image layer must maintain existing responsive behavior across desktop, tablet, and mobile preview modes.
+
+Add Safe Defaults
+
+When a user first adds an image:
+
+Brightness: 75%
+Opacity: 100%
+Blur: 0px
+Overlay: 40%
+
+This gives readable text immediately.
+
+Add Transition Support
+
+If you're already touching the image layer:
+
+transition:
+  opacity .2s ease,
+  filter .2s ease;
+
+The sliders will feel much smoother.
+
+Future Ticket I'd Create Immediately After
+#836 – Background Media System
+
+Instead of just images:
+
+Background Type
+
+○ Color
+○ Gradient
+○ Image
+○ Video
+
+Then your hero can support:
+
+Veteran flag video
+Construction timelapse
+Manufactured home transport footage
+
+Contractor sites look dramatically better with subtle background video.
+
+One More Architectural Suggestion
+
+Instead of:
+
+bgImageOpacity
+bgImageBrightness
+bgImageBlur
+
+Consider:
+
+bgImageEffects: {
+  opacity: number;
+  brightness: number;
+  blur: number;
+}
+
+It's easier to extend later with:
+
+contrast
+saturation
+grayscale
+sepia
+
+without polluting BlockStyle with dozens of top-level fields.
+
+Overall, I'd rate #835 as a high-priority fix. The faded text issue isn't just visual—it makes the editor feel broken because users think they're editing the image, but the text gets altered too. Separating the image, overlay, and content into three distinct layers is the right long-term architecture and will make every section type behave more predictably going forward.

@@ -1,0 +1,162 @@
+Looking at the screenshot, I think you've uncovered a bigger UX problem than just the floating inspector.
+
+The hero section appears to be treating the entire section as one editable object, which means:
+
+Background image
+Overlay
+Heading
+Subheading
+Buttons
+
+are all inheriting styles from the same parent container.
+
+That's why your text looks washed out.
+
+What I suspect is happening
+
+The section probably has something like:
+
+.hero-section {
+  opacity: 0.4;
+}
+
+or
+
+filter: brightness(60%);
+
+applied to the whole container.
+
+When that happens:
+
+Image fades ✔️
+Text fades ✔️
+Buttons fade ✔️
+
+Everything becomes translucent.
+
+What you actually want
+
+The image should be completely separate from the content layer.
+
+Structure:
+
+Hero Section
+├── Background Image Layer
+├── Overlay Layer
+└── Content Layer
+    ├── Heading
+    ├── Subheading
+    └── Buttons
+
+Then:
+
+.background-image {
+  opacity: 1;
+}
+
+.overlay {
+  background: rgba(0,0,0,.45);
+}
+
+.content {
+  opacity: 1;
+}
+
+Result:
+
+Image can be darkened
+Text stays crisp
+Buttons stay bright
+I would create another Replit ticket
+#829 - Separate Hero Background From Hero Content
+
+What & Why
+
+The hero section currently behaves as a single editable block. Changes to image opacity, overlays, or styling affect the text and buttons, causing content to appear faded or washed out. Background media and foreground content should be edited independently.
+
+Done Looks Like
+
+Hero background image is a separate editable layer.
+Hero overlay is a separate editable layer.
+Hero content (heading, text, buttons) is a separate editable layer.
+Adjusting image opacity never affects text opacity.
+Adjusting overlay darkness never affects text opacity.
+Text always renders at full opacity.
+Clicking the image selects "Hero Background."
+Clicking text selects the text element directly.
+Clicking buttons selects the button element directly.
+Background image can be replaced without entering text editing mode.
+Text can be edited without selecting the background.
+
+New Inspector Groups
+
+Hero Background
+
+Replace Image
+Position
+Scale
+Brightness
+Blur
+Opacity
+
+Overlay
+
+Color
+Opacity
+Gradient
+
+Content
+
+Heading
+Subheading
+Buttons
+Alignment
+Width
+Even Better
+
+When I click the hero image:
+
+Hero Background
+
+opens.
+
+When I click the heading:
+
+Heading
+
+opens.
+
+When I click the button:
+
+Primary Button
+
+opens.
+
+Just like Canva.
+
+Another thing I notice
+
+The formatting toolbar:
+
+Georgia | 30 | Bold
+
+is covering the heading.
+
+That toolbar should appear:
+
+above the text
+or floating underneath
+
+Never directly on top of the content being edited.
+
+I'd file that as another UI cleanup ticket because it makes the hero feel cluttered.
+
+The overall direction is good, but I think the editor needs to move from section editing to element editing. Once users can independently select:
+
+images
+overlays
+headings
+text
+buttons
+
+the whole builder will feel much more professional and you'll stop running into problems like faded text when you're only trying to adjust the background image.
