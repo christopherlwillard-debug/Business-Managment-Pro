@@ -8,6 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
+import { FloatingToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { InlineEditableText } from "../InlineEditableText";
 import { UniversalCard, GripVertical } from "./UniversalCard";
 import type { CardComponent, SiteSettings } from "../website-types";
@@ -17,6 +18,8 @@ import type { CardComponent, SiteSettings } from "../website-types";
 interface ServicesContent {
   heading: string;
   subheading?: string;
+  headingStyle?: TextStyle;
+  subheadingStyle?: TextStyle;
   /** Stored as CardComponent[]; old ServiceItem data (id/title/desc only) is compatible */
   items: CardComponent[];
   columns?: 1 | 2 | 3 | 4;
@@ -196,20 +199,28 @@ export function ServicesSection({
         }}
       >
         {isEditing ? (
-          <InlineEditableText
-            id={`${sid}-heading`}
-            as="h2"
-            value={content.heading}
-            placeholder="Section heading"
-            className="text-3xl font-bold mb-3 text-center w-full"
-            style={{ color: "var(--theme-text, #111827)" }}
-            onCommit={v => update({ heading: v })}
-          />
+          <div className="relative">
+            <InlineEditableText
+              id={`${sid}-heading`}
+              as="h2"
+              value={content.heading}
+              placeholder="Section heading"
+              className="text-3xl font-bold mb-3 text-center w-full"
+              style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
+              onCommit={v => update({ heading: v })}
+            />
+            <FloatingToolbar
+              id={`${sid}-heading`}
+              style={content.headingStyle}
+              onChange={s => update({ headingStyle: s })}
+              dark={false}
+            />
+          </div>
         ) : (
           <h2
             data-edit-field="heading"
             className="text-3xl font-bold mb-3 text-center"
-            style={{ color: "var(--theme-text, #111827)" }}
+            style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
           >
             {content.heading}
           </h2>
@@ -217,17 +228,25 @@ export function ServicesSection({
 
         {content.subheading && (
           isEditing ? (
-            <InlineEditableText
-              id={`${sid}-subheading`}
-              as="p"
-              value={content.subheading}
-              placeholder="Subheading (optional)"
-              className="text-center text-base mb-10 w-full"
-              style={{ color: "var(--theme-text-muted, #6b7280)" }}
-              onCommit={v => update({ subheading: v || undefined })}
-            />
+            <div className="relative">
+              <InlineEditableText
+                id={`${sid}-subheading`}
+                as="p"
+                value={content.subheading}
+                placeholder="Subheading (optional)"
+                className="text-center text-base mb-10 w-full"
+                style={{ color: "var(--theme-text-muted, #6b7280)", ...textStyleToCSS(content.subheadingStyle) }}
+                onCommit={v => update({ subheading: v || undefined })}
+              />
+              <FloatingToolbar
+                id={`${sid}-subheading`}
+                style={content.subheadingStyle}
+                onChange={s => update({ subheadingStyle: s })}
+                dark={false}
+              />
+            </div>
           ) : (
-            <p className="text-center text-base mb-10" style={{ color: "var(--theme-text-muted, #6b7280)" }}>
+            <p className="text-center text-base mb-10" style={{ color: "var(--theme-text-muted, #6b7280)", ...textStyleToCSS(content.subheadingStyle) }}>
               {content.subheading}
             </p>
           )

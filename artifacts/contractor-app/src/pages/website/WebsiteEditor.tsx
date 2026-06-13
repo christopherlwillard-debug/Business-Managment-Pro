@@ -4674,6 +4674,7 @@ function WebsiteEditor() {
         <div className="flex-1 relative overflow-hidden">
           {/* Canvas — live preview, scrolls inside the wrapper */}
           <div
+            data-editor-canvas="true"
             className={`absolute inset-0 overflow-y-auto bg-muted/30 ${!focusMode ? "cursor-zoom-in" : ""}`}
             onClick={() => setActiveSection(null)}
             onDoubleClick={e => {

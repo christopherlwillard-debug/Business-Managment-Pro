@@ -197,24 +197,30 @@ export function FloatingToolbar({
       return;
     }
 
-    // Flip detection: use parent's top position (available before toolbar renders)
     const el = wrapperRef.current;
     const parent = el?.parentElement;
-    if (parent) {
-      const parentRect = parent.getBoundingClientRect();
-      // Toolbar is ~44px tall; flip if parent element is too close to top of viewport
-      setFlipped(parentRect.top < 52);
-    }
+    if (!parent) return;
 
-    // Left clamping: measure after paint so we have real dimensions
+    // Measure bounds against the editor canvas container, not the viewport.
+    // Falls back to viewport when rendered outside the editor (e.g. previews).
+    const canvasEl = parent.closest("[data-editor-canvas]");
+    const canvasRect = canvasEl
+      ? canvasEl.getBoundingClientRect()
+      : { top: 0, left: 0, right: window.innerWidth };
+
+    // Flip detection: use the parent element's position relative to the canvas top
+    const parentRect = parent.getBoundingClientRect();
+    setFlipped(parentRect.top - canvasRect.top < 52);
+
+    // Left clamping: measure after paint so we have real toolbar dimensions
     requestAnimationFrame(() => {
-      const el = wrapperRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.right > window.innerWidth - 8) {
-        setLeftAdjust(window.innerWidth - 8 - rect.right);
-      } else if (rect.left < 8) {
-        setLeftAdjust(8 - rect.left);
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+      const rect = wrapper.getBoundingClientRect();
+      if (rect.right > canvasRect.right - 8) {
+        setLeftAdjust(canvasRect.right - 8 - rect.right);
+      } else if (rect.left < canvasRect.left + 8) {
+        setLeftAdjust(canvasRect.left + 8 - rect.left);
       } else {
         setLeftAdjust(0);
       }
@@ -227,7 +233,7 @@ export function FloatingToolbar({
     <div
       ref={wrapperRef}
       data-inline-toolbar=""
-      className={`absolute z-[150] pointer-events-auto min-w-max ${
+      className={`absolute z-[25] pointer-events-auto min-w-max ${
         flipped ? "top-full mt-1" : "bottom-full mb-1"
       }`}
       style={{ left: leftAdjust !== 0 ? leftAdjust : undefined }}

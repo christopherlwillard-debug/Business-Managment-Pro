@@ -133,10 +133,12 @@ export function useInlineEdit() {
     const d = draftRef.current;
     setEditingId(null);
     editingIdRef.current = null;
+    // Deselect after commit — matches "Escape/clicking outside commits and deselects" contract
+    setSelectedId(null);
+    selectedIdRef.current = null;
     setDraft("");
     draftRef.current = "";
     onCommitRef.current = null;
-    // Keep selectedId — ring and toolbar stay visible after commit so user can see which element was changed
     if (cb) cb(d);
   }, []);
 
@@ -145,10 +147,12 @@ export function useInlineEdit() {
     // The parent's value prop is unchanged; display reverts naturally when isActive becomes false.
     setEditingId(null);
     editingIdRef.current = null;
+    // Deselect after cancel — same contract as commitEdit
+    setSelectedId(null);
+    selectedIdRef.current = null;
     setDraft("");
     draftRef.current = "";
     onCommitRef.current = null;
-    // Keep selectedId — same reasoning as commitEdit
   }, []);
 
   const moveToNext = useCallback((currentId: string) => {

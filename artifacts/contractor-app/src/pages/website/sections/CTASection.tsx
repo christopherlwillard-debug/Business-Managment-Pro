@@ -1,10 +1,13 @@
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { ButtonEditor, buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
+import { FloatingToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { InlineEditableText } from "../InlineEditableText";
 
 export interface CTAContent {
   heading: string;
   subheading?: string;
+  headingStyle?: TextStyle;
+  subheadingStyle?: TextStyle;
   primaryLabel?: string;
   primaryConfig?: ButtonConfig;
   secondaryLabel?: string;
@@ -50,9 +53,9 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle,
         defaultBg={settings.brandColor}
       >
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">{content.heading}</h2>
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4" style={textStyleToCSS(content.headingStyle)}>{content.heading}</h2>
           {content.subheading && (
-            <p className="text-white/80 text-lg mb-8">{content.subheading}</p>
+            <p className="text-white/80 text-lg mb-8" style={textStyleToCSS(content.subheadingStyle)}>{content.subheading}</p>
           )}
           {(showPrimary || showSecondary) && (
             <div className="flex flex-wrap items-center justify-center gap-4">
@@ -97,22 +100,40 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle,
     <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-6 py-16" isEditing={true} defaultBg={settings.brandColor}>
       <div onClick={e => e.stopPropagation()} className="max-w-2xl mx-auto text-center space-y-4">
         {/* Heading and subheading — inline editable, styled like the public view */}
-        <InlineEditableText
-          id={`${sid}-heading`}
-          as="h2"
-          value={content.heading}
-          placeholder="Call to action headline"
-          className="text-3xl font-bold text-white"
-          onCommit={v => update({ heading: v })}
-        />
-        <InlineEditableText
-          id={`${sid}-subheading`}
-          as="p"
-          value={content.subheading ?? ""}
-          placeholder="Subheading text (optional — double-click to add)"
-          className="text-white/80 text-lg"
-          onCommit={v => update({ subheading: v || undefined })}
-        />
+        <div className="relative">
+          <InlineEditableText
+            id={`${sid}-heading`}
+            as="h2"
+            value={content.heading}
+            placeholder="Call to action headline"
+            className="text-3xl font-bold text-white"
+            style={textStyleToCSS(content.headingStyle)}
+            onCommit={v => update({ heading: v })}
+          />
+          <FloatingToolbar
+            id={`${sid}-heading`}
+            style={content.headingStyle}
+            onChange={s => update({ headingStyle: s })}
+            dark
+          />
+        </div>
+        <div className="relative">
+          <InlineEditableText
+            id={`${sid}-subheading`}
+            as="p"
+            value={content.subheading ?? ""}
+            placeholder="Subheading text (optional — double-click to add)"
+            className="text-white/80 text-lg"
+            style={textStyleToCSS(content.subheadingStyle)}
+            onCommit={v => update({ subheading: v || undefined })}
+          />
+          <FloatingToolbar
+            id={`${sid}-subheading`}
+            style={content.subheadingStyle}
+            onChange={s => update({ subheadingStyle: s })}
+            dark
+          />
+        </div>
 
         {/* Button editors */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-left">
