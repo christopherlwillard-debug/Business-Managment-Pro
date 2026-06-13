@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { ImagePlus, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
-import { TextStyleToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
+import { FloatingToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { InlineEditableText } from "../InlineEditableText";
 
 const SHADOW_CLASSES: Record<string, string> = {
@@ -157,34 +157,40 @@ export function AboutSection({ content, settings, isEditing, onChange, onPhotoUp
         <div className="flex-1">
           {isEditing ? (
             <>
-              <InlineEditableText
-                id={`${sid}-heading`}
-                as="h2"
-                value={content.heading}
-                placeholder="Section heading"
-                className={`font-bold mb-1 w-full${!content.headingStyle?.fontSize ? " text-3xl" : ""}`}
-                style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
-                onCommit={v => update({ heading: v })}
-              />
-              <TextStyleToolbar
-                dark={false}
-                style={content.headingStyle}
-                onChange={s => update({ headingStyle: s })}
-              />
-              <InlineEditableText
-                id={`${sid}-body`}
-                as="p"
-                value={content.body}
-                placeholder="Write your About Us paragraph here…"
-                className="leading-relaxed mt-2 w-full"
-                style={{ color: "var(--theme-text-muted, #4b5563)", ...textStyleToCSS(content.bodyStyle) }}
-                onCommit={v => update({ body: v })}
-              />
-              <TextStyleToolbar
-                dark={false}
-                style={content.bodyStyle}
-                onChange={s => update({ bodyStyle: s })}
-              />
+              <div className="relative">
+                <InlineEditableText
+                  id={`${sid}-heading`}
+                  as="h2"
+                  value={content.heading}
+                  placeholder="Section heading"
+                  className={`font-bold w-full${!content.headingStyle?.fontSize ? " text-3xl" : ""}`}
+                  style={{ color: "var(--theme-text, #111827)", ...textStyleToCSS(content.headingStyle) }}
+                  onCommit={v => update({ heading: v })}
+                />
+                <FloatingToolbar
+                  id={`${sid}-heading`}
+                  dark={false}
+                  style={content.headingStyle}
+                  onChange={s => update({ headingStyle: s })}
+                />
+              </div>
+              <div className="relative">
+                <InlineEditableText
+                  id={`${sid}-body`}
+                  as="p"
+                  value={content.body}
+                  placeholder="Write your About Us paragraph here…"
+                  className="leading-relaxed mt-2 w-full"
+                  style={{ color: "var(--theme-text-muted, #4b5563)", ...textStyleToCSS(content.bodyStyle) }}
+                  onCommit={v => update({ body: v })}
+                />
+                <FloatingToolbar
+                  id={`${sid}-body`}
+                  dark={false}
+                  style={content.bodyStyle}
+                  onChange={s => update({ bodyStyle: s })}
+                />
+              </div>
               <AiCopyPopover
                 label="About body"
                 defaultPrompt={`Write a 3-4 sentence About Us paragraph for ${biz}. Use a warm, professional tone. Mention experience, quality, and serving the local community.`}

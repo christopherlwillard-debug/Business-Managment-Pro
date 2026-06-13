@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Trash2 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { AiCopyPopover } from "./AiCopyPopover";
-import { TextStyleToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
+import { FloatingToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { ButtonEditor, buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
 import { InlineEditableText } from "../InlineEditableText";
 
@@ -89,20 +89,23 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         <div className="relative">
           {showHeadline ? (
             <>
-              <InlineEditableText
-                id={`${sid}-headline`}
-                as="h1"
-                value={content.headline}
-                placeholder="Your headline here"
-                className={`font-bold mb-1 leading-tight w-full text-white${!content.headlineStyle?.fontSize ? " text-4xl md:text-5xl" : ""}`}
-                style={headlineCSS}
-                onCommit={v => update({ headline: v })}
-              />
-              <TextStyleToolbar
-                style={content.headlineStyle}
-                onChange={s => update({ headlineStyle: s })}
-                dark
-              />
+              <div className="relative">
+                <InlineEditableText
+                  id={`${sid}-headline`}
+                  as="h1"
+                  value={content.headline}
+                  placeholder="Your headline here"
+                  className={`font-bold leading-tight w-full text-white${!content.headlineStyle?.fontSize ? " text-4xl md:text-5xl" : ""}`}
+                  style={headlineCSS}
+                  onCommit={v => update({ headline: v })}
+                />
+                <FloatingToolbar
+                  id={`${sid}-headline`}
+                  style={content.headlineStyle}
+                  onChange={s => update({ headlineStyle: s })}
+                  dark
+                />
+              </div>
               <AiCopyPopover
                 variant="dark"
                 label="Headline"
@@ -130,20 +133,23 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
         <div className="relative">
           {showSubheadline ? (
             <>
-              <InlineEditableText
-                id={`${sid}-subheadline`}
-                as="p"
-                value={content.subheadline}
-                placeholder="Subheadline text"
-                className={`text-white/80 mb-1 max-w-2xl mx-auto${!content.subheadlineStyle?.fontSize ? " text-lg md:text-xl" : ""}`}
-                style={subheadlineCSS}
-                onCommit={v => update({ subheadline: v })}
-              />
-              <TextStyleToolbar
-                style={content.subheadlineStyle}
-                onChange={s => update({ subheadlineStyle: s })}
-                dark
-              />
+              <div className="relative">
+                <InlineEditableText
+                  id={`${sid}-subheadline`}
+                  as="p"
+                  value={content.subheadline}
+                  placeholder="Subheadline text"
+                  className={`text-white/80 max-w-2xl mx-auto${!content.subheadlineStyle?.fontSize ? " text-lg md:text-xl" : ""}`}
+                  style={subheadlineCSS}
+                  onCommit={v => update({ subheadline: v })}
+                />
+                <FloatingToolbar
+                  id={`${sid}-subheadline`}
+                  style={content.subheadlineStyle}
+                  onChange={s => update({ subheadlineStyle: s })}
+                  dark
+                />
+              </div>
               <AiCopyPopover
                 variant="dark"
                 label="Subheadline"

@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { useInlineEditContext } from "../InlineEditContext";
 
 export interface TextStyle {
   fontFamily?: string;
@@ -84,7 +85,7 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
   const bg = dark ? "bg-black/50 backdrop-blur-sm border-white/10" : "bg-gray-800/90 border-gray-700";
 
   return (
-    <div className={`flex flex-wrap items-center gap-1 px-2 py-1.5 rounded-lg border text-white mt-1 mb-2 ${bg}`} onClick={e => e.stopPropagation()}>
+    <div className={`flex flex-wrap items-center gap-1 px-2 py-1.5 rounded-lg border text-white ${bg}`} onClick={e => e.stopPropagation()}>
       <select
         value={style.fontFamily ?? ""}
         onChange={e => patch({ fontFamily: e.target.value || undefined })}
@@ -152,6 +153,86 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
           <AlignRight className="w-3 h-3" />
         </Btn>
       </div>
+    </div>
+  );
+}
+
+/**
+ * FloatingToolbar
+ *
+ * Wraps TextStyleToolbar in an absolutely-positioned container that floats
+ * above (or below) its nearest `position: relative` ancestor. Visibility is
+ * controlled by InlineEditContext — shows whenever the given `id` is selected
+ * or being edited.
+ *
+ * Place this as a direct child of a `relative`-positioned wrapper div alongside
+ * InlineEditableText so `bottom-full` aligns the toolbar flush above the text.
+ *
+ * Edge detection:
+ *   - Flips to `top-full` when the element is within 52px of the viewport top.
+ *   - Clamps `left` to keep toolbar fully within the viewport (8px margin).
+ */
+export function FloatingToolbar({
+  id,
+  style,
+  onChange,
+  dark,
+}: {
+  id: string;
+  style?: TextStyle;
+  onChange: (s: TextStyle) => void;
+  dark?: boolean;
+}) {
+  const ctx = useInlineEditContext();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [flipped, setFlipped] = useState(false);
+  const [leftAdjust, setLeftAdjust] = useState(0);
+
+  const isVisible = ctx !== null && (ctx.selectedId === id || ctx.editingId === id);
+
+  useEffect(() => {
+    if (!isVisible) {
+      setFlipped(false);
+      setLeftAdjust(0);
+      return;
+    }
+
+    // Flip detection: use parent's top position (available before toolbar renders)
+    const el = wrapperRef.current;
+    const parent = el?.parentElement;
+    if (parent) {
+      const parentRect = parent.getBoundingClientRect();
+      // Toolbar is ~44px tall; flip if parent element is too close to top of viewport
+      setFlipped(parentRect.top < 52);
+    }
+
+    // Left clamping: measure after paint so we have real dimensions
+    requestAnimationFrame(() => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.right > window.innerWidth - 8) {
+        setLeftAdjust(window.innerWidth - 8 - rect.right);
+      } else if (rect.left < 8) {
+        setLeftAdjust(8 - rect.left);
+      } else {
+        setLeftAdjust(0);
+      }
+    });
+  }, [isVisible, id]);
+
+  if (!isVisible) return null;
+
+  return (
+    <div
+      ref={wrapperRef}
+      data-inline-toolbar=""
+      className={`absolute z-[150] pointer-events-auto min-w-max ${
+        flipped ? "top-full mt-1" : "bottom-full mb-1"
+      }`}
+      style={{ left: leftAdjust !== 0 ? leftAdjust : undefined }}
+    >
+      <TextStyleToolbar style={style} onChange={onChange} dark={dark} />
     </div>
   );
 }

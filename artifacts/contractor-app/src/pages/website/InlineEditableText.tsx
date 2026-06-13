@@ -28,25 +28,29 @@ interface InlineEditableTextProps {
 /**
  * InlineEditableText
  *
- * Renders as a normal HTML element. When double-clicked inside the canvas
- * editor (where InlineEditContext.Provider wraps the tree), it switches to
- * a contenteditable element with a blue ring.
+ * Three interaction states when wrapped in InlineEditContext.Provider:
  *
- * Keyboard contract:
+ *   1. Default    — renders as a normal HTML element; cursor is "text" to hint editability.
+ *   2. Selected   — single-click selects the element (blue ring + floating toolbar visible).
+ *                   Press Enter or double-click to advance to editing mode.
+ *   3. Editing    — contenteditable with full keyboard controls.
+ *
+ * Keyboard contract (editing mode):
  *   Escape  — escapeBehavior="commit" (default): save and exit
  *             escapeBehavior="cancel":            revert to original, no save
- *             stopPropagation in both cases — prevents global handler from deselecting section
- *   Enter   — enterBehavior="newline" (default): insert newline (no action)
+ *   Enter   — enterBehavior="newline" (default): insert newline
  *             enterBehavior="commit":             save and exit
- *   Tab     — save and advance focus to next editable in same section (via context moveToNext)
- *   Blur    — always saves
+ *   Tab     — save and advance focus to next editable in same section
+ *
+ * Keyboard contract (selected mode):
+ *   Enter   — enter editing mode
  *
  * Safe to render outside the Provider (renders as a static element).
  */
 export function InlineEditableText({
   id,
   value,
-  placeholder = "Double-click to edit",
+  placeholder = "Click to select, double-click to edit",
   enterBehavior = "newline",
   escapeBehavior = "commit",
   as: Tag = "span",
@@ -56,6 +60,7 @@ export function InlineEditableText({
 }: InlineEditableTextProps) {
   const ctx = useInlineEditContext();
   const isActive = ctx !== null && ctx.editingId === id;
+  const isSelected = ctx !== null && ctx.selectedId === id && !isActive;
   const ref = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {
@@ -79,6 +84,13 @@ export function InlineEditableText({
     }
   }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function handleClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (ctx && !isActive) {
+      ctx.selectElement(id);
+    }
+  }
+
   function handleDoubleClick(e: React.MouseEvent) {
     e.stopPropagation();
     if (ctx && !ctx.editingId) {
@@ -86,7 +98,15 @@ export function InlineEditableText({
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
+  // Keyboard handler for the selected-but-not-editing state
+  function handleSelectedKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      ctx?.startEditing(id, value, onCommit, enterBehavior, escapeBehavior);
+    }
+  }
+
+  function handleEditingKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
       // stopPropagation keeps the global keydown handler from deselecting the section.
@@ -120,7 +140,7 @@ export function InlineEditableText({
         onInput={(e: React.FormEvent<HTMLElement>) =>
           ctx!.updateDraft(e.currentTarget.textContent ?? "")
         }
-        onKeyDown={handleKeyDown}
+        onKeyDown={handleEditingKeyDown}
         onBlur={() => ctx?.commitEdit()}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
         data-inline-editable={id}
@@ -128,11 +148,31 @@ export function InlineEditableText({
     );
   }
 
+  // Selected (ring visible, toolbar floating above, ready for Enter/double-click to edit)
+  if (isSelected) {
+    return (
+      <EL
+        ref={ref}
+        tabIndex={0}
+        className={`${className}${empty ? " opacity-40 italic" : ""} ring-2 ring-inset ring-primary/70 rounded-sm cursor-text outline-none`}
+        style={style}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleSelectedKeyDown}
+        data-inline-editable={id}
+      >
+        {empty ? placeholder : value}
+      </EL>
+    );
+  }
+
+  // Default: static display, single-click to select
   return (
     <EL
       ref={ref}
-      className={`${className}${empty && ctx ? " opacity-40 italic" : ""}`}
+      className={`${className}${empty && ctx ? " opacity-40 italic" : ""}${ctx ? " cursor-text" : ""}`}
       style={style}
+      onClick={ctx ? handleClick : undefined}
       onDoubleClick={ctx ? handleDoubleClick : undefined}
       data-inline-editable={id}
     >

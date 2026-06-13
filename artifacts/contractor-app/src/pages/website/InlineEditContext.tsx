@@ -6,6 +6,8 @@ export type EscapeBehavior = "commit" | "cancel";
 
 export interface InlineEditContextValue {
   editingId: string | null;
+  /** ID of the element in the selected-but-not-editing state (single-click). */
+  selectedId: string | null;
   draft: string;
   /** Current field's Enter key behavior (for badge hint). */
   enterBehavior: EnterBehavior;
@@ -41,6 +43,10 @@ export interface InlineEditContextValue {
    * before each inline commit, ensuring each committed edit is one undo step.
    */
   setCommitBoundaryCallback: (fn: () => void) => void;
+  /** Select an element without entering edit mode (single-click state — shows ring + toolbar). */
+  selectElement: (id: string) => void;
+  /** Clear the selection highlight. */
+  deselectAll: () => void;
 }
 
 export const InlineEditContext = createContext<InlineEditContextValue | null>(null);
@@ -51,16 +57,46 @@ export function useInlineEditContext() {
 
 export function useInlineEdit() {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [enterBehavior, setEnterBehavior] = useState<EnterBehavior>("newline");
   const [escapeBehavior, setEscapeBehavior] = useState<EscapeBehavior>("commit");
   const draftRef = useRef("");
   const onCommitRef = useRef<((v: string) => void) | null>(null);
   const editingIdRef = useRef<string | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
   const commitBoundaryRef = useRef<() => void>(() => {});
 
   const setCommitBoundaryCallback = useCallback((fn: () => void) => {
     commitBoundaryRef.current = fn;
+  }, []);
+
+  const selectElement = useCallback((id: string) => {
+    setSelectedId(id);
+    selectedIdRef.current = id;
+  }, []);
+
+  const deselectAll = useCallback(() => {
+    setSelectedId(null);
+    selectedIdRef.current = null;
+  }, []);
+
+  // Clear selection when user clicks outside any inline-editable element or toolbar
+  useEffect(() => {
+    function handleDocMouseDown(e: MouseEvent) {
+      if (editingIdRef.current) return; // let editing handle its own teardown
+      if (selectedIdRef.current === null) return;
+      const target = e.target as HTMLElement;
+      if (
+        !target.closest("[data-inline-editable]") &&
+        !target.closest("[data-inline-toolbar]")
+      ) {
+        setSelectedId(null);
+        selectedIdRef.current = null;
+      }
+    }
+    document.addEventListener("mousedown", handleDocMouseDown);
+    return () => document.removeEventListener("mousedown", handleDocMouseDown);
   }, []);
 
   const startEditing = useCallback(
@@ -71,6 +107,9 @@ export function useInlineEdit() {
       eb: EnterBehavior = "newline",
       esb: EscapeBehavior = "commit",
     ) => {
+      // Also mark as selected so the ring stays visible during and after editing
+      setSelectedId(id);
+      selectedIdRef.current = id;
       setEditingId(id);
       editingIdRef.current = id;
       setDraft(value);
@@ -97,6 +136,7 @@ export function useInlineEdit() {
     setDraft("");
     draftRef.current = "";
     onCommitRef.current = null;
+    // Keep selectedId — ring and toolbar stay visible after commit so user can see which element was changed
     if (cb) cb(d);
   }, []);
 
@@ -108,6 +148,7 @@ export function useInlineEdit() {
     setDraft("");
     draftRef.current = "";
     onCommitRef.current = null;
+    // Keep selectedId — same reasoning as commitEdit
   }, []);
 
   const moveToNext = useCallback((currentId: string) => {
@@ -127,6 +168,7 @@ export function useInlineEdit() {
 
   const contextValue: InlineEditContextValue = {
     editingId,
+    selectedId,
     draft,
     enterBehavior,
     escapeBehavior,
@@ -136,6 +178,8 @@ export function useInlineEdit() {
     cancelEdit,
     moveToNext,
     setCommitBoundaryCallback,
+    selectElement,
+    deselectAll,
   };
 
   return { contextValue, editingId, editingIdRef };
