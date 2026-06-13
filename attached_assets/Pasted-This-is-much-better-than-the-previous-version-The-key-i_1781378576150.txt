@@ -1,0 +1,109 @@
+This is much better than the previous version.
+
+The key improvement is that you've separated:
+
+Selection from Editing
+
+instead of trying to make a single click do everything.
+
+That's generally how professional editors work:
+
+Click = select
+Double-click (or Enter) = edit
+Escape = exit
+
+That avoids breaking future features like:
+
+drag-and-drop
+multi-select
+element handles
+right-click menus
+One thing I'd still add
+
+Your ticket says:
+
+"the floating toolbar renders above ... and the floating inspector panel"
+
+I would actually reverse that.
+
+If the toolbar sits above the inspector, you can end up with the toolbar covering inspector controls.
+
+I'd specify:
+
+Z-Index Order
+
+Toolbar must render above:
+- Background image layer
+- Overlay layer
+- Content layer
+- Cards
+
+Toolbar may render below the floating inspector panel when they overlap.
+
+Most editors treat the inspector as the highest-priority UI.
+
+Add a viewport constraint
+
+For long toolbars:
+
+Toolbar must never render outside the left or right edge of the editor canvas.
+
+If insufficient space exists, automatically reposition or constrain width to remain fully visible.
+
+Otherwise a selected headline near the right side can push the toolbar off-screen.
+
+The truncation fix is important
+
+This may actually be a separate bug.
+
+You already captured it well:
+
+"Specializing In Manufact..."
+
+That is probably caused by one of:
+
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+
+or a fixed-width wrapper.
+
+I'd make this explicit:
+
+Headings and subheadings must wrap naturally across multiple lines and may not be truncated with ellipsis while editing or viewing.
+What I like most
+
+This section:
+
+Smart edge detection
+
+That's the sort of thing users don't consciously notice, but it makes the editor feel polished.
+
+Top of page:
+
+Toolbar below
+
+Middle:
+
+Toolbar above
+
+Bottom:
+
+Toolbar above
+
+Always visible.
+
+My rating
+
+#835 (Background Layer Refactor): Critical Architecture Fix
+
+#838 (Natural Text Editing UX): Critical Usability Fix
+
+Together these solve most of the frustrations visible in your screenshots:
+
+Text washed out by background image.
+Toolbar hiding content.
+No obvious way to edit text.
+Headline truncation.
+
+I'd submit #838 with only the small additions about viewport boundaries and text wrapping. Other than that, it's a well-scoped implementation ticket.

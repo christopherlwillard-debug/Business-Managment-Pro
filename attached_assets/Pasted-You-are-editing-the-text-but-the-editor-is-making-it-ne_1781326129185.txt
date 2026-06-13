@@ -1,0 +1,79 @@
+You are editing the text, but the editor is making it nearly impossible to see because the inline formatting bars are covering the content and the text itself isn't entering a true editing mode.
+
+I can see:
+
+The heading: "Specializing In Manufact..."
+A formatting toolbar directly underneath it
+Another formatting toolbar over the description
+The description text is extremely faint
+The inspector is on Layout, not Content
+
+So the editor is acting more like a design tool than a text editor.
+
+What's likely happening
+
+When you click the heading:
+
+It selects the text block
+Shows formatting controls
+But doesn't clearly put the text into edit mode
+
+A user should see something like:
+
+[Editable Cursor Here]
+Specializing In Manufactured Home Setup
+
+Instead you're seeing:
+
+Specializing In Manufact...
+-------------------------
+Font | Size | Bold | ...
+
+which makes it feel like nothing is editable.
+
+I would create a ticket specifically for text editing
+
+#836 - Improve Inline Text Editing UX
+
+Done Looks Like
+
+Double-clicking any heading, paragraph, or button text enters edit mode immediately.
+A visible text cursor appears inside the text.
+Selected text receives a subtle outline while editing.
+Formatting toolbar appears above the selected text instead of covering it.
+Text remains fully visible while editing.
+Pressing Enter commits changes.
+Pressing Escape exits editing mode.
+Inspector automatically switches to the Content tab when a text element is selected.
+Users never need to hunt through the right panel to change simple text.
+For your immediate issue
+
+Try this:
+
+Click the Content tab in the inspector (you're currently on Layout).
+Look for:
+Title
+Heading
+Hero Title
+Main Headline
+Edit it from there.
+
+If nothing appears under Content, then the editor likely doesn't have a proper content-binding system yet and is relying entirely on inline editing.
+
+Another thing I notice
+
+Your heading is getting cut off:
+
+Specializing In Manufact...
+
+That usually means either:
+
+Max width is too narrow
+Container width is constrained
+Text overflow is being clipped
+
+So I'd also add:
+
+Heading text should automatically wrap to multiple lines instead of clipping or truncating.
+
+From this screenshot, the biggest issue is no longer the background image. The biggest usability issue is that text editing is not obvious. A first-time user should be able to click a heading and immediately start typing, just like Canva, Wix, Squarespace, or Webflow. Right now it looks like the editor is exposing styling controls before giving you a simple way to edit the actual words.

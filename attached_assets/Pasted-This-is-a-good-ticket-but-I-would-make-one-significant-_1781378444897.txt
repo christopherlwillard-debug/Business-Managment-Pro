@@ -1,0 +1,103 @@
+This is a good ticket, but I would make one significant change before submitting it.
+
+Don't use single-click to immediately enter edit mode
+
+In website builders, single-click is often needed for:
+
+Selecting an element
+Showing handles
+Dragging
+Opening inspector settings
+Multi-select behavior later
+
+If you make every single click enter typing mode, you'll create new problems.
+
+Instead:
+
+Better behavior
+
+Single Click
+
+Select text element
+Show blue outline
+Show floating toolbar
+
+Double Click OR Enter
+
+Enter text editing mode
+Show cursor
+Start typing
+
+This is how Figma, Framer, Webflow, and many design tools behave.
+
+The floating toolbar change is excellent
+
+This is actually the bigger fix from your screenshot.
+
+Right now:
+
+Heading
+[Toolbar]
+Subheading
+
+becomes:
+
+[Toolbar]
+
+Heading
+Subheading
+
+Much cleaner.
+
+I would add:
+
+The toolbar must automatically reposition if it would render outside the top edge of the canvas. In that case it should render below the selected element instead.
+
+Otherwise top-of-page Hero headlines may have the toolbar clipped off-screen.
+
+Add a z-index requirement
+
+Because you're moving it to absolute positioning:
+
+The toolbar must render above overlays, section backgrounds, cards, and inspector content using a dedicated editor-layer z-index.
+
+Otherwise you'll eventually get:
+
+toolbar hidden behind hero overlay
+toolbar hidden behind floating inspector
+toolbar hidden behind cards
+Add a validation item
+Validation
+
+Verify toolbar positioning for:
+
+- First Hero headline at top of page
+- Middle-page text block
+- Last text element near bottom of page
+
+Toolbar must remain visible and accessible in all cases.
+One thing I think is actually missing
+
+Your screenshot suggests the heading is being clipped:
+
+Specializing In Manufact...
+
+I would verify that isn't caused by:
+
+max-width
+overflow hidden
+fixed height container
+
+Because if text is being truncated, improving editing won't fully solve the issue.
+
+Priority
+
+If I were ordering your tickets:
+
+#835 Background image layer separation
+#838 Floating text toolbar
+Element-level selection system
+Media/icon upload system
+Zoom controls
+
+The toolbar fix alone will make the editor feel dramatically less cluttered and should solve the immediate "I can't see what I'm editing" problem shown in your screenshot.
