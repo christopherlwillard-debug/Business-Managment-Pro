@@ -881,6 +881,15 @@ router.post("/upload-favicon", wrapAsync(async (req, res) => {
   res.json({ uploadURL, objectPath });
 }));
 
+router.post("/upload-card-image", wrapAsync(async (req, res) => {
+  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+  if (!name || !size || !contentType) {
+    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+  }
+  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-card-images");
+  res.json({ uploadURL, objectPath });
+}));
+
 publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
   const { slug } = req.params;
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
@@ -1284,6 +1293,26 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
   // image from the media library (which removes the DB row but NOT the object)
   // does not break pages that still reference this URL.
   const objectPath = `/objects/uploads/website-media/${uuid}`;
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Image not found" });
+    throw err;
+  }
+}));
+
+publicRouter.get("/card-image/:uuid", wrapAsync(async (req, res) => {
+  const { uuid } = req.params;
+  const objectPath = `/objects/uploads/website-card-images/${uuid}`;
   try {
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(objectFile);

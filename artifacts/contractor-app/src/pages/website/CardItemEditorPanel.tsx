@@ -1,14 +1,17 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   X, Images, ChevronDown, ChevronRight as ChevronRightIcon,
-  Eye, EyeOff, Sparkles,
+  Eye, EyeOff, Sparkles, Upload, Loader2,
 } from "lucide-react";
+
 import { LUCIDE_ICON_MAP } from "./sections/UniversalCard";
 import type {
   CardComponent, CardClickAction, CardHoverEffect, CardLayout,
   CardTextAlign, CardMediaType, CardTemplateType, CardIconSize,
   CardBadgePosition,
 } from "./website-types";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // ── Quick Templates (shown ABOVE tab strip) ───────────────────────────────────
 
@@ -259,18 +262,49 @@ interface CardItemEditorPanelProps {
   onDelete?: () => void;
   onClose?: () => void;
   onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+  businessId?: number;
 }
 
 export function CardItemEditorPanel({
-  card, onChange, onDuplicate, onDelete, onClose, onOpenMediaLibrary,
+  card, onChange, onDuplicate, onDelete, onClose, onOpenMediaLibrary, businessId,
 }: CardItemEditorPanelProps) {
   const [activeTab, setActiveTab] = useState<EditorTab>("content");
   const [iconSearch, setIconSearch] = useState("");
   const [showTrustPack, setShowTrustPack] = useState(false);
   const [showDesignOverrides, setShowDesignOverrides] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function patch(p: Partial<CardComponent>) {
     onChange({ ...card, ...p });
+  }
+
+  async function handleImageUpload(file: File) {
+    setImageUploading(true);
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-card-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const uuid = objectPath.split("/").pop()!;
+      const canonicalUrl = `${BASE}/api/public/site/card-image/${uuid}`;
+      patch({ imageUrl: canonicalUrl, imageObjectPath: objectPath });
+    } catch {
+      alert("Image upload failed. Please try again.");
+    } finally {
+      setImageUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   const ICON_NAMES = Object.keys(LUCIDE_ICON_MAP);
@@ -437,6 +471,25 @@ export function CardItemEditorPanel({
                 </button>
               </div>
             )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) handleImageUpload(file);
+              }}
+            />
+            <button
+              type="button"
+              disabled={imageUploading}
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs rounded border border-dashed border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed">
+              {imageUploading
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
+                : <><Upload className="w-3.5 h-3.5" /> Upload Image</>}
+            </button>
             {onOpenMediaLibrary && (
               <button type="button" onClick={() => onOpenMediaLibrary(url => patch({ imageUrl: url }))}
                 className="w-full flex items-center justify-center gap-1.5 py-2 text-xs rounded border border-dashed border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground">

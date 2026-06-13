@@ -4827,6 +4827,7 @@ function WebsiteEditor() {
                     onDelete={handleCardDelete}
                     onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
                     onOpenMediaLibrary={openMediaLibrary}
+                    businessId={bizId}
                   />
                 );
               }
@@ -5057,6 +5058,7 @@ function WebsiteEditor() {
                     onDelete={handleCardDelete}
                     onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
                     onOpenMediaLibrary={openMediaLibrary}
+                    businessId={bizId}
                   />
                 </div>
               );
