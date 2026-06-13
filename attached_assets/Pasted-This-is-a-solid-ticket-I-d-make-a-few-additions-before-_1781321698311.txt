@@ -1,0 +1,135 @@
+This is a solid ticket. I'd make a few additions before you give it to Replit so it doesn't implement the bare minimum and leave you with new usability issues.
+
+Changes I'd Add
+1. Add Click-Outside-To-Close
+
+Right now you only mention:
+
+Escape closes
+X closes
+
+Add:
+
+Clicking anywhere on the canvas outside the floating inspector should deselect the current section and close the inspector.
+
+That's how Canva, Framer, and Figma behave.
+
+2. Make the Panel Draggable
+
+This is huge.
+
+Sometimes the panel will cover exactly what you're trying to edit.
+
+Add:
+
+The floating inspector panel should be draggable by its header so users can reposition it temporarily without closing it.
+
+This makes the editor feel much more premium.
+
+3. Add Resizable Width
+
+Instead of locking it at 300px:
+
+Default width 320px. User can drag the left edge to resize between 280px and 500px. Width preference is saved in localStorage.
+
+Some sections need more room.
+
+4. Auto-Switch Tabs Based on Selection
+
+If a user clicks:
+
+Text → open Content tab
+Background → open Style tab
+Layout section → open Layout tab
+
+This reduces clicks.
+
+5. Add a Floating Quick Actions Bar
+
+Your current floating toolbar is actually useful.
+
+I would explicitly protect it:
+
+The inspector must never overlap the section action toolbar. If overlap would occur, automatically offset the inspector position.
+
+Bigger Change I'd Consider
+
+Instead of a traditional inspector:
+
+Context Popover Editing
+
+Click a heading:
+
+[ Edit Text ]
+[ Typography ]
+[ Duplicate ]
+
+Small popover appears directly above the element.
+
+Only open the full inspector when advanced settings are needed.
+
+This is how modern builders are moving because it keeps users focused on the page instead of panels.
+
+My Next Ticket After #828
+
+I'd immediately create:
+
+#829 - Replace Icon Picker With Media Picker
+
+Current:
+
+Icon
+Search Icons
+
+New:
+
+Media Type
+
+○ Icon
+○ Uploaded SVG
+○ Image
+○ Logo
+
+Allow:
+
+Built-in icons
+Upload SVG
+Upload PNG
+Upload JPG
+Paste image URL
+Library of previously uploaded assets
+
+For a contractor website builder, this is honestly more valuable than the floating inspector.
+
+Most contractors would rather show:
+
+Water hookup photo
+Marriage line photo
+Home setup photo
+Veteran-owned badge
+
+than generic wrench icons.
+
+#830 - Canvas Zoom & Fit Controls
+
+Add:
+
+50%
+75%
+100%
+125%
+150%
+
+Fit Width
+Fit Page
+
+This may actually provide more usability improvement than removing the sidebar.
+
+If I were prioritizing:
+Floating inspector (#828)
+Zoom controls (#830)
+Media/Icon replacement system (#829)
+Draggable inspector
+Resizable inspector
+
+Those five changes would make the editor feel dramatically closer to Framer/Webflow and give you a lot more usable canvas space without redesigning the entire application.
