@@ -882,10 +882,16 @@ router.post("/upload-favicon", wrapAsync(async (req, res) => {
 }));
 
 router.post("/upload-card-image", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+  const { name, size, contentType, businessId: rawBusinessId } = req.body as { name?: string; size?: number; contentType?: string; businessId?: number };
   if (!name || !size || !contentType) {
     return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
   }
+  const businessId = Number(rawBusinessId);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "Valid businessId required" });
+  }
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.id, businessId));
+  if (!biz) return res.status(404).json({ error: "Business not found" });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-card-images");
   res.json({ uploadURL, objectPath });
 }));

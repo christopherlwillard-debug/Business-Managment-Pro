@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 
 import { LUCIDE_ICON_MAP } from "./sections/UniversalCard";
+import { useToast } from "@/hooks/use-toast";
 import type {
   CardComponent, CardClickAction, CardHoverEffect, CardLayout,
   CardTextAlign, CardMediaType, CardTemplateType, CardIconSize,
@@ -274,19 +275,24 @@ export function CardItemEditorPanel({
   const [showDesignOverrides, setShowDesignOverrides] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   function patch(p: Partial<CardComponent>) {
     onChange({ ...card, ...p });
   }
 
   async function handleImageUpload(file: File) {
+    if (!businessId) {
+      toast({ title: "Upload unavailable", description: "No business selected.", variant: "destructive" });
+      return;
+    }
     setImageUploading(true);
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-card-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type, businessId }),
       });
       if (!urlRes.ok) throw new Error("Failed to get upload URL");
       const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
@@ -300,7 +306,7 @@ export function CardItemEditorPanel({
       const canonicalUrl = `${BASE}/api/public/site/card-image/${uuid}`;
       patch({ imageUrl: canonicalUrl, imageObjectPath: objectPath });
     } catch {
-      alert("Image upload failed. Please try again.");
+      toast({ title: "Upload failed", description: "Could not upload the image. Please try again.", variant: "destructive" });
     } finally {
       setImageUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
