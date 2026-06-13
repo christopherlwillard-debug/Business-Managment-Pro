@@ -4682,6 +4682,201 @@ function WebsiteEditor() {
               setFocusMode(true);
             }}
           >
+            {/* Desktop floating inspector — sticky inside canvas scroll area so it scrolls with the editor body */}
+            {!editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
+              const sec = sections.find(s => s.id === activeSection);
+              if (!sec || sec.type === "header") return null;
+
+              let selectedComponent: SiteComponent | undefined;
+              let rowData: RowSectionData | undefined;
+              let selectedRowColumnId: string | undefined;
+              let onChangeComponent: ((comp: SiteComponent) => void) | undefined;
+              let onChangeRowData: ((data: RowSectionData) => void) | undefined;
+              let specialContent: React.ReactNode | undefined;
+
+              if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
+                const contentData = sec.content as { components?: SiteComponent[] };
+                const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
+                if (comp) {
+                  selectedComponent = comp as SiteComponent;
+                  onChangeComponent = (updatedComp: SiteComponent) => {
+                    const newComponents = (contentData.components ?? []).map(c =>
+                      c.id === updatedComp.id ? updatedComp : c
+                    );
+                    updateContent(sec.id, { ...contentData, components: newComponents });
+                  };
+                }
+              } else if (sec.type === "row") {
+                rowData = sec.content as RowSectionData;
+                onChangeRowData = (newData: RowSectionData) =>
+                  updateContent(sec.id, newData as unknown as Record<string, unknown>);
+                if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
+                  const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
+                  const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
+                  if (selComp) {
+                    selectedComponent = selComp as SiteComponent;
+                    selectedRowColumnId = selectedRowState.columnId;
+                    onChangeComponent = (updatedComp: SiteComponent) => {
+                      const newCols = (rowData!.columns ?? []).map(col =>
+                        col.id === selectedRowState.columnId
+                          ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
+                          : col
+                      );
+                      updateContent(sec.id, { ...rowData!, columns: newCols } as unknown as Record<string, unknown>);
+                    };
+                  }
+                }
+              } else if (sec.type === "deposit") {
+                specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+              }
+
+              const stickyContainer = (children: React.ReactNode) => (
+                <div className="sticky top-4 z-30 pointer-events-none" style={{ height: 0, overflow: "visible" }}>
+                  <div className="absolute right-4 top-0 pointer-events-auto w-[300px] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
+                    style={{ maxHeight: "calc(100vh - 5rem)" }}>
+                    {children}
+                  </div>
+                </div>
+              );
+
+              if (selectedCardData && selectedCardState?.sectionId === sec.id) {
+                let handleCardChange: (u: CardComponent) => void = () => {};
+                let handleCardDuplicate: () => void = () => {};
+                let handleCardDelete: () => void = () => {};
+
+                if (sec.type === "services") {
+                  const d = sec.content as { heading?: string; items?: CardComponent[] };
+                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...d, items: (d.items ?? []).map(i => i.id === u.id ? u : i) }); };
+                  handleCardDuplicate = () => {
+                    const items = d.items ?? [];
+                    const idx = items.findIndex(i => i.id === selectedCardState.cardId);
+                    if (idx >= 0) {
+                      const duped = { ...items[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                      updateContent(sec.id, { ...d, items: [...items.slice(0, idx + 1), duped, ...items.slice(idx + 1)] });
+                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                    }
+                  };
+                  handleCardDelete = () => { updateContent(sec.id, { ...d, items: (d.items ?? []).filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+                } else if (sec.type === "testimonials") {
+                  const raw = sec.content as { heading?: string; items?: CardComponent[]; testimonials?: any[] };
+                  let tItems: CardComponent[] = raw.items ?? [];
+                  if (tItems.length === 0 && raw.testimonials?.length) {
+                    tItems = (raw.testimonials as any[]).map((t: any) => ({
+                      id: t.id, title: t.name,
+                      description: `"${t.quote}"${t.location ? `\n\n— ${t.location}` : ""}`,
+                      mediaType: "none" as const, layout: "horizontal" as const,
+                      textAlign: "left" as const, hoverEffect: "none" as const, clickAction: "none" as const,
+                      templateType: "testimonial" as const,
+                      badgeEnabled: t.rating > 0, badgeText: "★".repeat(Math.min(t.rating, 5)),
+                      badgeColor: "#f59e0b", badgeTextColor: "#ffffff", badgePosition: "top-right" as const,
+                    }));
+                  }
+                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: tItems.map(i => i.id === u.id ? u : i), testimonials: undefined }); };
+                  handleCardDuplicate = () => {
+                    const idx = tItems.findIndex(i => i.id === selectedCardState.cardId);
+                    if (idx >= 0) {
+                      const duped = { ...tItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                      updateContent(sec.id, { ...raw, items: [...tItems.slice(0, idx + 1), duped, ...tItems.slice(idx + 1)], testimonials: undefined });
+                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                    }
+                  };
+                  handleCardDelete = () => { updateContent(sec.id, { ...raw, items: tItems.filter(i => i.id !== selectedCardState.cardId), testimonials: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+                } else if (sec.type === "stats") {
+                  const raw = sec.content as { heading?: string; items?: CardComponent[]; stats?: any[] };
+                  const STAT_ICONS_FB = ["Star", "CheckCircle2", "Award", "Clock", "Users", "Briefcase"];
+                  let sItems: CardComponent[] = raw.items ?? [];
+                  if (sItems.length === 0 && raw.stats?.length) {
+                    sItems = (raw.stats as any[]).map((st: any, idx: number) => ({
+                      id: st.id, title: st.value, description: st.label,
+                      mediaType: "icon" as const, iconName: STAT_ICONS_FB[idx % STAT_ICONS_FB.length],
+                      layout: "icon-top" as const, textAlign: "center" as const,
+                      hoverEffect: "none" as const, clickAction: "none" as const,
+                    }));
+                  }
+                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: sItems.map(i => i.id === u.id ? u : i), stats: undefined }); };
+                  handleCardDuplicate = () => {
+                    const idx = sItems.findIndex(i => i.id === selectedCardState.cardId);
+                    if (idx >= 0) {
+                      const duped = { ...sItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                      updateContent(sec.id, { ...raw, items: [...sItems.slice(0, idx + 1), duped, ...sItems.slice(idx + 1)], stats: undefined });
+                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                    }
+                  };
+                  handleCardDelete = () => { updateContent(sec.id, { ...raw, items: sItems.filter(i => i.id !== selectedCardState.cardId), stats: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+                } else if (sec.type === "faq") {
+                  const raw = sec.content as { heading?: string; items?: unknown[]; displayMode?: string; cards?: CardComponent[] };
+                  const faqCards = raw.cards ?? [];
+                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, cards: faqCards.map(c => c.id === u.id ? u : c) }); };
+                  handleCardDuplicate = () => {
+                    const idx = faqCards.findIndex(c => c.id === selectedCardState.cardId);
+                    if (idx >= 0) {
+                      const duped = { ...faqCards[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                      updateContent(sec.id, { ...raw, cards: [...faqCards.slice(0, idx + 1), duped, ...faqCards.slice(idx + 1)] });
+                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                    }
+                  };
+                  handleCardDelete = () => { updateContent(sec.id, { ...raw, cards: faqCards.filter(c => c.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+                }
+
+                return stickyContainer(
+                  <CardItemEditorPanel
+                    card={selectedCardData}
+                    onChange={handleCardChange}
+                    onDuplicate={handleCardDuplicate}
+                    onDelete={handleCardDelete}
+                    onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
+                    onOpenMediaLibrary={openMediaLibrary}
+                  />
+                );
+              }
+
+              return stickyContainer(
+                <>
+                  <div className="flex items-center justify-end px-2 py-1.5 flex-shrink-0 border-b border-border/50 bg-muted/20">
+                    <button type="button" onClick={() => setActiveSection(null)}
+                      className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Close inspector">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-hidden min-h-0">
+                    <InspectorPanel
+                      pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
+                      section={sec}
+                      selectedComponent={selectedComponent}
+                      rowData={rowData}
+                      selectedRowColumnId={selectedRowColumnId}
+                      onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                      onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                      isBgUploading={!!bgUploading[sec.id]}
+                      onOpenMediaLibrary={openMediaLibrary}
+                      copiedStyle={copiedBlockStyle}
+                      onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                      onPasteStyle={() => {
+                        if (copiedBlockStyle) {
+                          updateBlockStyle(sec.id, copiedBlockStyle);
+                          toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                        }
+                      }}
+                      onApplyStyleTo={applyStyleTo}
+                      onToggleSection={() => toggleSection(sec.id)}
+                      onDuplicateSection={() => duplicateSection(sec.id)}
+                      onDeleteSection={() => handleDeleteSectionClick(sec.id)}
+                      onChangeComponent={onChangeComponent}
+                      onComponentImageUpload={handleContentComponentImageUpload}
+                      onChangeRowData={onChangeRowData}
+                      collapsed={false}
+                      onCollapse={() => setActiveSection(null)}
+                      onExpand={() => {}}
+                      autoCollapsed={false}
+                      onClearAutoCollapse={() => {}}
+                      specialContent={specialContent}
+                      initialTab={contextInspectorTab}
+                    />
+                  </div>
+                </>
+              );
+            })()}
             <div className={`mx-auto my-6 transition-all duration-300 ${
               viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
               viewport === "tablet" ? "max-w-[800px] px-4" :
@@ -4723,227 +4918,196 @@ function WebsiteEditor() {
               )}
             </div>
           </div>
-          {/* Floating inspector overlay — sits above canvas, deselects on close */}
-          {activeSection && activeTab === "editor" && !focusMode && (() => {
-          const sec = sections.find(s => s.id === activeSection);
-          if (!sec || sec.type === "header") return null;
+          {/* Narrow screen: fixed bottom drawer (position:fixed escapes any overflow clipping) */}
+          {editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
+            const sec = sections.find(s => s.id === activeSection);
+            if (!sec || sec.type === "header") return null;
 
-          let selectedComponent: SiteComponent | undefined;
-          let rowData: RowSectionData | undefined;
-          let selectedRowColumnId: string | undefined;
-          let onChangeComponent: ((comp: SiteComponent) => void) | undefined;
-          let onChangeRowData: ((data: RowSectionData) => void) | undefined;
-          let specialContent: React.ReactNode | undefined;
+            let selectedComponent: SiteComponent | undefined;
+            let rowData: RowSectionData | undefined;
+            let selectedRowColumnId: string | undefined;
+            let onChangeComponent: ((comp: SiteComponent) => void) | undefined;
+            let onChangeRowData: ((data: RowSectionData) => void) | undefined;
+            let specialContent: React.ReactNode | undefined;
 
-          if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
-            const contentData = sec.content as { components?: SiteComponent[] };
-            const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
-            if (comp) {
-              selectedComponent = comp as SiteComponent;
-              onChangeComponent = (updatedComp: SiteComponent) => {
-                const newComponents = (contentData.components ?? []).map(c =>
-                  c.id === updatedComp.id ? updatedComp : c
-                );
-                updateContent(sec.id, { ...contentData, components: newComponents });
-              };
-            }
-          } else if (sec.type === "row") {
-            rowData = sec.content as RowSectionData;
-            onChangeRowData = (newData: RowSectionData) =>
-              updateContent(sec.id, newData as unknown as Record<string, unknown>);
-            if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
-              const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
-              const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
-              if (selComp) {
-                selectedComponent = selComp as SiteComponent;
-                selectedRowColumnId = selectedRowState.columnId;
+            if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
+              const contentData = sec.content as { components?: SiteComponent[] };
+              const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
+              if (comp) {
+                selectedComponent = comp as SiteComponent;
                 onChangeComponent = (updatedComp: SiteComponent) => {
-                  const newCols = (rowData!.columns ?? []).map(col =>
-                    col.id === selectedRowState.columnId
-                      ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
-                      : col
+                  const newComponents = (contentData.components ?? []).map(c =>
+                    c.id === updatedComp.id ? updatedComp : c
                   );
-                  updateContent(sec.id, { ...rowData!, columns: newCols } as unknown as Record<string, unknown>);
+                  updateContent(sec.id, { ...contentData, components: newComponents });
                 };
               }
-            }
-          } else if (sec.type === "deposit") {
-            specialContent = <DepositSubmissionsPanel businessId={bizId} />;
-          }
-
-          // ── Dedicated Card Editor panel ──────────────────────────────────────
-          // When a card is selected, render a standalone panel that fully replaces
-          // InspectorPanel. Card data was captured at click-time into selectedCardData
-          // so we never need a fragile re-lookup here.
-          if (selectedCardData && selectedCardState?.sectionId === sec.id) {
-            let handleCardChange: (u: CardComponent) => void = () => {};
-            let handleCardDuplicate: () => void = () => {};
-            let handleCardDelete: () => void = () => {};
-
-            if (sec.type === "services") {
-              const d = sec.content as { heading?: string; items?: CardComponent[] };
-              handleCardChange = (u) => {
-                setSelectedCardData(u);
-                updateContent(sec.id, { ...d, items: (d.items ?? []).map(i => i.id === u.id ? u : i) });
-              };
-              handleCardDuplicate = () => {
-                const items = d.items ?? [];
-                const idx = items.findIndex(i => i.id === selectedCardState.cardId);
-                if (idx >= 0) {
-                  const duped = { ...items[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                  updateContent(sec.id, { ...d, items: [...items.slice(0, idx + 1), duped, ...items.slice(idx + 1)] });
-                  setSelectedCardState({ sectionId: sec.id, cardId: duped.id });
-                  setSelectedCardData(duped);
+            } else if (sec.type === "row") {
+              rowData = sec.content as RowSectionData;
+              onChangeRowData = (newData: RowSectionData) =>
+                updateContent(sec.id, newData as unknown as Record<string, unknown>);
+              if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
+                const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
+                const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
+                if (selComp) {
+                  selectedComponent = selComp as SiteComponent;
+                  selectedRowColumnId = selectedRowState.columnId;
+                  onChangeComponent = (updatedComp: SiteComponent) => {
+                    const newCols = (rowData!.columns ?? []).map(col =>
+                      col.id === selectedRowState.columnId
+                        ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
+                        : col
+                    );
+                    updateContent(sec.id, { ...rowData!, columns: newCols } as unknown as Record<string, unknown>);
+                  };
                 }
-              };
-              handleCardDelete = () => {
-                updateContent(sec.id, { ...d, items: (d.items ?? []).filter(i => i.id !== selectedCardState.cardId) });
-                setSelectedCardState(null); setSelectedCardData(null);
-              };
-            } else if (sec.type === "testimonials") {
-              const raw = sec.content as { heading?: string; items?: CardComponent[]; testimonials?: any[] };
-              let tItems: CardComponent[] = raw.items ?? [];
-              if (tItems.length === 0 && raw.testimonials?.length) {
-                tItems = (raw.testimonials as any[]).map((t: any) => ({
-                  id: t.id, title: t.name,
-                  description: `"${t.quote}"${t.location ? `\n\n— ${t.location}` : ""}`,
-                  mediaType: "none" as const, layout: "horizontal" as const,
-                  textAlign: "left" as const, hoverEffect: "none" as const, clickAction: "none" as const,
-                  templateType: "testimonial" as const,
-                  badgeEnabled: t.rating > 0, badgeText: "★".repeat(Math.min(t.rating, 5)),
-                  badgeColor: "#f59e0b", badgeTextColor: "#ffffff", badgePosition: "top-right" as const,
-                }));
               }
-              handleCardChange = (u) => {
-                setSelectedCardData(u);
-                updateContent(sec.id, { ...raw, items: tItems.map(i => i.id === u.id ? u : i), testimonials: undefined });
-              };
-              handleCardDuplicate = () => {
-                const idx = tItems.findIndex(i => i.id === selectedCardState.cardId);
-                if (idx >= 0) {
-                  const duped = { ...tItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                  updateContent(sec.id, { ...raw, items: [...tItems.slice(0, idx + 1), duped, ...tItems.slice(idx + 1)], testimonials: undefined });
-                  setSelectedCardState({ sectionId: sec.id, cardId: duped.id });
-                  setSelectedCardData(duped);
-                }
-              };
-              handleCardDelete = () => {
-                updateContent(sec.id, { ...raw, items: tItems.filter(i => i.id !== selectedCardState.cardId), testimonials: undefined });
-                setSelectedCardState(null); setSelectedCardData(null);
-              };
-            } else if (sec.type === "stats") {
-              const raw = sec.content as { heading?: string; items?: CardComponent[]; stats?: any[] };
-              const STAT_ICONS_FB = ["Star", "CheckCircle2", "Award", "Clock", "Users", "Briefcase"];
-              let sItems: CardComponent[] = raw.items ?? [];
-              if (sItems.length === 0 && raw.stats?.length) {
-                sItems = (raw.stats as any[]).map((st: any, idx: number) => ({
-                  id: st.id, title: st.value, description: st.label,
-                  mediaType: "icon" as const, iconName: STAT_ICONS_FB[idx % STAT_ICONS_FB.length],
-                  layout: "icon-top" as const, textAlign: "center" as const,
-                  hoverEffect: "none" as const, clickAction: "none" as const,
-                }));
-              }
-              handleCardChange = (u) => {
-                setSelectedCardData(u);
-                updateContent(sec.id, { ...raw, items: sItems.map(i => i.id === u.id ? u : i), stats: undefined });
-              };
-              handleCardDuplicate = () => {
-                const idx = sItems.findIndex(i => i.id === selectedCardState.cardId);
-                if (idx >= 0) {
-                  const duped = { ...sItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                  updateContent(sec.id, { ...raw, items: [...sItems.slice(0, idx + 1), duped, ...sItems.slice(idx + 1)], stats: undefined });
-                  setSelectedCardState({ sectionId: sec.id, cardId: duped.id });
-                  setSelectedCardData(duped);
-                }
-              };
-              handleCardDelete = () => {
-                updateContent(sec.id, { ...raw, items: sItems.filter(i => i.id !== selectedCardState.cardId), stats: undefined });
-                setSelectedCardState(null); setSelectedCardData(null);
-              };
-            } else if (sec.type === "faq") {
-              const raw = sec.content as { heading?: string; items?: unknown[]; displayMode?: string; cards?: CardComponent[] };
-              const faqCards = raw.cards ?? [];
-              handleCardChange = (u) => {
-                setSelectedCardData(u);
-                updateContent(sec.id, { ...raw, cards: faqCards.map(c => c.id === u.id ? u : c) });
-              };
-              handleCardDuplicate = () => {
-                const idx = faqCards.findIndex(c => c.id === selectedCardState.cardId);
-                if (idx >= 0) {
-                  const duped = { ...faqCards[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                  updateContent(sec.id, { ...raw, cards: [...faqCards.slice(0, idx + 1), duped, ...faqCards.slice(idx + 1)] });
-                  setSelectedCardState({ sectionId: sec.id, cardId: duped.id });
-                  setSelectedCardData(duped);
-                }
-              };
-              handleCardDelete = () => {
-                updateContent(sec.id, { ...raw, cards: faqCards.filter(c => c.id !== selectedCardState.cardId) });
-                setSelectedCardState(null); setSelectedCardData(null);
-              };
+            } else if (sec.type === "deposit") {
+              specialContent = <DepositSubmissionsPanel businessId={bizId} />;
             }
 
-            const overlayClass = editorNarrow
-              ? "absolute bottom-0 left-0 right-0 z-30 rounded-t-xl shadow-2xl border-t border-border bg-card flex flex-col overflow-hidden max-h-[55%]"
-              : "absolute top-4 right-4 z-30 rounded-xl shadow-2xl border border-border bg-card flex flex-col overflow-hidden";
-            const overlayStyle = editorNarrow ? {} : { width: 300, maxHeight: "calc(100% - 2rem)" };
+            const drawerClass = "fixed bottom-0 left-0 right-0 z-50 rounded-t-xl shadow-2xl border-t border-border bg-card flex flex-col overflow-hidden max-h-[50vh]";
+
+            if (selectedCardData && selectedCardState?.sectionId === sec.id) {
+              let handleCardChange: (u: CardComponent) => void = () => {};
+              let handleCardDuplicate: () => void = () => {};
+              let handleCardDelete: () => void = () => {};
+
+              if (sec.type === "services") {
+                const d = sec.content as { heading?: string; items?: CardComponent[] };
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...d, items: (d.items ?? []).map(i => i.id === u.id ? u : i) }); };
+                handleCardDuplicate = () => {
+                  const items = d.items ?? [];
+                  const idx = items.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...items[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...d, items: [...items.slice(0, idx + 1), duped, ...items.slice(idx + 1)] });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...d, items: (d.items ?? []).filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "testimonials") {
+                const raw = sec.content as { heading?: string; items?: CardComponent[]; testimonials?: any[] };
+                let tItems: CardComponent[] = raw.items ?? [];
+                if (tItems.length === 0 && raw.testimonials?.length) {
+                  tItems = (raw.testimonials as any[]).map((t: any) => ({
+                    id: t.id, title: t.name,
+                    description: `"${t.quote}"${t.location ? `\n\n— ${t.location}` : ""}`,
+                    mediaType: "none" as const, layout: "horizontal" as const,
+                    textAlign: "left" as const, hoverEffect: "none" as const, clickAction: "none" as const,
+                    templateType: "testimonial" as const,
+                    badgeEnabled: t.rating > 0, badgeText: "★".repeat(Math.min(t.rating, 5)),
+                    badgeColor: "#f59e0b", badgeTextColor: "#ffffff", badgePosition: "top-right" as const,
+                  }));
+                }
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: tItems.map(i => i.id === u.id ? u : i), testimonials: undefined }); };
+                handleCardDuplicate = () => {
+                  const idx = tItems.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...tItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, items: [...tItems.slice(0, idx + 1), duped, ...tItems.slice(idx + 1)], testimonials: undefined });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, items: tItems.filter(i => i.id !== selectedCardState.cardId), testimonials: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "stats") {
+                const raw = sec.content as { heading?: string; items?: CardComponent[]; stats?: any[] };
+                const STAT_ICONS_FB = ["Star", "CheckCircle2", "Award", "Clock", "Users", "Briefcase"];
+                let sItems: CardComponent[] = raw.items ?? [];
+                if (sItems.length === 0 && raw.stats?.length) {
+                  sItems = (raw.stats as any[]).map((st: any, idx: number) => ({
+                    id: st.id, title: st.value, description: st.label,
+                    mediaType: "icon" as const, iconName: STAT_ICONS_FB[idx % STAT_ICONS_FB.length],
+                    layout: "icon-top" as const, textAlign: "center" as const,
+                    hoverEffect: "none" as const, clickAction: "none" as const,
+                  }));
+                }
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: sItems.map(i => i.id === u.id ? u : i), stats: undefined }); };
+                handleCardDuplicate = () => {
+                  const idx = sItems.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...sItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, items: [...sItems.slice(0, idx + 1), duped, ...sItems.slice(idx + 1)], stats: undefined });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, items: sItems.filter(i => i.id !== selectedCardState.cardId), stats: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "faq") {
+                const raw = sec.content as { heading?: string; items?: unknown[]; displayMode?: string; cards?: CardComponent[] };
+                const faqCards = raw.cards ?? [];
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, cards: faqCards.map(c => c.id === u.id ? u : c) }); };
+                handleCardDuplicate = () => {
+                  const idx = faqCards.findIndex(c => c.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...faqCards[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, cards: [...faqCards.slice(0, idx + 1), duped, ...faqCards.slice(idx + 1)] });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, cards: faqCards.filter(c => c.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              }
+
+              return (
+                <div className={drawerClass}>
+                  <CardItemEditorPanel
+                    card={selectedCardData}
+                    onChange={handleCardChange}
+                    onDuplicate={handleCardDuplicate}
+                    onDelete={handleCardDelete}
+                    onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
+                    onOpenMediaLibrary={openMediaLibrary}
+                  />
+                </div>
+              );
+            }
 
             return (
-              <div className={overlayClass} style={overlayStyle}>
-                <CardItemEditorPanel
-                  card={selectedCardData}
-                  onChange={handleCardChange}
-                  onDuplicate={handleCardDuplicate}
-                  onDelete={handleCardDelete}
-                  onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
-                  onOpenMediaLibrary={openMediaLibrary}
-                />
+              <div className={drawerClass}>
+                <div className="flex items-center justify-end px-2 py-1.5 flex-shrink-0 border-b border-border/50 bg-muted/20">
+                  <button type="button" onClick={() => setActiveSection(null)}
+                    className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    title="Close inspector">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-hidden min-h-0">
+                  <InspectorPanel
+                    pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
+                    section={sec}
+                    selectedComponent={selectedComponent}
+                    rowData={rowData}
+                    selectedRowColumnId={selectedRowColumnId}
+                    onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                    onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                    isBgUploading={!!bgUploading[sec.id]}
+                    onOpenMediaLibrary={openMediaLibrary}
+                    copiedStyle={copiedBlockStyle}
+                    onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                    onPasteStyle={() => {
+                      if (copiedBlockStyle) {
+                        updateBlockStyle(sec.id, copiedBlockStyle);
+                        toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                      }
+                    }}
+                    onApplyStyleTo={applyStyleTo}
+                    onToggleSection={() => toggleSection(sec.id)}
+                    onDuplicateSection={() => duplicateSection(sec.id)}
+                    onDeleteSection={() => handleDeleteSectionClick(sec.id)}
+                    onChangeComponent={onChangeComponent}
+                    onComponentImageUpload={handleContentComponentImageUpload}
+                    onChangeRowData={onChangeRowData}
+                    collapsed={false}
+                    onCollapse={() => setActiveSection(null)}
+                    onExpand={() => {}}
+                    autoCollapsed={false}
+                    onClearAutoCollapse={() => {}}
+                    specialContent={specialContent}
+                    initialTab={contextInspectorTab}
+                  />
+                </div>
               </div>
             );
-          }
-
-          const overlayClass = editorNarrow
-            ? "absolute bottom-0 left-0 right-0 z-30 rounded-t-xl shadow-2xl border-t border-border bg-card flex flex-col overflow-hidden max-h-[55%]"
-            : "absolute top-4 right-4 z-30 rounded-xl shadow-2xl border border-border bg-card flex flex-col overflow-hidden";
-          const overlayStyle = editorNarrow ? {} : { width: 300, maxHeight: "calc(100% - 2rem)" };
-
-          return (
-            <div className={overlayClass} style={overlayStyle}>
-              <InspectorPanel
-                pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
-                section={sec}
-                selectedComponent={selectedComponent}
-                rowData={rowData}
-                selectedRowColumnId={selectedRowColumnId}
-                onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
-                onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                isBgUploading={!!bgUploading[sec.id]}
-                onOpenMediaLibrary={openMediaLibrary}
-                copiedStyle={copiedBlockStyle}
-                onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
-                onPasteStyle={() => {
-                  if (copiedBlockStyle) {
-                    updateBlockStyle(sec.id, copiedBlockStyle);
-                    toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
-                  }
-                }}
-                onApplyStyleTo={applyStyleTo}
-                onToggleSection={() => toggleSection(sec.id)}
-                onDuplicateSection={() => duplicateSection(sec.id)}
-                onDeleteSection={() => handleDeleteSectionClick(sec.id)}
-                onChangeComponent={onChangeComponent}
-                onComponentImageUpload={handleContentComponentImageUpload}
-                onChangeRowData={onChangeRowData}
-                collapsed={false}
-                onCollapse={() => setActiveSection(null)}
-                onExpand={() => {}}
-                autoCollapsed={false}
-                onClearAutoCollapse={() => {}}
-                specialContent={specialContent}
-                initialTab={contextInspectorTab}
-              />
-            </div>
-          );
-        })()}
+          })()}
         </div>
         </>)}
       </div>
