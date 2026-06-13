@@ -1038,19 +1038,14 @@ function WebsiteEditor() {
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
-  const [rightCollapsed, setRightCollapsed] = useState(
-    () => localStorage.getItem("website-editor-right-collapsed") === "true"
-  );
   const [focusMode, setFocusMode] = useState(false);
   const [showFullscreenPreview, setShowFullscreenPreview] = useState(false);
-  const preFocusSidebarState = useRef<{ left: boolean; right: boolean } | null>(null);
+  const preFocusSidebarState = useRef<{ left: boolean } | null>(null);
   const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
   const [treeSearch, setTreeSearch] = useState("");
   const [previewViewport, setPreviewViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const leftCollapsedRef = useRef(leftCollapsed);
-  const rightCollapsedRef = useRef(rightCollapsed);
-  const [autoCollapsedRight, setAutoCollapsedRight] = useState(false);
-  const autoCollapsedRightRef = useRef(false);
+  const [editorNarrow, setEditorNarrow] = useState(false);
   const editorBodyRef = useRef<HTMLDivElement>(null);
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
@@ -1064,24 +1059,9 @@ function WebsiteEditor() {
   }, [leftCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem("website-editor-right-collapsed", String(rightCollapsed));
-    rightCollapsedRef.current = rightCollapsed;
-  }, [rightCollapsed]);
-
-  useEffect(() => {
     function checkLayout() {
-      // Right sidebar needs ≥200px useful width; at 15% clamp that requires editor ≥ 1333px
       const editorWidth = editorBodyRef.current?.offsetWidth ?? window.innerWidth;
-      const isNarrow = editorWidth * 0.15 < 200;
-      if (isNarrow && !rightCollapsedRef.current && !autoCollapsedRightRef.current) {
-        autoCollapsedRightRef.current = true;
-        setAutoCollapsedRight(true);
-        setRightCollapsed(true);
-      } else if (!isNarrow && autoCollapsedRightRef.current) {
-        autoCollapsedRightRef.current = false;
-        setAutoCollapsedRight(false);
-        setRightCollapsed(false);
-      }
+      setEditorNarrow(editorWidth < 900);
     }
     checkLayout();
     const ro = new ResizeObserver(checkLayout);
@@ -1140,12 +1120,11 @@ function WebsiteEditor() {
           if (prev) {
             if (preFocusSidebarState.current) {
               setLeftCollapsed(preFocusSidebarState.current.left);
-              setRightCollapsed(preFocusSidebarState.current.right);
               preFocusSidebarState.current = null;
             }
             return false;
           } else {
-            preFocusSidebarState.current = { left: leftCollapsedRef.current, right: rightCollapsedRef.current };
+            preFocusSidebarState.current = { left: leftCollapsedRef.current };
             return true;
           }
         });
@@ -3028,7 +3007,7 @@ function WebsiteEditor() {
       } : undefined,
       onEditAltText: compRef.type === "image" ? () => {
         focusInspector();
-        if (!rightCollapsed) setContextInspectorTab({ tab: "content", id: Date.now() });
+        setContextInspectorTab({ tab: "content", id: Date.now() });
         requestAnimationFrame(() => {
           const panel = document.querySelector("[data-component-editor-panel]");
           const altField = panel?.querySelector(
@@ -3594,11 +3573,6 @@ function WebsiteEditor() {
                 setSelectedCardData(cardData);
                 setActiveSection(s.id);
                 setContextInspectorTab({ tab: "content", id: Date.now() });
-                if (rightCollapsedRef.current) {
-                  autoCollapsedRightRef.current = false;
-                  setAutoCollapsedRight(false);
-                  setRightCollapsed(false);
-                }
               } else {
                 setSelectedCardState(null);
                 setSelectedCardData(null);
@@ -3934,11 +3908,10 @@ function WebsiteEditor() {
               setFocusMode(false);
               if (preFocusSidebarState.current) {
                 setLeftCollapsed(preFocusSidebarState.current.left);
-                setRightCollapsed(preFocusSidebarState.current.right);
                 preFocusSidebarState.current = null;
               }
             } else {
-              preFocusSidebarState.current = { left: leftCollapsed, right: rightCollapsed };
+              preFocusSidebarState.current = { left: leftCollapsed };
               setFocusMode(true);
             }
           }}
@@ -4696,59 +4669,62 @@ function WebsiteEditor() {
         </div>
         )}
 
-        {/* Canvas — live preview */}
-        <div
-          className={`flex-1 overflow-y-auto bg-muted/30 lg:min-w-[70%] ${!focusMode ? "cursor-zoom-in" : ""}`}
-          onClick={() => setActiveSection(null)}
-          onDoubleClick={e => {
-            if (focusMode) return;
-            if ((e.target as HTMLElement).closest("[data-section-canvas-id]")) return;
-            preFocusSidebarState.current = { left: leftCollapsed, right: rightCollapsed };
-            setFocusMode(true);
-          }}
-        >
-          <div className={`mx-auto my-6 transition-all duration-300 ${
-            viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
-            viewport === "tablet" ? "max-w-[800px] px-4" :
-            "max-w-[430px] px-3"
-          }`}>
-            {viewport === "mobile" ? (
-              /* Phone chrome */
-              <div className="bg-gray-800 rounded-[3rem] p-[10px] shadow-2xl border border-gray-700">
-                {/* Notch bar */}
-                <div className="flex items-center justify-center h-6 mb-1">
-                  <div className="w-20 h-1.5 bg-gray-600 rounded-full" />
+        {/* Canvas + floating inspector — relative wrapper fills remaining space */}
+        <div className="flex-1 relative overflow-hidden">
+          {/* Canvas — live preview, scrolls inside the wrapper */}
+          <div
+            className={`absolute inset-0 overflow-y-auto bg-muted/30 ${!focusMode ? "cursor-zoom-in" : ""}`}
+            onClick={() => setActiveSection(null)}
+            onDoubleClick={e => {
+              if (focusMode) return;
+              if ((e.target as HTMLElement).closest("[data-section-canvas-id]")) return;
+              preFocusSidebarState.current = { left: leftCollapsed };
+              setFocusMode(true);
+            }}
+          >
+            <div className={`mx-auto my-6 transition-all duration-300 ${
+              viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
+              viewport === "tablet" ? "max-w-[800px] px-4" :
+              "max-w-[430px] px-3"
+            }`}>
+              {viewport === "mobile" ? (
+                /* Phone chrome */
+                <div className="bg-gray-800 rounded-[3rem] p-[10px] shadow-2xl border border-gray-700">
+                  {/* Notch bar */}
+                  <div className="flex items-center justify-center h-6 mb-1">
+                    <div className="w-20 h-1.5 bg-gray-600 rounded-full" />
+                  </div>
+                  <div className="rounded-[2.4rem] overflow-hidden bg-white dark:bg-gray-900 shadow-inner">
+                    {renderSections()}
+                  </div>
+                  {/* Home indicator */}
+                  <div className="flex items-center justify-center h-6 mt-1">
+                    <div className="w-24 h-1 bg-gray-600 rounded-full" />
+                  </div>
                 </div>
-                <div className="rounded-[2.4rem] overflow-hidden bg-white dark:bg-gray-900 shadow-inner">
+              ) : viewport === "tablet" ? (
+                /* Tablet chrome */
+                <div className="bg-gray-800 rounded-2xl p-2.5 shadow-xl border border-gray-700">
+                  <div className="flex items-center justify-center h-4 mb-1">
+                    <div className="w-10 h-1 bg-gray-600 rounded-full" />
+                  </div>
+                  <div className="rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+                    {renderSections()}
+                  </div>
+                  <div className="flex items-center justify-center h-4 mt-1">
+                    <div className="w-10 h-1 bg-gray-600 rounded-full" />
+                  </div>
+                </div>
+              ) : (
+                /* Desktop — existing card */
+                <div className="bg-white dark:bg-gray-900 shadow-lg rounded-xl overflow-hidden">
                   {renderSections()}
                 </div>
-                {/* Home indicator */}
-                <div className="flex items-center justify-center h-6 mt-1">
-                  <div className="w-24 h-1 bg-gray-600 rounded-full" />
-                </div>
-              </div>
-            ) : viewport === "tablet" ? (
-              /* Tablet chrome */
-              <div className="bg-gray-800 rounded-2xl p-2.5 shadow-xl border border-gray-700">
-                <div className="flex items-center justify-center h-4 mb-1">
-                  <div className="w-10 h-1 bg-gray-600 rounded-full" />
-                </div>
-                <div className="rounded-xl overflow-hidden bg-white dark:bg-gray-900">
-                  {renderSections()}
-                </div>
-                <div className="flex items-center justify-center h-4 mt-1">
-                  <div className="w-10 h-1 bg-gray-600 rounded-full" />
-                </div>
-              </div>
-            ) : (
-              /* Desktop — existing card */
-              <div className="bg-white dark:bg-gray-900 shadow-lg rounded-xl overflow-hidden">
-                {renderSections()}
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        {activeSection && activeTab === "editor" && !focusMode && (() => {
+          {/* Floating inspector overlay — sits above canvas, deselects on close */}
+          {activeSection && activeTab === "editor" && !focusMode && (() => {
           const sec = sections.find(s => s.id === activeSection);
           if (!sec || sec.type === "header") return null;
 
@@ -4906,59 +4882,69 @@ function WebsiteEditor() {
               };
             }
 
+            const overlayClass = editorNarrow
+              ? "absolute bottom-0 left-0 right-0 z-30 rounded-t-xl shadow-2xl border-t border-border bg-card flex flex-col overflow-hidden max-h-[55%]"
+              : "absolute top-4 right-4 z-30 rounded-xl shadow-2xl border border-border bg-card flex flex-col overflow-hidden";
+            const overlayStyle = editorNarrow ? {} : { width: 300, maxHeight: "calc(100% - 2rem)" };
+
             return (
-              <div className="flex-shrink-0 border-l border-border bg-card flex flex-col min-h-0 overflow-hidden"
-                style={{ width: 280, minWidth: 240, maxWidth: 300 }}>
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <CardItemEditorPanel
-                    card={selectedCardData}
-                    onChange={handleCardChange}
-                    onDuplicate={handleCardDuplicate}
-                    onDelete={handleCardDelete}
-                    onClose={() => { setSelectedCardState(null); setSelectedCardData(null); }}
-                    onOpenMediaLibrary={openMediaLibrary}
-                  />
-                </div>
+              <div className={overlayClass} style={overlayStyle}>
+                <CardItemEditorPanel
+                  card={selectedCardData}
+                  onChange={handleCardChange}
+                  onDuplicate={handleCardDuplicate}
+                  onDelete={handleCardDelete}
+                  onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
+                  onOpenMediaLibrary={openMediaLibrary}
+                />
               </div>
             );
           }
 
+          const overlayClass = editorNarrow
+            ? "absolute bottom-0 left-0 right-0 z-30 rounded-t-xl shadow-2xl border-t border-border bg-card flex flex-col overflow-hidden max-h-[55%]"
+            : "absolute top-4 right-4 z-30 rounded-xl shadow-2xl border border-border bg-card flex flex-col overflow-hidden";
+          const overlayStyle = editorNarrow ? {} : { width: 300, maxHeight: "calc(100% - 2rem)" };
+
           return (
-            <InspectorPanel
-              pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
-              section={sec}
-              selectedComponent={selectedComponent}
-              rowData={rowData}
-              selectedRowColumnId={selectedRowColumnId}
-              onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
-              onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-              isBgUploading={!!bgUploading[sec.id]}
-              onOpenMediaLibrary={openMediaLibrary}
-              copiedStyle={copiedBlockStyle}
-              onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
-              onPasteStyle={() => {
-                if (copiedBlockStyle) {
-                  updateBlockStyle(sec.id, copiedBlockStyle);
-                  toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
-                }
-              }}
-              onApplyStyleTo={applyStyleTo}
-              onToggleSection={() => toggleSection(sec.id)}
-              onDuplicateSection={() => duplicateSection(sec.id)}
-              onDeleteSection={() => handleDeleteSectionClick(sec.id)}
-              onChangeComponent={onChangeComponent}
-              onComponentImageUpload={handleContentComponentImageUpload}
-              onChangeRowData={onChangeRowData}
-              collapsed={rightCollapsed}
-              onCollapse={() => setRightCollapsed(true)}
-              onExpand={() => { autoCollapsedRightRef.current = false; setAutoCollapsedRight(false); setRightCollapsed(false); }}
-              autoCollapsed={autoCollapsedRight}
-              onClearAutoCollapse={() => { autoCollapsedRightRef.current = false; setAutoCollapsedRight(false); }}
-              specialContent={specialContent}
-              initialTab={contextInspectorTab}
-            />
+            <div className={overlayClass} style={overlayStyle}>
+              <InspectorPanel
+                pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
+                section={sec}
+                selectedComponent={selectedComponent}
+                rowData={rowData}
+                selectedRowColumnId={selectedRowColumnId}
+                onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                isBgUploading={!!bgUploading[sec.id]}
+                onOpenMediaLibrary={openMediaLibrary}
+                copiedStyle={copiedBlockStyle}
+                onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                onPasteStyle={() => {
+                  if (copiedBlockStyle) {
+                    updateBlockStyle(sec.id, copiedBlockStyle);
+                    toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                  }
+                }}
+                onApplyStyleTo={applyStyleTo}
+                onToggleSection={() => toggleSection(sec.id)}
+                onDuplicateSection={() => duplicateSection(sec.id)}
+                onDeleteSection={() => handleDeleteSectionClick(sec.id)}
+                onChangeComponent={onChangeComponent}
+                onComponentImageUpload={handleContentComponentImageUpload}
+                onChangeRowData={onChangeRowData}
+                collapsed={false}
+                onCollapse={() => setActiveSection(null)}
+                onExpand={() => {}}
+                autoCollapsed={false}
+                onClearAutoCollapse={() => {}}
+                specialContent={specialContent}
+                initialTab={contextInspectorTab}
+              />
+            </div>
           );
         })()}
+        </div>
         </>)}
       </div>
     </div>
