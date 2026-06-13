@@ -1648,6 +1648,7 @@ function WebsiteEditor() {
       bgGradientFrom: style.bgGradientFrom,
       bgGradientTo: style.bgGradientTo,
       bgGradientAngle: style.bgGradientAngle,
+      bgImageEffects: style.bgImageEffects,
       overlayColor: style.overlayColor,
       overlayOpacity: style.overlayOpacity,
       paddingTop: style.paddingTop,

@@ -202,7 +202,14 @@ export function SectionStylePanel({
                 {(["color", "image", "gradient"] as const).map((t) => (
                   <button
                     key={t}
-                    onClick={() => patch({ bgType: t })}
+                    onClick={() => {
+                      const newPatch: Partial<BlockStyle> = { bgType: t };
+                      if (t === "image" && !(bs.overlayOpacity)) {
+                        newPatch.overlayColor = bs.overlayColor ?? "#000000";
+                        newPatch.overlayOpacity = 0.4;
+                      }
+                      patch(newPatch);
+                    }}
                     className={`flex-1 py-1.5 text-xs font-medium rounded transition-colors capitalize ${
                       bgType === t
                         ? "bg-primary text-primary-foreground"
@@ -300,6 +307,73 @@ export function SectionStylePanel({
                     onChange={(e) => patch({ bgImageUrl: e.target.value, bgImageObjectPath: undefined })}
                     className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                   />
+
+                  {/* Image Effects */}
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Image Effects</p>
+                    <SliderRow
+                      label="Brightness"
+                      value={bs.bgImageEffects?.brightness ?? 100}
+                      min={0}
+                      max={200}
+                      unit="%"
+                      onChange={(v) => patch({ bgImageEffects: { ...bs.bgImageEffects, brightness: v } })}
+                    />
+                    <SliderRow
+                      label="Opacity"
+                      value={Math.round((bs.bgImageEffects?.opacity ?? 1) * 100)}
+                      min={0}
+                      max={100}
+                      unit="%"
+                      onChange={(v) => patch({ bgImageEffects: { ...bs.bgImageEffects, opacity: v / 100 } })}
+                    />
+                    <SliderRow
+                      label="Blur"
+                      value={bs.bgImageEffects?.blur ?? 0}
+                      min={0}
+                      max={20}
+                      unit="px"
+                      onChange={(v) => patch({ bgImageEffects: { ...bs.bgImageEffects, blur: v } })}
+                    />
+                    <div className="mb-3">
+                      <label className="text-xs text-muted-foreground block mb-1.5">Position</label>
+                      <div className="grid grid-cols-5 gap-1">
+                        {(["center", "top", "bottom", "left", "right"] as const).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => patch({ bgImageEffects: { ...bs.bgImageEffects, position: p } })}
+                            className={`py-1 text-[10px] font-medium rounded capitalize transition-colors ${
+                              (bs.bgImageEffects?.position ?? "center") === p
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1.5">Scale</label>
+                      <div className="flex gap-1">
+                        {(["cover", "contain", "fill"] as const).map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => patch({ bgImageEffects: { ...bs.bgImageEffects, scale: s } })}
+                            className={`flex-1 py-1 text-[10px] font-medium rounded capitalize transition-colors ${
+                              (bs.bgImageEffects?.scale ?? "cover") === s
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
 

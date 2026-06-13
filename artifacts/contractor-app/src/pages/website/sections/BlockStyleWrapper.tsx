@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
+export interface BgImageEffects {
+  opacity?: number;
+  brightness?: number;
+  blur?: number;
+  position?: string;
+  scale?: "cover" | "contain" | "fill";
+}
+
 export interface BlockStyle {
   bgType?: "color" | "image" | "gradient";
   bgColor?: string;
@@ -8,6 +16,7 @@ export interface BlockStyle {
   bgGradientFrom?: string;
   bgGradientTo?: string;
   bgGradientAngle?: number;
+  bgImageEffects?: BgImageEffects;
   overlayColor?: string;
   overlayOpacity?: number;
   paddingTop?: number;
@@ -95,19 +104,16 @@ export function BlockStyleWrapper({
     return () => obs.disconnect();
   }, [anim, isEditing]);
 
+  const hasImageBg = bs.bgType === "image" && !!bs.bgImageUrl;
+
   const style: React.CSSProperties = {};
 
   if (bs.bgType === "color" && bs.bgColor) {
     style.backgroundColor = bs.bgColor;
-  } else if (bs.bgType === "image" && bs.bgImageUrl) {
-    style.backgroundImage = `url(${JSON.stringify(bs.bgImageUrl)})`;
-    style.backgroundSize = "cover";
-    style.backgroundPosition = "center";
-    style.backgroundRepeat = "no-repeat";
   } else if (bs.bgType === "gradient" && bs.bgGradientFrom && bs.bgGradientTo) {
     const angle = bs.bgGradientAngle ?? 135;
     style.backgroundImage = `linear-gradient(${angle}deg, ${bs.bgGradientFrom}, ${bs.bgGradientTo})`;
-  } else if (defaultBg) {
+  } else if (!hasImageBg && defaultBg) {
     style.backgroundColor = defaultBg;
   }
 
@@ -168,15 +174,44 @@ export function BlockStyleWrapper({
     } catch {}
   }
 
+  const fx = bs.bgImageEffects ?? {};
+  const imgBrightness = fx.brightness ?? 100;
+  const imgOpacity = fx.opacity ?? 1;
+  const imgBlur = fx.blur ?? 0;
+  const imgPosition = fx.position ?? "center";
+  const imgScale = fx.scale ?? "cover";
+  const imgBgSize = imgScale === "fill" ? "100% 100%" : imgScale;
+
+  const imgLayerStyle: React.CSSProperties = {
+    backgroundImage: hasImageBg ? `url(${JSON.stringify(bs.bgImageUrl)})` : undefined,
+    backgroundSize: imgBgSize,
+    backgroundPosition: imgPosition,
+    backgroundRepeat: "no-repeat",
+    opacity: imgOpacity,
+    filter: `brightness(${imgBrightness / 100}) blur(${imgBlur}px)`,
+    transition: "opacity 0.2s ease, filter 0.2s ease",
+  };
+
+  const needsContentWrapper = hasImageBg || hasOverlay;
+
   return (
     <div ref={ref} id={bs.anchorId || id} className={`relative ${combined}`} style={style} {...extraDataAttrs}>
+      {hasImageBg && (
+        <div
+          className="absolute inset-0 pointer-events-none z-0 overflow-hidden"
+          style={imgLayerStyle}
+          aria-hidden="true"
+        />
+      )}
       {hasOverlay && (
         <div
-          className="absolute inset-0 pointer-events-none z-0"
+          className={`absolute inset-0 pointer-events-none ${hasImageBg ? "z-10" : "z-0"}`}
           style={{ backgroundColor: bs.overlayColor, opacity: bs.overlayOpacity }}
         />
       )}
-      {hasOverlay ? <div className="relative z-10">{children}</div> : children}
+      {needsContentWrapper
+        ? <div className={`relative ${hasImageBg ? "z-20" : "z-10"}`}>{children}</div>
+        : children}
     </div>
   );
 }
