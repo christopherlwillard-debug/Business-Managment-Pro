@@ -4733,7 +4733,8 @@ function WebsiteEditor() {
               const stickyContainer = (children: React.ReactNode) => (
                 <div className="sticky top-4 z-30 pointer-events-none" style={{ height: 0, overflow: "visible" }}>
                   <div className="absolute right-4 top-0 pointer-events-auto w-[300px] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
-                    style={{ maxHeight: "calc(100vh - 5rem)" }}>
+                    style={{ maxHeight: "calc(100vh - 5rem)" }}
+                    onClick={e => e.stopPropagation()}>
                     {children}
                   </div>
                 </div>
