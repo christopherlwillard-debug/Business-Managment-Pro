@@ -308,36 +308,33 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
     return null;
   });
   // ── Owner Capital Recovery ──────────────────────────────────────────────────
-  const qc2 = useQueryClient();
-  const { data: settingsData } = useQuery<any>({
-    queryKey: ["settings"],
-    queryFn: () => fetch(`${BASE}/api/settings`).then(r => r.json()),
-  });
-  const savedInvestment: number = parseFloat(settingsData?.calculatorDefaults?.ownerPersonalInvestment ?? "0") || 0;
-  const [investmentInput, setInvestmentInput] = useState<string>("");
-  const [investmentEditing, setInvestmentEditing] = useState(false);
-  const [investmentSaving, setInvestmentSaving] = useState(false);
+  const qc = useQueryClient();
   const { toast } = useToast();
-  useEffect(() => {
-    if (!investmentEditing) setInvestmentInput(savedInvestment > 0 ? String(savedInvestment) : "");
-  }, [savedInvestment, investmentEditing]);
-
-  async function saveInvestment() {
-    setInvestmentSaving(true);
-    try {
-      const amount = parseFloat(investmentInput) || 0;
-      const existing = settingsData?.calculatorDefaults ?? {};
-      await fetch(`${BASE}/api/settings`, {
-        method: "PUT",
+  const { data: capitalEntries = [], isLoading: capitalLoading } = useQuery<{ id: number; date: string; description: string; amount: number; createdAt: string }[]>({
+    queryKey: ["owner-capital"],
+    queryFn: () => fetch(`${BASE}/api/owner-capital`).then(r => r.json()),
+  });
+  const [capitalForm, setCapitalForm] = useState<{ date: string; description: string; amount: string; type: "injection" | "withdrawal" } | null>(null);
+  const [capitalSaving, setCapitalSaving] = useState(false);
+  const createCapitalEntry = useMutation({
+    mutationFn: async (payload: { date: string; description: string; amount: number }) => {
+      const res = await fetch(`${BASE}/api/owner-capital`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ calculatorDefaults: { ...existing, ownerPersonalInvestment: String(amount) } }),
+        body: JSON.stringify(payload),
       });
-      await qc2.invalidateQueries({ queryKey: ["settings"] });
-      setInvestmentEditing(false);
-      toast({ title: "Saved", description: "Personal investment amount updated." });
-    } catch { toast({ title: "Error", description: "Could not save.", variant: "destructive" }); }
-    finally { setInvestmentSaving(false); }
-  }
+      if (!res.ok) throw new Error("Failed to save entry");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital"] }),
+  });
+  const deleteCapitalEntry = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${BASE}/api/owner-capital/${id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to delete");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital"] }),
+  });
 
   const { data: clientsList = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["clients-list-oi"],
@@ -498,111 +495,251 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
       {/* ── Owner Capital Recovery ── */}
       {(() => {
         const ownerDraws = s.ownerDrawTotal ?? 0;
-        const owedToOwner = savedInvestment + netProfit - ownerDraws;
+        const totalInjected = capitalEntries.filter(e => e.amount > 0).reduce((acc, e) => acc + e.amount, 0);
+        const totalWithdrawn = capitalEntries.filter(e => e.amount < 0).reduce((acc, e) => acc + Math.abs(e.amount), 0);
+        const netCapitalInvested = totalInjected - totalWithdrawn;
+        const totalEquity = netCapitalInvested + netProfit;
+        const businessOwesYou = totalEquity - ownerDraws;
         return (
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-violet-600 flex-shrink-0" />
-                <span className="font-semibold text-sm text-foreground">Owner Capital Recovery — {year}</span>
+                <span className="font-semibold text-sm text-foreground">Owner Capital — {year}</span>
               </div>
-              {!investmentEditing && (
-                <button
-                  onClick={() => { setInvestmentEditing(true); setInvestmentInput(savedInvestment > 0 ? String(savedInvestment) : ""); }}
-                  className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
-                >
-                  <Pencil className="w-3 h-3" />
-                  {savedInvestment > 0 ? "Edit" : "Set investment"}
-                </button>
-              )}
+              <button
+                onClick={() => setCapitalForm({ date: new Date().toISOString().split("T")[0], description: "", amount: "", type: "injection" })}
+                className="flex items-center gap-1 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-violet-700 transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Add Entry
+              </button>
             </div>
-            <div className="p-5 space-y-3">
+            <div className="p-5 space-y-4">
 
-              {/* Personal funds invested — editable row */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Personal Funds Invested</p>
-                  <p className="text-[10px] text-muted-foreground">Money you put in out of pocket</p>
+              {/* Ledger */}
+              {capitalLoading ? (
+                <div className="h-12 rounded-xl bg-muted/40 animate-pulse" />
+              ) : capitalEntries.length === 0 ? (
+                <div className="text-center py-4 text-sm text-muted-foreground">
+                  No entries yet.{" "}
+                  <button
+                    onClick={() => setCapitalForm({ date: new Date().toISOString().split("T")[0], description: "", amount: "", type: "injection" })}
+                    className="font-semibold text-violet-600 hover:underline"
+                  >Add Entry</button>{" "}
+                  to log your first capital contribution.
                 </div>
-                {investmentEditing ? (
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        autoFocus
-                        value={investmentInput}
-                        onChange={e => setInvestmentInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") saveInvestment(); if (e.key === "Escape") setInvestmentEditing(false); }}
-                        className="w-32 pl-6 pr-2 py-1.5 border border-border rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-violet-400 bg-background"
-                      />
-                    </div>
-                    <button onClick={saveInvestment} disabled={investmentSaving} className="text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-violet-700 disabled:opacity-50">
-                      {investmentSaving ? "…" : "Save"}
-                    </button>
-                    <button onClick={() => setInvestmentEditing(false)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <div className="bg-muted/30 px-4 py-2 grid grid-cols-[90px_1fr_80px_28px] gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <span>Date</span>
+                    <span>Description</span>
+                    <span className="text-right">Amount</span>
+                    <span />
                   </div>
-                ) : (
-                  <span className="text-sm font-bold text-violet-700">
-                    {savedInvestment > 0 ? formatCurrency(savedInvestment) : <span className="text-muted-foreground italic text-xs">Not set</span>}
-                  </span>
-                )}
-              </div>
-
-              {/* Net profit */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {netProfit >= 0 ? "+ Net Profit (YTD)" : "− Net Loss (YTD)"}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">Revenue minus all business expenses</p>
-                </div>
-                <span className={`text-sm font-bold ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
-                  {netProfit >= 0 ? `+${formatCurrency(netProfit)}` : `−${formatCurrency(Math.abs(netProfit))}`}
-                </span>
-              </div>
-
-              {/* Owner draws */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">− Owner Draws Taken</p>
-                  <p className="text-[10px] text-muted-foreground">Money already pulled out</p>
-                </div>
-                <span className="text-sm font-bold text-foreground">−{formatCurrency(ownerDraws)}</span>
-              </div>
-
-              {/* Divider */}
-              <div className="border-t border-border" />
-
-              {/* Result */}
-              <div className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 ${owedToOwner >= 0 ? "border-violet-300 bg-violet-50" : "border-red-300 bg-red-50"}`}>
-                <div>
-                  <p className={`text-xs font-bold uppercase tracking-wide ${owedToOwner >= 0 ? "text-violet-700" : "text-red-700"}`}>
-                    {owedToOwner >= 0 ? "= Business Owes You" : "= Still in the Hole"}
-                  </p>
-                  <p className={`text-[10px] mt-0.5 ${owedToOwner >= 0 ? "text-violet-600" : "text-red-500"}`}>
-                    {owedToOwner >= 0
-                      ? "Your investment + profits not yet drawn out"
-                      : "Business hasn't earned back your investment yet"}
-                  </p>
-                </div>
-                <span className={`text-xl font-black ${owedToOwner >= 0 ? "text-violet-700" : "text-red-600"}`}>{formatCurrency(Math.abs(owedToOwner))}</span>
-              </div>
-
-              {savedInvestment === 0 && !investmentEditing && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-start gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-800">Tap <span className="font-semibold">"Set investment"</span> above to enter the total personal funds you've put into the business.</p>
+                  <div className="divide-y divide-border/50">
+                    {[...capitalEntries].sort((a, b) => b.date.localeCompare(a.date)).map(entry => (
+                      <div key={entry.id} className="px-4 py-2.5 grid grid-cols-[90px_1fr_80px_28px] gap-2 items-center">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(entry.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
+                        </span>
+                        <span className="text-xs text-foreground truncate">{entry.description}</span>
+                        <span className={`text-xs font-bold text-right ${entry.amount >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                          {entry.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(entry.amount))}
+                        </span>
+                        <button
+                          onClick={() => { if (confirm("Delete this entry?")) deleteCapitalEntry.mutate(entry.id); }}
+                          className="text-muted-foreground hover:text-red-600 transition-colors justify-self-end"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
+
+              {/* Equity summary — step by step */}
+              <div className="border-t border-border pt-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Total Injected</p>
+                    <p className="text-[10px] text-muted-foreground">Money you've put into the business</p>
+                  </div>
+                  <span className="text-sm font-bold text-emerald-700">+{formatCurrency(totalInjected)}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">− Total Withdrawn</p>
+                    <p className="text-[10px] text-muted-foreground">Capital returned to you (not operating draws)</p>
+                  </div>
+                  <span className="text-sm font-bold text-foreground">−{formatCurrency(totalWithdrawn)}</span>
+                </div>
+
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-violet-50 border border-violet-200">
+                  <div>
+                    <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">= Net Capital Invested</p>
+                    <p className="text-[10px] text-violet-600">Your skin in the game</p>
+                  </div>
+                  <span className="text-sm font-bold text-violet-700">{formatCurrency(netCapitalInvested)}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {netProfit >= 0 ? "+ Business Net Profit (YTD)" : "− Business Net Loss (YTD)"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Revenue minus all business expenses</p>
+                  </div>
+                  <span className={`text-sm font-bold ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                    {netProfit >= 0 ? `+${formatCurrency(netProfit)}` : `−${formatCurrency(Math.abs(netProfit))}`}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-blue-50 border border-blue-200">
+                  <div>
+                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">= Total Equity</p>
+                    <p className="text-[10px] text-blue-600">Net capital + business performance</p>
+                  </div>
+                  <span className="text-sm font-bold text-blue-700">{formatCurrency(totalEquity)}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">− Owner Draws Taken</p>
+                    <p className="text-[10px] text-muted-foreground">Logged under "Owner Draw" in expenses</p>
+                  </div>
+                  <span className="text-sm font-bold text-foreground">−{formatCurrency(ownerDraws)}</span>
+                </div>
+
+                <div className="border-t border-border" />
+
+                <div className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 ${businessOwesYou >= 0 ? "border-violet-300 bg-violet-50" : "border-red-300 bg-red-50"}`}>
+                  <div>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${businessOwesYou >= 0 ? "text-violet-700" : "text-red-700"}`}>
+                      {businessOwesYou >= 0 ? "= Business Owes You" : "= Still in the Hole"}
+                    </p>
+                    <p className={`text-[10px] mt-0.5 ${businessOwesYou >= 0 ? "text-violet-600" : "text-red-500"}`}>
+                      {businessOwesYou >= 0
+                        ? "Your equity minus draws already paid out"
+                        : "Business hasn't earned back your investment yet"}
+                    </p>
+                  </div>
+                  <span className={`text-xl font-black ${businessOwesYou >= 0 ? "text-violet-700" : "text-red-600"}`}>{formatCurrency(Math.abs(businessOwesYou))}</span>
+                </div>
+              </div>
             </div>
           </div>
         );
       })()}
+
+      {/* ── Add Capital Entry Dialog ── */}
+      {capitalForm && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setCapitalForm(null); }}>
+          <div className="bg-background rounded-2xl shadow-2xl w-full max-w-sm border border-border">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <h3 className="font-bold text-base">Add Capital Entry</h3>
+              <button onClick={() => setCapitalForm(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!capitalForm) return;
+                setCapitalSaving(true);
+                try {
+                  const raw = parseFloat(capitalForm.amount);
+                  if (isNaN(raw) || raw <= 0) { toast({ title: "Invalid amount", variant: "destructive" }); return; }
+                  const finalAmount = capitalForm.type === "withdrawal" ? -raw : raw;
+                  await createCapitalEntry.mutateAsync({ date: capitalForm.date, description: capitalForm.description.trim(), amount: finalAmount });
+                  setCapitalForm(null);
+                } catch {
+                  toast({ title: "Error", description: "Could not save entry.", variant: "destructive" });
+                } finally {
+                  setCapitalSaving(false);
+                }
+              }}
+              className="p-5 space-y-4"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCapitalForm(f => f ? { ...f, type: "injection" } : f)}
+                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${capitalForm.type === "injection" ? "bg-emerald-600 text-white border-emerald-600" : "bg-muted text-muted-foreground border-border hover:bg-muted/80"}`}
+                >
+                  + Put In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCapitalForm(f => f ? { ...f, type: "withdrawal" } : f)}
+                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${capitalForm.type === "withdrawal" ? "bg-red-600 text-white border-red-600" : "bg-muted text-muted-foreground border-border hover:bg-muted/80"}`}
+                >
+                  − Take Out
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={capitalForm.date}
+                  onChange={e => setCapitalForm(f => f ? { ...f, date: e.target.value } : f)}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Description</label>
+                <input
+                  type="text"
+                  required
+                  placeholder={capitalForm.type === "injection" ? "e.g. Put in from personal checking" : "e.g. Returned to personal savings"}
+                  value={capitalForm.description}
+                  onChange={e => setCapitalForm(f => f ? { ...f, description: e.target.value } : f)}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={capitalForm.amount}
+                    onChange={e => setCapitalForm(f => f ? { ...f, amount: e.target.value } : f)}
+                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-violet-400"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setCapitalForm(null)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-border text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={capitalSaving}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                >
+                  {capitalSaving ? "Saving…" : "Save Entry"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Direct Job Costs vs Overhead ── */}
       {(() => {

@@ -39,3 +39,4 @@ export * from "./job-sub-hours";
 export * from "./job-type-benchmarks";
 export * from "./website";
 export * from "./client-errors";
+export * from "./owner-capital";

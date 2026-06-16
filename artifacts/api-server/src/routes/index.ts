@@ -68,6 +68,7 @@ import { websiteRouter, websitePublicRouter } from "./website";
 import errorsRouter from "./errors";
 import adminErrorsRouter from "./admin-errors";
 import adminMigrationsRouter from "./admin-migrations";
+import ownerCapitalRouter from "./owner-capital";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -227,6 +228,7 @@ router.use(requireOwner, aerialRouter);
 router.use("/dashboard", requireOwner, dashboardRouter);
 router.use("/businesses", requireOwner, businessesRouter);
 router.use("/contacts", requireOwner, contactsRouter);
+router.use("/owner-capital", requireOwner, ownerCapitalRouter);
 router.use("/jobs", sectionGuard("jobs"), jobSubHoursRouter);
 // Canonical /api/sub-hours/:id endpoints (PUT + DELETE by ID)
 router.use("/sub-hours", sectionGuard("jobs"), subHoursAliasRouter);
