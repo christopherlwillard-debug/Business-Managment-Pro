@@ -156,6 +156,8 @@ router.get("/", async (req, res) => {
         balance: agg.totalOwed - agg.totalPaid,
         payRate: s.payRate != null ? parseFloat(s.payRate) : null,
         payType: s.payType,
+        role: s.role ?? "hourly",
+        growthPct: s.growthPct != null ? parseFloat(s.growthPct) : 0,
       };
     }));
     res.json(formatted);
@@ -167,12 +169,14 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile, address, notes, payRate, payType } = req.body;
+    const { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile, address, notes, payRate, payType, role, growthPct } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
     const [sub] = await db.insert(subcontractorsTable).values({
       name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile: !!w9OnFile, address, notes,
       payRate: payRate != null ? String(payRate) : null,
       payType: payType || "hourly",
+      role: role || "hourly",
+      growthPct: growthPct != null ? String(growthPct) : "0",
     }).returning();
     const ytd = await computeYtd(sub.id, new Date().getFullYear());
     res.status(201).json(format(sub, ytd));
@@ -198,7 +202,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile, address, notes, payRate, payType } = req.body;
+    const { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile, address, notes, payRate, payType, role, growthPct } = req.body;
     const updates: Record<string, unknown> = {};
     if ("name" in req.body) updates.name = name;
     if ("email" in req.body) updates.email = email;
@@ -212,6 +216,8 @@ router.put("/:id", async (req, res) => {
     if ("notes" in req.body) updates.notes = notes;
     if ("payRate" in req.body) updates.payRate = payRate != null ? String(payRate) : null;
     if ("payType" in req.body) updates.payType = payType || "hourly";
+    if ("role" in req.body) updates.role = role || "hourly";
+    if ("growthPct" in req.body) updates.growthPct = growthPct != null ? String(growthPct) : "0";
     const [sub] = await db.update(subcontractorsTable).set(updates).where(eq(subcontractorsTable.id, id)).returning();
     if (!sub) return res.status(404).json({ error: "Subcontractor not found" });
     const ytd = await computeYtd(id, new Date().getFullYear());

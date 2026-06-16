@@ -28,10 +28,10 @@ export default function Subcontractors() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string; hasLinkedRecords: boolean } | null>(null);
   const [inviteModal, setInviteModal] = useState<{
     name: string; token: string | null; id: number; portalApproved: boolean; portalPinSet: boolean;
-    payRate: number | null; payType: string | null;
+    payRate: number | null; payType: string | null; role: string | null; growthPct: number | null;
   } | null>(null);
   const [editingRate, setEditingRate] = useState(false);
-  const [rateForm, setRateForm] = useState({ payRate: "", payType: "hourly" });
+  const [rateForm, setRateForm] = useState({ payRate: "", payType: "hourly", role: "hourly", growthPct: "" });
   const [savingRate, setSavingRate] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [revoking, setRevoking] = useState(false);
@@ -333,7 +333,9 @@ export default function Subcontractors() {
     setEditingRate(false);
     const pr = (sub as any).payRate;
     const pt = (sub as any).payType;
-    setRateForm({ payRate: pr != null ? String(pr) : "", payType: pt ?? "hourly" });
+    const rl = (sub as any).role ?? "hourly";
+    const gp = (sub as any).growthPct ?? 0;
+    setRateForm({ payRate: pr != null ? String(pr) : "", payType: pt ?? "hourly", role: rl, growthPct: gp > 0 ? String(gp * 100) : "" });
     setInviteModal({
       name: sub.name,
       token: sub.portalToken ?? null,
@@ -342,6 +344,8 @@ export default function Subcontractors() {
       portalPinSet: !!sub.portalPinSet,
       payRate: pr ?? null,
       payType: pt ?? null,
+      role: rl,
+      growthPct: gp,
     });
   }
 
@@ -350,13 +354,14 @@ export default function Subcontractors() {
     setSavingRate(true);
     try {
       const rate = rateForm.payRate ? parseFloat(rateForm.payRate) : null;
+      const growthPctDecimal = rateForm.role === "member" && rateForm.growthPct ? parseFloat(rateForm.growthPct) / 100 : 0;
       const res = await fetch(`${BASE}/api/subcontractors/${inviteModal.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payRate: rate, payType: rateForm.payType }),
+        body: JSON.stringify({ payRate: rate, payType: rateForm.payType, role: rateForm.role, growthPct: growthPctDecimal }),
       });
       if (!res.ok) throw new Error();
-      setInviteModal(prev => prev ? { ...prev, payRate: rate, payType: rateForm.payType } : null);
+      setInviteModal(prev => prev ? { ...prev, payRate: rate, payType: rateForm.payType, role: rateForm.role, growthPct: growthPctDecimal } : null);
       setEditingRate(false);
       refetch();
     } catch {
@@ -812,6 +817,34 @@ export default function Subcontractors() {
                         </select>
                       </div>
                     </div>
+                    <div>
+                      <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Role</label>
+                      <div className="flex rounded-lg border border-border overflow-hidden">
+                        <button type="button"
+                          onClick={() => setRateForm(f => ({ ...f, role: "hourly" }))}
+                          className={`flex-1 py-1.5 text-xs font-medium transition-colors ${rateForm.role !== "member" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted/40"}`}>
+                          Hourly Worker
+                        </button>
+                        <button type="button"
+                          onClick={() => setRateForm(f => ({ ...f, role: "member" }))}
+                          className={`flex-1 py-1.5 text-xs font-medium transition-colors ${rateForm.role === "member" ? "bg-violet-600 text-white" : "bg-background text-muted-foreground hover:bg-muted/40"}`}>
+                          Member
+                        </button>
+                      </div>
+                    </div>
+                    {rateForm.role === "member" && (
+                      <div>
+                        <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Growth % (of job revenue)</label>
+                        <div className="relative">
+                          <input type="number" step="0.1" min="0" max="100" placeholder="e.g. 5"
+                            value={rateForm.growthPct}
+                            onChange={e => setRateForm(f => ({ ...f, growthPct: e.target.value }))}
+                            className="w-full px-2 py-1.5 pr-8 text-sm rounded-lg border border-violet-300 bg-background outline-none focus:ring-2 focus:ring-violet-200" />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Portion of each job's revenue contributed to the growth fund before the member split.</p>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button onClick={() => setEditingRate(false)}
                         className="flex-1 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
@@ -819,16 +852,28 @@ export default function Subcontractors() {
                       </button>
                       <button onClick={handleSaveRate} disabled={savingRate}
                         className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
-                        {savingRate ? "Saving…" : "Save Rate"}
+                        {savingRate ? "Saving…" : "Save"}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-foreground">
-                    {inviteModal.payRate != null
-                      ? <><span className="font-semibold">{formatCurrency(inviteModal.payRate)}</span> <span className="text-muted-foreground text-xs">{inviteModal.payType ?? "hourly"}</span></>
-                      : <span className="text-muted-foreground italic text-xs">No rate set — click Edit to add one</span>}
-                  </p>
+                  <div className="space-y-1.5">
+                    <p className="text-sm text-foreground">
+                      {inviteModal.payRate != null
+                        ? <><span className="font-semibold">{formatCurrency(inviteModal.payRate)}</span> <span className="text-muted-foreground text-xs">{inviteModal.payType ?? "hourly"}</span></>
+                        : <span className="text-muted-foreground italic text-xs">No rate set — click Edit to add one</span>}
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {inviteModal.role === "member" ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-100 border border-violet-200 text-violet-700">Member</span>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600">Hourly Worker</span>
+                      )}
+                      {inviteModal.role === "member" && (inviteModal.growthPct ?? 0) > 0 && (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">{((inviteModal.growthPct ?? 0) * 100).toFixed(1)}% growth</span>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

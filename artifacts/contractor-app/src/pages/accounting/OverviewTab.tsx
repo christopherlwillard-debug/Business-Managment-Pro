@@ -315,6 +315,10 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
     queryKey: ["owner-capital", capitalBizId],
     queryFn: () => fetch(`${BASE}/api/owner-capital${capitalBizId != null ? `?businessId=${capitalBizId}` : ""}`).then(r => r.json()),
   });
+  const { data: allSubsForSplit = [] } = useQuery<any[]>({
+    queryKey: ["subcontractors"],
+    queryFn: () => fetch(`${BASE}/api/subcontractors`).then(r => r.json()),
+  });
   const [capitalForm, setCapitalForm] = useState<{ date: string; description: string; amount: string; type: "injection" | "withdrawal" } | null>(null);
   const [capitalSaving, setCapitalSaving] = useState(false);
   const createCapitalEntry = useMutation({
@@ -846,38 +850,59 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         );
       })()}
 
-      {/* ── Partner Profit Split (50/50) ── */}
+      {/* ── Partner Profit Split (member-aware) ── */}
       {(() => {
+        const memberSubList = (allSubsForSplit as any[]).filter(s => s.role === 'member');
+        const totalShares = memberSubList.length + 1;
         const profitToSplit = netProfit;
         const ownerDraw = s.ownerDrawTotal ?? 0;
-        const subPaid = s.totalSubPayments ?? 0;
-        const subs1099 = Array.isArray(data.subcontractor1099) ? data.subcontractor1099 : [];
-        const subName: string =
-          subs1099.length > 0 && typeof subs1099[0]?.name === "string"
-            ? subs1099[0].name
-            : "Your Sub";
-        const eachShare = profitToSplit > 0 ? profitToSplit / 2 : 0;
-        const willardBalance = eachShare - ownerDraw;
-        const subBalance = eachShare - subPaid;
+
+        if (memberSubList.length === 0) {
+          return (
+            <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2 flex-wrap">
+                <PieChart className="w-4 h-4 text-violet-600 flex-shrink-0" />
+                <span className="font-semibold text-sm text-foreground">Partner Profit Split — {year}</span>
+              </div>
+              <div className="p-5 text-center space-y-2">
+                <p className="text-sm text-muted-foreground">No member subs configured yet.</p>
+                <p className="text-xs text-muted-foreground">Open a subcontractor's profile and set their Role to <strong>Member</strong> to enable the member-aware profit split.</p>
+              </div>
+            </div>
+          );
+        }
+
+        const eachShare = profitToSplit > 0 ? profitToSplit / totalShares : 0;
+        const participants = [
+          { id: "owner", label: "You (Owner)", paid: ownerDraw, balance: eachShare - ownerDraw },
+          ...memberSubList.map((ms: any) => ({
+            id: String(ms.id),
+            label: ms.name,
+            paid: ms.ytdPayments ?? 0,
+            balance: eachShare - (ms.ytdPayments ?? 0),
+          })),
+        ];
+        const totalPaid = participants.reduce((s, p) => s + p.paid, 0);
+        const totalRemaining = participants.reduce((s, p) => s + Math.max(0, p.balance), 0);
 
         return (
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2 flex-wrap">
               <PieChart className="w-4 h-4 text-violet-600 flex-shrink-0" />
               <span className="font-semibold text-sm text-foreground">Partner Profit Split — {year}</span>
-              <span className="text-xs text-muted-foreground">50/50 after all business expenses</span>
+              <span className="text-xs text-muted-foreground">Even split · 1 owner + {memberSubList.length} member{memberSubList.length !== 1 ? "s" : ""}</span>
             </div>
             {profitToSplit <= 0 ? (
               <div className="p-6 text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">No profit to split yet for {year}.</p>
-                <p className="text-xs text-muted-foreground">Once collected revenue exceeds business expenses, the 50/50 split will appear here.</p>
+                <p className="text-xs text-muted-foreground">Once collected revenue exceeds business expenses, the partner split will appear here.</p>
               </div>
             ) : (
               <div className="p-5 space-y-4">
                 <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-700 mb-0.5">Profit to Split</p>
-                    <p className="text-xs text-violet-600">Collected revenue after expenses &amp; mileage</p>
+                    <p className="text-xs text-violet-600">Collected revenue after all business expenses</p>
                   </div>
                   <p className="text-2xl font-black text-violet-800">{formatCurrency(profitToSplit)}</p>
                 </div>
@@ -886,18 +911,15 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
                       <tr>
-                        <th className="px-4 py-2.5 text-left">Person</th>
-                        <th className="px-4 py-2.5 text-right">Owed (50%)</th>
+                        <th className="px-4 py-2.5 text-left">Partner</th>
+                        <th className="px-4 py-2.5 text-right">Share ({Math.round(100 / totalShares)}%)</th>
                         <th className="px-4 py-2.5 text-right">Paid Out</th>
                         <th className="px-4 py-2.5 text-right">Still Due</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
-                      {([
-                        { label: "You (Willard)", paid: ownerDraw, balance: willardBalance },
-                        { label: subName, paid: subPaid, balance: subBalance },
-                      ] as { label: string; paid: number; balance: number }[]).map(({ label, paid, balance }) => (
-                        <tr key={label} className="hover:bg-muted/20 transition-colors">
+                      {participants.map(({ id, label, paid, balance }) => (
+                        <tr key={id} className="hover:bg-muted/20 transition-colors">
                           <td className="px-4 py-3 font-semibold text-foreground">{label}</td>
                           <td className="px-4 py-3 text-right font-medium text-foreground">{formatCurrency(eachShare)}</td>
                           <td className="px-4 py-3 text-right text-emerald-600 font-medium">{formatCurrency(paid)}</td>
@@ -917,23 +939,21 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                       <tr>
                         <td className="px-4 py-2.5 text-muted-foreground">Totals</td>
                         <td className="px-4 py-2.5 text-right text-foreground">{formatCurrency(profitToSplit)}</td>
-                        <td className="px-4 py-2.5 text-right text-emerald-600">{formatCurrency(ownerDraw + subPaid)}</td>
-                        <td className="px-4 py-2.5 text-right text-amber-600">
-                          {formatCurrency(Math.max(0, willardBalance) + Math.max(0, subBalance))} remaining
-                        </td>
+                        <td className="px-4 py-2.5 text-right text-emerald-600">{formatCurrency(totalPaid)}</td>
+                        <td className="px-4 py-2.5 text-right text-amber-600">{formatCurrency(totalRemaining)} remaining</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
 
-                {willardBalance <= 0 && subBalance <= 0 && (
+                {participants.every(p => p.balance <= 0) && (
                   <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <p className="text-sm font-semibold text-emerald-700">All settled — both partners are fully paid out for {year}.</p>
+                    <p className="text-sm font-semibold text-emerald-700">All settled — every partner is fully paid out for {year}.</p>
                   </div>
                 )}
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  "Paid out" to you is your owner draw total. "Paid out" to {subName} is the total recorded in subcontractor payment records.
+                  "Paid out" to you is your owner draw total. "Paid out" to each member is their YTD subcontractor payment total for {year}.
                 </p>
               </div>
             )}

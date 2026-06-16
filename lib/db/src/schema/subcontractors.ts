@@ -39,6 +39,9 @@ export const subcontractorsTable = pgTable("subcontractors", {
   // Pay rate
   payRate: numeric("pay_rate", { precision: 10, scale: 2 }),
   payType: text("pay_type").default("hourly"),
+  // Member vs hourly worker role + equity growth %
+  role: text("role").notNull().default("hourly"),
+  growthPct: numeric("growth_pct", { precision: 5, scale: 4 }).notNull().default("0"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

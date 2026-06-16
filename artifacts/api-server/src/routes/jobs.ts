@@ -642,6 +642,8 @@ router.get("/:id/sub-payments", async (req, res) => {
         paidNotes: jobSubcontractorsTable.paidNotes,
         payRate: subcontractorsTable.payRate,
         payType: subcontractorsTable.payType,
+        role: subcontractorsTable.role,
+        growthPct: subcontractorsTable.growthPct,
         computedOwed: sql<string>`COALESCE((
           SELECT SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0))
           FROM ${jobSubHoursTable}
@@ -673,6 +675,8 @@ router.get("/:id/sub-payments", async (req, res) => {
         paidNotes: r.paidNotes,
         payRate: r.payRate != null ? parseFloat(r.payRate) : null,
         payType: r.payType,
+        role: r.role ?? "hourly",
+        growthPct: r.growthPct != null ? parseFloat(r.growthPct) : 0,
         totalHours: parseFloat(r.totalHours ?? "0"),
       };
     }));
