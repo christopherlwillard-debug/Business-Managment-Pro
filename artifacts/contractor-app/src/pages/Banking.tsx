@@ -135,6 +135,7 @@ interface FileIncomeForm {
   source: string;
   notes: string;
   businessLine: string;
+  jobId: string;
 }
 
 function formatCurrency(amount: number | string | null | undefined, currency = "USD") {
@@ -169,6 +170,7 @@ export default function Banking() {
     source: "",
     notes: "",
     businessLine: "",
+    jobId: "",
   });
 
   const { data: status } = useQuery<PlaidStatus>({
@@ -332,6 +334,7 @@ export default function Banking() {
       source: "",
       notes: "",
       businessLine: activeBusiness?.slug ?? "",
+      jobId: "",
     });
   }
 
@@ -368,6 +371,7 @@ export default function Banking() {
           source: incomeForm.source || undefined,
           notes: incomeForm.notes || undefined,
           businessLine: incomeForm.businessLine || null,
+          jobId: incomeForm.jobId ? parseInt(incomeForm.jobId, 10) : null,
         },
       });
     }
@@ -915,6 +919,30 @@ export default function Banking() {
                     onChange={(e) => setIncomeForm((f) => ({ ...f, source: e.target.value }))}
                     placeholder="e.g. Willard Smith, ABC Co."
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="fi-job">Job (optional)</Label>
+                  <select
+                    id="fi-job"
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    value={incomeForm.jobId}
+                    onChange={(e) => setIncomeForm((f) => ({ ...f, jobId: e.target.value }))}
+                  >
+                    <option value="">— No job —</option>
+                    {jobs
+                      ?.filter((j) => j.status !== "closed")
+                      .map((j) => (
+                        <option key={j.id} value={String(j.id)}>{j.jobName}</option>
+                      ))}
+                    {jobs?.some((j) => j.status === "closed") && (
+                      <optgroup label="Closed jobs">
+                        {jobs.filter((j) => j.status === "closed").map((j) => (
+                          <option key={j.id} value={String(j.id)}>{j.jobName}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
                 </div>
 
                 {!activeBusiness && (

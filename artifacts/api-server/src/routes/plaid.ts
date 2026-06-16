@@ -458,12 +458,13 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
     return;
   }
 
-  const { invoiceId, description, source, notes, businessLine } = req.body as {
+  const { invoiceId, description, source, notes, businessLine, jobId } = req.body as {
     invoiceId?: number | null;
     description?: string;
     source?: string | null;
     notes?: string | null;
     businessLine?: string | null;
+    jobId?: number | null;
   };
 
   const [txn] = await db
@@ -487,6 +488,16 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
   }
 
   if (invoiceId) {
+    // Validate invoice exists before entering the transaction
+    const [invCheck] = await db
+      .select({ id: invoicesTable.id, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, invoiceId));
+    if (!invCheck) {
+      res.status(404).json({ error: "Invoice not found" });
+      return;
+    }
+
     // Match deposit to an existing invoice
     const result = await db.transaction(async (tx) => {
       const [fresh] = await tx
@@ -495,15 +506,22 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
         .where(eq(bankTransactionsTable.id, txnId));
       if (fresh?.status === "matched") return { conflict: true } as const;
 
+      // Re-fetch invoice inside transaction for consistency
       const [inv] = await tx
-        .select({ id: invoicesTable.id })
+        .select({ id: invoicesTable.id, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid })
         .from(invoicesTable)
         .where(eq(invoicesTable.id, invoiceId));
-      if (!inv) throw new Error("Invoice not found");
+      if (!inv) return { conflict: true } as const;
+
+      const existingPaid = parseFloat(inv.amountPaid ?? "0");
+      const depositAmount = parseFloat(txn.amount ?? "0");
+      const newAmountPaid = existingPaid + depositAmount;
+      const total = parseFloat(inv.total ?? "0");
+      const newStatus = newAmountPaid >= total ? "paid" : "partial";
 
       await tx
         .update(invoicesTable)
-        .set({ status: "paid", amountPaid: txn.amount })
+        .set({ status: newStatus, amountPaid: String(newAmountPaid) })
         .where(eq(invoicesTable.id, invoiceId));
 
       await tx
@@ -511,7 +529,7 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
         .set({ status: "matched", matchedInvoiceId: invoiceId })
         .where(eq(bankTransactionsTable.id, txnId));
 
-      return { ok: true, matchedInvoiceId: invoiceId };
+      return { ok: true, matchedInvoiceId: invoiceId, invoiceStatus: newStatus };
     });
 
     if (result && "conflict" in result) {
@@ -538,6 +556,7 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
           paymentMethod: "bank_transfer",
           notes: notes?.trim() || null,
           businessLine: businessLine || null,
+          jobId: jobId ?? null,
         })
         .returning();
 
