@@ -107,7 +107,7 @@ router.post("/", async (req, res) => {
     }).returning();
 
     if (expense.category?.toLowerCase() === "subcontractor" && expense.jobId && expense.subcontractorId) {
-      syncJobSubPayment(expense.jobId, expense.subcontractorId).catch(() => {});
+      await syncJobSubPayment(expense.jobId, expense.subcontractorId);
     }
 
     // Client derives jobTitle/subcontractorName from its own loaded lists — skip the JOIN
@@ -135,6 +135,10 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, businessLine } = req.body;
 
+    // Capture old values before updating so we can recompute the old pair if it changed
+    const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
+    if (!before) return res.status(404).json({ error: "Expense not found" });
+
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
     const [updated] = await db.update(expensesTable).set({
       description, amount: amount?.toString(), category, date,
@@ -144,8 +148,19 @@ router.put("/:id", async (req, res) => {
     }).where(eq(expensesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 
+    // Recompute sub payment totals for any affected (jobId, subcontractorId) pairs.
+    // We need to sync both: the new pair (may have new amounts) and the old pair (expense was
+    // moved away, so its contribution must be removed from the old pair's total).
+    const pairsToSync = new Set<string>();
     if (updated.category?.toLowerCase() === "subcontractor" && updated.jobId && updated.subcontractorId) {
-      syncJobSubPayment(updated.jobId, updated.subcontractorId).catch(() => {});
+      pairsToSync.add(`${updated.jobId}:${updated.subcontractorId}`);
+    }
+    if (before.category?.toLowerCase() === "subcontractor" && before.jobId && before.subcontractorId) {
+      pairsToSync.add(`${before.jobId}:${before.subcontractorId}`);
+    }
+    for (const pair of pairsToSync) {
+      const [jId, sId] = pair.split(":").map(Number);
+      await syncJobSubPayment(jId, sId);
     }
 
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));
@@ -161,7 +176,7 @@ router.delete("/:id", async (req, res) => {
     const [toDelete] = await db.select().from(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id)));
     await db.delete(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id)));
     if (toDelete?.category?.toLowerCase() === "subcontractor" && toDelete.jobId && toDelete.subcontractorId) {
-      syncJobSubPayment(toDelete.jobId, toDelete.subcontractorId).catch(() => {});
+      await syncJobSubPayment(toDelete.jobId, toDelete.subcontractorId);
     }
     res.status(204).send();
   } catch (err) {
