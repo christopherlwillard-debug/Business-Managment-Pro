@@ -310,14 +310,15 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   // ── Owner Capital Recovery ──────────────────────────────────────────────────
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: capitalEntries = [], isLoading: capitalLoading } = useQuery<{ id: number; date: string; description: string; amount: number; createdAt: string }[]>({
-    queryKey: ["owner-capital"],
-    queryFn: () => fetch(`${BASE}/api/owner-capital`).then(r => r.json()),
+  const capitalBizId = activeBusiness?.id ?? null;
+  const { data: capitalEntries = [], isLoading: capitalLoading } = useQuery<{ id: number; businessId: number | null; date: string; description: string; amount: number; createdAt: string }[]>({
+    queryKey: ["owner-capital", capitalBizId],
+    queryFn: () => fetch(`${BASE}/api/owner-capital${capitalBizId != null ? `?businessId=${capitalBizId}` : ""}`).then(r => r.json()),
   });
   const [capitalForm, setCapitalForm] = useState<{ date: string; description: string; amount: string; type: "injection" | "withdrawal" } | null>(null);
   const [capitalSaving, setCapitalSaving] = useState(false);
   const createCapitalEntry = useMutation({
-    mutationFn: async (payload: { date: string; description: string; amount: number }) => {
+    mutationFn: async (payload: { date: string; description: string; amount: number; businessId: number | null }) => {
       const res = await fetch(`${BASE}/api/owner-capital`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -326,14 +327,14 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
       if (!res.ok) throw new Error("Failed to save entry");
       return res.json();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital", capitalBizId] }),
   });
   const deleteCapitalEntry = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`${BASE}/api/owner-capital/${id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) throw new Error("Failed to delete");
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital", capitalBizId] }),
   });
 
   const { data: clientsList = [] } = useQuery<{ id: number; name: string }[]>({
@@ -653,7 +654,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                   const raw = parseFloat(capitalForm.amount);
                   if (isNaN(raw) || raw <= 0) { toast({ title: "Invalid amount", variant: "destructive" }); return; }
                   const finalAmount = capitalForm.type === "withdrawal" ? -raw : raw;
-                  await createCapitalEntry.mutateAsync({ date: capitalForm.date, description: capitalForm.description.trim(), amount: finalAmount });
+                  await createCapitalEntry.mutateAsync({ date: capitalForm.date, description: capitalForm.description.trim(), amount: finalAmount, businessId: capitalBizId });
                   setCapitalForm(null);
                 } catch {
                   toast({ title: "Error", description: "Could not save entry.", variant: "destructive" });

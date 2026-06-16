@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ownerCapitalEntriesTable, settingsTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 
 const router = Router();
 
 function formatEntry(e: typeof ownerCapitalEntriesTable.$inferSelect) {
   return {
     id: e.id,
+    businessId: e.businessId,
     date: e.date,
     description: e.description,
     amount: parseFloat(e.amount as string),
@@ -15,11 +16,19 @@ function formatEntry(e: typeof ownerCapitalEntriesTable.$inferSelect) {
   };
 }
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
+    const rawBid = req.query.businessId;
+    const businessId = rawBid != null && String(rawBid) !== "" ? parseInt(String(rawBid)) : null;
+
+    const whereClause = businessId != null && Number.isFinite(businessId)
+      ? eq(ownerCapitalEntriesTable.businessId, businessId)
+      : undefined;
+
     const entries = await db
       .select()
       .from(ownerCapitalEntriesTable)
+      .where(whereClause)
       .orderBy(desc(ownerCapitalEntriesTable.date), desc(ownerCapitalEntriesTable.createdAt));
 
     if (entries.length === 0) {
@@ -27,11 +36,13 @@ router.get("/", async (_req, res) => {
       const legacy = parseFloat((settings?.calculatorDefaults as any)?.ownerPersonalInvestment ?? "0") || 0;
       if (legacy > 0) {
         const [migrated] = await db.insert(ownerCapitalEntriesTable).values({
+          businessId: businessId ?? null,
           date: new Date().toISOString().split("T")[0],
           description: "Initial investment (migrated from previous records)",
           amount: String(legacy),
         }).returning();
-        return res.json([formatEntry(migrated)]);
+        res.json([formatEntry(migrated)]);
+        return;
       }
     }
 
@@ -44,18 +55,26 @@ router.get("/", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { date, description, amount } = req.body;
+    const { date, description, amount, businessId } = req.body;
     if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ error: "Invalid or missing date" });
+      res.status(400).json({ error: "Invalid or missing date" });
+      return;
     }
     if (!description || typeof description !== "string" || description.trim() === "") {
-      return res.status(400).json({ error: "Description is required" });
+      res.status(400).json({ error: "Description is required" });
+      return;
     }
     const parsedAmount = parseFloat(String(amount));
     if (amount == null || isNaN(parsedAmount)) {
-      return res.status(400).json({ error: "Invalid amount" });
+      res.status(400).json({ error: "Invalid amount" });
+      return;
     }
+    const parsedBusinessId = businessId != null && !isNaN(parseInt(String(businessId)))
+      ? parseInt(String(businessId))
+      : null;
+
     const [entry] = await db.insert(ownerCapitalEntriesTable).values({
+      businessId: parsedBusinessId,
       date,
       description: description.trim(),
       amount: String(parsedAmount),
@@ -70,7 +89,10 @@ router.post("/", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
     await db.delete(ownerCapitalEntriesTable).where(eq(ownerCapitalEntriesTable.id, id));
     res.status(204).send();
   } catch (err) {
