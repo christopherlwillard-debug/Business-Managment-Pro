@@ -27,7 +27,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -89,6 +89,8 @@ interface PlaidTransaction {
   transactionType: string;
   status: string;
   matchedExpenseId: number | null;
+  matchedInvoiceId: number | null;
+  matchedOtherIncomeId: number | null;
 }
 
 interface SyncResult {
@@ -108,6 +110,15 @@ interface Job {
   status: string;
 }
 
+interface UnpaidInvoice {
+  id: number;
+  invoiceNumber: string;
+  clientName?: string | null;
+  total: string;
+  dueDate?: string | null;
+  status: string;
+}
+
 interface FileExpenseForm {
   description: string;
   vendor: string;
@@ -115,6 +126,15 @@ interface FileExpenseForm {
   jobId: string;
   businessLine: string;
   notes: string;
+}
+
+interface FileIncomeForm {
+  mode: "invoice" | "other";
+  invoiceId: string;
+  description: string;
+  source: string;
+  notes: string;
+  businessLine: string;
 }
 
 function formatCurrency(amount: number | string | null | undefined, currency = "USD") {
@@ -128,6 +148,8 @@ export default function Banking() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [linkToken, setLinkToken] = useState<string | null>(null);
+
+  // Expense filing
   const [filingTxn, setFilingTxn] = useState<PlaidTransaction | null>(null);
   const [form, setForm] = useState<FileExpenseForm>({
     description: "",
@@ -136,6 +158,17 @@ export default function Banking() {
     jobId: "",
     businessLine: "",
     notes: "",
+  });
+
+  // Income filing
+  const [incomeFilingTxn, setIncomeFilingTxn] = useState<PlaidTransaction | null>(null);
+  const [incomeForm, setIncomeForm] = useState<FileIncomeForm>({
+    mode: "other",
+    invoiceId: "",
+    description: "",
+    source: "",
+    notes: "",
+    businessLine: "",
   });
 
   const { data: status } = useQuery<PlaidStatus>({
@@ -172,7 +205,14 @@ export default function Banking() {
   const { data: jobs } = useQuery<Job[]>({
     queryKey: ["jobs-list"],
     queryFn: () => apiFetch("/api/jobs"),
-    enabled: !!filingTxn,
+    enabled: !!(filingTxn || incomeFilingTxn),
+    staleTime: 60_000,
+  });
+
+  const { data: unpaidInvoices } = useQuery<UnpaidInvoice[]>({
+    queryKey: ["invoices-unpaid"],
+    queryFn: () => apiFetch<UnpaidInvoice[]>("/api/invoices?status=sent"),
+    enabled: !!incomeFilingTxn,
     staleTime: 60_000,
   });
 
@@ -231,6 +271,23 @@ export default function Banking() {
     onError: (err: Error) => toast({ title: "Failed to file expense", description: err.message, variant: "destructive" }),
   });
 
+  const fileAsIncomeMutation = useMutation({
+    mutationFn: ({ txnId, body }: { txnId: number; body: object }) =>
+      apiFetch(`/api/plaid/transactions/${txnId}/file-as-income`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["other-income"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices-unpaid"] });
+      setIncomeFilingTxn(null);
+      toast({ title: "Income recorded", description: "Deposit has been filed successfully." });
+    },
+    onError: (err: Error) => toast({ title: "Failed to file income", description: err.message, variant: "destructive" }),
+  });
+
   const onPlaidSuccess = useCallback(
     (public_token: string, metadata: unknown) => {
       exchangeMutation.mutate({ public_token, metadata });
@@ -266,6 +323,18 @@ export default function Banking() {
     });
   }
 
+  function openIncomeFilingSheet(txn: PlaidTransaction) {
+    setIncomeFilingTxn(txn);
+    setIncomeForm({
+      mode: "other",
+      invoiceId: "",
+      description: txn.description,
+      source: "",
+      notes: "",
+      businessLine: activeBusiness?.slug ?? "",
+    });
+  }
+
   function handleFileSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!filingTxn) return;
@@ -280,6 +349,28 @@ export default function Banking() {
         notes: form.notes || undefined,
       },
     });
+  }
+
+  function handleIncomeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!incomeFilingTxn) return;
+    if (incomeForm.mode === "invoice") {
+      if (!incomeForm.invoiceId) return;
+      fileAsIncomeMutation.mutate({
+        txnId: incomeFilingTxn.id,
+        body: { invoiceId: parseInt(incomeForm.invoiceId, 10) },
+      });
+    } else {
+      fileAsIncomeMutation.mutate({
+        txnId: incomeFilingTxn.id,
+        body: {
+          description: incomeForm.description,
+          source: incomeForm.source || undefined,
+          notes: incomeForm.notes || undefined,
+          businessLine: incomeForm.businessLine || null,
+        },
+      });
+    }
   }
 
   if (connectionLoading) {
@@ -535,6 +626,16 @@ export default function Banking() {
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                                 Filed ✓
                               </span>
+                            ) : isCredit ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs px-2.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                onClick={() => openIncomeFilingSheet(txn)}
+                              >
+                                <TrendingUp className="w-3 h-3 mr-1" />
+                                File as Income
+                              </Button>
                             ) : (
                               <Button
                                 variant="outline"
@@ -558,6 +659,7 @@ export default function Banking() {
         </Card>
       )}
 
+      {/* ── File as Expense Sheet ─────────────────────────────────────────────── */}
       <Sheet open={!!filingTxn} onOpenChange={(open) => { if (!open) setFilingTxn(null); }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
@@ -702,6 +804,182 @@ export default function Banking() {
                   </>
                 ) : (
                   "File as Expense"
+                )}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── File as Income Sheet ──────────────────────────────────────────────── */}
+      <Sheet open={!!incomeFilingTxn} onOpenChange={(open) => { if (!open) setIncomeFilingTxn(null); }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              File as Income
+            </SheetTitle>
+            <SheetDescription>
+              {incomeFilingTxn && (
+                <>
+                  {new Date(incomeFilingTxn.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  {" · "}
+                  <span className="font-medium text-emerald-600">+{formatCurrency(parseFloat(incomeFilingTxn.amount))}</span>
+                </>
+              )}
+            </SheetDescription>
+          </SheetHeader>
+
+          <form onSubmit={handleIncomeSubmit} className="space-y-5 mt-6">
+            {/* Mode toggle */}
+            <div className="space-y-1.5">
+              <Label>How would you like to record this deposit?</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setIncomeForm((f) => ({ ...f, mode: "invoice" }))}
+                  className={`rounded-lg border px-3 py-3 text-xs font-medium text-left transition-colors ${
+                    incomeForm.mode === "invoice"
+                      ? "bg-emerald-50 border-emerald-500 text-emerald-800"
+                      : "bg-background border-input text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  <Receipt className="w-4 h-4 mb-1.5" />
+                  <div className="font-semibold">Match to Invoice</div>
+                  <div className="text-[10px] opacity-70 mt-0.5">Mark an existing unpaid invoice as collected</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncomeForm((f) => ({ ...f, mode: "other" }))}
+                  className={`rounded-lg border px-3 py-3 text-xs font-medium text-left transition-colors ${
+                    incomeForm.mode === "other"
+                      ? "bg-emerald-50 border-emerald-500 text-emerald-800"
+                      : "bg-background border-input text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  <DollarSign className="w-4 h-4 mb-1.5" />
+                  <div className="font-semibold">Other Income</div>
+                  <div className="text-[10px] opacity-70 mt-0.5">Log as a new income entry (deposit, payment, etc.)</div>
+                </button>
+              </div>
+            </div>
+
+            {incomeForm.mode === "invoice" ? (
+              /* ── Match to invoice ── */
+              <div className="space-y-1.5">
+                <Label htmlFor="fi-invoice">Select Invoice</Label>
+                <select
+                  id="fi-invoice"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  value={incomeForm.invoiceId}
+                  onChange={(e) => setIncomeForm((f) => ({ ...f, invoiceId: e.target.value }))}
+                  required
+                >
+                  <option value="">— Choose an invoice —</option>
+                  {unpaidInvoices && unpaidInvoices.length > 0 ? (
+                    unpaidInvoices.map((inv) => (
+                      <option key={inv.id} value={String(inv.id)}>
+                        {inv.invoiceNumber}
+                        {inv.clientName ? ` — ${inv.clientName}` : ""}
+                        {" · "}{formatCurrency(parseFloat(inv.total))}
+                        {inv.dueDate ? ` (due ${new Date(inv.dueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })})` : ""}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled value="">No unpaid invoices found</option>
+                  )}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  The invoice will be marked as <span className="font-medium">paid</span> and this deposit will be linked to it.
+                </p>
+              </div>
+            ) : (
+              /* ── Other income ── */
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="fi-description">Description</Label>
+                  <Input
+                    id="fi-description"
+                    value={incomeForm.description}
+                    onChange={(e) => setIncomeForm((f) => ({ ...f, description: e.target.value }))}
+                    required
+                    placeholder="e.g. Payment from client, deposit…"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="fi-source">Source (optional)</Label>
+                  <Input
+                    id="fi-source"
+                    value={incomeForm.source}
+                    onChange={(e) => setIncomeForm((f) => ({ ...f, source: e.target.value }))}
+                    placeholder="e.g. Willard Smith, ABC Co."
+                  />
+                </div>
+
+                {!activeBusiness && (
+                  <div className="space-y-1.5">
+                    <Label>Business Line</Label>
+                    <div className="flex gap-2">
+                      {[
+                        { val: "", label: "Untagged" },
+                        ...businesses.map(b => ({ val: b.slug, label: b.name })),
+                      ].map(({ val, label }) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setIncomeForm((f) => ({ ...f, businessLine: val }))}
+                          className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors ${
+                            incomeForm.businessLine === val
+                              ? val === "asphalt_sealing"
+                                ? "bg-amber-500 text-white border-amber-500"
+                                : val
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : "bg-muted text-foreground border-input"
+                              : "bg-background text-muted-foreground border-input hover:bg-muted/50"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="fi-notes">Notes (optional)</Label>
+                  <Textarea
+                    id="fi-notes"
+                    rows={2}
+                    placeholder="Any additional details…"
+                    value={incomeForm.notes}
+                    onChange={(e) => setIncomeForm((f) => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+              </>
+            )}
+
+            <SheetFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIncomeFilingTxn(null)}
+                disabled={fileAsIncomeMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={fileAsIncomeMutation.isPending || (incomeForm.mode === "invoice" && !incomeForm.invoiceId)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {fileAsIncomeMutation.isPending ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Filing…
+                  </>
+                ) : (
+                  "Record Income"
                 )}
               </Button>
             </SheetFooter>

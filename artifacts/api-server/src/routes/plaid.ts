@@ -5,7 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
 } from "@workspace/db";
-import { expensesTable } from "@workspace/db/schema";
+import { expensesTable, otherIncomeTable, invoicesTable } from "@workspace/db/schema";
 import { eq, like, isNotNull, inArray, and, gte } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
@@ -250,6 +250,8 @@ router.get("/transactions", wrapAsync(async (req, res) => {
       transactionType: bankTransactionsTable.transactionType,
       status: bankTransactionsTable.status,
       matchedExpenseId: bankTransactionsTable.matchedExpenseId,
+      matchedInvoiceId: bankTransactionsTable.matchedInvoiceId,
+      matchedOtherIncomeId: bankTransactionsTable.matchedOtherIncomeId,
     })
     .from(bankTransactionsTable)
     .where(
@@ -362,7 +364,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
 }));
 
 router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) => {
-  const txnId = parseInt(req.params.txnId, 10);
+  const txnId = parseInt(String(req.params.txnId), 10);
   if (isNaN(txnId)) {
     res.status(400).json({ error: "Invalid transaction ID" });
     return;
@@ -447,6 +449,112 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
   }
 
   res.status(201).json(result);
+}));
+
+router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) => {
+  const txnId = parseInt(String(req.params.txnId), 10);
+  if (isNaN(txnId)) {
+    res.status(400).json({ error: "Invalid transaction ID" });
+    return;
+  }
+
+  const { invoiceId, description, source, notes, businessLine } = req.body as {
+    invoiceId?: number | null;
+    description?: string;
+    source?: string | null;
+    notes?: string | null;
+    businessLine?: string | null;
+  };
+
+  const [txn] = await db
+    .select()
+    .from(bankTransactionsTable)
+    .where(eq(bankTransactionsTable.id, txnId));
+
+  if (!txn) {
+    res.status(404).json({ error: "Transaction not found" });
+    return;
+  }
+
+  if (txn.status === "matched") {
+    res.status(409).json({ error: "Transaction is already filed" });
+    return;
+  }
+
+  if (txn.transactionType !== "credit") {
+    res.status(400).json({ error: "Only credit (deposit) transactions can be filed as income" });
+    return;
+  }
+
+  if (invoiceId) {
+    // Match deposit to an existing invoice
+    const result = await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select({ status: bankTransactionsTable.status })
+        .from(bankTransactionsTable)
+        .where(eq(bankTransactionsTable.id, txnId));
+      if (fresh?.status === "matched") return { conflict: true } as const;
+
+      const [inv] = await tx
+        .select({ id: invoicesTable.id })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.id, invoiceId));
+      if (!inv) throw new Error("Invoice not found");
+
+      await tx
+        .update(invoicesTable)
+        .set({ status: "paid", amountPaid: txn.amount })
+        .where(eq(invoicesTable.id, invoiceId));
+
+      await tx
+        .update(bankTransactionsTable)
+        .set({ status: "matched", matchedInvoiceId: invoiceId })
+        .where(eq(bankTransactionsTable.id, txnId));
+
+      return { ok: true, matchedInvoiceId: invoiceId };
+    });
+
+    if (result && "conflict" in result) {
+      res.status(409).json({ error: "Transaction is already filed" });
+      return;
+    }
+    res.status(201).json(result);
+  } else {
+    // Log as other income
+    const result = await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select({ status: bankTransactionsTable.status })
+        .from(bankTransactionsTable)
+        .where(eq(bankTransactionsTable.id, txnId));
+      if (fresh?.status === "matched") return { conflict: true } as const;
+
+      const [income] = await tx
+        .insert(otherIncomeTable)
+        .values({
+          amount: txn.amount,
+          date: txn.date,
+          description: description?.trim() || txn.description,
+          source: source?.trim() || null,
+          paymentMethod: "bank_transfer",
+          notes: notes?.trim() || null,
+          businessLine: businessLine || null,
+        })
+        .returning();
+
+      await tx
+        .update(bankTransactionsTable)
+        .set({ status: "matched", matchedOtherIncomeId: income.id })
+        .where(eq(bankTransactionsTable.id, txnId));
+
+      return income;
+    });
+
+    if (result && "conflict" in result) {
+      res.status(409).json({ error: "Transaction is already filed" });
+      return;
+    }
+    res.status(201).json(result);
+  }
 }));
 
 router.delete("/connection", wrapAsync(async (req, res) => {
