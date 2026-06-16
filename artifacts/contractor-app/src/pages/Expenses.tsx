@@ -54,6 +54,17 @@ const CATEGORY_LABELS: Record<string, string> = {
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const API = `${BASE}/api`;
 
+function formatJobLabel(j: any): string {
+  const loc = j.locationName || j.city;
+  const parts: string[] = [];
+  if (loc) parts.push(loc);
+  if (j.startDate) {
+    const d = new Date(j.startDate + "T00:00:00");
+    parts.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
+  }
+  return parts.length ? `${j.title} — ${parts.join(" · ")}` : j.title;
+}
+
 const FREQUENCY_LABELS: Record<RecurringExpenseFrequency, string> = {
   weekly:    "Weekly",
   biweekly:  "Bi-weekly",
@@ -953,7 +964,7 @@ function RecurringModal({
             <label className="block text-sm font-medium mb-1">Allocate to Job <span className="font-normal text-muted-foreground">(Optional)</span></label>
             <select name="jobId" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
               <option value="">— None (Overhead) —</option>
-              {jobs?.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+              {jobs?.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
             </select>
           </div>
 
@@ -1855,6 +1866,19 @@ export default function Expenses() {
                                     <input ref={editReceiptInputRef} type="file" className="hidden"
                                       accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
                                       onChange={e => { const f = e.target.files?.[0]; if (f) setEditReceiptFile(f); }} />
+                                    <select value={editingRow.jobId}
+                                      onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
+                                      className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400 mt-1">
+                                      <option value="">— No job —</option>
+                                      {(jobs ?? []).filter((j: any) => j.status !== "completed" && j.status !== "cancelled")
+                                        .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
+                                      {(jobs ?? []).some((j: any) => j.status === "completed" || j.status === "cancelled") && (
+                                        <optgroup label="Closed">
+                                          {(jobs ?? []).filter((j: any) => j.status === "completed" || j.status === "cancelled")
+                                            .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
+                                        </optgroup>
+                                      )}
+                                    </select>
                                     <input type="text" value={editingRow.notes}
                                       onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
@@ -2136,7 +2160,7 @@ export default function Expenses() {
               <label className="block text-sm font-medium mb-1">Allocate to Job <span className="font-normal text-muted-foreground">(Optional)</span></label>
               <select name="jobId" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
                 <option value="">— None (Overhead) —</option>
-                {jobs?.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+                {jobs?.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
               </select>
             </div>
 

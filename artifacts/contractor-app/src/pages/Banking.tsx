@@ -108,6 +108,20 @@ interface Job {
   id: number;
   title: string;
   status: string;
+  locationName?: string | null;
+  city?: string | null;
+  startDate?: string | null;
+}
+
+function formatJobLabel(j: Job): string {
+  const loc = j.locationName || j.city;
+  const parts: string[] = [];
+  if (loc) parts.push(loc);
+  if (j.startDate) {
+    const d = new Date(j.startDate + "T00:00:00");
+    parts.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
+  }
+  return parts.length ? `${j.title} — ${parts.join(" · ")}` : j.title;
 }
 
 interface UnpaidInvoice {
@@ -764,7 +778,7 @@ export default function Banking() {
                 {jobs
                   ?.filter((j) => j.status !== "completed" && j.status !== "cancelled")
                   .map((j) => (
-                    <option key={j.id} value={String(j.id)}>{j.title}</option>
+                    <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>
                   ))}
                 {jobs
                   ?.filter((j) => j.status === "completed" || j.status === "cancelled")
@@ -773,7 +787,7 @@ export default function Banking() {
                       {jobs
                         .filter((j) => j.status === "completed" || j.status === "cancelled")
                         .map((j) => (
-                          <option key={j.id} value={String(j.id)}>{j.title}</option>
+                          <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>
                         ))}
                     </optgroup>
                   ) : null}
@@ -931,14 +945,14 @@ export default function Banking() {
                   >
                     <option value="">— No job —</option>
                     {jobs
-                      ?.filter((j) => j.status !== "closed")
+                      ?.filter((j) => j.status !== "completed" && j.status !== "cancelled")
                       .map((j) => (
-                        <option key={j.id} value={String(j.id)}>{j.jobName}</option>
+                        <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>
                       ))}
-                    {jobs?.some((j) => j.status === "closed") && (
+                    {jobs?.some((j) => j.status === "completed" || j.status === "cancelled") && (
                       <optgroup label="Closed jobs">
-                        {jobs.filter((j) => j.status === "closed").map((j) => (
-                          <option key={j.id} value={String(j.id)}>{j.jobName}</option>
+                        {jobs.filter((j) => j.status === "completed" || j.status === "cancelled").map((j) => (
+                          <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>
                         ))}
                       </optgroup>
                     )}

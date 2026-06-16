@@ -1,13 +1,32 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobsTable, subcontractorsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, sql, isNull } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
+
+async function syncJobSubPayment(jobId: number, subId: number): Promise<void> {
+  const [sumRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${expensesTable.amount}), 0)` })
+    .from(expensesTable)
+    .where(and(
+      sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
+      eq(expensesTable.jobId, jobId),
+      eq(expensesTable.subcontractorId, subId),
+      isNull(expensesTable.jobSubHoursId),
+    ));
+  const total = parseFloat(sumRow?.total ?? "0");
+  await db.insert(jobSubcontractorsTable)
+    .values({ jobId, subcontractorId: subId, amountPaid: String(total) })
+    .onConflictDoUpdate({
+      target: [jobSubcontractorsTable.jobId, jobSubcontractorsTable.subcontractorId],
+      set: { amountPaid: String(total) },
+    });
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -87,6 +106,10 @@ router.post("/", async (req, res) => {
       businessId: businessId ? parseInt(businessId) : null,
     }).returning();
 
+    if (expense.category?.toLowerCase() === "subcontractor" && expense.jobId && expense.subcontractorId) {
+      syncJobSubPayment(expense.jobId, expense.subcontractorId).catch(() => {});
+    }
+
     // Client derives jobTitle/subcontractorName from its own loaded lists — skip the JOIN
     res.status(201).json(formatExpense(expense, null, null));
   } catch (err) {
@@ -121,6 +144,10 @@ router.put("/:id", async (req, res) => {
     }).where(eq(expensesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 
+    if (updated.category?.toLowerCase() === "subcontractor" && updated.jobId && updated.subcontractorId) {
+      syncJobSubPayment(updated.jobId, updated.subcontractorId).catch(() => {});
+    }
+
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));
     res.json(formatExpense(joined ?? updated, joined?.jobTitle, joined?.subcontractorName));
   } catch (err) {
@@ -131,7 +158,11 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
+    const [toDelete] = await db.select().from(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id)));
     await db.delete(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id)));
+    if (toDelete?.category?.toLowerCase() === "subcontractor" && toDelete.jobId && toDelete.subcontractorId) {
+      syncJobSubPayment(toDelete.jobId, toDelete.subcontractorId).catch(() => {});
+    }
     res.status(204).send();
   } catch (err) {
     console.error(err);
