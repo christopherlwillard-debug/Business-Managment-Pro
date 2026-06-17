@@ -11,6 +11,9 @@ const router = Router();
 // Call this any time sub_hours or sub_payments change for a job.
 export async function recomputeSubPaid(jobId: number): Promise<boolean> {
   const allRows = await db.select({
+    compensationType: jobSubcontractorsTable.compensationType,
+    fixedAmount: jobSubcontractorsTable.fixedAmount,
+    paymentStatus: jobSubcontractorsTable.paymentStatus,
     amountOwed: jobSubcontractorsTable.amountOwed,
     amountPaid: jobSubcontractorsTable.amountPaid,
     computedOwed: sql<string>`COALESCE((
@@ -21,8 +24,19 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
   }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
 
   const allPaid = allRows.length > 0 && allRows.every(r => {
-    const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : parseFloat(r.computedOwed ?? "0");
+    // paymentStatus='paid' is authoritative — set by pay-worker endpoint
+    if (r.paymentStatus === "paid") return true;
+    const compType = r.compensationType ?? "hourly";
     const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+    if (compType === "allocation") {
+      // Allocation owed requires split-pool context; rely on paymentStatus or amountPaid > 0
+      return paid > 0;
+    }
+    const owed = r.amountOwed != null
+      ? parseFloat(r.amountOwed)
+      : compType === "fixed"
+        ? parseFloat(r.fixedAmount ?? "0")
+        : parseFloat(r.computedOwed ?? "0");
     return owed <= 0 || paid >= owed;
   });
   await db.update(jobsTable).set({ subPaid: allPaid }).where(eq(jobsTable.id, jobId));
@@ -741,7 +755,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
 
     const today = new Date().toISOString().split("T")[0];
     const subName = String(req.body.subName ?? `Sub #${subId}`);
-    const category = compType === "allocation" ? "Subcontractor" : "Subcontractor";
+    const category = (compType === "hourly" || compType === "fixed") ? "Labor" : "Subcontractor";
     const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
 
     await db.insert(expensesTable).values({
@@ -780,6 +794,17 @@ router.post("/:id/record-owner-draw", async (req, res) => {
     const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
     const today = new Date().toISOString().split("T")[0];
     const description = String(req.body.description ?? `Owner Draw — Job ${jobId}`);
+
+    // Idempotency: return existing draw if same job/description/date/amount already recorded
+    const [existing] = await db.select({ id: expensesTable.id })
+      .from(expensesTable)
+      .where(and(
+        eq(expensesTable.jobId, jobId),
+        eq(expensesTable.category, "Owner Draw"),
+        eq(expensesTable.date, today),
+        eq(expensesTable.description, description),
+      ));
+    if (existing) return res.json({ ok: true, expenseId: existing.id, alreadyExists: true });
 
     const [exp] = await db.insert(expensesTable).values({
       description,

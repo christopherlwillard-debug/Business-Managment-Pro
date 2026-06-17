@@ -1128,7 +1128,12 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                         <div className="text-right">
                           <p className="text-sm font-bold text-foreground">${fmt(subShare)}</p>
                           {payments.length > 0 && (() => {
-                            const totalOwed = payments.reduce((s, p) => s + (p.amountOwed ?? p.computedOwed ?? 0), 0);
+                            const totalOwed = payments.reduce((s, p) => {
+                              const o = p.amountOwed != null ? p.amountOwed
+                                : p.compensationType === 'fixed' ? (p.fixedAmount ?? p.computedOwed ?? 0)
+                                : p.computedOwed ?? 0;
+                              return s + o;
+                            }, 0);
                             const totalPaid = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
                             return totalOwed > 0 ? (
                               <p className="text-[10px] text-muted-foreground">
@@ -1172,7 +1177,9 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                     {payments.map(p => {
                       const owed = p.compensationType === 'allocation'
                         ? toSplit * ((p.allocationPct ?? 0) / 100)
-                        : (p.amountOwed ?? p.computedOwed ?? 0);
+                        : p.amountOwed != null ? p.amountOwed
+                        : p.compensationType === 'fixed' ? (p.fixedAmount ?? p.computedOwed ?? 0)
+                        : p.computedOwed ?? 0;
                       const paid = p.amountPaid ?? 0;
                       const balance = owed - paid;
                       return (
@@ -1385,11 +1392,20 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
 
   const { toast } = useToast();
 
+  function owedFor(p: SubPaymentRow, splitPool?: number): number {
+    if (p.amountOwed != null) return p.amountOwed;
+    if (p.compensationType === 'allocation') return splitPool != null ? splitPool * ((p.allocationPct ?? 0) / 100) : 0;
+    if (p.compensationType === 'fixed') return p.fixedAmount ?? p.computedOwed;
+    return p.computedOwed;
+  }
+
   function notifySubsPaid(rows: SubPaymentRow[]) {
     if (!onSubsPaidChanged || rows.length === 0) return;
     const allPaid = rows.every(p => {
-      const owed = p.amountOwed ?? p.computedOwed ?? 0;
+      if (p.paymentStatus === 'paid') return true;
       const paid = p.amountPaid ?? 0;
+      if (p.compensationType === 'allocation') return paid > 0;
+      const owed = owedFor(p);
       return owed <= 0 || paid >= owed;
     });
     onSubsPaidChanged(allPaid);
@@ -1602,7 +1618,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                           <p className="text-sm font-bold">${fmt(subShare)}</p>
                           {payments.length > 0 && (() => {
                             const tp = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
-                            const to = payments.reduce((s, p) => s + (p.amountOwed ?? p.computedOwed ?? 0), 0);
+                            const to = payments.reduce((s, p) => s + owedFor(p, toSplit), 0);
                             return to > 0 ? <p className="text-[10px] text-muted-foreground">Recorded: ${fmt(to)}{tp > 0 ? ` · Paid: $${fmt(tp)}` : ""}</p> : null;
                           })()}
                         </div>
@@ -1622,7 +1638,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sub Payment Records</p></div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
-                      const owed = p.amountOwed ?? p.computedOwed ?? 0;
+                      const owed = owedFor(p, toSplit);
                       const paid = p.amountPaid ?? 0;
                       const bal = owed - paid;
                       return (
@@ -1706,10 +1722,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
               {payments.length > 0 ? (
                 <div className="space-y-2">
                   {payments.map(p => {
-                    const owed = p.amountOwed ?? p.computedOwed ?? 0;
+                    const owed = owedFor(p, toSplit);
                     const paid = p.amountPaid ?? 0;
                     const bal = owed - paid;
-                    const settled = bal <= 0.01 && paid > 0;
+                    const settled = (p.paymentStatus === 'paid') || (bal <= 0.01 && paid > 0);
                     return (
                       <div key={p.subcontractorId} className={`rounded-xl border p-3 flex items-center justify-between ${settled ? "border-emerald-200 bg-emerald-50/60" : "border-orange-200 bg-orange-50/60"}`}>
                         <div className="flex items-center gap-2">
