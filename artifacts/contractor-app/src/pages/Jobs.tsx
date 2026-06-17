@@ -1776,6 +1776,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
   const [hours, setHours] = useState<SubHourEntry[]>([]);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [benchmark, setBenchmark] = useState<BenchmarkRow | null>(null);
+  const [profit, setProfit] = useState<JobProfit | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -1795,11 +1796,12 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
   async function loadData() {
     setLoading(true);
     try {
-      const [hRes, pRes, bmRes, seRes] = await Promise.allSettled([
+      const [hRes, pRes, bmRes, seRes, prRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${job.id}/sub-hours`).then(r => r.json()),
         fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.json()),
         fetch(`${BASE}/api/job-type-benchmarks`).then(r => r.ok ? r.json() : Promise.resolve(null)),
         fetch(`${BASE}/api/jobs/${job.id}/sub-expenses`).then(r => r.json()),
+        fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null),
       ]);
       const h = hRes.status === "fulfilled" ? hRes.value : [];
       const p = pRes.status === "fulfilled" ? pRes.value : [];
@@ -1808,6 +1810,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
       setHours(Array.isArray(h) ? h : []);
       setPayments(Array.isArray(p) ? p : []);
       setSubExpenses(Array.isArray(se) ? se : []);
+      if (prRes.status === "fulfilled" && prRes.value) setProfit(prRes.value as JobProfit);
       // Find matching benchmark for this job's type (silently skipped if endpoint forbidden)
       if (Array.isArray(allBenchmarks) && job.jobType) {
         const match = allBenchmarks.find((b: BenchmarkRow) =>
@@ -2108,8 +2111,16 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
               ) : (
                 payments.map(pay => {
                   const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
+                  // Compute split pool for allocation workers (mirrors JobFinancialsPanel waterfall)
+                  const _rev = profit?.grossInvoiced ?? 0;
+                  const _exp = profit?.jobExpenses ?? 0;
+                  const _jobIncome = Math.max(0, _rev - _exp);
+                  const _hfCost = payments.filter(p => p.compensationType !== 'allocation').reduce((s, p) => s + (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed), 0);
+                  const _afterW = Math.max(0, _jobIncome - Math.max(profit?.subLaborCost ?? 0, _hfCost));
+                  const _toSplit = Math.max(0, _afterW - _afterW * 0.05);
                   const displayOwed = pay.amountOwed != null
                     ? pay.amountOwed
+                    : pay.compensationType === 'allocation' ? _toSplit * ((pay.allocationPct ?? 0) / 100)
                     : pay.compensationType === 'fixed' ? (pay.fixedAmount ?? pay.computedOwed)
                     : pay.computedOwed;
                   const amountPaid = pay.amountPaid ?? 0;
@@ -3280,38 +3291,69 @@ function JobFormDialog({
             {subIds.length > 0 && (
               <div className="mt-2 space-y-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Compensation per sub</p>
-                {subIds.map(sid => {
-                  const sub = subcontractors.find(s => s.id === sid);
-                  const comp = subCompDefaults[sid] ?? { compensationType: "hourly", rate: "" };
-                  const setComp = (patch: Partial<typeof comp>) =>
-                    setSubCompDefaults(d => ({ ...d, [sid]: { ...comp, ...patch } }));
-                  return (
-                    <div key={sid} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/30 border border-border/50">
-                      <span className="text-xs font-medium flex-1 truncate">{sub?.name ?? `Sub #${sid}`}</span>
-                      <div className="flex gap-0.5">
-                        {(["hourly", "fixed", "allocation"] as const).map(t => (
-                          <button key={t} type="button"
-                            onClick={() => setComp({ compensationType: t })}
-                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
-                              comp.compensationType === t
-                                ? t === "allocation" ? "bg-purple-600 text-white border-purple-600"
-                                  : t === "fixed" ? "bg-orange-500 text-white border-orange-500"
-                                  : "bg-blue-600 text-white border-blue-600"
-                                : "bg-background text-muted-foreground border-border"
-                            }`}
-                          >{t === "hourly" ? "/hr" : t === "fixed" ? "$" : "%"}</button>
-                        ))}
+                {(() => {
+                  const allocSids = subIds.filter(id => (subCompDefaults[id]?.compensationType ?? "hourly") === "allocation");
+                  const totalAllocPct = allocSids.reduce((s, id) => s + (parseFloat(subCompDefaults[id]?.rate || "0") || 0), 0);
+                  const remainingPct = Math.max(0, 100 - totalAllocPct);
+                  return (<>
+                    {allocSids.length > 0 && (
+                      <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200">
+                        <div className="flex-1 h-1.5 rounded-full bg-purple-100 overflow-hidden">
+                          <div className="h-full rounded-full bg-purple-500 transition-all" style={{ width: `${Math.min(100, totalAllocPct)}%` }} />
+                        </div>
+                        <span className={`text-[10px] font-bold ${Math.abs(totalAllocPct - 100) < 0.5 ? "text-emerald-600" : totalAllocPct > 100 ? "text-red-600" : "text-purple-700"}`}>
+                          {totalAllocPct.toFixed(0)}% allocated
+                          {Math.abs(totalAllocPct - 100) >= 0.5 && ` · ${remainingPct.toFixed(0)}% owner`}
+                        </span>
                       </div>
-                      <input
-                        type="number" min="0" step={comp.compensationType === "hourly" ? "0.01" : "1"}
-                        placeholder={comp.compensationType === "allocation" ? "%" : comp.compensationType === "fixed" ? "amt" : "rate"}
-                        value={comp.rate}
-                        onChange={e => setComp({ rate: e.target.value })}
-                        className="w-16 px-2 py-0.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20"
-                      />
-                    </div>
-                  );
-                })}
+                    )}
+                    {subIds.map(sid => {
+                      const sub = subcontractors.find(s => s.id === sid);
+                      const comp = subCompDefaults[sid] ?? { compensationType: "hourly", rate: "" };
+                      const setComp = (patch: Partial<typeof comp>) =>
+                        setSubCompDefaults(d => ({ ...d, [sid]: { ...comp, ...patch } }));
+                      return (
+                        <div key={sid} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/30 border border-border/50">
+                          <span className="text-xs font-medium flex-1 truncate">{sub?.name ?? `Sub #${sid}`}</span>
+                          <div className="flex gap-0.5">
+                            {(["hourly", "fixed", "allocation"] as const).map(t => (
+                              <button key={t} type="button"
+                                onClick={() => {
+                                  if (t === "allocation") {
+                                    // Auto-seed equal % split across all allocation subs (including this one)
+                                    const newAllocSids = subIds.filter(id => id === sid || (subCompDefaults[id]?.compensationType === "allocation"));
+                                    const equalPct = (100 / newAllocSids.length).toFixed(1);
+                                    setSubCompDefaults(d => {
+                                      const next = { ...d };
+                                      newAllocSids.forEach(id => { next[id] = { compensationType: "allocation", rate: equalPct }; });
+                                      return next;
+                                    });
+                                  } else {
+                                    setComp({ compensationType: t });
+                                  }
+                                }}
+                                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                                  comp.compensationType === t
+                                    ? t === "allocation" ? "bg-purple-600 text-white border-purple-600"
+                                      : t === "fixed" ? "bg-orange-500 text-white border-orange-500"
+                                      : "bg-blue-600 text-white border-blue-600"
+                                    : "bg-background text-muted-foreground border-border"
+                                }`}
+                              >{t === "hourly" ? "/hr" : t === "fixed" ? "$" : "%"}</button>
+                            ))}
+                          </div>
+                          <input
+                            type="number" min="0" step={comp.compensationType === "hourly" ? "0.01" : "1"}
+                            placeholder={comp.compensationType === "allocation" ? "%" : comp.compensationType === "fixed" ? "amt" : "rate"}
+                            value={comp.rate}
+                            onChange={e => setComp({ rate: e.target.value })}
+                            className="w-16 px-2 py-0.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20"
+                          />
+                        </div>
+                      );
+                    })}
+                  </>);
+                })()}
               </div>
             )}
           </div>

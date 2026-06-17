@@ -761,7 +761,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     }
     if (amount <= 0) return res.status(400).json({ error: "No amount to pay" });
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toISOString();
     const subName = String(req.body.subName ?? `Sub #${subId}`);
     const category = (compType === "hourly" || compType === "fixed") ? "Labor" : "Subcontractor";
     const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
