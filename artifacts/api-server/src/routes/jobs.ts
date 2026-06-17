@@ -845,39 +845,102 @@ router.post("/:id/record-owner-draw", async (req, res) => {
 
 // Record expense entries for unpaid fixed/allocation subs without changing paymentStatus.
 // Used by "Complete Job & Keep As Outstanding" flow so costs land in the books immediately.
+// Amounts and categories are derived server-side to match pay-worker accounting rules:
+//   fixed → category "Labor", amount = fixedAmount
+//   allocation → category "Subcontractor", amount = allocationPct * toSplit
 router.post("/:id/record-sub-expenses", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
-    const subs: Array<{ subcontractorId: number; amount: number; subName: string }> = req.body.subs ?? [];
-    if (!Array.isArray(subs) || subs.length === 0) return res.json({ ok: true, created: 0 });
 
-    const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+    // 1. Fetch all unpaid fixed/allocation subs from DB
+    const unpaidSubs = await db.select({
+      subcontractorId: jobSubcontractorsTable.subcontractorId,
+      compensationType: jobSubcontractorsTable.compensationType,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      allocationPct: jobSubcontractorsTable.allocationPct,
+    })
+      .from(jobSubcontractorsTable)
+      .where(and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        eq(jobSubcontractorsTable.paymentStatus, "unpaid"),
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+      ));
+    if (unpaidSubs.length === 0) return res.json({ ok: true, created: 0 });
+
+    const [jobRow] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
     const today = new Date().toISOString().split("T")[0];
-    let created = 0;
 
-    for (const sub of subs) {
-      const subId = parseInt(String(sub.subcontractorId));
-      const amount = parseFloat(String(sub.amount ?? "0"));
-      if (isNaN(subId) || amount <= 0) continue;
-      // Idempotent: skip if a non-hours-linked subcontractor expense already exists for this sub+job
+    // 2. Compute toSplit for allocation subs — same waterfall as GET /:id/profit
+    let toSplit = 0;
+    const hasAllocation = unpaidSubs.some(s => s.compensationType === "allocation");
+    if (hasAllocation) {
+      const [invRows, expRows] = await Promise.all([
+        db.select({ total: invoicesTable.total }).from(invoicesTable).where(eq(invoicesTable.jobId, jobId)),
+        db.select({ amount: expensesTable.amount, category: expensesTable.category })
+          .from(expensesTable).where(and(eq(expensesTable.jobId, jobId), isNull(expensesTable.jobSubHoursId))),
+      ]);
+      const grossInvoiced = invRows.reduce((s, r) => s + parseFloat(r.total ?? "0"), 0);
+      let jobExpenses = 0, flatSubCost = 0;
+      for (const exp of expRows) {
+        if (exp.category === "Owner Draw") continue;
+        if (exp.category === "Subcontractor" || exp.category === "Labor") {
+          flatSubCost += parseFloat(exp.amount ?? "0");
+        } else {
+          jobExpenses += parseFloat(exp.amount ?? "0");
+        }
+      }
+      const [subHoursRow] = await db
+        .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
+        .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, jobId));
+      const hoursLaborCost = parseFloat(subHoursRow?.total ?? "0");
+      const subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : flatSubCost;
+      const income = Math.max(0, grossInvoiced - jobExpenses);
+      const afterWorkers = Math.max(0, income - subLaborCost);
+      toSplit = Math.max(0, afterWorkers - afterWorkers * 0.05);
+    }
+
+    // 3. Fetch sub names
+    const subIds = unpaidSubs.map(s => s.subcontractorId);
+    const subNameRows = await db.select({ id: subcontractorsTable.id, name: subcontractorsTable.name })
+      .from(subcontractorsTable).where(inArray(subcontractorsTable.id, subIds));
+    const nameMap = new Map(subNameRows.map(s => [s.id, s.name ?? `Sub #${s.id}`]));
+
+    // 4. Create expense entries — category and amount mirror pay-worker exactly
+    let created = 0;
+    for (const sub of unpaidSubs) {
+      const compType = sub.compensationType ?? "fixed";
+      // Mirror pay-worker: fixed → Labor, allocation → Subcontractor
+      const category = compType === "fixed" ? "Labor" : "Subcontractor";
+      let amount = 0;
+      if (compType === "fixed") {
+        amount = parseFloat(sub.fixedAmount ?? "0");
+      } else if (compType === "allocation") {
+        amount = toSplit * (parseFloat(sub.allocationPct ?? "0") / 100);
+      }
+      if (amount <= 0) continue; // skip allocation subs with no invoice yet
+
+      // Idempotent: skip if non-hours-linked expense already exists for this sub+job+category
       const [existing] = await db.select({ id: expensesTable.id })
         .from(expensesTable)
         .where(and(
           eq(expensesTable.jobId, jobId),
-          eq(expensesTable.subcontractorId, subId),
-          eq(expensesTable.category, "Subcontractor"),
+          eq(expensesTable.subcontractorId, sub.subcontractorId),
+          eq(expensesTable.category, category),
           isNull(expensesTable.jobSubHoursId),
         ));
       if (existing) continue;
+
+      const subName = nameMap.get(sub.subcontractorId) ?? `Sub #${sub.subcontractorId}`;
+      const typeLabel = compType === "allocation" ? "Allocation Pay" : "Fixed Pay";
       await db.insert(expensesTable).values({
-        description: `Sub payment outstanding — ${sub.subName}`,
+        description: `${subName} — ${typeLabel} (outstanding)`,
         amount: amount.toFixed(2),
-        category: "Subcontractor",
+        category,
         date: today,
         jobId,
-        subcontractorId: subId,
-        businessLine: job?.businessLine,
+        subcontractorId: sub.subcontractorId,
+        businessLine: jobRow?.businessLine,
       });
       created++;
     }

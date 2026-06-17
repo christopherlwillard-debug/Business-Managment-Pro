@@ -3645,21 +3645,25 @@ export default function Jobs() {
     const { job, subs, toSplit } = closeJobDialog;
     setCloseJobBusy(true);
     try {
-      await Promise.all(subs.map(sub => {
+      await Promise.all(subs.map(async sub => {
         const amount = computeCloseJobSubAmount(sub, toSplit);
-        if (amount <= 0) return Promise.resolve();
-        return fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${sub.subcontractorId}`, {
+        if (amount <= 0) return;
+        const res = await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${sub.subcontractorId}`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ amount, subName: sub.subName }),
         });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(data.error ?? `Payment failed for ${sub.subName}`);
+        }
       }));
       await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
       queryClient.invalidateQueries();
       setCloseJobDialog(null);
       toast({ title: "Job completed", description: "All sub payments have been recorded." });
-    } catch {
-      toast({ title: "Failed to record payments", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Failed to record payments", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setCloseJobBusy(false);
     }
@@ -3667,25 +3671,25 @@ export default function Jobs() {
 
   async function handleCloseJobKeepOutstanding() {
     if (!closeJobDialog) return;
-    const { job, subs, toSplit } = closeJobDialog;
+    const { job } = closeJobDialog;
     setCloseJobBusy(true);
     try {
-      const subsPayload = subs
-        .map(sub => ({ subcontractorId: sub.subcontractorId, amount: computeCloseJobSubAmount(sub, toSplit), subName: sub.subName }))
-        .filter(s => s.amount > 0);
-      if (subsPayload.length > 0) {
-        await fetch(`${BASE}/api/jobs/${job.id}/record-sub-expenses`, {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subs: subsPayload }),
-        });
+      // Server computes which subs need expenses and at what amounts from DB
+      const res = await fetch(`${BASE}/api/jobs/${job.id}/record-sub-expenses`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? "Failed to record sub expenses");
       }
       await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
       queryClient.invalidateQueries();
       setCloseJobDialog(null);
       toast({ title: "Job completed", description: "Sub payments remain outstanding and are tracked in the books." });
-    } catch {
-      toast({ title: "Failed to complete job", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Failed to complete job", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setCloseJobBusy(false);
     }
