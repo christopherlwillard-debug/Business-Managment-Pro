@@ -584,6 +584,37 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       .map(e => ({ id: e.id, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description, notes: e.notes ?? null, vendor: e.vendor ?? null }))
       .sort((a, b) => b.date.localeCompare(a.date));
 
+    // Outstanding fixed/allocation sub payments — unpaid subs that haven't yet had
+    // Mark Paid clicked (which would create an expense record). Hourly subs are excluded
+    // because their hours auto-create expenses and are already in totalExpenses.
+    const outstandingSubRows = await db.select({
+      subName: subcontractorsTable.name,
+      jobTitle: jobsTable.title,
+      jobId: jobSubcontractorsTable.jobId,
+      amountOwed: jobSubcontractorsTable.amountOwed,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      compensationType: jobSubcontractorsTable.compensationType,
+      businessLine: jobsTable.businessLine,
+    })
+      .from(jobSubcontractorsTable)
+      .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
+      .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+      .where(and(
+        eq(jobSubcontractorsTable.paymentStatus, "unpaid"),
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+        blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
+      ));
+
+    const outstandingSubPayments = outstandingSubRows.map(r => ({
+      subName: r.subName,
+      jobTitle: r.jobTitle ?? "",
+      jobId: r.jobId,
+      compensationType: r.compensationType,
+      amount: r.amountOwed != null ? parseFloat(r.amountOwed) : r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
+      businessLine: r.businessLine,
+    }));
+    const outstandingSubTotal = outstandingSubPayments.reduce((s, i) => s + (i.amount ?? 0), 0);
+
     res.json({
       year,
       summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
@@ -598,6 +629,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       otherIncomeRows,
       byBusinessLine,
       ownerDrawRows,
+      outstandingSubPayments,
+      outstandingSubTotal,
     });
   } catch (err) {
     console.error(err);
@@ -695,6 +728,38 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       // system should record a manual expense to appear here.
     ]);
 
+    // Outstanding fixed/allocation sub liability — unpaid subs that haven't yet
+    // created an expense record (only happens when Mark Paid is clicked).
+    // Hourly subs are excluded: their hours auto-create expenses, so they already
+    // appear in the Contract Labor line above.
+    const outstandingSubRows = await db.select({
+      subName: subcontractorsTable.name,
+      jobTitle: jobsTable.title,
+      jobId: jobSubcontractorsTable.jobId,
+      amountOwed: jobSubcontractorsTable.amountOwed,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      compensationType: jobSubcontractorsTable.compensationType,
+      businessLine: jobsTable.businessLine,
+    })
+      .from(jobSubcontractorsTable)
+      .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
+      .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+      .where(and(
+        eq(jobSubcontractorsTable.paymentStatus, "unpaid"),
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+        blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
+      ));
+
+    const outstandingSubItems = outstandingSubRows.map(r => ({
+      subName: r.subName,
+      jobTitle: r.jobTitle ?? "",
+      jobId: r.jobId,
+      compensationType: r.compensationType,
+      amount: r.amountOwed != null ? parseFloat(r.amountOwed) : r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
+    }));
+    const outstandingSubTotal = outstandingSubItems.reduce((s, i) => s + (i.amount ?? 0), 0);
+    const outstandingSubLiability = { total: outstandingSubTotal, items: outstandingSubItems };
+
     const grossReceipts = invRows.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue  = grossReceipts + otherIncome;
@@ -736,6 +801,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       netOperatingIncome,
       deductions: { mileageDeduction, totalMiles, mileageRate, writeoffsTotal },
       netProfit,
+      outstandingSubLiability,
     });
   } catch (err) {
     console.error(err);

@@ -1356,6 +1356,65 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         ) : null}
       </div>
 
+      {/* ── Outstanding Sub Payments ── */}
+      {(() => {
+        const outstanding: any[] = data.outstandingSubPayments ?? [];
+        const total: number = data.outstandingSubTotal ?? 0;
+        if (outstanding.length === 0) return null;
+        return (
+          <div className="bg-card border border-amber-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 bg-amber-50/80 border-b border-amber-200 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span className="font-semibold text-sm text-amber-900">Outstanding Sub Payments</span>
+                <span className="text-sm font-bold text-amber-700">{formatCurrency(total)}</span>
+              </div>
+              <span className="text-xs text-amber-700/80">Fixed &amp; allocation subs not yet marked paid — not yet counted in expenses</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-amber-50/60 text-amber-800 text-xs uppercase font-semibold border-b border-amber-100">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left">Subcontractor</th>
+                    <th className="px-4 py-2.5 text-left">Job</th>
+                    <th className="px-4 py-2.5 text-left">Type</th>
+                    <th className="px-4 py-2.5 text-right">Amount Owed</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-100/60">
+                  {outstanding.map((row: any, i: number) => (
+                    <tr key={i} className="hover:bg-amber-50/40 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-foreground">{row.subName}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{row.jobTitle || "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-700">
+                          {row.compensationType}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-amber-700">
+                        {row.amount != null ? formatCurrency(row.amount) : <span className="text-muted-foreground italic">TBD</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-amber-50/60 border-t border-amber-200 font-semibold text-sm">
+                  <tr>
+                    <td colSpan={3} className="px-4 py-2.5 text-amber-800">{outstanding.length} unpaid sub{outstanding.length !== 1 ? "s" : ""}</td>
+                    <td className="px-4 py-2.5 text-right text-amber-700">{formatCurrency(total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div className="px-5 py-2.5 bg-amber-50/40 border-t border-amber-100 flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800">
+                These amounts are not in your expense totals yet. Go to the job card and click <strong>Mark Paid</strong> to record the payment and add it to your books.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       <p className="text-xs text-muted-foreground text-center pb-2">
         Auto-generated from your invoices, expenses, mileage logs, and subcontractor records. Always verify with your accountant before filing.
       </p>
