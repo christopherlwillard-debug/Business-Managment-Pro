@@ -788,9 +788,11 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     // paidAt = first payment date (set once, never overwritten); lastPaidAt = most recent
     const newPaidAt = subRow.paidAt ?? today;
 
-    // Atomically update status + create expense so records are never out of sync
+    // Atomically update status + create expense so records are never out of sync.
+    // We check affected rows from the update before inserting the expense — if no row was
+    // updated (race: another caller already marked it 'paid'), we abort without double-billing.
     await db.transaction(async (tx) => {
-      await tx.update(jobSubcontractorsTable).set({
+      const updated = await tx.update(jobSubcontractorsTable).set({
         paymentStatus: newStatus,
         paidAt: newPaidAt,
         lastPaidAt: today,
@@ -799,7 +801,12 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         eq(jobSubcontractorsTable.jobId, jobId),
         eq(jobSubcontractorsTable.subcontractorId, subId),
         sql`${jobSubcontractorsTable.paymentStatus} != 'paid'`
-      ));
+      )).returning({ jobId: jobSubcontractorsTable.jobId });
+
+      if (updated.length === 0) {
+        // Row was already paid by a concurrent call — abort to avoid duplicate expense
+        throw Object.assign(new Error("ALREADY_PAID"), { alreadyPaid: true });
+      }
 
       await tx.insert(expensesTable).values({
         description: `${subName} — ${typeLabel}`,
@@ -814,7 +821,8 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
 
     await recomputeSubPaid(jobId);
     res.json({ ok: true, amount: paymentAmount, accumulated: newAccumulated, status: newStatus });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.alreadyPaid) return res.json({ ok: true, alreadyPaid: true });
     console.error(err);
     res.status(500).json({ error: "Failed to record payment" });
   }
@@ -964,23 +972,32 @@ router.post("/:id/record-sub-expenses", async (req, res) => {
   }
 });
 
-// PATCH /:id/sub-payments/:subId — update agreed owed override on job_subcontractors
+// PATCH /:id/sub-payments/:subId — update (or clear) agreed owed override on job_subcontractors.
+// Send { amountOwed: number } to set an override, or { amountOwed: null } to clear it
+// (falling back to the computed/fixedAmount value).
 router.patch("/:id/sub-payments/:subId", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     const subId = parseInt(req.params.subId);
     if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
     const { amountOwed } = req.body;
-    if (amountOwed == null || isNaN(parseFloat(String(amountOwed)))) {
-      return res.status(400).json({ error: "amountOwed required" });
+
+    let newValue: string | null;
+    if (amountOwed === null || amountOwed === undefined) {
+      newValue = null; // clear override — fall back to fixedAmount / computed
+    } else {
+      const parsed = parseFloat(String(amountOwed));
+      if (isNaN(parsed) || parsed < 0) return res.status(400).json({ error: "amountOwed must be a non-negative number or null" });
+      newValue = parsed.toFixed(2);
     }
+
     await db.update(jobSubcontractorsTable).set({
-      amountOwed: parseFloat(String(amountOwed)).toFixed(2),
+      amountOwed: newValue,
     }).where(and(
       eq(jobSubcontractorsTable.jobId, jobId),
       eq(jobSubcontractorsTable.subcontractorId, subId),
     ));
-    res.json({ ok: true });
+    res.json({ ok: true, amountOwed: newValue });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update agreed owed" });

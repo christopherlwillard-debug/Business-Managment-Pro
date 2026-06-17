@@ -186,6 +186,127 @@ router.post("/", async (req, res) => {
   }
 });
 
+// GET /api/subcontractors/outstanding-balances
+// IMPORTANT: must be declared before /:id so Express doesn't swallow "outstanding-balances" as an id param
+router.get("/outstanding-balances", async (req, res) => {
+  try {
+    const includeSettled = req.query.includeSettled === "true";
+
+    const whereClause = includeSettled
+      ? undefined
+      : inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]);
+
+    const rows = await db.select({
+      subcontractorId: jobSubcontractorsTable.subcontractorId,
+      subName: subcontractorsTable.name,
+      jobId: jobSubcontractorsTable.jobId,
+      jobTitle: jobsTable.title,
+      jobStatus: jobsTable.status,
+      businessLine: jobsTable.businessLine,
+      compensationType: jobSubcontractorsTable.compensationType,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      allocationPct: jobSubcontractorsTable.allocationPct,
+      amountOwed: jobSubcontractorsTable.amountOwed,
+      amountPaid: jobSubcontractorsTable.amountPaid,
+      paymentStatus: jobSubcontractorsTable.paymentStatus,
+      lastPaidAt: jobSubcontractorsTable.lastPaidAt,
+      paidAt: jobSubcontractorsTable.paidAt,
+    })
+      .from(jobSubcontractorsTable)
+      .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+      .leftJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
+      .where(whereClause);
+
+    type SubEntry = {
+      subcontractorId: number;
+      subName: string;
+      jobs: Array<{
+        jobId: number; jobTitle: string; jobStatus: string | null; businessLine: string | null;
+        compensationType: string; fixedAmount: number | null; allocationPct: number | null;
+        amountOwed: number | null; amountPaid: number; paymentStatus: string; lastPaidAt: string | null;
+      }>;
+      totalOwed: number;
+      totalPaid: number;
+      balance: number;
+      percentComplete: number | null;
+      lastPaymentDate: string | null;
+    };
+
+    const subMap = new Map<number, SubEntry>();
+
+    for (const r of rows) {
+      const subId = r.subcontractorId;
+      if (!subMap.has(subId)) {
+        subMap.set(subId, {
+          subcontractorId: subId,
+          subName: r.subName ?? `Sub #${subId}`,
+          jobs: [],
+          totalOwed: 0,
+          totalPaid: 0,
+          balance: 0,
+          percentComplete: null,
+          lastPaymentDate: null,
+        });
+      }
+      const entry = subMap.get(subId)!;
+      const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+      const compType = r.compensationType ?? "hourly";
+
+      // Compute agreed owed:
+      //   - manual override (amountOwed) wins
+      //   - fixed: fall back to fixedAmount
+      //   - hourly/allocation: show null (hourly needs hours×rate; allocation needs split pool)
+      const amountOwed = r.amountOwed != null
+        ? parseFloat(r.amountOwed)
+        : compType === "fixed" ? (r.fixedAmount != null ? parseFloat(r.fixedAmount) : null)
+        : null;
+
+      entry.jobs.push({
+        jobId: r.jobId,
+        jobTitle: r.jobTitle ?? `Job #${r.jobId}`,
+        jobStatus: r.jobStatus,
+        businessLine: r.businessLine,
+        compensationType: compType,
+        fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
+        allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
+        amountOwed,
+        amountPaid,
+        paymentStatus: r.paymentStatus ?? "unpaid",
+        lastPaidAt: r.lastPaidAt ?? null,
+      });
+
+      if (amountOwed != null) entry.totalOwed += amountOwed;
+      entry.totalPaid += amountPaid;
+
+      const mostRecent = r.lastPaidAt ?? r.paidAt ?? null;
+      if (mostRecent && (!entry.lastPaymentDate || mostRecent > entry.lastPaymentDate)) {
+        entry.lastPaymentDate = mostRecent;
+      }
+    }
+
+    const perSubTotals = Array.from(subMap.values()).map(entry => {
+      const balance = Math.max(0, entry.totalOwed - entry.totalPaid);
+      const percentComplete = entry.totalOwed > 0
+        ? Math.min(100, Math.round((entry.totalPaid / entry.totalOwed) * 100))
+        : null;
+      return { ...entry, balance, percentComplete };
+    }).sort((a, b) => b.balance - a.balance);
+
+    const totalOutstanding = perSubTotals.reduce((s, e) => s + e.balance, 0);
+    const subsOwed = includeSettled
+      ? perSubTotals.filter(e => e.balance > 0.005).length
+      : perSubTotals.length;
+    const jobsImpacted = includeSettled
+      ? new Set(rows.filter(r => (r.amountPaid != null ? parseFloat(r.amountPaid) : 0) < (r.amountOwed != null ? parseFloat(r.amountOwed) : Infinity)).map(r => r.jobId)).size
+      : new Set(rows.map(r => r.jobId)).size;
+
+    res.json({ perSubTotals, totalOutstanding, subsOwed, jobsImpacted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch outstanding balances" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -348,116 +469,6 @@ router.get("/:id/payment-history", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch payment history" });
-  }
-});
-
-// GET /api/subcontractors/outstanding-balances
-// Returns a per-sub summary of all outstanding (unpaid + partial) balances across all jobs
-router.get("/outstanding-balances", async (req, res) => {
-  try {
-    const rows = await db.select({
-      subcontractorId: jobSubcontractorsTable.subcontractorId,
-      subName: subcontractorsTable.name,
-      jobId: jobSubcontractorsTable.jobId,
-      jobTitle: jobsTable.title,
-      jobStatus: jobsTable.status,
-      businessLine: jobsTable.businessLine,
-      compensationType: jobSubcontractorsTable.compensationType,
-      fixedAmount: jobSubcontractorsTable.fixedAmount,
-      allocationPct: jobSubcontractorsTable.allocationPct,
-      amountOwed: jobSubcontractorsTable.amountOwed,
-      amountPaid: jobSubcontractorsTable.amountPaid,
-      paymentStatus: jobSubcontractorsTable.paymentStatus,
-      lastPaidAt: jobSubcontractorsTable.lastPaidAt,
-      paidAt: jobSubcontractorsTable.paidAt,
-    })
-      .from(jobSubcontractorsTable)
-      .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
-      .leftJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
-      .where(inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]));
-
-    // Group by sub
-    type SubEntry = {
-      subcontractorId: number;
-      subName: string;
-      jobs: Array<{
-        jobId: number; jobTitle: string; jobStatus: string | null; businessLine: string | null;
-        compensationType: string; fixedAmount: number | null; allocationPct: number | null;
-        amountOwed: number | null; amountPaid: number; paymentStatus: string; lastPaidAt: string | null;
-      }>;
-      totalOwed: number;
-      totalPaid: number;
-      balance: number;
-      percentComplete: number | null;
-      lastPaymentDate: string | null;
-    };
-
-    const subMap = new Map<number, SubEntry>();
-
-    for (const r of rows) {
-      const subId = r.subcontractorId;
-      if (!subMap.has(subId)) {
-        subMap.set(subId, {
-          subcontractorId: subId,
-          subName: r.subName ?? `Sub #${subId}`,
-          jobs: [],
-          totalOwed: 0,
-          totalPaid: 0,
-          balance: 0,
-          percentComplete: null,
-          lastPaymentDate: null,
-        });
-      }
-      const entry = subMap.get(subId)!;
-      const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
-      // For fixed/hourly we can use amountOwed override, else fixedAmount
-      // Allocation subs have no DB-stored owed amount (computed from split pool) — show as null
-      const amountOwed = r.amountOwed != null
-        ? parseFloat(r.amountOwed)
-        : r.compensationType === "fixed" ? (r.fixedAmount != null ? parseFloat(r.fixedAmount) : null)
-        : r.compensationType === "hourly" ? null // needs hours×rate from sub-payments
-        : null; // allocation — depends on split pool
-
-      entry.jobs.push({
-        jobId: r.jobId,
-        jobTitle: r.jobTitle ?? `Job #${r.jobId}`,
-        jobStatus: r.jobStatus,
-        businessLine: r.businessLine,
-        compensationType: r.compensationType ?? "hourly",
-        fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
-        allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
-        amountOwed,
-        amountPaid,
-        paymentStatus: r.paymentStatus ?? "unpaid",
-        lastPaidAt: r.lastPaidAt ?? null,
-      });
-
-      if (amountOwed != null) entry.totalOwed += amountOwed;
-      entry.totalPaid += amountPaid;
-
-      if (r.lastPaidAt && (!entry.lastPaymentDate || r.lastPaidAt > entry.lastPaymentDate)) {
-        entry.lastPaymentDate = r.lastPaidAt;
-      } else if (r.paidAt && (!entry.lastPaymentDate || r.paidAt > entry.lastPaymentDate)) {
-        entry.lastPaymentDate = r.paidAt;
-      }
-    }
-
-    const perSubTotals = Array.from(subMap.values()).map(entry => {
-      const balance = Math.max(0, entry.totalOwed - entry.totalPaid);
-      const percentComplete = entry.totalOwed > 0
-        ? Math.min(100, Math.round((entry.totalPaid / entry.totalOwed) * 100))
-        : null;
-      return { ...entry, balance, percentComplete };
-    }).sort((a, b) => b.balance - a.balance);
-
-    const totalOutstanding = perSubTotals.reduce((s, e) => s + e.balance, 0);
-    const subsOwed = perSubTotals.length;
-    const jobsImpacted = new Set(rows.map(r => r.jobId)).size;
-
-    res.json({ perSubTotals, totalOutstanding, subsOwed, jobsImpacted });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch outstanding balances" });
   }
 });
 
