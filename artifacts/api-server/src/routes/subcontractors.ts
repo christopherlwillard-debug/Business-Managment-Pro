@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable } from "@workspace/db/schema";
+import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable } from "@workspace/db/schema";
 import { eq, and, sql, inArray, ne } from "drizzle-orm";
 
 const router = Router();
@@ -221,6 +221,22 @@ router.get("/outstanding-balances", async (req, res) => {
       .leftJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
       .where(whereClause);
 
+    // Fetch total invoice revenue per job so allocation subs can compute their owed amount
+    const uniqueJobIds = [...new Set(rows.map(r => r.jobId).filter(Boolean))];
+    const jobRevenueMap = new Map<number, number>();
+    if (uniqueJobIds.length > 0) {
+      const revenueRows = await db.select({
+        jobId: invoicesTable.jobId,
+        revenue: sql<string>`SUM(${invoicesTable.total})`,
+      })
+        .from(invoicesTable)
+        .where(inArray(invoicesTable.jobId, uniqueJobIds as number[]))
+        .groupBy(invoicesTable.jobId);
+      for (const rv of revenueRows) {
+        if (rv.jobId != null) jobRevenueMap.set(rv.jobId, parseFloat(rv.revenue ?? "0"));
+      }
+    }
+
     type SubEntry = {
       subcontractorId: number;
       subName: string;
@@ -256,14 +272,22 @@ router.get("/outstanding-balances", async (req, res) => {
       const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
       const compType = r.compensationType ?? "hourly";
 
-      // Compute agreed owed:
-      //   - manual override (amountOwed) wins
-      //   - fixed: fall back to fixedAmount
-      //   - hourly/allocation: show null (hourly needs hours×rate; allocation needs split pool)
-      const amountOwed = r.amountOwed != null
-        ? parseFloat(r.amountOwed)
-        : compType === "fixed" ? (r.fixedAmount != null ? parseFloat(r.fixedAmount) : null)
-        : null;
+      // Compute effective agreed owed:
+      //   1. Manual override (amountOwed) always wins
+      //   2. fixed: fall back to stored fixedAmount
+      //   3. allocation: fall back to jobRevenue × allocationPct/100
+      //      (uses total invoice revenue as the split pool proxy)
+      let amountOwed: number | null = null;
+      if (r.amountOwed != null) {
+        amountOwed = parseFloat(r.amountOwed);
+      } else if (compType === "fixed") {
+        amountOwed = r.fixedAmount != null ? parseFloat(r.fixedAmount) : null;
+      } else if (compType === "allocation" && r.allocationPct != null) {
+        const jobRevenue = jobRevenueMap.get(r.jobId) ?? 0;
+        if (jobRevenue > 0) {
+          amountOwed = jobRevenue * (parseFloat(r.allocationPct) / 100);
+        }
+      }
 
       entry.jobs.push({
         jobId: r.jobId,

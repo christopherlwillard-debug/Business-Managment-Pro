@@ -742,57 +742,59 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
     if (!job) return res.status(404).json({ error: "Job not found" });
 
-    const [subRow] = await db.select({
-      compensationType: jobSubcontractorsTable.compensationType,
-      fixedAmount: jobSubcontractorsTable.fixedAmount,
-      allocationPct: jobSubcontractorsTable.allocationPct,
-      amountOwed: jobSubcontractorsTable.amountOwed,
-      amountPaid: jobSubcontractorsTable.amountPaid,
-      paymentStatus: jobSubcontractorsTable.paymentStatus,
-      paidAt: jobSubcontractorsTable.paidAt,
-    }).from(jobSubcontractorsTable).where(and(
-      eq(jobSubcontractorsTable.jobId, jobId),
-      eq(jobSubcontractorsTable.subcontractorId, subId)
-    ));
-    if (!subRow) return res.status(404).json({ error: "Sub not assigned to this job" });
-
-    if (subRow.paymentStatus === "paid") {
-      return res.json({ ok: true, alreadyPaid: true });
-    }
-
-    // Payment amount for this call (required from client for all comp types)
+    // Payment amount validated before entering transaction
     const paymentAmount = parseFloat(String(req.body.amount ?? "0"));
     if (paymentAmount <= 0) return res.status(400).json({ error: "No amount to pay" });
 
-    const compType = subRow.compensationType ?? "hourly";
     const today = new Date().toISOString();
     const subName = String(req.body.subName ?? `Sub #${subId}`);
-    const category = (compType === "hourly" || compType === "fixed") ? "Labor" : "Subcontractor";
-    const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
-
-    // Compute agreed owed: DB override → client-supplied agreedOwed → fixedAmount (fixed only)
-    const dbOwedOverride = subRow.amountOwed != null ? parseFloat(subRow.amountOwed) : null;
     const clientAgreedOwed = req.body.agreedOwed != null ? parseFloat(String(req.body.agreedOwed)) : null;
-    const agreedOwed = dbOwedOverride
-      ?? clientAgreedOwed
-      ?? (compType === "fixed" ? parseFloat(subRow.fixedAmount ?? "0") : null);
 
-    // Accumulate payments
-    const prevPaid = subRow.amountPaid != null ? parseFloat(subRow.amountPaid) : 0;
-    const newAccumulated = prevPaid + paymentAmount;
-
-    // Status: "paid" if accumulated >= agreed owed (or no owed on record, treat single payment as full)
-    const newStatus: "paid" | "partial" =
-      agreedOwed != null && newAccumulated < agreedOwed - 0.005 ? "partial" : "paid";
-
-    // paidAt = first payment date (set once, never overwritten); lastPaidAt = most recent
-    const newPaidAt = subRow.paidAt ?? today;
-
-    // Atomically update status + create expense so records are never out of sync.
-    // We check affected rows from the update before inserting the expense — if no row was
-    // updated (race: another caller already marked it 'paid'), we abort without double-billing.
+    // All state reads and writes happen inside a single transaction with a row-level lock
+    // (SELECT FOR UPDATE) so concurrent payment calls cannot both read stale prevPaid
+    // and overwrite each other's accumulated total.
+    let txResult: { ok: true; amount: number; accumulated: number; status: string } | null = null;
     await db.transaction(async (tx) => {
-      const updated = await tx.update(jobSubcontractorsTable).set({
+      // Lock the row for this transaction — prevents concurrent pay-worker calls
+      // from reading stale amountPaid and computing the wrong accumulated total.
+      const [subRow] = await tx.select({
+        compensationType: jobSubcontractorsTable.compensationType,
+        fixedAmount: jobSubcontractorsTable.fixedAmount,
+        allocationPct: jobSubcontractorsTable.allocationPct,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+        paymentStatus: jobSubcontractorsTable.paymentStatus,
+        paidAt: jobSubcontractorsTable.paidAt,
+      }).from(jobSubcontractorsTable).where(and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subId)
+      )).for("update");
+
+      if (!subRow) throw Object.assign(new Error("NOT_FOUND"), { notFound: true });
+      if (subRow.paymentStatus === "paid") throw Object.assign(new Error("ALREADY_PAID"), { alreadyPaid: true });
+
+      const compType = subRow.compensationType ?? "hourly";
+      const category = (compType === "hourly" || compType === "fixed") ? "Labor" : "Subcontractor";
+      const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
+
+      // Agreed owed: DB override → client-supplied → fixedAmount (fixed only)
+      const dbOwedOverride = subRow.amountOwed != null ? parseFloat(subRow.amountOwed) : null;
+      const agreedOwed = dbOwedOverride
+        ?? clientAgreedOwed
+        ?? (compType === "fixed" ? parseFloat(subRow.fixedAmount ?? "0") : null);
+
+      // Accumulate — prevPaid is read inside the lock, safe from concurrent mutation
+      const prevPaid = subRow.amountPaid != null ? parseFloat(subRow.amountPaid) : 0;
+      const newAccumulated = prevPaid + paymentAmount;
+
+      // Status: "paid" if accumulated >= agreed owed
+      const newStatus: "paid" | "partial" =
+        agreedOwed != null && newAccumulated < agreedOwed - 0.005 ? "partial" : "paid";
+
+      // paidAt = first payment date (set once); lastPaidAt = most recent
+      const newPaidAt = subRow.paidAt ?? today;
+
+      await tx.update(jobSubcontractorsTable).set({
         paymentStatus: newStatus,
         paidAt: newPaidAt,
         lastPaidAt: today,
@@ -800,13 +802,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       }).where(and(
         eq(jobSubcontractorsTable.jobId, jobId),
         eq(jobSubcontractorsTable.subcontractorId, subId),
-        sql`${jobSubcontractorsTable.paymentStatus} != 'paid'`
-      )).returning({ jobId: jobSubcontractorsTable.jobId });
-
-      if (updated.length === 0) {
-        // Row was already paid by a concurrent call — abort to avoid duplicate expense
-        throw Object.assign(new Error("ALREADY_PAID"), { alreadyPaid: true });
-      }
+      ));
 
       await tx.insert(expensesTable).values({
         description: `${subName} — ${typeLabel}`,
@@ -817,12 +813,15 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         subcontractorId: subId,
         businessLine: job.businessLine,
       });
+
+      txResult = { ok: true, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
     });
 
     await recomputeSubPaid(jobId);
-    res.json({ ok: true, amount: paymentAmount, accumulated: newAccumulated, status: newStatus });
+    res.json(txResult ?? { ok: true });
   } catch (err: any) {
     if (err?.alreadyPaid) return res.json({ ok: true, alreadyPaid: true });
+    if (err?.notFound) return res.status(404).json({ error: "Sub not assigned to this job" });
     console.error(err);
     res.status(500).json({ error: "Failed to record payment" });
   }
@@ -991,13 +990,43 @@ router.patch("/:id/sub-payments/:subId", async (req, res) => {
       newValue = parsed.toFixed(2);
     }
 
+    // Fetch current paid amount so we can recompute paymentStatus after the owed change
+    const [current] = await db.select({
+      amountPaid: jobSubcontractorsTable.amountPaid,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      compensationType: jobSubcontractorsTable.compensationType,
+    }).from(jobSubcontractorsTable).where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subId),
+    ));
+    if (!current) return res.status(404).json({ error: "Sub not found on this job" });
+
+    const paid = current.amountPaid != null ? parseFloat(current.amountPaid) : 0;
+    // Effective new owed: override ?? fixedAmount (allocation falls back to null — not recomputable here)
+    const effectiveOwed = newValue != null
+      ? parseFloat(newValue)
+      : current.compensationType === "fixed" && current.fixedAmount != null
+        ? parseFloat(current.fixedAmount)
+        : null;
+
+    let newStatus: "unpaid" | "partial" | "paid";
+    if (effectiveOwed != null) {
+      if (paid >= effectiveOwed - 0.005) newStatus = "paid";
+      else if (paid > 0) newStatus = "partial";
+      else newStatus = "unpaid";
+    } else {
+      // No owed baseline to compare against — use paid amount as indicator
+      newStatus = paid > 0 ? "partial" : "unpaid";
+    }
+
     await db.update(jobSubcontractorsTable).set({
       amountOwed: newValue,
+      paymentStatus: newStatus,
     }).where(and(
       eq(jobSubcontractorsTable.jobId, jobId),
       eq(jobSubcontractorsTable.subcontractorId, subId),
     ));
-    res.json({ ok: true, amountOwed: newValue });
+    res.json({ ok: true, amountOwed: newValue, paymentStatus: newStatus });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update agreed owed" });
