@@ -109,7 +109,6 @@ async function seedDefaultBusinesses(): Promise<void> {
 }
 
 async function start() {
-  await ensureChrome();
   await seedDefaultBusinesses();
   await backfillMileageBusiness();
   app.listen(port, () => {
@@ -119,6 +118,11 @@ async function start() {
     startPlaidSyncJob();
     startBidSyncJob();
     startComplianceReminderJob();
+    // Warm Chrome in the background so PDF generation is ready without
+    // blocking the server from accepting requests (and passing healthchecks).
+    ensureChrome().catch(err =>
+      console.error("[startup] Chrome warm-up failed (non-fatal):", err)
+    );
   });
 }
 
