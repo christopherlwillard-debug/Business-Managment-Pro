@@ -1058,6 +1058,15 @@ function WebsiteEditor() {
     leftCollapsedRef.current = leftCollapsed;
   }, [leftCollapsed]);
 
+  // Auto-switch inspector to the most useful tab when a new section is selected.
+  // Only fires when the section changes — manual tab switches within the same section are preserved.
+  const lastAutoTabSectionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeSection || activeSection === lastAutoTabSectionRef.current) return;
+    lastAutoTabSectionRef.current = activeSection;
+    setContextInspectorTab({ tab: "content", id: Date.now() });
+  }, [activeSection]);
+
   useEffect(() => {
     function checkLayout() {
       const editorWidth = editorBodyRef.current?.offsetWidth ?? window.innerWidth;
@@ -3993,10 +4002,11 @@ function WebsiteEditor() {
               <button
                 type="button"
                 onClick={() => setLeftCollapsed(false)}
-                title="Expand panel"
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Show structure panel"
+                className="flex flex-col items-center gap-1 px-1.5 py-2 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ChevronsRight className="w-4 h-4" />
+                <span className="text-[9px] font-medium uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>Structure</span>
               </button>
               <Layers className="w-4 h-4 text-muted-foreground/40" />
               <Palette className="w-4 h-4 text-muted-foreground/40" />
@@ -4034,10 +4044,11 @@ function WebsiteEditor() {
               <button
                 type="button"
                 onClick={() => setLeftCollapsed(true)}
-                title="Collapse panel"
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Hide structure panel"
+                className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ChevronsLeft className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-medium">Hide</span>
               </button>
             </div>
           </div>
@@ -4734,7 +4745,7 @@ function WebsiteEditor() {
 
               const stickyContainer = (children: React.ReactNode) => (
                 <div className="sticky top-4 z-30 pointer-events-none" style={{ height: 0, overflow: "visible" }}>
-                  <div className="absolute right-4 top-0 pointer-events-auto w-[300px] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
+                  <div className="absolute right-4 top-0 pointer-events-auto w-[260px] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
                     style={{ maxHeight: "calc(100vh - 5rem)" }}
                     onClick={e => e.stopPropagation()}>
                     {children}

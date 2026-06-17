@@ -823,7 +823,6 @@ export function InspectorPanel({
   }
 
   function renderLayoutTab() {
-    const colGrid = "grid grid-cols-[1fr_52px_52px_52px] gap-1";
     const layoutFields = ALL_FIELDS.filter(f => f.tab === "layout");
     const grouped = new Map<string, FieldDescriptor[]>();
     for (const f of layoutFields) {
@@ -832,48 +831,35 @@ export function InspectorPanel({
       grouped.get(sec)!.push(f);
     }
 
-    return (
-      <div className="p-3">
-        <div className={`${colGrid} mb-3`}>
-          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Field</div>
-          <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground">
-            <Monitor className="w-2.5 h-2.5" /><span>Desk</span>
-          </div>
-          <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground/40" title="Responsive breakpoints coming soon">
-            <Tablet className="w-2.5 h-2.5" /><span>Tab</span>
-          </div>
-          <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground/40" title="Responsive breakpoints coming soon">
-            <Smartphone className="w-2.5 h-2.5" /><span>Mob</span>
-          </div>
-        </div>
+    const SECTION_TITLES: Record<string, string> = {
+      "": "Alignment",
+      "Spacing": "Spacing",
+      "Sizing": "Sizing",
+    };
 
+    return (
+      <div className="p-3 space-y-0">
         {LAYOUT_SECTION_ORDER.map((secName, i) => {
           const secFields = grouped.get(secName);
           if (!secFields?.length) return null;
+          const title = SECTION_TITLES[secName] ?? secName;
           return (
-            <div key={secName || "root"}>
-              {i > 0 && <div className="border-t border-border my-3" />}
-              {secName && (
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">{secName}</p>
-              )}
-              {secFields.map(f => (
-                <div key={f.id} className={`${colGrid} items-start mb-1`}>
-                  <RenderedField f={f} ctx={fieldCtx} />
-                  <ComingSoonPlaceholder />
-                  <ComingSoonPlaceholder />
-                  <ComingSoonPlaceholder />
-                </div>
-              ))}
-            </div>
+            <AccordionBlock key={secName || "root"} title={title} defaultOpen={i === 0}>
+              <div className="space-y-1 pb-1">
+                {secFields.map(f => (
+                  <div key={f.id}>
+                    <RenderedField f={f} ctx={fieldCtx} />
+                  </div>
+                ))}
+              </div>
+            </AccordionBlock>
           );
         })}
 
         {section.type === "row" && rowData && onChangeRowData && (
-          <>
-            <div className="border-t border-border my-3" />
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Row Layout</p>
+          <AccordionBlock title="Row Layout" defaultOpen={true}>
             <RowEditorPanel data={rowData} onChange={onChangeRowData} />
-          </>
+          </AccordionBlock>
         )}
       </div>
     );
