@@ -1,0 +1,287 @@
+still having issues using my web editor and this pop up is always in the way
+
+Looking at both screenshots, I think your problem is actually bigger than the text editing issue.
+
+The floating inspector is still behaving like a sidebar.
+
+You've got:
+
+Left navigation (BuildPro)
+Website structure panel
+Website canvas
+Floating inspector panel
+
+All competing for horizontal space.
+
+In the second screenshot, almost 40–50% of the available width is dead space or editor chrome, leaving a surprisingly small website preview.
+
+What's happening
+
+The inspector is:
+
+320px+
+
+wide and:
+
+1000px+
+
+tall.
+
+So every time you select something, it becomes this giant settings wall that covers the right side of the page.
+
+For layout editing it's especially bad because:
+
+Width controls
+Margin controls
+Padding controls
+Min height controls
+
+all stack vertically.
+
+You have to scroll forever.
+
+I would create a new ticket
+#839 - Convert Inspector Into Contextual Property Groups
+
+Problem
+
+The floating inspector is still too large and obscures the website preview. Most editing tasks only require a few controls, but the entire property stack is displayed at once.
+
+Done Looks Like
+
+Property groups collapsed by default.
+Only one group expanded at a time.
+Inspector height reduced significantly.
+Inspector width reduced from ~320px to ~240px.
+Frequently used controls appear first.
+Rarely used controls moved into an Advanced section.
+Inspector becomes content-aware.
+Better Layout
+
+Current:
+
+Layout
+
+Alignment
+Width
+Padding Top
+Padding Right
+Padding Bottom
+Padding Left
+Margin Top
+Margin Bottom
+Sizing
+...
+
+Better:
+
+Layout
+
+▼ Spacing
+▼ Alignment
+▼ Size
+▶ Advanced
+
+Only one section open.
+
+What I would do instead
+
+For things like:
+
+Width
+Margin
+Padding
+
+Use popovers.
+
+Click:
+
+Spacing
+
+and a small floating card appears.
+
+When finished:
+
+X
+
+it disappears.
+
+Biggest Issue I See
+
+This inspector is showing:
+
+Desktop
+Tablet
+Mobile
+
+for every spacing field.
+
+That triples the UI size.
+
+Instead:
+
+Currently Editing: Desktop
+
+at top.
+
+Only show desktop controls.
+
+Switch device mode to edit tablet/mobile.
+
+This alone would probably cut the inspector height in half.
+
+My recommendation
+
+Don't spend more time refining text editing right now.
+
+The next bottleneck is:
+
+The inspector is still too large.
+
+If it were my builder I would move toward:
+
+Website Canvas (90%)
+
+Floating Inspector
+(only when needed)
+
+rather than:
+
+Website Canvas
++ giant settings panel
+
+The red circles in your screenshots are highlighting the exact issue: you're trying to edit a website, but the editor UI itself is taking up most of the screen. The inspector needs to become much smaller, more contextual, and more collapsible so the canvas becomes the focus again.
+
+ok so i did the ctrl + and filled the screen in website but still not any better
+
+After looking at the full-screen screenshot, I don't think zoom is the problem at all.
+
+The real issue is that you have three permanent side panels competing for space:
+
+Left App Navigation
+Dashboard
+Jobs
+Expenses
+Website
+...
+Website Structure Panel
+Home
+Hero
+Services
+Portfolio
+...
+Right Inspector
+Hero Banner
+Layout
+Spacing
+Width
+Margin
+...
+
+That leaves the actual website preview squeezed into the middle.
+
+Even on a large monitor, your page content is only using about 50–60% of the available width.
+
+What I would change immediately
+Make the Website Structure panel collapsible
+
+When editing content:
+
+[<< Hide Structure]
+
+Collapse:
+
+Home
+Hero
+Services
+...
+
+and gain 250+ pixels instantly.
+
+Make the Inspector contextual
+
+Right now you're editing:
+
+Layout
+
+and seeing:
+
+Padding Top
+Padding Right
+Padding Bottom
+Padding Left
+Margin Top
+Margin Bottom
+Width
+Min Height
+
+all at once.
+
+Most of the time you only need one of those.
+
+I'd change it to:
+
+Layout
+
+▶ Alignment
+▶ Width
+▶ Spacing
+▶ Sizing
+
+Only open what you're working on.
+
+Bigger Problem
+
+The website canvas is centered inside another container.
+
+You have:
+
+Browser
+ └ BuildPro
+    └ Website Module
+       └ Website Editor
+          └ Canvas Container
+             └ Website
+
+Every layer adds padding.
+
+I'd create:
+
+#839 - Maximize Canvas Width
+
+Done Looks Like
+
+Website preview expands to fill all space between structure panel and inspector.
+Remove unnecessary max-width constraints on editor canvas.
+Remove large horizontal padding around preview area.
+Preview should use at least 80–90% of available workspace width.
+The Inspector Still Feels Like a Sidebar
+
+Your "floating" inspector is:
+
+300+ px wide
+1000+ px tall
+
+That's basically still a sidebar.
+
+I would eventually move toward:
+
+Hero Banner
+
+[Content]
+[Style]
+[Layout]
+
+as a small floating card instead of a giant settings window.
+
+If this were my app
+
+I'd prioritize these next:
+
+Maximize canvas width
+Collapse website structure panel
+Collapse inspector sections
+Fix text editing (#838)
+Background image architecture (#835)
+
+Looking at your screenshot, the thing hurting usability the most right now isn't zoom—it's that the editor UI is taking up more space than the website you're trying to edit. The canvas should be the largest thing on the screen, and right now it's the opposite.
