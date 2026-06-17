@@ -1,0 +1,258 @@
+This is actually a pretty good feature.
+
+What Replit is saying is:
+
+Current Situation
+
+You might have a job like:
+
+Marriage Line Repair
+
+Revenue: $3,000
+Job Complete: ✅
+Customer Paid: ✅
+
+But Dewayne is still owed:
+
+$950
+Status: Unpaid
+
+Right now you would have to:
+
+Open the job
+Go to Pay Breakdown
+Notice he's unpaid
+
+They're proposing a warning directly on the job card.
+
+Example
+
+On the Jobs page you would see:
+
+⚠️ Outstanding Sub Payments: $950.00
+
+"This job has unpaid subcontractor allocations."
+
+View Payments
+
+Or inside the job details:
+
+🟧 Outstanding Sub Liability
+
+Dewayne: $950.00 unpaid
+Total Outstanding: $950.00
+
+[Go to Payment Section]
+
+What "Liability" Means
+
+In accounting terms:
+
+Revenue collected = money you received.
+Subcontractor not paid = money you owe someone.
+
+That unpaid amount is a liability.
+
+Example:
+
+Bank account:
+
+Customer paid you $3,000
+
+But:
+
+Dewayne still owed $950
+
+You don't really have all $3,000 available because $950 belongs to someone else.
+
+So the system is saying:
+
+"Hey, this job still has unpaid obligations."
+
+One Change I'd Make
+
+Since you're not doing profit sharing, I'd have Replit change the wording from:
+
+Outstanding Sub Liability
+
+to something like:
+
+Outstanding Worker Payments
+
+or
+
+Unpaid Job Payments
+
+because "liability" is accountant language and not very user-friendly.
+
+For example:
+
+🟧 Unpaid Job Payments
+
+Dewayne: $950
+Worker 2: $500
+
+Total Due: $1,450
+
+[Go to Payments]
+
+That's probably easier to understand when you're quickly scrolling through jobs.
+
+ok so can i just mark it paid within that section and it takes care of everyting
+
+Yes — that's exactly how I would build it.
+
+The whole point of the feature is that when you're looking at a job and see:
+
+🟧 Unpaid Job Payments
+
+Dewayne: $950
+Worker 2: $500
+
+you should be able to click Mark Paid right there and have everything happen automatically.
+
+When You Click "Mark Paid"
+
+For Dewayne's $950 payment:
+
+✅ Changes status from Unpaid → Paid
+
+✅ Records payment date
+
+✅ Creates an expense entry
+
+Category: Subcontractor Labor
+Amount: $950
+Job: Smith Double-Wide Finish
+Paid To: Dewayne Lamb
+
+✅ Updates accounting reports
+
+✅ Updates job profitability
+
+✅ Removes the amount from outstanding payments
+
+✅ Updates the Accounting dashboard
+
+After All Workers Are Paid
+
+The banner disappears automatically.
+
+Before:
+
+Outstanding Job Payments
+$1,450
+
+After:
+
+No Outstanding Job Payments
+What You Should Tell Replit
+
+Something like:
+
+I want the warning banner to be actionable. If a worker or subcontractor is shown as unpaid, I should be able to mark them paid directly from that section. When marked paid, the system should automatically:
+
+Update payment status
+Record payment date
+Create the proper expense entry
+Link the expense to the job
+Update accounting reports
+Update job profitability
+Remove the outstanding payment warning
+
+I do not want to manually create separate accounting entries after marking someone paid. The job payment workflow should be the source of truth for labor expenses.
+
+That matches what you've been trying to achieve throughout the app: one action updates everything instead of entering the same information in multiple places.
+
+it also has this task ready #858 - Auto-record sub payment when a job is marked complete and subs are still unpaid
+What & Why
+Fixed and allocation subs only appear in expenses after "Mark Paid" is clicked on the job card. If a job is closed/completed without the owner clicking Mark Paid, those costs never enter the books — the outstanding liability warning added in the parent task helps visibility but doesn't fix the root cause. Auto-creating the expense (or at least prompting the user) when a job is completed would close the gap entirely.
+
+Done looks like
+When a job's status is changed to "completed", check for unpaid fixed/allocation job_subcontractors
+If any exist, either: (a) auto-create the Subcontractor expense and mark them paid, or (b) show a confirmation dialog warning the owner that subs are still unpaid before completing the job
+The outstanding sub liability count drops to zero for completed jobs
+Relevant files
+artifacts/api-server/src/routes/jobs.ts — job status update endpoint
+lib/db/src/schema/job-subcontractors.ts
+artifacts/api-server/src/routes/subcontractors.ts — pay-worker endpoint for reference
+Dependencies
+
+I would not choose option (a) where it automatically marks them paid.
+
+There's a huge accounting difference between:
+
+Owing someone money
+Actually paying them
+
+Example:
+
+You complete a $10,000 job today.
+
+Dewayne is owed $2,500.
+
+You don't pay him until Friday.
+
+For those 3 days:
+
+Expense should exist ✔️
+Liability should exist ✔️
+Payment should NOT be marked paid ❌
+
+If the system auto-marks him paid, your books will show money leaving the company that never actually left.
+
+What I would do instead
+
+When you click Complete Job, show:
+
+Unpaid Worker Alert
+
+This job has unpaid worker allocations:
+
+Dewayne: $950
+Worker 2: $500
+
+Total Due: $1,450
+
+What would you like to do?
+
+[Mark All Paid Now]
+
+[Complete Job & Keep As Outstanding]
+
+If You Choose "Mark All Paid Now"
+
+Then:
+
+Creates expense entries
+Marks workers paid
+Records payment date
+Removes outstanding balance
+If You Choose "Complete Job & Keep As Outstanding"
+
+Then:
+
+Creates the expense entries
+Creates an Accounts Payable / Outstanding Worker Payment record
+Keeps payment status as Unpaid
+Shows the warning banner
+Keeps amount in outstanding liabilities
+
+That is much closer to real-world bookkeeping.
+
+For Your App
+
+I'd tell Replit:
+
+Do not automatically mark workers paid when a job is completed. Completing a job and paying workers are two separate events.
+
+When a job is completed:
+
+Create the subcontractor labor expense if it does not already exist.
+Leave payment status unchanged.
+Show a confirmation dialog if unpaid workers exist.
+Allow the user to either mark workers paid immediately or keep the balances outstanding.
+
+Outstanding worker balances should remain visible until the user records actual payment.
+
+That gives you accurate accounting whether you pay your subs the same day, next week, or next month.
