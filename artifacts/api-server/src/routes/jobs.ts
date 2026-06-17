@@ -843,6 +843,40 @@ router.post("/:id/record-owner-draw", async (req, res) => {
   }
 });
 
+// Outstanding unpaid fixed/allocation subs for a single job — used by the job card banner
+router.get("/:id/outstanding-sub-payments", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const rows = await db.select({
+      subcontractorId: jobSubcontractorsTable.subcontractorId,
+      subName: subcontractorsTable.name,
+      compensationType: jobSubcontractorsTable.compensationType,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      allocationPct: jobSubcontractorsTable.allocationPct,
+      amountOwed: jobSubcontractorsTable.amountOwed,
+    })
+      .from(jobSubcontractorsTable)
+      .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+      .where(and(
+        eq(jobSubcontractorsTable.jobId, id),
+        eq(jobSubcontractorsTable.paymentStatus, "unpaid"),
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+      ));
+    res.json(rows.map(r => ({
+      subcontractorId: r.subcontractorId,
+      subName: r.subName ?? `Sub #${r.subcontractorId}`,
+      compensationType: r.compensationType ?? "fixed",
+      fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
+      allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
+      amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch outstanding sub payments" });
+  }
+});
+
 router.get("/:id/related-counts", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

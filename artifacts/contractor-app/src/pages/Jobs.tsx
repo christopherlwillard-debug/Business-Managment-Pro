@@ -2578,6 +2578,7 @@ function JobCard({
   onSmartEstimate?: (job: Job) => void;
 }) {
   const { canEdit } = useUserPermissions();
+  const { toast } = useToast();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
@@ -2588,6 +2589,61 @@ function JobCard({
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
+
+  type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null };
+  const [unpaidSubs, setUnpaidSubs] = useState<OutstandingSubRow[] | null>(null);
+  const [markingSubId, setMarkingSubId] = useState<number | null>(null);
+  const hasSubs = Array.isArray(job.subcontractorIds) && (job.subcontractorIds as number[]).length > 0;
+
+  useEffect(() => {
+    if (!hasSubs) return;
+    fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: OutstandingSubRow[]) => setUnpaidSubs(rows))
+      .catch(() => setUnpaidSubs([]));
+  }, [job.id, hasSubs, localSubPaid]);
+
+  // Compute split pool for allocation sub amounts (mirrors JobFinancialsPanel waterfall)
+  const toSplit = (() => {
+    if (!profitData) return 0;
+    const income = Math.max(0, profitData.grossInvoiced - profitData.jobExpenses);
+    const afterWorkers = Math.max(0, income - profitData.subLaborCost);
+    return Math.max(0, afterWorkers - afterWorkers * 0.05);
+  })();
+
+  function outstandingAmount(sub: OutstandingSubRow): number {
+    if (sub.amountOwed != null) return sub.amountOwed;
+    if (sub.compensationType === "fixed") return sub.fixedAmount ?? 0;
+    if (sub.compensationType === "allocation") return toSplit * ((sub.allocationPct ?? 0) / 100);
+    return 0;
+  }
+
+  async function handleMarkSubPaidInline(sub: OutstandingSubRow) {
+    const amount = outstandingAmount(sub);
+    if (amount <= 0) {
+      toast({ title: "Amount unknown", description: "Open Pay Breakdown to set this sub's amount before marking paid.", variant: "destructive" });
+      return;
+    }
+    setMarkingSubId(sub.subcontractorId);
+    try {
+      const res = await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${sub.subcontractorId}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, subName: sub.subName }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Marked paid", description: `${sub.subName} — ${formatCurrency(amount)} recorded.` });
+      // Refresh outstanding list; if empty, update localSubPaid
+      const updated: OutstandingSubRow[] = await fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : []).catch(() => []);
+      setUnpaidSubs(updated);
+      if (updated.length === 0) setLocalSubPaid(true);
+    } catch {
+      toast({ title: "Failed to record payment", variant: "destructive" });
+    } finally {
+      setMarkingSubId(null);
+    }
+  }
 
   return (
     <>
@@ -2867,6 +2923,58 @@ function JobCard({
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-colors">
             <FileText className="w-3.5 h-3.5" /> View Invoice
           </button>
+        )}
+
+        {/* Unpaid Job Payments banner — fixed/allocation subs not yet paid */}
+        {unpaidSubs && unpaidSubs.length > 0 && (
+          <div className="mt-1 rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-amber-200/60">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Unpaid Job Payments</span>
+            </div>
+            <div className="divide-y divide-amber-100">
+              {unpaidSubs.map(sub => {
+                const amt = outstandingAmount(sub);
+                const isAllocationNoData = sub.compensationType === "allocation" && amt === 0;
+                return (
+                  <div key={sub.subcontractorId} className="flex items-center gap-2 px-3 py-2">
+                    <HardHat className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-amber-900 truncate">{sub.subName}</p>
+                      <p className="text-[10px] text-amber-700">
+                        {sub.compensationType === "allocation"
+                          ? isAllocationNoData
+                            ? `${sub.allocationPct ?? 0}% allocation — invoice to compute`
+                            : `${sub.allocationPct ?? 0}% → ${formatCurrency(amt)}`
+                          : formatCurrency(amt)
+                        }
+                      </p>
+                    </div>
+                    {canEdit("jobs") && !isAllocationNoData && (
+                      <button
+                        onClick={() => handleMarkSubPaidInline(sub)}
+                        disabled={markingSubId === sub.subcontractorId}
+                        className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors disabled:opacity-50">
+                        {markingSubId === sub.subcontractorId
+                          ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                          : <Check className="w-3 h-3" />
+                        }
+                        Mark Paid
+                      </button>
+                    )}
+                    {canEdit("jobs") && isAllocationNoData && (
+                      <button
+                        onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }}
+                        className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-[10px] font-bold hover:bg-amber-200 transition-colors border border-amber-300">
+                        <PieChart className="w-3 h-3" />
+                        Pay Breakdown
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Mark Completed — for scheduled jobs with no invoice yet */}
