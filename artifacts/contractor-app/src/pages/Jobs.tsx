@@ -1989,9 +1989,13 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                         onChange={e => {
                           const subId = e.target.value;
                           const selectedSub = linkedSubs.find(s => String(s.id) === subId);
-                          const defaultRate = selectedSub && (selectedSub as any).payRate != null
-                            ? String((selectedSub as any).payRate)
-                            : "";
+                          // Prefer job-level hourlyRate from payment record; fall back to sub profile payRate
+                          const paymentRow = payments.find(p => String(p.subcontractorId) === subId);
+                          const defaultRate = paymentRow?.hourlyRate != null
+                            ? String(paymentRow.hourlyRate)
+                            : selectedSub && (selectedSub as any).payRate != null
+                              ? String((selectedSub as any).payRate)
+                              : "";
                           setForm(f => ({ ...f, subcontractorId: subId, rateSnapshot: defaultRate }));
                         }}
                         className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required>
@@ -3007,6 +3011,7 @@ function JobFormDialog({
 
   const [form, setFormState] = useState(makeForm);
   const [subIds, setSubIds]   = useState<number[]>(editJob?.subcontractorIds ?? []);
+  const [subCompDefaults, setSubCompDefaults] = useState<Record<number, { compensationType: string; rate: string }>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -3040,6 +3045,21 @@ function JobFormDialog({
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });
+        // Apply per-sub compensation defaults if set
+        const compEntries = Object.entries(subCompDefaults).filter(([, c]) => c.rate.trim() !== "");
+        if (compEntries.length > 0) {
+          await Promise.all(compEntries.map(([sid, comp]) => {
+            const body: Record<string, unknown> = { compensationType: comp.compensationType };
+            if (comp.compensationType === "hourly") body.hourlyRate = parseFloat(comp.rate);
+            else if (comp.compensationType === "fixed") body.fixedAmount = parseFloat(comp.rate);
+            else if (comp.compensationType === "allocation") body.allocationPct = parseFloat(comp.rate);
+            return fetch(`${BASE}/api/jobs/${editJob.id}/sub-payments/${sid}`, {
+              method: "PUT", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+          }));
+        }
       } else {
         await createJob.mutateAsync({ data: payload });
       }
@@ -3244,6 +3264,43 @@ function JobFormDialog({
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
             </label>
             <SubcontractorPicker subcontractors={subcontractors} selected={subIds} onChange={setSubIds} />
+            {subIds.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Compensation per sub</p>
+                {subIds.map(sid => {
+                  const sub = subcontractors.find(s => s.id === sid);
+                  const comp = subCompDefaults[sid] ?? { compensationType: "hourly", rate: "" };
+                  const setComp = (patch: Partial<typeof comp>) =>
+                    setSubCompDefaults(d => ({ ...d, [sid]: { ...comp, ...patch } }));
+                  return (
+                    <div key={sid} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/30 border border-border/50">
+                      <span className="text-xs font-medium flex-1 truncate">{sub?.name ?? `Sub #${sid}`}</span>
+                      <div className="flex gap-0.5">
+                        {(["hourly", "fixed", "allocation"] as const).map(t => (
+                          <button key={t} type="button"
+                            onClick={() => setComp({ compensationType: t })}
+                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                              comp.compensationType === t
+                                ? t === "allocation" ? "bg-purple-600 text-white border-purple-600"
+                                  : t === "fixed" ? "bg-orange-500 text-white border-orange-500"
+                                  : "bg-blue-600 text-white border-blue-600"
+                                : "bg-background text-muted-foreground border-border"
+                            }`}
+                          >{t === "hourly" ? "/hr" : t === "fixed" ? "$" : "%"}</button>
+                        ))}
+                      </div>
+                      <input
+                        type="number" min="0" step={comp.compensationType === "hourly" ? "0.01" : "1"}
+                        placeholder={comp.compensationType === "allocation" ? "%" : comp.compensationType === "fixed" ? "amt" : "rate"}
+                        value={comp.rate}
+                        onChange={e => setComp({ rate: e.target.value })}
+                        className="w-16 px-2 py-0.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           )}
 
@@ -3529,6 +3586,19 @@ export default function Jobs() {
   }
 
   async function handleMarkCompleted(job: Job) {
+    // Close gate: warn if any subs are unpaid
+    try {
+      const payments: Array<{ paymentStatus: string }> = await fetch(
+        `${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }
+      ).then(r => r.ok ? r.json() : []).catch(() => []);
+      const unpaid = payments.filter(p => p.paymentStatus !== "paid");
+      if (unpaid.length > 0) {
+        const ok = window.confirm(
+          `${unpaid.length} sub${unpaid.length > 1 ? "s have" : " has"} not been marked paid. Mark job complete anyway?`
+        );
+        if (!ok) return;
+      }
+    } catch { /* non-blocking */ }
     await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
     queryClient.invalidateQueries();
   }

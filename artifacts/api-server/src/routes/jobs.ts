@@ -758,6 +758,23 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const category = (compType === "hourly" || compType === "fixed") ? "Labor" : "Subcontractor";
     const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
 
+    // Atomically claim this payment: update only if still 'unpaid', preventing race-condition duplicates
+    const claimed = await db.update(jobSubcontractorsTable).set({
+      paymentStatus: "paid",
+      paidAt: today,
+      amountPaid: String(amount),
+    }).where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subId),
+      eq(jobSubcontractorsTable.paymentStatus, "unpaid")
+    )).returning({ subId: jobSubcontractorsTable.subcontractorId });
+
+    if (claimed.length === 0) {
+      // Race condition: another request already processed this payment
+      return res.json({ ok: true, alreadyPaid: true });
+    }
+
+    // We won the race — now safely insert the expense
     await db.insert(expensesTable).values({
       description: `${subName} — ${typeLabel}`,
       amount: String(amount),
@@ -767,15 +784,6 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       subcontractorId: subId,
       businessLine: job.businessLine,
     });
-
-    await db.update(jobSubcontractorsTable).set({
-      paymentStatus: "paid",
-      paidAt: today,
-      amountPaid: String(amount),
-    }).where(and(
-      eq(jobSubcontractorsTable.jobId, jobId),
-      eq(jobSubcontractorsTable.subcontractorId, subId)
-    ));
 
     await recomputeSubPaid(jobId);
     res.json({ ok: true, amount });
