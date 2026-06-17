@@ -1,0 +1,290 @@
+tryingto explain to replit that i want my job income summary thing to be like this                                Job Revenue
+$3,000.00    then you will see who all is on the job at bottom 
+Hourly Workers
+−$1000.00            then you will see who all is on the job at bottom 
+Remaining
+$2,000.00
+Then you will subtract 5% from the 2000 for growth 
+To Split
+$0.00?
+Sub Share (50%)
+$0.00 ?
+
+Recorded: $0.00 ?
+
+Your Share (50%)
+$0.00 ?
+Tax Reserve (25%)
+−$0.00?
+Your Take-Home
+
+After 25% tax reserve
+
+$0.00?
+
+
+—----------------------------------------------------------------------------------------------------
+Sub Payment Records
+
+Dewayne Lamb    Hourly
+$1,000.00
+
+Balance: $1,000.00
+
+Hourly pay · 40.0 hrs
+
+Try explaining it to Replit like this:
+
+Job Income Summary Calculation
+
+I want the Job Income Summary to calculate in this exact order:
+
+Example Job
+
+Job Revenue
+
+$3,000.00
+Hourly Workers
+Total of all hourly worker payments on the job.
+Example:
+Dewayne Lamb = $1,000.00
+Total Hourly Workers = −$1,000.00
+Remaining
+Job Revenue - Hourly Workers
+$3,000 - $1,000 = $2,000
+
+Remaining = $2,000.00
+
+Growth Reserve (5%)
+
+Before any profit split, automatically reserve 5% of the Remaining amount for business growth.
+
+$2,000 × 5% = $100
+
+Growth Reserve = −$100.00
+
+To Split
+$2,000 - $100 = $1,900
+
+To Split = $1,900.00
+
+Profit Split
+Sub Share (50%)
+$1,900 × 50% = $950
+
+Sub Share = $950.00
+
+Recorded Payments = amount already paid to the profit-sharing subcontractor.
+
+Example:
+
+Recorded = $500
+Balance Due = $450
+Your Share (50%)
+$1,900 × 50% = $950
+
+Your Share = $950.00
+
+Tax Reserve (25%)
+
+Calculate tax reserve from Your Share only.
+
+$950 × 25% = $237.50
+
+Tax Reserve = −$237.50
+
+Your Take-Home
+$950 - $237.50 = $712.50
+
+Your Take-Home = $712.50
+
+Display Example
+Job Revenue
+$3,000.00
+
+Hourly Workers
+-$1,000.00
+
+Remaining
+$2,000.00
+
+Growth Reserve (5%)
+-$100.00
+
+To Split
+$1,900.00
+
+Sub Share (50%)
+$950.00
+
+Recorded
+$500.00
+
+Balance Due
+$450.00
+
+Your Share (50%)
+$950.00
+
+Tax Reserve (25%)
+-$237.50
+
+Your Take-Home
+$712.50
+Sub Payment Records
+
+At the bottom, show every worker attached to the job.
+
+Sub Payment Records
+
+Dewayne Lamb
+Hourly
+
+Paid: $1,000.00
+Hours: 40.0
+Rate: $25.00/hr
+
+Balance: $1,000.00
+
+The "Hourly Workers" total at the top should automatically be the sum of all hourly workers listed in the Sub Payment Records section. The Growth Reserve should always be calculated before any profit-sharing split occurs.
+
+but also with that is i want to be able to mark paid from that job and then my 50% sub paid and then my hourly subs paid from that job so when i complete that job and mark it paid and finished then i want it to start marking into the expenses correctly as well for everyone i paid 
+
+I would tell Replit something like this:
+
+Job Completion and Payment Tracking Requirements
+
+The Job Income Summary should not just calculate profits. It should also be the source of truth for payroll, profit-share payouts, and job expenses.
+
+Payment Types
+
+Workers can be assigned one of three payment types:
+
+Hourly Worker
+Paid based on hours × rate.
+Deducted before profit split.
+Profit Share Worker
+Receives a percentage of the profit split amount.
+Example: 50% of the "To Split" amount.
+Owner
+Receives the remaining share after profit split.
+Tax reserve is calculated from owner's share.
+Payment Status Tracking
+
+Inside the job, I want buttons to:
+
+Mark Hourly Worker Paid
+
+Example:
+
+Dewayne Lamb
+
+Owed: $1,000
+Status: Unpaid
+
+Click "Mark Paid"
+
+Result:
+
+Status changes to Paid
+Creates an expense transaction
+Adds $1,000 to labor expenses
+Records payment date
+Reduces cash balance
+Mark Profit Share Paid
+
+Example:
+
+Sub Share Due: $950
+
+Click "Mark Paid"
+
+Result:
+
+Creates expense transaction
+Adds $950 to subcontractor expenses
+Records payment date
+Marks profit share as paid
+Mark Owner Draw Paid
+
+Example:
+
+Owner Share: $950
+
+Click "Mark Paid"
+
+Result:
+
+Records Owner Draw transaction
+Does NOT categorize as labor expense
+Appears under Owner Draws / Distributions
+Records payment date
+Job Completion Workflow
+
+When a job is marked:
+
+Paid
+Customer has paid invoice in full.
+Revenue is recorded.
+Job income summary becomes active.
+Completed
+Work is finished.
+Closed
+All worker payments are marked paid.
+All profit share payments are marked paid.
+Owner draw has been recorded (optional).
+
+Only then should the job be considered fully closed.
+
+Accounting Integration
+
+Every payment made from a job should automatically flow into accounting.
+
+Example:
+
+Job Revenue
+$3,000
+
+Hourly Labor
+$1,000
+
+Growth Reserve
+$100
+
+Profit Share Paid
+$950
+
+Owner Draw
+$950
+
+The accounting dashboard should automatically show:
+
+Revenue
+
+Job Revenue = $3,000
+
+Expenses
+
+Hourly Labor = $1,000
+Profit Share Labor = $950
+
+Owner Draws
+
+Owner Distribution = $950
+
+Retained Earnings / Growth Fund
+
+Growth Reserve = $100
+What I Want
+
+I should never have to enter the same payment twice.
+
+If I click "Mark Paid" on someone inside a job:
+
+The worker gets marked paid.
+An expense transaction is created automatically.
+Accounting updates automatically.
+Payroll reports update automatically.
+Profit reports update automatically.
+
+The job should drive the accounting system, not require separate manual bookkeeping entries. This is critical because I want every completed job to automatically feed accurate financial reports.

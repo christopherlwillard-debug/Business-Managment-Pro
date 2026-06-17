@@ -1,0 +1,304 @@
+For the way you're describing it, I'd keep it very simple.
+
+Example: $3,000 Job Revenue
+
+Job Revenue
+
+$3,000
+
+Growth Reserve (5%)
+
+$150
+
+Amount Remaining
+
+$2,850
+
+Equal Split (3 people)
+
+$2,850 ÷ 3 = $950 each
+
+So:
+
+Person	Share
+You	$950
+Worker #1	$950
+Worker #2	$950
+Growth Fund	$150
+How I'd Structure It In The App
+
+Instead of "Profit Share %" or "Sub Share", create a new worker type:
+
+Compensation Type
+
+Hourly
+Fixed Amount
+Equal Split
+Percentage Split
+
+For this job:
+
+Chris = Equal Split
+Dewayne = Equal Split
+Worker 3 = Equal Split
+
+The app would:
+
+Take Job Revenue
+Subtract Growth Reserve (5%)
+Count everyone marked "Equal Split"
+Divide remaining amount evenly
+
+Formula:
+
+Job Revenue
+- Growth Reserve
+= Split Pool
+
+Split Pool ÷ Number of Equal Split Members
+= Individual Share
+Example With Expenses
+
+Let's say:
+
+Revenue = $3,000
+
+Materials = $300
+
+Growth Reserve = 5%
+
+Then:
+
+$3,000 Revenue
+-$300 Materials
+= $2,700
+
+Growth Reserve (5%)
+-$135
+
+Split Pool
+$2,565
+
+3 People
+
+$2,565 ÷ 3 = $855 each
+
+This is actually the cleaner way to do it because as your manufactured home jobs grow, you'll eventually have:
+
+Revenue
+Materials
+Dump fees
+Fuel
+Permit costs
+Hourly labor (if any)
+
+Then whatever is left becomes the Split Pool.
+
+Formula:
+
+Revenue
+- Job Expenses
+- Growth Reserve
+= Split Pool
+
+Split Pool ÷ Team Members
+
+That gives you a true picture of what each job earned and automatically builds your growth fund.
+
+One thing I'd think about: if you're the one finding the work, carrying the insurance, owning the LLC, handling taxes, and taking the risk, many contractors eventually move away from a pure 33/33/33 split and do something like:
+
+5% Growth
+Business expenses paid
+40% Owner
+30% Worker 1
+30% Worker 2
+
+or
+
+Equal split plus an additional owner override.
+
+You can absolutely start with equal thirds if everyone agrees, but build the app so the percentages are configurable rather than hard-coded. That gives you flexibility later without redesigning everything.
+
+well i think everything i have now would work : income- hourly- 5% - then spilt the rest it still works with that flow. But the income should already have the expenses/materials out of the income before it get to that work flow. So before it gets there should be revenue-materials then goes to  income- hourly- 5% - then spilt the rest 
+
+Yes, that's actually a much cleaner structure.
+
+What you're really calculating isn't Revenue, it's Job Gross Profit after direct job costs.
+
+Correct Flow
+Job Revenue
+- Materials
+- Job Expenses
+= Job Income
+
+Job Income
+- Hourly Labor
+= Remaining
+
+Remaining
+- Growth Reserve (5%)
+= Split Pool
+
+Split Pool ÷ Team Members
+= Individual Share
+Example
+Job Revenue
+
+$3,000
+
+Materials
+
+-$300
+
+Job Income
+
+$2,700
+
+Hourly Labor
+
+-$600
+
+Remaining
+
+$2,100
+
+Growth Reserve (5%)
+
+-$105
+
+Split Pool
+
+$1,995
+
+3-Way Split
+
+$1,995 ÷ 3 = $665 each
+
+Description	Amount
+Revenue	$3,000
+Materials	-$300
+Job Income	$2,700
+Hourly Labor	-$600
+Remaining	$2,100
+Growth Reserve (5%)	-$105
+Split Pool	$1,995
+Chris	$665
+Worker 1	$665
+Worker 2	$665
+For Replit
+
+I'd tell them:
+
+The Job Income Summary should start with Job Income, not Revenue. Job Income is calculated elsewhere as Revenue minus all materials and direct job expenses. The Pay Breakdown should only work from Job Income forward:
+
+Job Income
+Minus Hourly Workers
+Equals Remaining
+Minus Growth Reserve (5%)
+Equals Split Pool
+Divide Split Pool among all workers assigned to the split pool.
+
+The split pool should support any number of participants (2, 3, 4, etc.) and divide automatically based on assigned percentages or equal shares.
+
+That way your materials, plumbing parts, underpinning materials, siding, dump fees, etc. are already accounted for before anyone gets paid from the job. That's much closer to how a real contractor profit-sharing/job-allocation system should work.
+
+but for now i have an hourly sub and a percent sub so how do i make it understand that i want to be able to change that on that job page and not the subcontractor page because every job will be different agreed upon terms and things might change job to job so pay scales need to be tied to jobs when subs are selected and thats it not in their profiles 
+
+Exactly. I think this is where Replit is probably heading in the wrong direction.
+
+A subcontractor's profile should only store information about the person:
+
+Name
+Phone
+Email
+Tax information
+Default pay preferences (optional)
+Active/inactive status
+
+It should NOT store:
+
+Hourly rate
+Percentage split
+Fixed amount
+Profit allocation
+Payment terms
+
+Because those can change on every job.
+
+I'd tell Replit:
+
+Job-Based Compensation Structure
+
+Compensation should be assigned at the JOB level, not the subcontractor profile level.
+
+A subcontractor may be paid differently on every job.
+
+Examples:
+
+Job A
+
+Dewayne = $25/hr
+Chris = Owner
+Worker 3 = 50% split
+
+Job B
+
+Dewayne = 33% split
+Chris = 33% split
+Worker 3 = 33% split
+
+Job C
+
+Dewayne = Fixed $500
+Worker 3 = $30/hr
+
+Because compensation changes by job, pay settings must be stored in the job assignment record, not in the subcontractor profile.
+
+When Adding a Worker to a Job
+
+After selecting a subcontractor, allow the user to choose:
+
+Compensation Type:
+
+Hourly
+Percentage Split
+Fixed Amount
+Equal Split
+
+Based on the selected type, show the appropriate fields:
+
+Hourly
+
+Hourly Rate
+Hours Worked
+
+Percentage Split
+
+Percentage %
+
+Fixed Amount
+
+Fixed Dollar Amount
+
+Equal Split
+
+No additional fields needed
+Database Design
+
+Create job-specific compensation fields on the job_subcontractors table:
+
+subcontractor_id
+job_id
+compensation_type
+hourly_rate
+hours_worked
+percentage_split
+fixed_amount
+payment_status
+paid_at
+
+These values belong to the job assignment, not the subcontractor profile.
+
+The same subcontractor should be able to have completely different compensation arrangements on different jobs without affecting past or future jobs.
+
+That structure is how most contractor systems are built. The subcontractor record is the person. The job assignment record contains the deal you made for that specific job. That way Dewayne can be $25/hr on one manufactured home, 50% on the next, and a flat $500 on another without changing his profile every time.

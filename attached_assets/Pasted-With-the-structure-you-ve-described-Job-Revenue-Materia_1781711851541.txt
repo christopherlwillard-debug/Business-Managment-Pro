@@ -1,0 +1,168 @@
+With the structure you've described:
+
+Job Revenue
+- Materials
+- Direct Job Expenses
+= Job Income
+
+Job Income
+- Hourly Workers
+= Remaining
+
+Remaining
+- Growth Reserve (5%)
+= Split Pool
+
+Split Pool ÷ Number of People Sharing
+= Individual Share
+Example
+
+Revenue: $5,000
+
+Materials: $500
+
+Other Job Expenses: $200
+
+Hourly Worker: $600
+
+Step 1
+$5,000
+- $500
+- $200
+= $4,300 Job Income
+Step 2
+$4,300
+- $600 Hourly Labor
+= $3,700 Remaining
+Step 3
+$3,700 × 5%
+= $185 Growth Reserve
+Step 4
+$3,700 - $185
+= $3,515 Split Pool
+Step 5
+
+If there are 3 people sharing equally:
+
+$3,515 ÷ 3
+= $1,171.67 each
+How I'd Build It
+
+On the job page, each person assigned to the split pool gets a checkbox like:
+
+☑ Chris — Included in Split Pool
+☑ Dewayne — Included in Split Pool
+☑ Worker 3 — Included in Split Pool
+☐ Hourly Helper — Not Included
+
+The app simply counts the checked people:
+
+Split Pool ÷ Number of Included People
+
+If 2 people are included:
+
+Divide by 2
+
+If 3 people are included:
+
+Divide by 3
+
+If later you want unequal shares, switch to percentages:
+
+Chris 40%
+Dewayne 30%
+Worker 3 30%
+
+But for now, equal split is as simple as:
+
+Split Pool ÷ Number of Participants = Individual Share.
+
+That's probably the cleanest setup for Willard's GC while it's still a small crew and agreements may change from job to job.
+
+well i would have to be able to do equal and unequal spllits because when we do move to scorp i have to own 51% of company and be the highest paid but i also might move to multi member set up im not sure but it has to stay within legal boundaries for what ever set up i use
+
+That's exactly why I wouldn't build the system around "50/50", "33/33/33", or "equal split" at all.
+
+I'd build it around job allocation percentages.
+
+For every job, after:
+
+Revenue
+- Materials
+- Expenses
+- Hourly Labor
+- Growth Reserve
+= Split Pool
+
+You assign percentages to the people participating in the split pool.
+
+Example Today
+
+You and one subcontractor:
+
+Chris = 50%
+Dewayne = 50%
+
+Split Pool = $2,000
+
+Chris = $1,000
+Dewayne = $1,000
+Example Tomorrow
+
+Three people:
+
+Chris = 34%
+Dewayne = 33%
+Worker 3 = 33%
+
+Split Pool = $2,000
+
+Chris = $680
+Dewayne = $660
+Worker 3 = $660
+Example Future S-Corp
+
+You want to keep more because you're handling the company:
+
+Chris = 50%
+Dewayne = 25%
+Worker 3 = 25%
+
+Split Pool = $2,000
+
+Chris = $1,000
+Dewayne = $500
+Worker 3 = $500
+Example Multi-Member LLC
+
+If you eventually make someone a member:
+
+Chris = 60%
+Partner = 40%
+
+or
+
+Chris = 51%
+Partner = 49%
+
+Whatever your operating agreement requires.
+
+One thing to be careful about:
+
+Ownership percentage and job allocation percentage are not necessarily the same thing.
+
+For example:
+
+You could own 100% of the LLC.
+Dewayne owns 0%.
+Yet on a specific job you decide to split the job pool 50/50.
+
+That's just a subcontractor payment arrangement, not ownership.
+
+Likewise, if you become an S-Corp, you do not automatically have to receive 51% of every job. The legal requirements are more about stock ownership, wages, and distributions than individual job splits.
+
+So for the app, I'd tell Replit:
+
+Do not hardcode equal splits. Create a Job Allocation Percentage field for every worker assigned to the split pool. The percentages must total 100%. The system calculates each participant's share from the Split Pool based on their assigned percentage. This allows equal splits, unequal splits, S-Corp compensation structures, and future multi-member LLC arrangements without changing the database design.
+
+That's flexible enough that you'll probably never need to redesign it later. You can run 50/50 today, 33/33/34 next month, and 60/20/20 five years from now using the same system.

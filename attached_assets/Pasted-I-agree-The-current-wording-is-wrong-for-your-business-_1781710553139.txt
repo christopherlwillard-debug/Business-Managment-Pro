@@ -1,0 +1,129 @@
+I agree. The current wording is wrong for your business structure today.
+
+You're not doing a "profit share" in the legal/accounting sense. You're a single-member LLC and you're simply allocating part of a job's profit to a subcontractor based on your agreement for that specific job.
+
+I'd rewrite that Replit task more like this:
+
+Job Payment Tracking & Auto-Expense Flow (Revised)
+Important Business Logic
+
+This is NOT a profit-sharing system.
+
+Willard's General Contracting is currently a single-member LLC.
+
+The 50/50 split shown in the Job Income Summary is simply a job-level earnings allocation between the owner and a subcontractor based on an agreed percentage of the job profit after labor and growth reserve deductions.
+
+The subcontractor payment should be treated as a subcontractor expense, not a profit distribution or equity share.
+
+Payment Types
+Hourly Workers
+Paid hours × rate
+Deducted before job profit calculations
+Recorded as Labor Expense
+Percentage-Based Subcontractors
+Paid a percentage of the "To Split" amount
+Example: 50% of remaining profit after labor and growth reserve
+Recorded as Subcontractor Expense
+NOT labeled "Profit Share"
+Owner Allocation
+Remaining amount allocated to owner
+Used for job profitability reporting
+Can optionally be recorded as an Owner Draw
+NOT required to close the job
+Job Income Flow
+
+Job Revenue
+
+minus
+
+Hourly Worker Costs
+
+equals
+
+Remaining
+
+minus
+
+Growth Reserve (5%)
+
+equals
+
+To Split
+
+then
+
+Percentage-Based Subcontractor Allocation
+
+and
+
+Owner Allocation
+
+are calculated from To Split.
+
+Payment Tracking
+Hourly Workers
+
+Each hourly worker should have:
+
+Amount Owed
+Status (Unpaid / Paid)
+Paid Date
+Mark Paid button
+
+When marked paid:
+
+Create labor expense
+Link expense to job
+Update accounting automatically
+Percentage-Based Subcontractors
+
+Each subcontractor should have:
+
+Allocated Amount
+Status (Unpaid / Paid)
+Paid Date
+Mark Paid button
+
+When marked paid:
+
+Create subcontractor expense
+Link expense to job
+Update accounting automatically
+Owner Allocation
+
+Show owner allocation for reporting purposes.
+
+Optional button:
+
+"Record Owner Draw"
+
+When clicked:
+
+Create Owner Draw transaction
+Do not classify as labor expense
+Do not classify as subcontractor expense
+Job Close Requirements
+
+A job can be closed when:
+
+Customer invoice is paid
+All hourly workers are marked paid
+All subcontractor allocations are marked paid
+
+Owner draw is optional and should not prevent job closure.
+
+Accounting Integration
+
+The user should never manually create duplicate expense entries.
+
+When any worker or subcontractor is marked paid:
+
+Expense record is automatically created
+Expense is linked to the job
+Accounting dashboard updates
+Job profitability updates
+Expense reports update
+
+The Job Financials screen should be the single source of truth for all job-related payments.
+
+This keeps everything aligned with how you're actually operating right now. Later, if you elect S-Corp status and start taking payroll or true profit distributions, you can add a separate profit-sharing or owner compensation system. For now, "Percentage-Based Subcontractor" or "Job Allocation" is the correct terminology.
