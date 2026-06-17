@@ -942,16 +942,31 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
   const revenue = useCollected
     ? (profit?.collected || profit?.grossInvoiced || 0)
     : (profit?.grossInvoiced || 0);
+  const { toast } = useToast();
+
+  async function refreshPayments() {
+    const rows = await fetch(`${BASE}/api/jobs/${job.id}/sub-payments`).then(r => r.ok ? r.json() : []);
+    setPayments(rows);
+  }
+
   const jobExpenses = profit?.jobExpenses ?? 0;
   const jobIncome = Math.max(0, revenue - jobExpenses);
   const memberSubs = payments.filter(p => p.role === 'member');
-  const paidToSubs = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
-  const hourlyWorkers = Math.max(profit?.subLaborCost ?? 0, paidToSubs);
+  const hourlyFixedSubs = payments.filter(p => p.compensationType !== 'allocation');
+  const pctSubs = payments.filter(p => p.compensationType === 'allocation');
+  const hourlyFixedCost = hourlyFixedSubs.reduce((s, p) => {
+    if (p.compensationType === 'fixed') return s + (p.fixedAmount ?? 0);
+    return s + p.computedOwed;
+  }, 0);
+  const hourlyWorkers = Math.max(profit?.subLaborCost ?? 0, hourlyFixedCost);
   const afterWorkers = Math.max(0, jobIncome - hourlyWorkers);
   const growthReserve = afterWorkers * 0.05;
   const toSplit = Math.max(0, afterWorkers - growthReserve);
-  const ownerShare = toSplit * (ownerSplitPct / 100);
-  const subShare = toSplit * ((100 - ownerSplitPct) / 100);
+  const totalAllocPct = pctSubs.reduce((s, p) => s + (p.allocationPct ?? 0), 0);
+  const allocWarning = pctSubs.length > 0 && Math.abs(totalAllocPct - 100) > 0.5;
+  const ownerPct = pctSubs.length > 0 ? Math.max(0, 100 - totalAllocPct) : ownerSplitPct;
+  const ownerShare = toSplit * (ownerPct / 100);
+  const subShare = toSplit * ((100 - ownerPct) / 100);
   const taxReserve = ownerShare * (taxReservePct / 100);
   const ownerTakeHome = ownerShare - taxReserve;
 
@@ -1010,19 +1025,26 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                   <span className="text-xs text-muted-foreground">Growth Reserve</span>
                   <span className="text-xs font-bold text-amber-500">5% fixed · ${fmt(growthReserve)}</span>
                 </div>
-                <div>
-                  <div className="flex justify-between mb-1.5">
+                {pctSubs.length === 0 ? (
+                  <div>
+                    <div className="flex justify-between mb-1.5">
+                      <span className="text-xs text-muted-foreground">Your Split</span>
+                      <span className="text-xs font-bold text-blue-500">You {ownerSplitPct}% / Sub {100 - ownerSplitPct}%</span>
+                    </div>
+                    <input type="range" min={10} max={90} step={5} value={ownerSplitPct}
+                      onChange={e => setOwnerSplitPct(Number(e.target.value))}
+                      className="w-full h-1.5 rounded-full accent-blue-500 cursor-pointer" />
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[10px] text-muted-foreground/50">10%</span>
+                      <span className="text-[10px] text-muted-foreground/50">90%</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center py-0.5">
                     <span className="text-xs text-muted-foreground">Your Split</span>
-                    <span className="text-xs font-bold text-blue-500">You {ownerSplitPct}% / Sub {100 - ownerSplitPct}%</span>
+                    <span className="text-xs font-bold text-blue-500">Auto · {ownerPct.toFixed(1)}% remainder</span>
                   </div>
-                  <input type="range" min={10} max={90} step={5} value={ownerSplitPct}
-                    onChange={e => setOwnerSplitPct(Number(e.target.value))}
-                    className="w-full h-1.5 rounded-full accent-blue-500 cursor-pointer" />
-                  <div className="flex justify-between mt-0.5">
-                    <span className="text-[10px] text-muted-foreground/50">10%</span>
-                    <span className="text-[10px] text-muted-foreground/50">90%</span>
-                  </div>
-                </div>
+                )}
                 <div>
                   <div className="flex justify-between mb-1.5">
                     <span className="text-xs text-muted-foreground">Tax Reserve</span>
@@ -1081,25 +1103,47 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                     <span className="text-xs font-semibold text-muted-foreground">Split Pool</span>
                     <span className="text-sm font-bold text-foreground">${fmt(toSplit)}</span>
                   </div>
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-foreground">Sub Share ({100 - ownerSplitPct}%)</span>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-foreground">${fmt(subShare)}</p>
-                      {payments.length > 0 && (() => {
-                        const totalOwed = payments.reduce((s, p) => s + (p.amountOwed ?? p.computedOwed ?? 0), 0);
-                        const totalPaid = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
-                        return totalOwed > 0 ? (
-                          <p className="text-[10px] text-muted-foreground">
-                            Recorded: ${fmt(totalOwed)}{totalPaid > 0 ? ` · Paid: $${fmt(totalPaid)}` : ""}
-                          </p>
-                        ) : null;
-                      })()}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3 bg-blue-50/60">
-                    <span className="text-sm font-semibold text-blue-800">Your Share ({ownerSplitPct}%)</span>
-                    <span className="text-sm font-bold text-blue-700">${fmt(ownerShare)}</span>
-                  </div>
+                  {pctSubs.length > 0 ? (
+                    <>
+                      {allocWarning && (
+                        <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+                          <p className="text-[10px] text-amber-700 font-medium">⚠ Allocations total {totalAllocPct.toFixed(1)}% — must equal 100%</p>
+                        </div>
+                      )}
+                      {pctSubs.map(p => (
+                        <div key={p.subcontractorId} className="flex items-center justify-between px-4 py-3">
+                          <span className="text-sm text-foreground">{p.subName ?? "Sub"} ({(p.allocationPct ?? 0).toFixed(1)}%)</span>
+                          <span className="text-sm font-bold text-foreground">${fmt(toSplit * ((p.allocationPct ?? 0) / 100))}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-4 py-3 bg-blue-50/60">
+                        <span className="text-sm font-semibold text-blue-800">Your Share ({ownerPct.toFixed(1)}%)</span>
+                        <span className="text-sm font-bold text-blue-700">${fmt(ownerShare)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <span className="text-sm text-foreground">Sub Share ({100 - ownerSplitPct}%)</span>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-foreground">${fmt(subShare)}</p>
+                          {payments.length > 0 && (() => {
+                            const totalOwed = payments.reduce((s, p) => s + (p.amountOwed ?? p.computedOwed ?? 0), 0);
+                            const totalPaid = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
+                            return totalOwed > 0 ? (
+                              <p className="text-[10px] text-muted-foreground">
+                                Recorded: ${fmt(totalOwed)}{totalPaid > 0 ? ` · Paid: $${fmt(totalPaid)}` : ""}
+                              </p>
+                            ) : null;
+                          })()}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-3 bg-blue-50/60">
+                        <span className="text-sm font-semibold text-blue-800">Your Share ({ownerSplitPct}%)</span>
+                        <span className="text-sm font-bold text-blue-700">${fmt(ownerShare)}</span>
+                      </div>
+                    </>
+                  )}
                   {taxReservePct > 0 && (
                     <div className="flex items-center justify-between px-4 py-3">
                       <span className="text-sm text-foreground">Tax Reserve ({taxReservePct}%)</span>
@@ -1126,7 +1170,9 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                   </div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
-                      const owed = p.amountOwed ?? p.computedOwed ?? 0;
+                      const owed = p.compensationType === 'allocation'
+                        ? toSplit * ((p.allocationPct ?? 0) / 100)
+                        : (p.amountOwed ?? p.computedOwed ?? 0);
                       const paid = p.amountPaid ?? 0;
                       const balance = owed - paid;
                       return (
@@ -1136,10 +1182,13 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                               <HardHat className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0" />
                               <div>
                                 <span className="text-sm font-medium text-foreground">{p.subName ?? "Sub"}</span>
-                                {p.role === 'member'
-                                  ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full">Member</span>
-                                  : <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Hourly</span>
+                                {p.compensationType === 'allocation'
+                                  ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">%Alloc</span>
+                                  : p.compensationType === 'fixed'
+                                    ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">Fixed</span>
+                                    : <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Hourly</span>
                                 }
+                                {p.paymentStatus === 'paid' && <span className="ml-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Paid</span>}
                               </div>
                             </div>
                             <div className="text-right">
@@ -1149,17 +1198,34 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                               {balance <= 0.01 && paid > 0 && <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p>}
                             </div>
                           </div>
-                          {p.role === 'member' && memberSubs.length > 0 && (
-                            <div className="pl-6 space-y-0.5">
-                              <div className="flex justify-between text-[10px]">
-                                <span className="text-violet-600">Member split (1/{memberSubs.length})</span>
-                                <span className="text-violet-700 font-medium">${fmt(subShare / memberSubs.length)}</span>
-                              </div>
+                          {p.compensationType === 'allocation' && (
+                            <div className="pl-6 text-[10px] text-purple-600">
+                              {(p.allocationPct ?? 0).toFixed(1)}% of split pool
                             </div>
                           )}
-                          {p.role !== 'member' && p.totalHours > 0 && (
+                          {p.compensationType === 'fixed' && (
+                            <div className="pl-6 text-[10px] text-orange-600">Fixed: ${fmt(p.fixedAmount ?? 0)}</div>
+                          )}
+                          {p.compensationType === 'hourly' && p.totalHours > 0 && (
+                            <div className="pl-6 text-[10px] text-blue-600">Hourly · {p.totalHours.toFixed(1)} hrs</div>
+                          )}
+                          {p.paymentStatus !== 'paid' && owed > 0.01 && (
                             <div className="pl-6">
-                              <span className="text-[10px] text-blue-600">Hourly pay · {p.totalHours.toFixed(1)} hrs</span>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${p.subcontractorId}`, {
+                                      method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ amount: owed, subName: p.subName }),
+                                    });
+                                    await refreshPayments();
+                                    toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"} marked paid` });
+                                  } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
+                                }}
+                                className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors"
+                              >
+                                Mark Paid
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1317,6 +1383,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [taxReservePct, setTaxReservePct] = useState(25);
   const [useCollected, setUseCollected] = useState(false);
 
+  const { toast } = useToast();
+
   function notifySubsPaid(rows: SubPaymentRow[]) {
     if (!onSubsPaidChanged || rows.length === 0) return;
     const allPaid = rows.every(p => {
@@ -1359,13 +1427,21 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const jobExpenses = profit?.jobExpenses ?? 0;
   const jobIncome = Math.max(0, revenue - jobExpenses);
   const memberSubs = payments.filter(p => p.role === 'member');
-  const paidToSubs = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
-  const hourlyWorkers = Math.max(profit?.subLaborCost ?? 0, paidToSubs);
+  const hourlyFixedSubs = payments.filter(p => p.compensationType !== 'allocation');
+  const pctSubs = payments.filter(p => p.compensationType === 'allocation');
+  const hourlyFixedCost = hourlyFixedSubs.reduce((s, p) => {
+    if (p.compensationType === 'fixed') return s + (p.fixedAmount ?? 0);
+    return s + p.computedOwed;
+  }, 0);
+  const hourlyWorkers = Math.max(profit?.subLaborCost ?? 0, hourlyFixedCost);
   const afterWorkers = Math.max(0, jobIncome - hourlyWorkers);
   const growthReserve = afterWorkers * 0.05;
   const toSplit = Math.max(0, afterWorkers - growthReserve);
-  const ownerShare = toSplit * (ownerSplitPct / 100);
-  const subShare = toSplit * ((100 - ownerSplitPct) / 100);
+  const totalAllocPct = pctSubs.reduce((s, p) => s + (p.allocationPct ?? 0), 0);
+  const allocWarning = pctSubs.length > 0 && Math.abs(totalAllocPct - 100) > 0.5;
+  const ownerPct = pctSubs.length > 0 ? Math.max(0, 100 - totalAllocPct) : ownerSplitPct;
+  const ownerShare = toSplit * (ownerPct / 100);
+  const subShare = toSplit * ((100 - ownerPct) / 100);
   const taxReserve = ownerShare * (taxReservePct / 100);
   const ownerTakeHome = ownerShare - taxReserve;
   const net = profit?.netProfit ?? 0;
@@ -1467,19 +1543,32 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 </div>
                 <span className="text-sm font-bold text-amber-600">{formatCurrency(growthReserve)}</span>
               </div>
-              {([
-                { label: "Your Split", pct: ownerSplitPct, setPct: setOwnerSplitPct, max: 100, amount: ownerShare, color: "blue" },
-                { label: "Tax Reserve", pct: taxReservePct, setPct: setTaxReservePct, max: 40, amount: taxReserve, color: "red" },
-              ] as const).map(({ label, pct, setPct, max, amount, color }) => (
-                <div key={label} className="rounded-xl border border-border/50 bg-muted/10 px-4 py-3 space-y-2">
+              {pctSubs.length === 0 ? (
+                <div className="rounded-xl border border-border/50 bg-muted/10 px-4 py-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-                    <span className={`text-xs font-bold text-${color}-600`}>{pct}% · {formatCurrency(amount)}</span>
+                    <span className="text-xs font-semibold text-muted-foreground">Your Split</span>
+                    <span className="text-xs font-bold text-blue-600">{ownerSplitPct}% · {formatCurrency(ownerShare)}</span>
                   </div>
-                  <input type="range" min={0} max={max} value={pct} onChange={e => setPct(Number(e.target.value))} className="w-full" />
-                  <div className="flex justify-between text-[10px] text-muted-foreground"><span>0%</span><span>{max}%</span></div>
+                  <input type="range" min={0} max={100} value={ownerSplitPct} onChange={e => setOwnerSplitPct(Number(e.target.value))} className="w-full" />
+                  <div className="flex justify-between text-[10px] text-muted-foreground"><span>0%</span><span>100%</span></div>
                 </div>
-              ))}
+              ) : (
+                <div className="rounded-xl border border-border/50 bg-muted/10 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground">Your Split</span>
+                    <span className="text-xs font-bold text-blue-600">Auto · {ownerPct.toFixed(1)}% · {formatCurrency(ownerShare)}</span>
+                  </div>
+                  {allocWarning && <p className="text-[10px] text-amber-600 mt-1">⚠ Allocations total {totalAllocPct.toFixed(1)}% — must equal 100%</p>}
+                </div>
+              )}
+              <div className="rounded-xl border border-border/50 bg-muted/10 px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground">Tax Reserve</span>
+                  <span className="text-xs font-bold text-red-600">{taxReservePct}% · {formatCurrency(taxReserve)}</span>
+                </div>
+                <input type="range" min={0} max={40} value={taxReservePct} onChange={e => setTaxReservePct(Number(e.target.value))} className="w-full" />
+                <div className="flex justify-between text-[10px] text-muted-foreground"><span>0%</span><span>40%</span></div>
+              </div>
               <div className="rounded-xl border border-border/50 overflow-hidden">
                 <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Breakdown</p></div>
                 <div className="divide-y divide-border/30">
@@ -1490,18 +1579,37 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Remaining</span><span className="text-sm font-bold">${fmt(afterWorkers)}</span></div>
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Growth Reserve (5%)</span><span className="text-sm font-bold text-amber-600">−${fmt(growthReserve)}</span></div>
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Split Pool</span><span className="text-sm font-bold">${fmt(toSplit)}</span></div>
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-foreground">Sub Share ({100 - ownerSplitPct}%)</span>
-                    <div className="text-right">
-                      <p className="text-sm font-bold">${fmt(subShare)}</p>
-                      {payments.length > 0 && (() => {
-                        const tp = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
-                        const to = payments.reduce((s, p) => s + (p.amountOwed ?? p.computedOwed ?? 0), 0);
-                        return to > 0 ? <p className="text-[10px] text-muted-foreground">Recorded: ${fmt(to)}{tp > 0 ? ` · Paid: $${fmt(tp)}` : ""}</p> : null;
-                      })()}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3 bg-blue-50/60"><span className="text-sm font-semibold text-blue-800">Your Share ({ownerSplitPct}%)</span><span className="text-sm font-bold text-blue-700">${fmt(ownerShare)}</span></div>
+                  {pctSubs.length > 0 ? (
+                    <>
+                      {allocWarning && (
+                        <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+                          <p className="text-[10px] text-amber-700 font-medium">⚠ Allocations total {totalAllocPct.toFixed(1)}%</p>
+                        </div>
+                      )}
+                      {pctSubs.map(p => (
+                        <div key={p.subcontractorId} className="flex items-center justify-between px-4 py-3">
+                          <span className="text-sm text-foreground">{p.subName ?? "Sub"} ({(p.allocationPct ?? 0).toFixed(1)}%)</span>
+                          <span className="text-sm font-bold">${fmt(toSplit * ((p.allocationPct ?? 0) / 100))}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-4 py-3 bg-blue-50/60"><span className="text-sm font-semibold text-blue-800">Your Share ({ownerPct.toFixed(1)}%)</span><span className="text-sm font-bold text-blue-700">${fmt(ownerShare)}</span></div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <span className="text-sm text-foreground">Sub Share ({100 - ownerSplitPct}%)</span>
+                        <div className="text-right">
+                          <p className="text-sm font-bold">${fmt(subShare)}</p>
+                          {payments.length > 0 && (() => {
+                            const tp = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
+                            const to = payments.reduce((s, p) => s + (p.amountOwed ?? p.computedOwed ?? 0), 0);
+                            return to > 0 ? <p className="text-[10px] text-muted-foreground">Recorded: ${fmt(to)}{tp > 0 ? ` · Paid: $${fmt(tp)}` : ""}</p> : null;
+                          })()}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-3 bg-blue-50/60"><span className="text-sm font-semibold text-blue-800">Your Share ({ownerSplitPct}%)</span><span className="text-sm font-bold text-blue-700">${fmt(ownerShare)}</span></div>
+                    </>
+                  )}
                   {taxReservePct > 0 && <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Tax Reserve ({taxReservePct}%)</span><span className="text-sm font-bold text-red-500">−${fmt(taxReserve)}</span></div>}
                   <div className="flex items-center justify-between px-4 py-4 bg-emerald-50">
                     <div><p className="text-sm font-black text-emerald-800">Your Take-Home</p>{taxReservePct > 0 && <p className="text-[10px] text-emerald-600">After {taxReservePct}% tax reserve</p>}</div>
@@ -1524,10 +1632,13 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                               <HardHat className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0" />
                               <div>
                                 <span className="text-sm font-medium">{p.subName ?? "Sub"}</span>
-                                {p.role === 'member'
-                                  ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full">Member</span>
-                                  : <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Hourly</span>
+                                {p.compensationType === 'allocation'
+                                  ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">%Alloc</span>
+                                  : p.compensationType === 'fixed'
+                                    ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">Fixed</span>
+                                    : <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Hourly</span>
                                 }
+                                {p.paymentStatus === 'paid' && <span className="ml-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Paid</span>}
                               </div>
                             </div>
                             <div className="text-right">
@@ -1536,17 +1647,32 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                               {bal > 0.01 ? <p className="text-[10px] text-orange-600">Balance: ${fmt(bal)}</p> : paid > 0 ? <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p> : null}
                             </div>
                           </div>
-                          {p.role === 'member' && memberSubs.length > 0 && (
-                            <div className="pl-6 space-y-0.5">
-                              <div className="flex justify-between text-[10px]">
-                                <span className="text-violet-600">Member split (1/{memberSubs.length})</span>
-                                <span className="text-violet-700 font-medium">${fmt(subShare / memberSubs.length)}</span>
-                              </div>
-                            </div>
+                          {p.compensationType === 'allocation' && (
+                            <div className="pl-6 text-[10px] text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</div>
                           )}
-                          {p.role !== 'member' && p.totalHours > 0 && (
+                          {p.compensationType === 'fixed' && (
+                            <div className="pl-6 text-[10px] text-orange-600">Fixed: ${fmt(p.fixedAmount ?? 0)}</div>
+                          )}
+                          {p.compensationType === 'hourly' && p.totalHours > 0 && (
+                            <div className="pl-6 text-[10px] text-blue-600">Hourly · {p.totalHours.toFixed(1)} hrs</div>
+                          )}
+                          {p.paymentStatus !== 'paid' && owed > 0.01 && (
                             <div className="pl-6">
-                              <span className="text-[10px] text-blue-600">Hourly pay · {p.totalHours.toFixed(1)} hrs</span>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${p.subcontractorId}`, {
+                                      method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ amount: owed, subName: p.subName }),
+                                    });
+                                    await refreshPayments();
+                                    toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"} marked paid` });
+                                  } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
+                                }}
+                                className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors"
+                              >
+                                Mark Paid
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1554,6 +1680,23 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     })}
                   </div>
                 </div>
+              )}
+              {ownerTakeHome > 0.01 && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetch(`${BASE}/api/jobs/${job.id}/record-owner-draw`, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ amount: ownerTakeHome, description: `Owner Draw — ${job.title}` }),
+                      });
+                      toast({ title: "Owner draw recorded", description: `${formatCurrency(ownerTakeHome)} logged as draw` });
+                    } catch { toast({ title: "Failed to record draw", variant: "destructive" }); }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  Record Owner Draw ({formatCurrency(ownerTakeHome)})
+                </button>
               )}
               {revenue === 0 && <p className="text-center text-xs text-muted-foreground py-4">Add an invoice to this job to see the breakdown.</p>}
             </div>
@@ -1605,7 +1748,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
 
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
 type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; description: string | null; rateSnapshot: number | null };
-type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null; role: string | null; growthPct: number | null };
+type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
 function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; onClose: () => void; initialTab?: "hours" | "payments" | "benchmark" }) {
@@ -1734,12 +1877,12 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
     }
   }
 
-  async function handleQuickPay(subId: number, amount: number) {
+  async function handleQuickPay(subId: number, amount: number, subName?: string | null) {
     setMarkingPaidId(subId);
     try {
-      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${subId}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountPaid: amount, paidDate: today, paidNotes: null }),
+      await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${subId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, subName }),
       });
       await loadData();
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -1945,10 +2088,13 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
               ) : (
                 payments.map(pay => {
                   const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
-                  const displayOwed = pay.amountOwed ?? pay.computedOwed;
+                  const displayOwed = pay.amountOwed != null
+                    ? pay.amountOwed
+                    : pay.compensationType === 'fixed' ? (pay.fixedAmount ?? pay.computedOwed)
+                    : pay.computedOwed;
                   const amountPaid = pay.amountPaid ?? 0;
                   const balance = Math.max(0, displayOwed - amountPaid);
-                  const isPaid = balance <= 0.01 && displayOwed > 0;
+                  const isPaid = (pay.paymentStatus === 'paid') || (balance <= 0.01 && displayOwed > 0);
                   const isEditing = editPayId === pay.subcontractorId;
                   const isMarkingThisOne = markingPaidId === pay.subcontractorId;
 
@@ -1972,6 +2118,90 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                       </div>
 
                       <div className="p-3 space-y-2">
+                        {canEdit("jobs") && (
+                          <div className="space-y-1.5">
+                            <div className="flex gap-1">
+                              {(['hourly', 'fixed', 'allocation'] as const).map(type => (
+                                <button key={type}
+                                  onClick={async () => {
+                                    if (pay.compensationType === type) return;
+                                    await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${pay.subcontractorId}`, {
+                                      method: "PUT", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ compensationType: type }),
+                                    });
+                                    await loadData();
+                                  }}
+                                  className={`flex-1 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${
+                                    pay.compensationType === type
+                                      ? type === 'allocation' ? 'bg-purple-500 text-white border-purple-500'
+                                        : type === 'fixed' ? 'bg-orange-500 text-white border-orange-500'
+                                        : 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-background text-muted-foreground border-border hover:bg-muted/50'
+                                  }`}>
+                                  {type === 'hourly' ? 'Hourly' : type === 'fixed' ? 'Fixed $' : '% Alloc'}
+                                </button>
+                              ))}
+                            </div>
+                            {pay.compensationType === 'hourly' && (
+                              <div key={`rate-${pay.hourlyRate}`} className="flex items-center gap-2">
+                                <span className="text-[10px] text-muted-foreground w-16 flex-shrink-0">Rate/hr $</span>
+                                <input type="number" step="0.01" min="0"
+                                  defaultValue={pay.hourlyRate ?? pay.payRate ?? ""}
+                                  placeholder={pay.payRate ? String(pay.payRate) : "0.00"}
+                                  onBlur={async (e) => {
+                                    const v = parseFloat(e.target.value);
+                                    if (!isNaN(v) && v !== (pay.hourlyRate ?? pay.payRate ?? 0)) {
+                                      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${pay.subcontractorId}`, {
+                                        method: "PUT", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ hourlyRate: v }),
+                                      });
+                                      await loadData();
+                                    }
+                                  }}
+                                  className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                              </div>
+                            )}
+                            {pay.compensationType === 'fixed' && (
+                              <div key={`fixed-${pay.fixedAmount}`} className="flex items-center gap-2">
+                                <span className="text-[10px] text-muted-foreground w-16 flex-shrink-0">Amount $</span>
+                                <input type="number" step="0.01" min="0"
+                                  defaultValue={pay.fixedAmount ?? ""}
+                                  placeholder="0.00"
+                                  onBlur={async (e) => {
+                                    const v = parseFloat(e.target.value);
+                                    if (!isNaN(v)) {
+                                      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${pay.subcontractorId}`, {
+                                        method: "PUT", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ fixedAmount: v }),
+                                      });
+                                      await loadData();
+                                    }
+                                  }}
+                                  className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                              </div>
+                            )}
+                            {pay.compensationType === 'allocation' && (
+                              <div key={`alloc-${pay.allocationPct}`} className="flex items-center gap-2">
+                                <span className="text-[10px] text-muted-foreground w-16 flex-shrink-0">Alloc %</span>
+                                <input type="number" step="0.1" min="0" max="100"
+                                  defaultValue={pay.allocationPct ?? ""}
+                                  placeholder="0.0"
+                                  onBlur={async (e) => {
+                                    const v = parseFloat(e.target.value);
+                                    if (!isNaN(v)) {
+                                      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${pay.subcontractorId}`, {
+                                        method: "PUT", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ allocationPct: v }),
+                                      });
+                                      await loadData();
+                                    }
+                                  }}
+                                  className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                                <span className="text-[10px] text-purple-600 font-medium">→ Pay Breakdown</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {!isEditing ? (
                           <>
                             {/* Amount rows */}
@@ -2006,7 +2236,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                               <div className="flex gap-2 pt-1">
                                 {!isPaid && displayOwed > 0 && (
                                   <button
-                                    onClick={() => handleQuickPay(pay.subcontractorId, balance)}
+                                    onClick={() => handleQuickPay(pay.subcontractorId, balance, pay.subName)}
                                     disabled={isMarkingThisOne}
                                     className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50">
                                     {isMarkingThisOne ? "Recording…" : `Mark Paid — ${formatCurrency(balance)}`}

@@ -9,4 +9,10 @@ export const jobSubcontractorsTable = pgTable("job_subcontractors", {
   amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }),
   paidDate: text("paid_date"),
   paidNotes: text("paid_notes"),
+  compensationType: text("compensation_type").notNull().default("hourly"),
+  hourlyRate: numeric("hourly_rate", { precision: 10, scale: 2 }),
+  fixedAmount: numeric("fixed_amount", { precision: 10, scale: 2 }),
+  allocationPct: numeric("allocation_pct", { precision: 5, scale: 2 }),
+  paymentStatus: text("payment_status").notNull().default("unpaid"),
+  paidAt: text("paid_at"),
 }, (table) => [primaryKey({ columns: [table.jobId, table.subcontractorId] })]);

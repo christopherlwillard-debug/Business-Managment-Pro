@@ -597,12 +597,16 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
     const jobId = parseInt(req.params.jobId);
     const subId = parseInt(req.params.subId);
     if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
-    const { amountOwed, amountPaid, paidDate, paidNotes } = req.body;
+    const { amountOwed, amountPaid, paidDate, paidNotes, compensationType, hourlyRate, fixedAmount, allocationPct } = req.body;
     const updates: Record<string, unknown> = {};
     if (amountOwed !== undefined) updates.amountOwed = amountOwed != null ? String(amountOwed) : null;
     if (amountPaid !== undefined) updates.amountPaid = amountPaid != null ? String(amountPaid) : null;
     if (paidDate !== undefined) updates.paidDate = paidDate || null;
     if (paidNotes !== undefined) updates.paidNotes = paidNotes || null;
+    if (compensationType !== undefined) updates.compensationType = compensationType || "hourly";
+    if (hourlyRate !== undefined) updates.hourlyRate = hourlyRate != null ? String(hourlyRate) : null;
+    if (fixedAmount !== undefined) updates.fixedAmount = fixedAmount != null ? String(fixedAmount) : null;
+    if (allocationPct !== undefined) updates.allocationPct = allocationPct != null ? String(allocationPct) : null;
     // Upsert: creates the sub-job link if it doesn't exist yet, then updates payment fields.
     // This allows recording a payment even when the sub was never formally assigned to the job.
     const [row] = await db.insert(jobSubcontractorsTable)
@@ -644,6 +648,12 @@ router.get("/:id/sub-payments", async (req, res) => {
         payType: subcontractorsTable.payType,
         role: subcontractorsTable.role,
         growthPct: subcontractorsTable.growthPct,
+        compensationType: jobSubcontractorsTable.compensationType,
+        hourlyRate: jobSubcontractorsTable.hourlyRate,
+        fixedAmount: jobSubcontractorsTable.fixedAmount,
+        allocationPct: jobSubcontractorsTable.allocationPct,
+        paymentStatus: jobSubcontractorsTable.paymentStatus,
+        paidAt: jobSubcontractorsTable.paidAt,
         computedOwed: sql<string>`COALESCE((
           SELECT SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0))
           FROM ${jobSubHoursTable}
@@ -677,12 +687,112 @@ router.get("/:id/sub-payments", async (req, res) => {
         payType: r.payType,
         role: r.role ?? "hourly",
         growthPct: r.growthPct != null ? parseFloat(r.growthPct) : 0,
+        compensationType: r.compensationType ?? "hourly",
+        hourlyRate: r.hourlyRate != null ? parseFloat(r.hourlyRate) : null,
+        fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
+        allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
+        paymentStatus: r.paymentStatus ?? "unpaid",
+        paidAt: r.paidAt ?? null,
         totalHours: parseFloat(r.totalHours ?? "0"),
       };
     }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch sub payments" });
+  }
+});
+
+router.post("/:id/pay-worker/:subId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const subId = parseInt(req.params.subId);
+    if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
+
+    const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const [subRow] = await db.select({
+      compensationType: jobSubcontractorsTable.compensationType,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      allocationPct: jobSubcontractorsTable.allocationPct,
+      amountOwed: jobSubcontractorsTable.amountOwed,
+      paymentStatus: jobSubcontractorsTable.paymentStatus,
+    }).from(jobSubcontractorsTable).where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subId)
+    ));
+    if (!subRow) return res.status(404).json({ error: "Sub not assigned to this job" });
+
+    if (subRow.paymentStatus === "paid") {
+      return res.json({ ok: true, alreadyPaid: true });
+    }
+
+    const compType = subRow.compensationType ?? "hourly";
+    let amount = 0;
+    if (compType === "fixed") {
+      amount = parseFloat(subRow.fixedAmount ?? "0");
+    } else if (compType === "allocation") {
+      amount = parseFloat(String(req.body.amount ?? "0"));
+    } else {
+      amount = parseFloat(subRow.amountOwed ?? "0");
+      if (amount === 0) amount = parseFloat(String(req.body.amount ?? "0"));
+    }
+    if (amount <= 0) return res.status(400).json({ error: "No amount to pay" });
+
+    const today = new Date().toISOString().split("T")[0];
+    const subName = String(req.body.subName ?? `Sub #${subId}`);
+    const category = compType === "allocation" ? "Subcontractor" : "Subcontractor";
+    const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
+
+    await db.insert(expensesTable).values({
+      description: `${subName} — ${typeLabel}`,
+      amount: String(amount),
+      category,
+      date: today,
+      jobId,
+      subcontractorId: subId,
+      businessLine: job.businessLine,
+    });
+
+    await db.update(jobSubcontractorsTable).set({
+      paymentStatus: "paid",
+      paidAt: today,
+      amountPaid: String(amount),
+    }).where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subId)
+    ));
+
+    await recomputeSubPaid(jobId);
+    res.json({ ok: true, amount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to record payment" });
+  }
+});
+
+router.post("/:id/record-owner-draw", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const amount = parseFloat(String(req.body.amount ?? "0"));
+    if (isNaN(amount) || amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+    const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+    const today = new Date().toISOString().split("T")[0];
+    const description = String(req.body.description ?? `Owner Draw — Job ${jobId}`);
+
+    const [exp] = await db.insert(expensesTable).values({
+      description,
+      amount: String(amount),
+      category: "Owner Draw",
+      date: today,
+      jobId,
+      businessLine: job?.businessLine,
+    }).returning();
+    res.status(201).json({ ok: true, expenseId: exp.id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to record owner draw" });
   }
 });
 

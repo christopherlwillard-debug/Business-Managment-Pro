@@ -5,3 +5,4 @@
 - [Card editor panel architecture](card-editor-panel.md) — specialContent injection into InspectorPanel was unreliable; replaced with selectedCardData state captured at click-time + standalone panel that returns early before InspectorPanel renders
 - [Owner Capital Ledger](owner-capital-ledger.md) — owner_capital_entries table replaces single ownerPersonalInvestment setting; auto-migrates on first GET; drizzle push needs interactive TTY so use psql directly
 - [Plaid balance cache](plaid-balance-cache.md) — cache reduced to 1 hour; sync route now also refreshes balance; Banking.tsx sync must invalidate ["plaid-balance"]
+- [Compensation type & pay-worker](comp-type-pay-worker.md) — job_subcontractors has compensationType (hourly/fixed/allocation); pay-worker POST creates 'Subcontractor' expense + marks paid; owner draws use expense category 'Owner Draw' (not ownerCapitalEntriesTable)
