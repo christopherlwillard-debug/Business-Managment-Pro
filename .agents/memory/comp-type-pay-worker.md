@@ -1,45 +1,42 @@
 ---
 name: Compensation type & pay-worker
-description: How job-level sub compensation types work, pay-worker idempotency, and close-gate behavior
+description: Job-level sub compensation types, atomic pay-worker, hard job-close gate
 ---
 
 ## Compensation types on job_subcontractors
-Three types stored in `compensation_type` column (default 'hourly'):
-- `hourly` — rate in `hourly_rate`; cost = hours × rate (from job_sub_hours)
+- `hourly` — rate in `hourly_rate`; cost = hours × rate from job_sub_hours
 - `fixed` — flat amount in `fixed_amount`; no hours needed
-- `allocation` — % of split pool in `allocation_pct`; dollar amount computed at display time from toSplit
+- `allocation` — % of split pool in `allocation_pct`; dollar amount computed at display time
 
-## pay-worker endpoint atomic idempotency
-Uses conditional UPDATE WHERE paymentStatus='unpaid' before inserting expense.
-If 0 rows updated, another request already claimed it → return `{ok:true, alreadyPaid:true}`.
+## pay-worker endpoint fully atomic idempotency
+Uses `db.transaction()` wrapping the conditional UPDATE + expense INSERT.
+Conditional UPDATE: `WHERE paymentStatus='unpaid'` — if 0 rows, already paid, abort TX.
 Expense category: 'Labor' for hourly/fixed; 'Subcontractor' for allocation.
 
-**Why:** Race conditions can create duplicate expenses. The UPDATE is atomic; expense insert only happens if UPDATE won.
+**Why:** If expense insert fails after status update, accounting would be permanently desynced. A transaction ensures both succeed or both roll back.
 
 ## owner-draw idempotency
 Deduplicates by `jobId + category + date + description` before inserting.
 
 ## recomputeSubPaid() authoritative signals
-1. `paymentStatus='paid'` → always paid (set by pay-worker endpoint)
-2. `fixed` type: owed = amountOwed ?? fixedAmount (not computedOwed)
-3. `allocation` type: can't compute owed server-side; uses `amountPaid > 0` as fallback
+1. `paymentStatus='paid'` → always paid (set by pay-worker within its transaction)
+2. `fixed` type: owed = amountOwed ?? fixedAmount (computedOwed is always 0 for fixed)
+3. `allocation` type: pool amount unknown server-side; uses `amountPaid > 0` as fallback
 4. `hourly` type: owed = amountOwed ?? computedOwed
 
-**Why:** computedOwed only sums job_sub_hours rows; fixed/allocation subs have 0 computedOwed.
-
 ## UI owedFor() helper pattern
-Defined in JobFinancialsPanel scope — use `owedFor(p, toSplit)` everywhere owed is needed.
-```typescript
-function owedFor(p: SubPaymentRow, splitPool?: number): number {
-  if (p.amountOwed != null) return p.amountOwed;
-  if (p.compensationType === 'allocation') return splitPool != null ? splitPool * ((p.allocationPct ?? 0) / 100) : 0;
-  if (p.compensationType === 'fixed') return p.fixedAmount ?? p.computedOwed;
-  return p.computedOwed;
-}
-```
+Defined in JobFinancialsPanel scope; use `owedFor(p, toSplit)` everywhere owed is needed.
+JobPayBreakdownPanel inlines the same pattern for its Sub Payment Records.
 
-## Job close gate
-`handleMarkCompleted` fetches sub-payments and uses `window.confirm` to warn if any have `paymentStatus !== 'paid'` before marking complete.
+## Job close gate (hard block, not bypass)
+`handleMarkCompleted` uses `toast` to HARD-BLOCK completion if:
+1. Any sub has `paymentStatus !== 'paid'`
+2. An invoice exists with `status !== 'paid'`
+Uses `invoiceSummaryMap.get(job.id)` from component scope.
 
 ## Compensation at assignment time
-Job edit form has a per-sub comp row after SubcontractorPicker. On save, calls PUT sub-payments for each sub with a rate set. Default rate in hours-entry form uses job-level `hourlyRate` from payments, not profile `payRate`.
+Job form shows SubcontractorPicker + per-sub comp defaults section for BOTH new AND edit jobs.
+After save: comp defaults applied via PUT sub-payments using `editJob.id` or `newJob.id`.
+Default hourly rate in hours-entry form uses job-level `hourlyRate` (not profile `payRate`).
+
+**Why:** Comp type is a per-job-per-sub deal, not a sub profile attribute.

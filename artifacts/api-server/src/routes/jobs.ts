@@ -758,32 +758,38 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const category = (compType === "hourly" || compType === "fixed") ? "Labor" : "Subcontractor";
     const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
 
-    // Atomically claim this payment: update only if still 'unpaid', preventing race-condition duplicates
-    const claimed = await db.update(jobSubcontractorsTable).set({
-      paymentStatus: "paid",
-      paidAt: today,
-      amountPaid: String(amount),
-    }).where(and(
-      eq(jobSubcontractorsTable.jobId, jobId),
-      eq(jobSubcontractorsTable.subcontractorId, subId),
-      eq(jobSubcontractorsTable.paymentStatus, "unpaid")
-    )).returning({ subId: jobSubcontractorsTable.subcontractorId });
+    // Atomically claim + create expense in a transaction so paid status and expense are never out of sync
+    const result = await db.transaction(async (tx) => {
+      const claimed = await tx.update(jobSubcontractorsTable).set({
+        paymentStatus: "paid",
+        paidAt: today,
+        amountPaid: String(amount),
+      }).where(and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subId),
+        eq(jobSubcontractorsTable.paymentStatus, "unpaid")
+      )).returning({ subId: jobSubcontractorsTable.subcontractorId });
 
-    if (claimed.length === 0) {
-      // Race condition: another request already processed this payment
+      if (claimed.length === 0) {
+        return { alreadyPaid: true };
+      }
+
+      await tx.insert(expensesTable).values({
+        description: `${subName} — ${typeLabel}`,
+        amount: String(amount),
+        category,
+        date: today,
+        jobId,
+        subcontractorId: subId,
+        businessLine: job.businessLine,
+      });
+
+      return { alreadyPaid: false };
+    });
+
+    if (result.alreadyPaid) {
       return res.json({ ok: true, alreadyPaid: true });
     }
-
-    // We won the race — now safely insert the expense
-    await db.insert(expensesTable).values({
-      description: `${subName} — ${typeLabel}`,
-      amount: String(amount),
-      category,
-      date: today,
-      jobId,
-      subcontractorId: subId,
-      businessLine: job.businessLine,
-    });
 
     await recomputeSubPaid(jobId);
     res.json({ ok: true, amount });

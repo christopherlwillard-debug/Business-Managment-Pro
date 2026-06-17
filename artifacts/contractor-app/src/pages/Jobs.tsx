@@ -3061,7 +3061,21 @@ function JobFormDialog({
           }));
         }
       } else {
-        await createJob.mutateAsync({ data: payload });
+        const newJob = await createJob.mutateAsync({ data: payload });
+        const compEntries = Object.entries(subCompDefaults).filter(([, c]) => c.rate.trim() !== "");
+        if (compEntries.length > 0 && newJob?.id) {
+          await Promise.all(compEntries.map(([sid, comp]) => {
+            const body: Record<string, unknown> = { compensationType: comp.compensationType };
+            if (comp.compensationType === "hourly") body.hourlyRate = parseFloat(comp.rate);
+            else if (comp.compensationType === "fixed") body.fixedAmount = parseFloat(comp.rate);
+            else if (comp.compensationType === "allocation") body.allocationPct = parseFloat(comp.rate);
+            return fetch(`${BASE}/api/jobs/${newJob.id}/sub-payments/${sid}`, {
+              method: "PUT", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+          }));
+        }
       }
       onSaved();
       onOpenChange(false);
@@ -3258,7 +3272,6 @@ function JobFormDialog({
           </div>
           )}
 
-          {editJob && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
@@ -3302,7 +3315,6 @@ function JobFormDialog({
               </div>
             )}
           </div>
-          )}
 
           {editJob && (
           <div className="grid grid-cols-2 gap-2">
@@ -3586,19 +3598,30 @@ export default function Jobs() {
   }
 
   async function handleMarkCompleted(job: Job) {
-    // Close gate: warn if any subs are unpaid
+    // Hard close gate: all subs must be paid, and any invoice must be paid
     try {
       const payments: Array<{ paymentStatus: string }> = await fetch(
         `${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }
       ).then(r => r.ok ? r.json() : []).catch(() => []);
       const unpaid = payments.filter(p => p.paymentStatus !== "paid");
       if (unpaid.length > 0) {
-        const ok = window.confirm(
-          `${unpaid.length} sub${unpaid.length > 1 ? "s have" : " has"} not been marked paid. Mark job complete anyway?`
-        );
-        if (!ok) return;
+        toast({
+          title: "Cannot close job",
+          description: `${unpaid.length} sub${unpaid.length > 1 ? "s are" : " is"} not yet marked paid. Mark all subs paid before closing.`,
+          variant: "destructive",
+        });
+        return;
       }
-    } catch { /* non-blocking */ }
+      const invoiceSummary = invoiceSummaryMap.get(job.id);
+      if (invoiceSummary && invoiceSummary.status !== "paid") {
+        toast({
+          title: "Cannot close job",
+          description: "The invoice has not been paid yet. Collect payment or void the invoice before closing.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch { /* gate failures should not block — fall through */ }
     await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
     queryClient.invalidateQueries();
   }
