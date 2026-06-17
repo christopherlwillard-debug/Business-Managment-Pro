@@ -942,12 +942,14 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
   const revenue = useCollected
     ? (profit?.collected || profit?.grossInvoiced || 0)
     : (profit?.grossInvoiced || 0);
+  const jobExpenses = profit?.jobExpenses ?? 0;
+  const jobIncome = Math.max(0, revenue - jobExpenses);
   const memberSubs = payments.filter(p => p.role === 'member');
   const paidToSubs = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
   const hourlyWorkers = Math.max(profit?.subLaborCost ?? 0, paidToSubs);
-  const afterWorkers = Math.max(0, revenue - hourlyWorkers);
-  const growthFund = memberSubs.reduce((s, m) => s + (m.growthPct ?? 0) * revenue, 0);
-  const toSplit = Math.max(0, afterWorkers - growthFund);
+  const afterWorkers = Math.max(0, jobIncome - hourlyWorkers);
+  const growthReserve = afterWorkers * 0.05;
+  const toSplit = Math.max(0, afterWorkers - growthReserve);
   const ownerShare = toSplit * (ownerSplitPct / 100);
   const subShare = toSplit * ((100 - ownerSplitPct) / 100);
   const taxReserve = ownerShare * (taxReservePct / 100);
@@ -1055,6 +1057,18 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                     <span className="text-sm text-foreground">Job Revenue</span>
                     <span className="text-sm font-bold text-foreground">${fmt(revenue)}</span>
                   </div>
+                  {jobExpenses > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-foreground">Materials & Expenses</span>
+                      <span className="text-sm font-bold text-red-500">−${fmt(jobExpenses)}</span>
+                    </div>
+                  )}
+                  {jobExpenses > 0 && (
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20">
+                      <span className="text-xs font-semibold text-muted-foreground">Job Income</span>
+                      <span className="text-sm font-bold text-foreground">${fmt(jobIncome)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between px-4 py-3">
                     <div>
                       <span className="text-sm text-foreground">Hourly Workers</span>
@@ -1068,14 +1082,12 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                     <span className="text-xs font-semibold text-muted-foreground">Remaining</span>
                     <span className="text-sm font-bold text-foreground">${fmt(afterWorkers)}</span>
                   </div>
-                  {growthFund > 0 && (
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <span className="text-sm text-foreground">Growth Fund ({memberSubs.map(m => `${((m.growthPct ?? 0) * 100).toFixed(0)}%`).join(" + ")})</span>
-                      <span className="text-sm font-bold text-amber-600">−${fmt(growthFund)}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-foreground">Growth Reserve (5%)</span>
+                    <span className="text-sm font-bold text-amber-600">−${fmt(growthReserve)}</span>
+                  </div>
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20">
-                    <span className="text-xs font-semibold text-muted-foreground">To Split</span>
+                    <span className="text-xs font-semibold text-muted-foreground">Split Pool</span>
                     <span className="text-sm font-bold text-foreground">${fmt(toSplit)}</span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
@@ -1359,12 +1371,14 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const revenue = useCollected
     ? (profit?.collected || profit?.grossInvoiced || 0)
     : (profit?.grossInvoiced || 0);
+  const jobExpenses = profit?.jobExpenses ?? 0;
+  const jobIncome = Math.max(0, revenue - jobExpenses);
   const memberSubs = payments.filter(p => p.role === 'member');
   const paidToSubs = payments.reduce((s, p) => s + (p.amountPaid ?? 0), 0);
   const hourlyWorkers = Math.max(profit?.subLaborCost ?? 0, paidToSubs);
-  const afterWorkers = Math.max(0, revenue - hourlyWorkers);
-  const growthFund = memberSubs.reduce((s, m) => s + (m.growthPct ?? 0) * revenue, 0);
-  const toSplit = Math.max(0, afterWorkers - growthFund);
+  const afterWorkers = Math.max(0, jobIncome - hourlyWorkers);
+  const growthReserve = afterWorkers * 0.05;
+  const toSplit = Math.max(0, afterWorkers - growthReserve);
   const ownerShare = toSplit * (ownerSplitPct / 100);
   const subShare = toSplit * ((100 - ownerSplitPct) / 100);
   const taxReserve = ownerShare * (taxReservePct / 100);
@@ -1461,15 +1475,13 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useCollected ? "translate-x-5" : "translate-x-0.5"}`} />
                 </button>
               </div>
-              {growthFund > 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/30 px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-amber-700">Growth Fund</p>
-                    <p className="text-[10px] text-amber-600">{memberSubs.map(m => `${m.subName ?? "Member"}: ${((m.growthPct ?? 0) * 100).toFixed(0)}%`).join(" · ")}</p>
-                  </div>
-                  <span className="text-sm font-bold text-amber-600">{formatCurrency(growthFund)}</span>
+              <div className="rounded-xl border border-amber-200 bg-amber-50/30 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-amber-700">Growth Reserve</p>
+                  <p className="text-[10px] text-amber-600">5% of Remaining · auto-deducted before split</p>
                 </div>
-              )}
+                <span className="text-sm font-bold text-amber-600">{formatCurrency(growthReserve)}</span>
+              </div>
               {([
                 { label: "Your Split", pct: ownerSplitPct, setPct: setOwnerSplitPct, max: 100, amount: ownerShare, color: "blue" },
                 { label: "Tax Reserve", pct: taxReservePct, setPct: setTaxReservePct, max: 40, amount: taxReserve, color: "red" },
@@ -1487,10 +1499,12 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Breakdown</p></div>
                 <div className="divide-y divide-border/30">
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Job Revenue</span><span className="text-sm font-bold text-foreground">${fmt(revenue)}</span></div>
+                  {jobExpenses > 0 && <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Materials & Expenses</span><span className="text-sm font-bold text-red-500">−${fmt(jobExpenses)}</span></div>}
+                  {jobExpenses > 0 && <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Job Income</span><span className="text-sm font-bold">${fmt(jobIncome)}</span></div>}
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Hourly Workers</span><span className="text-sm font-bold text-red-500">−${fmt(hourlyWorkers)}</span></div>
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Remaining</span><span className="text-sm font-bold">${fmt(afterWorkers)}</span></div>
-                  {growthFund > 0 && <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Growth Fund ({memberSubs.map(m => `${((m.growthPct ?? 0) * 100).toFixed(0)}%`).join(" + ")})</span><span className="text-sm font-bold text-amber-600">−${fmt(growthFund)}</span></div>}
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">To Split</span><span className="text-sm font-bold">${fmt(toSplit)}</span></div>
+                  <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Growth Reserve (5%)</span><span className="text-sm font-bold text-amber-600">−${fmt(growthReserve)}</span></div>
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Split Pool</span><span className="text-sm font-bold">${fmt(toSplit)}</span></div>
                   <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm text-foreground">Sub Share ({100 - ownerSplitPct}%)</span>
                     <div className="text-right">
