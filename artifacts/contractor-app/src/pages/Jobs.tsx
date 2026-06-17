@@ -1628,6 +1628,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [editPayId, setEditPayId] = useState<number | null>(null);
+  const [markingPaidId, setMarkingPaidId] = useState<number | null>(null);
   type SubExpenseRow = { id: number; subcontractorId: number | null; subName: string | null; amount: string; date: string; description: string | null };
   const [subExpenses, setSubExpenses] = useState<SubExpenseRow[]>([]);
 
@@ -1733,9 +1734,27 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
       });
       await loadData();
       setEditPayId(null);
+      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
       toast({ title: "Payment updated" });
     } catch {
       toast({ title: "Failed to save payment", variant: "destructive" });
+    }
+  }
+
+  async function handleQuickPay(subId: number, amount: number) {
+    setMarkingPaidId(subId);
+    try {
+      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${subId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountPaid: amount, paidDate: today, paidNotes: null }),
+      });
+      await loadData();
+      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: "Marked as paid", description: `${formatCurrency(amount)} recorded` });
+    } catch {
+      toast({ title: "Failed to record payment", variant: "destructive" });
+    } finally {
+      setMarkingPaidId(null);
     }
   }
 
@@ -1916,151 +1935,110 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
           {/* PAYMENTS TAB */}
           {activeTab === "payments" && (
             <div className="p-4 space-y-3">
+              {/* Independence notice */}
+              <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2.5">
+                <p className="text-[11px] text-blue-800 font-semibold">Crew Pay — independent of client payment</p>
+                <p className="text-[10px] text-blue-700 mt-0.5">Mark each person paid whenever you pay them. Client invoice status doesn't affect this.</p>
+              </div>
+
               {loading ? (
-                <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-xl bg-muted/40 animate-pulse" />)}</div>
-              ) : payments.length === 0 && subExpenses.length === 0 ? (
+                <div className="space-y-3">{[1,2].map(i => <div key={i} className="h-20 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+              ) : payments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <DollarSign className="w-10 h-10 text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground">No subcontractors assigned to this job yet</p>
-                </div>
-              ) : payments.length === 0 && subExpenses.length > 0 ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground px-1">
-                    No subs are formally assigned to this job, but these sub expenses were recorded. Tap <strong>Mark Paid</strong> to link and settle them.
-                  </p>
-                  {Object.entries(
-                    subExpenses.reduce<Record<number, { subName: string | null; total: number; lastDate: string }>>((acc, e) => {
-                      const sid = e.subcontractorId ?? 0;
-                      if (!acc[sid]) acc[sid] = { subName: e.subName, total: 0, lastDate: e.date };
-                      acc[sid].total += parseFloat(e.amount ?? "0");
-                      if (e.date > acc[sid].lastDate) acc[sid].lastDate = e.date;
-                      return acc;
-                    }, {})
-                  ).map(([sidStr, grp]) => {
-                    const sid = parseInt(sidStr);
-                    return (
-                      <div key={sid} className="rounded-xl border border-border overflow-hidden">
-                        <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-                          <p className="text-xs font-bold text-foreground">{grp.subName ?? `Sub #${sid}`}</p>
-                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">{formatCurrency(grp.total)} owed</span>
-                        </div>
-                        <div className="p-3 space-y-2">
-                          <p className="text-xs text-muted-foreground">Expense recorded on {formatDate(grp.lastDate)} — not yet marked paid on this job.</p>
-                          <button
-                            onClick={async () => {
-                              await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${sid}`, {
-                                method: "PUT", headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ amountPaid: grp.total, amountOwed: grp.total, paidDate: grp.lastDate, paidNotes: "Synced from expense record" }),
-                              });
-                              await loadData();
-                              qc.invalidateQueries({ queryKey: ["/api/jobs"] });
-                              toast({ title: "Marked as paid", description: `${formatCurrency(grp.total)} payment recorded for ${grp.subName ?? "sub"}` });
-                            }}
-                            className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">
-                            Mark Paid — {formatCurrency(grp.total)}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <p className="text-sm text-muted-foreground font-medium">No crew assigned yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Add subs to this job from the job card, then track pay here</p>
                 </div>
               ) : (
                 payments.map(pay => {
                   const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
                   const displayOwed = pay.amountOwed ?? pay.computedOwed;
-                  const balance = displayOwed - (pay.amountPaid ?? 0);
+                  const amountPaid = pay.amountPaid ?? 0;
+                  const balance = Math.max(0, displayOwed - amountPaid);
+                  const isPaid = balance <= 0.01 && displayOwed > 0;
                   const isEditing = editPayId === pay.subcontractorId;
+                  const isMarkingThisOne = markingPaidId === pay.subcontractorId;
+
                   return (
                     <div key={pay.subcontractorId} className="rounded-xl border border-border overflow-hidden">
-                      <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-3 py-2.5 bg-muted/30">
                         <div>
                           <p className="text-xs font-bold text-foreground">{pay.subName ?? `Sub #${pay.subcontractorId}`}</p>
-                          {pay.totalHours > 0 && <p className="text-[10px] text-muted-foreground">{pay.totalHours.toFixed(1)} hrs tracked</p>}
+                          {pay.totalHours > 0 && (
+                            <p className="text-[10px] text-muted-foreground">{pay.totalHours.toFixed(1)} hrs logged</p>
+                          )}
                         </div>
-                        {balance > 0.01 ? (
-                          <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">{formatCurrency(balance)} balance</span>
+                        {isPaid ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Paid ✓</span>
                         ) : displayOwed > 0 ? (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Paid ✓</span>
-                        ) : null}
+                          <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">{formatCurrency(balance)} owed</span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">No amount set</span>
+                        )}
                       </div>
+
                       <div className="p-3 space-y-2">
                         {!isEditing ? (
-                          <div className="space-y-1.5">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-muted-foreground">
-                                Amount Owed
-                                {pay.computedOwed > 0 && !pay.amountOwedIsManual && (
-                                  <span className="ml-1 text-[9px] text-orange-500">(from hours×rate)</span>
-                                )}
-                              </span>
-                              <span className="font-medium">{displayOwed > 0 ? formatCurrency(displayOwed) : "—"}</span>
-                            </div>
-                            {pay.computedOwed > 0 && pay.amountOwedIsManual && (
+                          <>
+                            {/* Amount rows */}
+                            {displayOwed > 0 && (
                               <div className="flex justify-between text-xs">
-                                <span className="text-muted-foreground">Computed from hours</span>
-                                <span className="text-orange-500">{formatCurrency(pay.computedOwed)}</span>
+                                <span className="text-muted-foreground">
+                                  Owed{pay.computedOwed > 0 && !pay.amountOwedIsManual && (
+                                    <span className="ml-1 text-[9px] text-orange-500">(hrs × rate)</span>
+                                  )}
+                                </span>
+                                <span className="font-medium">{formatCurrency(displayOwed)}</span>
                               </div>
                             )}
-                            <div className="flex justify-between text-xs">
-                              <span className="text-muted-foreground">Amount Paid</span>
-                              <span className="font-medium text-emerald-600">{pay.amountPaid != null && pay.amountPaid > 0 ? formatCurrency(pay.amountPaid) : "—"}</span>
-                            </div>
+                            {amountPaid > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">Paid</span>
+                                <span className="font-medium text-emerald-600">{formatCurrency(amountPaid)}</span>
+                              </div>
+                            )}
                             {pay.paidDate && (
                               <div className="flex justify-between text-xs">
-                                <span className="text-muted-foreground">Paid On</span>
+                                <span className="text-muted-foreground">Paid on</span>
                                 <span>{formatDate(pay.paidDate)}</span>
                               </div>
                             )}
-                            {pay.paidNotes && <p className="text-[10px] text-muted-foreground">{pay.paidNotes}</p>}
-                            {(() => {
-                            const expsForSub = subExpenses.filter(e => e.subcontractorId === pay.subcontractorId);
-                            const expTotal = expsForSub.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-                            const notYetPaid = (pay.amountPaid ?? 0) < 0.01;
-                            if (expsForSub.length > 0 && notYetPaid) {
-                              return (
-                                <div className="flex items-center justify-between gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
-                                  <div className="min-w-0">
-                                    <p className="text-[11px] font-semibold text-blue-800">Expense found: {formatCurrency(expTotal)}</p>
-                                    <p className="text-[10px] text-blue-600">Subcontractor expense already recorded for this job. Mark paid?</p>
-                                  </div>
-                                  <button
-                                    onClick={async () => {
-                                      const lastExp = expsForSub[expsForSub.length - 1];
-                                      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${pay.subcontractorId}`, {
-                                        method: "PUT", headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ amountPaid: expTotal, paidDate: lastExp.date, paidNotes: "Synced from expense record" }),
-                                      });
-                                      await loadData();
-                                      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
-                                      toast({ title: "Marked as paid", description: `${formatCurrency(expTotal)} payment recorded` });
-                                    }}
-                                    className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 transition-colors">
-                                    Mark Paid
-                                  </button>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
-                            {canEdit("jobs") && (
-                              <button onClick={() => setEditPayId(pay.subcontractorId)}
-                                className="mt-1 w-full py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
-                                Record Payment
-                              </button>
+                            {pay.paidNotes && (
+                              <p className="text-[10px] text-muted-foreground italic">{pay.paidNotes}</p>
                             )}
-                          </div>
+
+                            {/* Action buttons */}
+                            {canEdit("jobs") && (
+                              <div className="flex gap-2 pt-1">
+                                {!isPaid && displayOwed > 0 && (
+                                  <button
+                                    onClick={() => handleQuickPay(pay.subcontractorId, balance)}
+                                    disabled={isMarkingThisOne}
+                                    className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                                    {isMarkingThisOne ? "Recording…" : `Mark Paid — ${formatCurrency(balance)}`}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setEditPayId(pay.subcontractorId)}
+                                  className={`${!isPaid && displayOwed > 0 ? "px-3" : "flex-1"} py-2.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors`}>
+                                  {isPaid ? "Edit / Adjust" : displayOwed > 0 ? "Adjust" : "Set Amount"}
+                                </button>
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <div className="space-y-2">
                             {pay.computedOwed > 0 && (
                               <p className="text-[10px] text-orange-600 bg-orange-50 rounded-lg px-2 py-1">
-                                Auto-computed owed: {formatCurrency(pay.computedOwed)} (from {pay.totalHours.toFixed(1)} hrs × rate).
-                                Override below only if different.
+                                Auto-computed from hours: {formatCurrency(pay.computedOwed)}. Only override if different.
                               </p>
                             )}
                             <div className="grid grid-cols-2 gap-2">
                               <div>
                                 <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Owed Override</label>
-                                <input type="number" step="0.01" min="0" placeholder={pay.computedOwed > 0 ? formatCurrency(pay.computedOwed).replace("$","") : "0.00"}
+                                <input type="number" step="0.01" min="0"
+                                  placeholder={pay.computedOwed > 0 ? String(pay.computedOwed) : "0.00"}
                                   value={pf.amountOwed}
                                   onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, amountOwed: e.target.value } }))}
                                   className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
@@ -2080,14 +2058,11 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                                 className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
                             </div>
                             <div>
-                              <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Notes</label>
-                              <input type="text" placeholder="Check #, method, memo…" value={pf.paidNotes}
+                              <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Notes (optional)</label>
+                              <input type="text" placeholder="Check #, Venmo, cash…" value={pf.paidNotes}
                                 onChange={e => setPayForm(prev => ({ ...prev, [pay.subcontractorId]: { ...pf, paidNotes: e.target.value } }))}
                                 className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
                             </div>
-                            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                              This payment will appear on your P&L and in the sub's portal. Do not also add it as a Subcontractor expense — that would count it twice.
-                            </p>
                             <div className="flex gap-2">
                               <button onClick={() => setEditPayId(null)} className="flex-1 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors">Cancel</button>
                               <button onClick={() => handleSavePayment(pay.subcontractorId)} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors">Save</button>

@@ -114,24 +114,33 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const ytdMiles = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
-    // Subcontractor pay metrics — expenses categorised as "Subcontractor", joined to jobs for subPaid status
-    const subExpenses = kpiExpenses.filter(e => e.category?.toLowerCase() === "subcontractor");
-    const subJobIds = [...new Set(subExpenses.map(e => e.jobId).filter((id): id is number => id != null))];
-    const subJobSubPaidMap = new Map<number, boolean>();
-    if (subJobIds.length > 0) {
-      const subJobRows = await db.select({ id: jobsTable.id, subPaid: jobsTable.subPaid })
-        .from(jobsTable)
-        .where(inArray(jobsTable.id, subJobIds));
-      for (const j of subJobRows) subJobSubPaidMap.set(j.id, j.subPaid);
+    // Subcontractor pay metrics — query job_subcontractors directly.
+    // "Paid" = you recorded a payment on the job card. Completely independent of
+    // whether the client has paid the invoice. A Subcontractor expense record just
+    // means you spent that money — it does NOT count as "owed".
+    const subPayRows = await db.select({
+      amountOwed: jobSubcontractorsTable.amountOwed,
+      amountPaid: jobSubcontractorsTable.amountPaid,
+      businessLine: jobsTable.businessLine,
+      computedOwed: sql<string>`COALESCE((
+        SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+        FROM job_sub_hours h
+        WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+          AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+      ), 0)`,
+    })
+      .from(jobSubcontractorsTable)
+      .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id));
+
+    let subContractorOwed = 0;
+    let subContractorPaid = 0;
+    for (const r of subPayRows) {
+      if (validBl && r.businessLine !== validBl) continue;
+      const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : parseFloat(r.computedOwed ?? "0");
+      const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+      subContractorPaid += paid;
+      subContractorOwed += Math.max(0, owed - paid);
     }
-    // subContractorOwed: unpaid sub expenses (subPaid=false or unlinked); decreases as jobs are paid
-    const subContractorOwed = subExpenses
-      .filter(e => !e.jobId || !subJobSubPaidMap.get(e.jobId))
-      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // subContractorPaid: settled sub expenses (jobs where subPaid=true)
-    const subContractorPaid = subExpenses
-      .filter(e => e.jobId != null && subJobSubPaidMap.get(e.jobId) === true)
-      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const subContractorRemaining = subContractorOwed;
     const ownerProfit = operationalNetProfit - subContractorRemaining;
 
