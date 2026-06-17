@@ -1006,18 +1006,9 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
               {/* Sliders */}
               <div className="rounded-xl border border-border/50 bg-muted/20 p-4 space-y-4">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Adjust Breakdown</p>
-                <div>
-                  <div className="flex justify-between mb-1.5">
-                    <span className="text-xs text-muted-foreground">Growth Fund</span>
-                    <span className="text-xs font-bold text-amber-500">{growthPct}% · ${fmt(growthFund)}</span>
-                  </div>
-                  <input type="range" min={0} max={20} step={1} value={growthPct}
-                    onChange={e => setGrowthPct(Number(e.target.value))}
-                    className="w-full h-1.5 rounded-full accent-amber-500 cursor-pointer" />
-                  <div className="flex justify-between mt-0.5">
-                    <span className="text-[10px] text-muted-foreground/50">0%</span>
-                    <span className="text-[10px] text-muted-foreground/50">20%</span>
-                  </div>
+                <div className="flex justify-between items-center py-0.5">
+                  <span className="text-xs text-muted-foreground">Growth Reserve</span>
+                  <span className="text-xs font-bold text-amber-500">5% fixed · ${fmt(growthReserve)}</span>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1.5">
@@ -1158,18 +1149,12 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                               {balance <= 0.01 && paid > 0 && <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p>}
                             </div>
                           </div>
-                          {p.role === 'member' && revenue > 0 && (
+                          {p.role === 'member' && memberSubs.length > 0 && (
                             <div className="pl-6 space-y-0.5">
                               <div className="flex justify-between text-[10px]">
-                                <span className="text-amber-600">Growth contribution ({((p.growthPct ?? 0) * 100).toFixed(1)}%)</span>
-                                <span className="text-amber-700 font-medium">${fmt((p.growthPct ?? 0) * revenue)}</span>
+                                <span className="text-violet-600">Member split (1/{memberSubs.length})</span>
+                                <span className="text-violet-700 font-medium">${fmt(subShare / memberSubs.length)}</span>
                               </div>
-                              {memberSubs.length > 0 && (
-                                <div className="flex justify-between text-[10px]">
-                                  <span className="text-violet-600">Member split (1/{memberSubs.length})</span>
-                                  <span className="text-violet-700 font-medium">${fmt(subShare / memberSubs.length)}</span>
-                                </div>
-                              )}
                             </div>
                           )}
                           {p.role !== 'member' && p.totalHours > 0 && (
@@ -1551,18 +1536,12 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                               {bal > 0.01 ? <p className="text-[10px] text-orange-600">Balance: ${fmt(bal)}</p> : paid > 0 ? <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p> : null}
                             </div>
                           </div>
-                          {p.role === 'member' && revenue > 0 && (
+                          {p.role === 'member' && memberSubs.length > 0 && (
                             <div className="pl-6 space-y-0.5">
                               <div className="flex justify-between text-[10px]">
-                                <span className="text-amber-600">Growth contribution ({((p.growthPct ?? 0) * 100).toFixed(1)}%)</span>
-                                <span className="text-amber-700 font-medium">${fmt((p.growthPct ?? 0) * revenue)}</span>
+                                <span className="text-violet-600">Member split (1/{memberSubs.length})</span>
+                                <span className="text-violet-700 font-medium">${fmt(subShare / memberSubs.length)}</span>
                               </div>
-                              {memberSubs.length > 0 && (
-                                <div className="flex justify-between text-[10px]">
-                                  <span className="text-violet-600">Member split (1/{memberSubs.length})</span>
-                                  <span className="text-violet-700 font-medium">${fmt(subShare / memberSubs.length)}</span>
-                                </div>
-                              )}
                             </div>
                           )}
                           {p.role !== 'member' && p.totalHours > 0 && (
