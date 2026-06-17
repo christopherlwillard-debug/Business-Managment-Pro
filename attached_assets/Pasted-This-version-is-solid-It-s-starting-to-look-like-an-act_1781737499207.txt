@@ -1,0 +1,118 @@
+This version is solid. It's starting to look like an actual accounts payable system instead of just a job calculator.
+
+A few things I especially like:
+
+1. Actual Amount Owed Override
+
+This is the biggest improvement.
+
+Real life:
+
+Calculated Allocation: $617.50
+
+But you tell James:
+
+"I'll give you $700 on this one."
+
+Now:
+
+Calculated Allocation: $617.50
+Actual Amount Owed: $700.00
+
+Everything should calculate from the Actual Amount Owed.
+
+2. Partial Status
+
+This is how it should work:
+
+Amount Owed: $700
+Paid: $0
+Status: Unpaid
+
+Then:
+
+Amount Owed: $700
+Paid: $500
+Balance: $200
+Status: Partial
+
+Then:
+
+Amount Owed: $700
+Paid: $700
+Balance: $0
+Status: Paid
+
+Very clean.
+
+3. Outstanding Balances Page
+
+This is probably going to become one of your most-used screens.
+
+Example:
+
+Outstanding Sub Balances
+
+Dewayne      $450
+James        $200
+Mike         $700
+
+Total Outstanding
+$1,350
+
+That's an instant answer to:
+
+"How much cash do I need to clear everybody out today?"
+
+One Thing I'd Still Add
+
+I would add another summary number:
+
+Outstanding Sub Balances
+
+Dewayne      $450
+James        $200
+Mike         $700
+
+Total Outstanding: $1,350
+
+Jobs Impacted: 3
+Subs Owed: 3
+
+Because later you'll have enough jobs running that you'll want to know both.
+
+Another Future-Proofing Change
+
+I'd ask them to rename:
+
+Amount Owed
+
+to
+
+Agreed Amount Owed
+
+because that's what it really is.
+
+You might have:
+
+Calculated Allocation: $617.50
+Agreed Amount Owed: $700.00
+
+which makes it crystal clear that the number came from an agreement, not the formula.
+
+One More Thing To Consider
+
+For your manufactured-home work, I would eventually add a checkbox:
+
+☐ Hold Until Customer Pays
+
+Example:
+
+Customer hasn't paid dealer invoice yet
+You don't want the app screaming that James is owed money tomorrow
+
+The balance would still exist, but you'd know it's intentionally waiting on customer payment.
+
+Not needed right now, but it's something contractors run into a lot.
+
+Overall, I'd approve #864 as written. The only tweak I'd make today is changing "Actual Amount Owed" to "Agreed Amount Owed" because that's a better description of what you're really tracking.
