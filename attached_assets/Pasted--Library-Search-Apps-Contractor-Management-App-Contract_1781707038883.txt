@@ -1,0 +1,73 @@
+
+Library
+Search
+Apps
+Contractor Management App
+Contractor Management App
+Website
+Other
+Contractor App
+Website
+Images
+generated_image
+Image
+/
+You are currently viewing a preview of the main version.
+i want to keep the balance calls to the app the same as before i forgot that the logic was to save me money with plaid because plaid charges money to check balance so can i set that up in app to make changes in that banking screen where it shows how many times a month i want balanced pulled and transactions and give a breakdown of costs in an info box somewhere that i can pull up. well the balance pull isnt anything because i can get a live balance just on my phone
+
+That's exactly how I'd think about it.
+
+If you're already checking:
+
+Your bank app
+Credit union app
+Business banking app
+
+for the actual live balance, then BuildPro doesn't need to be a real-time banking dashboard.
+
+The value of the Plaid integration in BuildPro is probably:
+
+✅ Automatically importing transactions
+
+✅ Categorizing expenses
+
+✅ Job costing
+
+✅ P&L tracking
+
+✅ Cash flow reporting
+
+✅ Reconciliation
+
+Not:
+
+❌ Replacing your banking app
+
+For your use case, I'd almost be tempted to do:
+
+Balance refresh = once per day
+
+or even:
+
+Balance refresh only when Sync is clicked
+
+Then show:
+
+Balance
+$12,847.23
+
+Last Updated:
+June 17, 2026 8:00 AM
+
+That gives you a reasonable estimate of cash on hand without constantly paying for balance refreshes.
+
+If I were designing BuildPro strictly for Willard's General Contracting, I'd care much more about:
+
+"How much did I spend on Job A?"
+"How much did I spend at Lowe's this month?"
+"What's my profit this quarter?"
+"Which invoices are unpaid?"
+
+than whether the bank balance is accurate to the minute.
+
+In fact, if Plaid costs become annoying, you could even make the balance card secondary and treat the banking page primarily as a transaction feed and accounting tool, since that's where the real value is for managing your business.

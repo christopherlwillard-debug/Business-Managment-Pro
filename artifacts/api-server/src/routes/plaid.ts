@@ -167,7 +167,7 @@ router.get("/connection", wrapAsync(async (req, res) => {
   });
 }));
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 router.get("/balance", wrapAsync(async (req, res) => {
   const connections = await db.select().from(plaidConnectionsTable).limit(1);
@@ -177,13 +177,14 @@ router.get("/balance", wrapAsync(async (req, res) => {
   }
 
   const connection = connections[0];
+  const forceRefresh = req.query.force === "true";
 
-  // Return cached balance if it's less than 30 days old
+  // Return cached balance if it's less than 30 days old (unless force-refreshed)
   const cacheAge = connection.balanceCachedAt
     ? Date.now() - new Date(connection.balanceCachedAt).getTime()
     : Infinity;
 
-  if (cacheAge < ONE_HOUR_MS && connection.cachedBalanceCurrent != null) {
+  if (!forceRefresh && cacheAge < THIRTY_DAYS_MS && connection.cachedBalanceCurrent != null) {
     res.json({
       available: connection.cachedBalanceAvailable != null ? parseFloat(connection.cachedBalanceAvailable) : null,
       current: parseFloat(connection.cachedBalanceCurrent),
@@ -355,26 +356,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
     }
   }
 
-  // Also refresh the live balance so it doesn't stay stale after a sync
-  try {
-    const balanceResponse = await client.accountsGet({ access_token: connection.accessToken });
-    const account = connection.accountId
-      ? balanceResponse.data.accounts.find((a) => a.account_id === connection.accountId)
-      : balanceResponse.data.accounts[0];
-    if (account) {
-      await db.update(plaidConnectionsTable).set({
-        cachedBalanceCurrent: account.balances.current != null ? String(account.balances.current) : null,
-        cachedBalanceAvailable: account.balances.available != null ? String(account.balances.available) : null,
-        cachedBalanceCurrency: account.balances.iso_currency_code ?? "USD",
-        balanceCachedAt: new Date(),
-        lastSyncedAt: new Date(),
-      }).where(eq(plaidConnectionsTable.id, connection.id));
-    } else {
-      await db.update(plaidConnectionsTable).set({ lastSyncedAt: new Date() }).where(eq(plaidConnectionsTable.id, connection.id));
-    }
-  } catch {
-    await db.update(plaidConnectionsTable).set({ lastSyncedAt: new Date() }).where(eq(plaidConnectionsTable.id, connection.id));
-  }
+  await db.update(plaidConnectionsTable).set({ lastSyncedAt: new Date() }).where(eq(plaidConnectionsTable.id, connection.id));
 
   res.json({ synced: plaidTxns.length, inserted: insertedCount, updated: updatedCount, batchId: batch.id });
 }));

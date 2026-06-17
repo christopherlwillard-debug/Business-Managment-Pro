@@ -27,7 +27,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -158,11 +158,38 @@ function formatCurrency(amount: number | string | null | undefined, currency = "
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(n);
 }
 
+type BalanceFreq = "manual" | "daily" | "weekly" | "monthly";
+type SyncFreq = "manual" | "daily";
+
+function loadSetting<T extends string>(key: string, def: T): T {
+  try { return (localStorage.getItem(key) as T) ?? def; } catch { return def; }
+}
+
 export default function Banking() {
   const { activeBusiness, businesses } = useBusiness();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [linkToken, setLinkToken] = useState<string | null>(null);
+
+  // Plaid settings panel
+  const [showSettings, setShowSettings] = useState(false);
+  const [showCostInfo, setShowCostInfo] = useState(false);
+  const [balanceFreq, setBalanceFreqState] = useState<BalanceFreq>(() => loadSetting("plaid_balance_freq", "manual"));
+  const [syncFreq, setSyncFreqState] = useState<SyncFreq>(() => loadSetting("plaid_sync_freq", "manual"));
+
+  function setBalanceFreq(v: BalanceFreq) {
+    setBalanceFreqState(v);
+    try { localStorage.setItem("plaid_balance_freq", v); } catch {}
+  }
+  function setSyncFreq(v: SyncFreq) {
+    setSyncFreqState(v);
+    try { localStorage.setItem("plaid_sync_freq", v); } catch {}
+  }
+
+  // Estimated monthly Plaid balance calls
+  const balanceCallsPerMonth: Record<BalanceFreq, number> = { manual: 0, daily: 30, weekly: 4, monthly: 1 };
+  const estimatedBalanceCalls = balanceCallsPerMonth[balanceFreq];
+  const estimatedBalanceCost = (estimatedBalanceCalls * 0.10).toFixed(2);
 
   // Expense filing
   const [filingTxn, setFilingTxn] = useState<PlaidTransaction | null>(null);
@@ -256,10 +283,18 @@ export default function Banking() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["plaid-connection"] });
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
-      qc.invalidateQueries({ queryKey: ["plaid-balance"] });
       toast({ title: "Sync complete", description: `${data.synced} transaction${data.synced !== 1 ? "s" : ""} imported.` });
     },
     onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+  });
+
+  const refreshBalanceMutation = useMutation({
+    mutationFn: () => apiFetch<PlaidBalance>("/api/plaid/balance?force=true"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-balance"] });
+      toast({ title: "Balance refreshed", description: "Live balance pulled from Plaid." });
+    },
+    onError: (err: Error) => toast({ title: "Refresh failed", description: err.message, variant: "destructive" }),
   });
 
   const disconnectMutation = useMutation({
@@ -500,6 +535,14 @@ export default function Banking() {
             )}
             Sync Transactions
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSettings(true)}
+            title="Plaid settings & cost info"
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10">
@@ -531,10 +574,23 @@ export default function Banking() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              Current Balance
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                Current Balance
+              </CardTitle>
+              <button
+                onClick={() => refreshBalanceMutation.mutate()}
+                disabled={refreshBalanceMutation.isPending}
+                title="Refresh live balance from Plaid (uses 1 API call ~$0.10)"
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50 transition-colors"
+              >
+                {refreshBalanceMutation.isPending
+                  ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  : <RefreshCw className="w-3 h-3" />}
+                Refresh
+              </button>
+            </div>
           </CardHeader>
           <CardContent>
             {balanceLoading ? (
@@ -1027,6 +1083,126 @@ export default function Banking() {
               </Button>
             </SheetFooter>
           </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* Plaid API Settings Panel */}
+      <Sheet open={showSettings} onOpenChange={setShowSettings}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Banking API Settings
+            </SheetTitle>
+            <SheetDescription>
+              Control how often BuildPro calls Plaid. Balance checks cost money; transactions are included in your monthly Plaid item fee.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-6">
+            {/* Balance Refresh Frequency */}
+            <div>
+              <Label className="text-sm font-semibold">Balance Refresh Frequency</Label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+                Each balance check costs ~$0.10. Use "Manual only" and tap the Refresh button on the balance card when you need it.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["manual", "daily", "weekly", "monthly"] as BalanceFreq[]).map((freq) => (
+                  <button
+                    key={freq}
+                    type="button"
+                    onClick={() => setBalanceFreq(freq)}
+                    className={`px-3 py-2.5 rounded-xl border text-sm font-medium transition-all capitalize ${
+                      balanceFreq === freq
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {freq === "manual" ? "Manual only" : `Every ${freq.replace("ly", "")}`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Note: Automatic scheduling is informational — BuildPro currently always pulls balance on-demand when you click Refresh. This setting tracks your preference.
+              </p>
+            </div>
+
+            {/* Transaction Sync Frequency */}
+            <div>
+              <Label className="text-sm font-semibold">Transaction Sync Frequency</Label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+                Syncing transactions does not cost extra — it's included in your Plaid item subscription. Sync as often as you like.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["manual", "daily"] as SyncFreq[]).map((freq) => (
+                  <button
+                    key={freq}
+                    type="button"
+                    onClick={() => setSyncFreq(freq)}
+                    className={`px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      syncFreq === freq
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {freq === "manual" ? "Manual only" : "Auto-daily (6 AM)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cost Breakdown Info */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowCostInfo(!showCostInfo)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold hover:bg-muted transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-500" />
+                  Estimated Monthly Cost Breakdown
+                </span>
+                <span className="text-muted-foreground text-xs">{showCostInfo ? "▲ Hide" : "▼ Show"}</span>
+              </button>
+
+              {showCostInfo && (
+                <div className="px-4 pb-4 space-y-3 border-t border-border">
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Plaid item fee (transactions)</span>
+                      <span className="font-medium">Included in plan</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Balance checks ({estimatedBalanceCalls}/mo @ $0.10 ea)
+                      </span>
+                      <span className={`font-medium ${estimatedBalanceCalls > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                        {estimatedBalanceCalls === 0 ? "Free" : `~$${estimatedBalanceCost}`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-border pt-2">
+                      <span className="font-semibold">Estimated extra/month</span>
+                      <span className={`font-bold ${estimatedBalanceCalls > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                        {estimatedBalanceCalls === 0 ? "$0.00" : `~$${estimatedBalanceCost}`}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Plaid pricing is approximate and varies by plan. Balance is cached for up to 30 days — if you last refreshed recently, no new charge occurs. Actual invoices come from Plaid directly.
+                  </p>
+                  <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-800">
+                    <strong>Tip:</strong> Since you can check your real-time balance on your banking app, keeping Balance Refresh on "Manual only" costs $0 extra and still lets you pull a fresh number whenever you want.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <SheetFooter className="mt-8">
+            <Button variant="outline" onClick={() => setShowSettings(false)} className="w-full">
+              Done
+            </Button>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
     </div>
