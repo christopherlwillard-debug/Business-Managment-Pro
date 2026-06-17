@@ -9,6 +9,7 @@ import {
   HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy,
   RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX, Lock, LockOpen, Trash2,
   FileText, Download, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck, Ban,
+  History, DollarSign, TrendingUp,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -47,6 +48,9 @@ export default function Subcontractors() {
   const [revoke1099Confirm, setRevoke1099Confirm] = useState<{ id: number; subName: string } | null>(null);
   const [revoking1099Id, setRevoking1099Id] = useState<number | null>(null);
   const [revoke1099Error, setRevoke1099Error] = useState<string | null>(null);
+  const [subDetailTab, setSubDetailTab] = useState<"portal" | "history">("portal");
+  const [historyYear, setHistoryYear] = useState<number | "all">(new Date().getFullYear());
+  const [historyBusinessLine, setHistoryBusinessLine] = useState<string>("");
 
   useEffect(() => {
     const subIdParam = searchParams.get("subId");
@@ -67,6 +71,29 @@ export default function Subcontractors() {
       return res.json();
     },
     enabled: show1099Modal,
+    staleTime: 30000,
+  });
+
+  const { data: paymentHistory, isLoading: paymentHistoryLoading } = useQuery({
+    queryKey: ["sub-payment-history", inviteModal?.id, historyYear, historyBusinessLine],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (historyYear !== "all") params.set("year", String(historyYear));
+      if (historyBusinessLine) params.set("businessLine", historyBusinessLine);
+      const res = await fetch(`${BASE}/api/subcontractors/${inviteModal!.id}/payment-history?${params}`);
+      if (!res.ok) throw new Error("Failed to load payment history");
+      return res.json() as Promise<{
+        jobs: Array<{
+          jobId: number; jobTitle: string; jobStatus: string; businessLine: string | null;
+          compensationType: string; totalHours: number; amountOwed: number | null;
+          amountPaid: number; paidDate: string | null; paidNotes: string | null;
+          paymentStatus: string; paidAt: string | null; effectiveYear: number | null;
+        }>;
+        ytdPaid: number; totalOwed: number; totalPaid: number; balance: number;
+        allBusinessLines: string[];
+      }>;
+    },
+    enabled: !!inviteModal && subDetailTab === "history",
     staleTime: 30000,
   });
 
@@ -331,6 +358,9 @@ export default function Subcontractors() {
     setCopied(false);
     setPortalError(null);
     setEditingRate(false);
+    setSubDetailTab("portal");
+    setHistoryYear(new Date().getFullYear());
+    setHistoryBusinessLine("");
     const pr = (sub as any).payRate;
     const pt = (sub as any).payType;
     const rl = (sub as any).role ?? "hourly";
@@ -631,15 +661,33 @@ export default function Subcontractors() {
       {/* Portal Invite Modal */}
       {inviteModal && (
         <Dialog open={!!inviteModal} onOpenChange={() => { setInviteModal(null); setPortalError(null); }}>
-          <DialogContent className="bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl">
+          <DialogContent className="bg-card border-border shadow-2xl p-5 sm:p-6 rounded-2xl max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-lg sm:text-xl font-display flex items-center gap-2 pr-6">
-                <Link2 className="w-5 h-5 text-primary flex-shrink-0" />
-                <span className="truncate">Portal Access — {inviteModal.name}</span>
+                <HardHat className="w-5 h-5 text-primary flex-shrink-0" />
+                <span className="truncate">{inviteModal.name}</span>
               </DialogTitle>
             </DialogHeader>
 
+            {/* Tab navigation */}
+            <div className="flex rounded-xl border border-border overflow-hidden mt-3">
+              <button
+                onClick={() => setSubDetailTab("portal")}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 ${subDetailTab === "portal" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted/40"}`}
+              >
+                <Link2 className="w-3.5 h-3.5" /> Portal & Pay
+              </button>
+              <button
+                onClick={() => setSubDetailTab("history")}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 ${subDetailTab === "history" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted/40"}`}
+              >
+                <History className="w-3.5 h-3.5" /> Payment History
+              </button>
+            </div>
+
             <div className="mt-4 space-y-4">
+              {subDetailTab === "portal" && (
+              <>
               {/* Error display */}
               {portalError && (
                 <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -876,6 +924,131 @@ export default function Subcontractors() {
                   </div>
                 )}
               </div>
+              </>
+              )}
+
+              {/* Payment History Tab */}
+              {subDetailTab === "history" && (
+                <div className="space-y-4">
+                  {/* Filters */}
+                  <div className="flex gap-2 flex-wrap">
+                    <div className="flex-1 min-w-[100px]">
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Year</label>
+                      <select
+                        value={historyYear}
+                        onChange={e => setHistoryYear(e.target.value === "all" ? "all" : parseInt(e.target.value))}
+                        className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none"
+                      >
+                        <option value="all">All Years</option>
+                        {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1 min-w-[120px]">
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Business Line</label>
+                      <select
+                        value={historyBusinessLine}
+                        onChange={e => setHistoryBusinessLine(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none"
+                      >
+                        <option value="">All Lines</option>
+                        {(paymentHistory?.allBusinessLines ?? []).map(bl => (
+                          <option key={bl} value={bl}>{bl}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* YTD Totals */}
+                  {paymentHistory && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-center">
+                        <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">YTD Paid</p>
+                        <p className="text-sm font-bold text-emerald-800 mt-0.5">{formatCurrency(paymentHistory.ytdPaid)}</p>
+                      </div>
+                      <div className="bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-center">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Total Owed</p>
+                        <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency(paymentHistory.totalOwed)}</p>
+                      </div>
+                      <div className={`rounded-xl px-3 py-2.5 text-center border ${paymentHistory.balance > 0.01 ? "bg-red-50 border-red-200" : "bg-muted/30 border-border"}`}>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wide ${paymentHistory.balance > 0.01 ? "text-red-700" : "text-muted-foreground"}`}>Outstanding</p>
+                        <p className={`text-sm font-bold mt-0.5 ${paymentHistory.balance > 0.01 ? "text-red-700" : "text-muted-foreground"}`}>
+                          {paymentHistory.balance > 0.01 ? formatCurrency(paymentHistory.balance) : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Jobs table */}
+                  {paymentHistoryLoading ? (
+                    <div className="text-center py-8 text-muted-foreground text-sm animate-pulse">Loading history…</div>
+                  ) : !paymentHistory || paymentHistory.jobs.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground text-sm">
+                      <History className="w-7 h-7 mx-auto mb-2 opacity-20" />
+                      No jobs found{historyYear !== "all" ? ` for ${historyYear}` : ""}{historyBusinessLine ? ` · ${historyBusinessLine}` : ""}
+                    </div>
+                  ) : (
+                    <div className="border border-border rounded-xl overflow-hidden">
+                      <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-muted/60 text-muted-foreground text-[10px] uppercase font-semibold sticky top-0">
+                            <tr>
+                              <th className="px-3 py-2">Job</th>
+                              <th className="px-3 py-2 text-center">Type</th>
+                              <th className="px-3 py-2 text-right">Owed</th>
+                              <th className="px-3 py-2 text-right">Paid</th>
+                              <th className="px-3 py-2 text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50">
+                            {paymentHistory.jobs.map(job => (
+                              <tr key={job.jobId} className="hover:bg-muted/20">
+                                <td className="px-3 py-2.5">
+                                  <div className="font-medium text-foreground leading-tight">{job.jobTitle}</div>
+                                  {job.businessLine && <div className="text-muted-foreground text-[10px] mt-0.5">{job.businessLine}</div>}
+                                  {job.paidDate && <div className="text-muted-foreground text-[10px]">{job.paidDate}</div>}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground capitalize">
+                                    {job.compensationType === "hourly" && job.totalHours > 0
+                                      ? `${job.totalHours.toFixed(1)}h`
+                                      : job.compensationType}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-medium text-foreground">
+                                  {job.amountOwed != null ? formatCurrency(job.amountOwed) : <span className="text-muted-foreground">—</span>}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-medium text-emerald-700">
+                                  {job.amountPaid > 0 ? formatCurrency(job.amountPaid) : <span className="text-muted-foreground">—</span>}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  {job.paymentStatus === "paid" ? (
+                                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                      <CheckCircle2 className="w-2.5 h-2.5" /> Paid
+                                    </span>
+                                  ) : job.paymentStatus === "partial" ? (
+                                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                                      <Clock className="w-2.5 h-2.5" /> Partial
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-muted text-muted-foreground border border-border">
+                                      <AlertCircle className="w-2.5 h-2.5" /> Unpaid
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="px-3 py-2 bg-muted/30 border-t border-border text-[10px] text-muted-foreground text-right">
+                        {paymentHistory.jobs.length} job{paymentHistory.jobs.length !== 1 ? "s" : ""}{historyYear !== "all" ? ` · ${historyYear}` : " · all time"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>

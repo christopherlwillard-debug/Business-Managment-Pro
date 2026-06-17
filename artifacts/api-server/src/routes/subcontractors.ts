@@ -246,6 +246,111 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+router.get("/:id/payment-history", async (req, res) => {
+  try {
+    const subId = parseInt(req.params.id);
+    if (isNaN(subId)) return res.status(400).json({ error: "Invalid id" });
+
+    const year = req.query.year ? parseInt(req.query.year as string) : null;
+    const businessLine = req.query.businessLine ? (req.query.businessLine as string) : null;
+
+    const rows = await db
+      .select({
+        jobId: jobSubcontractorsTable.jobId,
+        jobTitle: jobsTable.title,
+        jobStatus: jobsTable.status,
+        jobStartDate: jobsTable.startDate,
+        businessLine: jobsTable.businessLine,
+        compensationType: jobSubcontractorsTable.compensationType,
+        amountOwedOverride: jobSubcontractorsTable.amountOwed,
+        fixedAmount: jobSubcontractorsTable.fixedAmount,
+        allocationPct: jobSubcontractorsTable.allocationPct,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+        paidDate: jobSubcontractorsTable.paidDate,
+        paidNotes: jobSubcontractorsTable.paidNotes,
+        paymentStatus: jobSubcontractorsTable.paymentStatus,
+        paidAt: jobSubcontractorsTable.paidAt,
+        computedOwed: sql<string>`COALESCE((
+          SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+          FROM job_sub_hours h
+          WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+            AND h.subcontractor_id = ${subId}
+        ), 0)`,
+        totalHours: sql<string>`COALESCE((
+          SELECT SUM(h.hours)
+          FROM job_sub_hours h
+          WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+            AND h.subcontractor_id = ${subId}
+        ), 0)`,
+      })
+      .from(jobSubcontractorsTable)
+      .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
+      .where(eq(jobSubcontractorsTable.subcontractorId, subId));
+
+    const jobs = rows
+      .map(r => {
+        const compType = r.compensationType ?? "hourly";
+        const computedOwed = parseFloat(r.computedOwed ?? "0");
+        const manualOverride = r.amountOwedOverride != null ? parseFloat(r.amountOwedOverride) : null;
+        const amountOwed = manualOverride != null
+          ? manualOverride
+          : compType === "hourly"
+            ? computedOwed
+            : compType === "fixed"
+              ? (r.fixedAmount != null ? parseFloat(r.fixedAmount) : null)
+              : null;
+        const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+        const paidDate = r.paidDate;
+        const startDate = r.jobStartDate;
+
+        // Determine the effective year for filtering: paidDate year if paid, else startDate year
+        const effectiveDate = paidDate || startDate;
+        const effectiveYear = effectiveDate ? parseInt(effectiveDate.substring(0, 4)) : null;
+
+        return {
+          jobId: r.jobId,
+          jobTitle: r.jobTitle,
+          jobStatus: r.jobStatus,
+          businessLine: r.businessLine ?? null,
+          compensationType: compType,
+          totalHours: parseFloat(r.totalHours ?? "0"),
+          amountOwed,
+          amountPaid,
+          paidDate,
+          paidNotes: r.paidNotes,
+          paymentStatus: r.paymentStatus ?? "unpaid",
+          paidAt: r.paidAt ?? null,
+          effectiveYear,
+        };
+      })
+      .filter(j => {
+        if (year !== null && j.effectiveYear !== year) return false;
+        if (businessLine && j.businessLine !== businessLine) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const da = a.paidDate || "";
+        const db = b.paidDate || "";
+        return db.localeCompare(da);
+      });
+
+    const totalOwed = jobs.reduce((s, j) => s + (j.amountOwed ?? 0), 0);
+    const totalPaid = jobs.reduce((s, j) => s + j.amountPaid, 0);
+    // ytdPaid = all dollars actually transferred (includes partial payments)
+    const ytdPaid = totalPaid;
+
+    // Collect distinct business lines across ALL jobs (unfiltered) for the filter dropdown
+    const allBusinessLines = [...new Set(
+      rows.map(r => r.businessLine).filter((bl): bl is string => !!bl)
+    )].sort();
+
+    res.json({ jobs, ytdPaid, totalOwed, totalPaid, balance: totalOwed - totalPaid, allBusinessLines });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch payment history" });
+  }
+});
+
 router.post("/:id/reset-portal-pin", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
