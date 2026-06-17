@@ -13,6 +13,8 @@ export const jobSubcontractorsTable = pgTable("job_subcontractors", {
   hourlyRate: numeric("hourly_rate", { precision: 10, scale: 2 }),
   fixedAmount: numeric("fixed_amount", { precision: 10, scale: 2 }),
   allocationPct: numeric("allocation_pct", { precision: 5, scale: 2 }),
+  // paymentStatus: "unpaid" | "partial" | "paid"
   paymentStatus: text("payment_status").notNull().default("unpaid"),
-  paidAt: timestamp("paid_at", { mode: "string" }),
+  paidAt: timestamp("paid_at", { mode: "string" }),       // first payment date — never overwritten
+  lastPaidAt: timestamp("last_paid_at", { mode: "string" }), // most recent payment date — updated every call
 }, (table) => [primaryKey({ columns: [table.jobId, table.subcontractorId] })]);

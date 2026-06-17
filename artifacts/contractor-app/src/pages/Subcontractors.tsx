@@ -9,7 +9,7 @@ import {
   HardHat, Plus, ShieldAlert, CheckCircle2, Link2, Copy,
   RefreshCw, CheckCheck, ShieldCheck, Clock, AlertCircle, ShieldX, Lock, LockOpen, Trash2,
   FileText, Download, ChevronDown, ChevronUp, AlertTriangle, BadgeCheck, Ban,
-  History, DollarSign, TrendingUp,
+  History, DollarSign, TrendingUp, Users, Wallet, ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,6 +51,7 @@ export default function Subcontractors() {
   const [subDetailTab, setSubDetailTab] = useState<"portal" | "history">("portal");
   const [historyYear, setHistoryYear] = useState<number | "all">(new Date().getFullYear());
   const [historyBusinessLine, setHistoryBusinessLine] = useState<string>("");
+  const [pageTab, setPageTab] = useState<"directory" | "balances">("directory");
 
   useEffect(() => {
     const subIdParam = searchParams.get("subId");
@@ -71,6 +72,35 @@ export default function Subcontractors() {
       return res.json();
     },
     enabled: show1099Modal,
+    staleTime: 30000,
+  });
+
+  const { data: outstandingBalances, isLoading: balancesLoading, refetch: refetchBalances } = useQuery({
+    queryKey: ["outstanding-balances"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/subcontractors/outstanding-balances`);
+      if (!res.ok) throw new Error("Failed to load outstanding balances");
+      return res.json() as Promise<{
+        totalOutstanding: number;
+        subsOwed: number;
+        jobsImpacted: number;
+        perSubTotals: Array<{
+          subcontractorId: number;
+          subName: string;
+          totalOwed: number;
+          totalPaid: number;
+          balance: number;
+          percentComplete: number | null;
+          lastPaymentDate: string | null;
+          jobs: Array<{
+            jobId: number; jobTitle: string; jobStatus: string | null; businessLine: string | null;
+            compensationType: string; fixedAmount: number | null; allocationPct: number | null;
+            amountOwed: number | null; amountPaid: number; paymentStatus: string; lastPaidAt: string | null;
+          }>;
+        }>;
+      }>;
+    },
+    enabled: pageTab === "balances",
     staleTime: 30000,
   });
 
@@ -440,6 +470,140 @@ export default function Subcontractors() {
         </div>
       </div>
 
+      {/* Page-level tabs */}
+      <div className="flex gap-1 bg-muted/40 rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setPageTab("directory")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${pageTab === "directory" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Users className="w-4 h-4" /> Directory
+        </button>
+        <button
+          onClick={() => setPageTab("balances")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${pageTab === "balances" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Wallet className="w-4 h-4" /> Sub Balances
+          {outstandingBalances && outstandingBalances.subsOwed > 0 && (
+            <span className="ml-1 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">{outstandingBalances.subsOwed}</span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Sub Balances tab ── */}
+      {pageTab === "balances" && (
+        <div className="space-y-4">
+          {balancesLoading ? (
+            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+          ) : !outstandingBalances || outstandingBalances.subsOwed === 0 ? (
+            <Card className="border-border/50 shadow-md p-12 flex flex-col items-center justify-center text-center">
+              <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-3" />
+              <p className="text-lg font-semibold text-foreground">All subs are settled</p>
+              <p className="text-sm text-muted-foreground mt-1">No outstanding balances across any jobs.</p>
+            </Card>
+          ) : (
+            <>
+              {/* Summary cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <Card className="border-border/50 shadow-sm p-4">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Outstanding</p>
+                  <p className="text-2xl font-bold text-orange-600 mt-1">{formatCurrency(outstandingBalances.totalOutstanding)}</p>
+                </Card>
+                <Card className="border-border/50 shadow-sm p-4">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Subs Owed</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{outstandingBalances.subsOwed}</p>
+                </Card>
+                <Card className="border-border/50 shadow-sm p-4">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Jobs Impacted</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{outstandingBalances.jobsImpacted}</p>
+                </Card>
+              </div>
+
+              {/* Per-sub breakdown */}
+              <div className="space-y-3">
+                {outstandingBalances.perSubTotals.map(sub => (
+                  <Card key={sub.subcontractorId} className="border-border/50 shadow-sm overflow-hidden">
+                    {/* Sub header */}
+                    <div className="flex items-center justify-between px-5 py-3 bg-muted/20 border-b border-border/50">
+                      <div className="flex items-center gap-2">
+                        <HardHat className="w-4 h-4 text-muted-foreground/60" />
+                        <span className="font-semibold text-foreground text-sm">{sub.subName}</span>
+                        {sub.percentComplete != null && sub.percentComplete > 0 && (
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                            {sub.percentComplete}% paid
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-orange-600">{formatCurrency(sub.balance)} owed</p>
+                        {sub.totalPaid > 0 && <p className="text-[10px] text-muted-foreground">{formatCurrency(sub.totalPaid)} paid of {formatCurrency(sub.totalOwed)}</p>}
+                        {sub.lastPaymentDate && <p className="text-[10px] text-muted-foreground">Last: {new Date(sub.lastPaymentDate).toLocaleDateString()}</p>}
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    {sub.totalOwed > 0 && sub.totalPaid > 0 && (
+                      <div className="px-5 py-2 bg-muted/10">
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-amber-500 rounded-full"
+                            style={{ width: `${Math.min(100, Math.round((sub.totalPaid / sub.totalOwed) * 100))}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Job detail rows */}
+                    <div className="divide-y divide-border/30">
+                      {sub.jobs.map(j => (
+                        <div key={j.jobId} className="flex items-center justify-between px-5 py-2.5">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-sm text-foreground truncate">{j.jobTitle}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {j.businessLine && <span className="text-[10px] text-muted-foreground">{j.businessLine}</span>}
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
+                                  j.paymentStatus === "partial"
+                                    ? "text-amber-700 bg-amber-50 border border-amber-200"
+                                    : "text-orange-600 bg-orange-50 border border-orange-200"
+                                }`}>
+                                  {j.paymentStatus === "partial" ? "● Partial" : "Unpaid"}
+                                </span>
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${
+                                  j.compensationType === "allocation"
+                                    ? "text-purple-600 bg-purple-50 border-purple-200"
+                                    : j.compensationType === "fixed"
+                                      ? "text-orange-600 bg-orange-50 border-orange-200"
+                                      : "text-blue-600 bg-blue-50 border-blue-200"
+                                }`}>
+                                  {j.compensationType === "allocation" ? "%Alloc" : j.compensationType === "fixed" ? "Fixed" : "Hourly"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0 ml-3">
+                            {j.amountOwed != null ? (
+                              <>
+                                <p className="text-sm font-bold text-orange-600">{formatCurrency(j.amountOwed - j.amountPaid)}</p>
+                                {j.amountPaid > 0 && <p className="text-[10px] text-muted-foreground">{formatCurrency(j.amountPaid)} paid of {formatCurrency(j.amountOwed)}</p>}
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground italic">{j.compensationType === "allocation" ? "Pool-based" : "See job"}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Directory tab ── */}
+      {pageTab === "directory" && (
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-sm text-left whitespace-nowrap">
@@ -563,6 +727,7 @@ export default function Subcontractors() {
           </table>
         </div>
       </Card>
+      )}
 
       {/* Delete Confirmation Dialog */}
       {deleteConfirm && (

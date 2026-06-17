@@ -30,7 +30,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart,
+  Timer, BarChart2, PieChart, Pencil,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 
@@ -1175,68 +1175,12 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                   </div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
-                      const owed = p.compensationType === 'allocation'
+                      const owed = p.compensationType === "allocation"
                         ? toSplit * ((p.allocationPct ?? 0) / 100)
                         : p.amountOwed != null ? p.amountOwed
-                        : p.compensationType === 'fixed' ? (p.fixedAmount ?? p.computedOwed ?? 0)
+                        : p.compensationType === "fixed" ? (p.fixedAmount ?? p.computedOwed ?? 0)
                         : p.computedOwed ?? 0;
-                      const paid = p.amountPaid ?? 0;
-                      const balance = owed - paid;
-                      return (
-                        <div key={p.subcontractorId} className="px-4 py-3 space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <HardHat className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0" />
-                              <div>
-                                <span className="text-sm font-medium text-foreground">{p.subName ?? "Sub"}</span>
-                                {p.compensationType === 'allocation'
-                                  ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">%Alloc</span>
-                                  : p.compensationType === 'fixed'
-                                    ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">Fixed</span>
-                                    : <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Hourly</span>
-                                }
-                                {p.paymentStatus === 'paid' && <span className="ml-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Paid</span>}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-bold">${fmt(owed)}</p>
-                              {paid > 0 && <p className="text-[10px] text-emerald-600">Paid: ${fmt(paid)}</p>}
-                              {balance > 0.01 && <p className="text-[10px] text-orange-600">Balance: ${fmt(balance)}</p>}
-                              {balance <= 0.01 && paid > 0 && <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p>}
-                            </div>
-                          </div>
-                          {p.compensationType === 'allocation' && (
-                            <div className="pl-6 text-[10px] text-purple-600">
-                              {(p.allocationPct ?? 0).toFixed(1)}% of split pool
-                            </div>
-                          )}
-                          {p.compensationType === 'fixed' && (
-                            <div className="pl-6 text-[10px] text-orange-600">Fixed: ${fmt(p.fixedAmount ?? 0)}</div>
-                          )}
-                          {p.compensationType === 'hourly' && p.totalHours > 0 && (
-                            <div className="pl-6 text-[10px] text-blue-600">Hourly · {p.totalHours.toFixed(1)} hrs</div>
-                          )}
-                          {p.paymentStatus !== 'paid' && owed > 0.01 && (
-                            <div className="pl-6">
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${p.subcontractorId}`, {
-                                      method: "POST", headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ amount: owed, subName: p.subName }),
-                                    });
-                                    await refreshPayments();
-                                    toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"} marked paid` });
-                                  } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
-                                }}
-                                className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors"
-                              >
-                                Mark Paid
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
+                      return <SubPaymentRowCard key={p.subcontractorId} p={p} jobId={job.id} owed={owed} onRefresh={refreshPayments} />;
                     })}
                   </div>
                 </div>
@@ -1639,60 +1583,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
                       const owed = owedFor(p, toSplit);
-                      const paid = p.amountPaid ?? 0;
-                      const bal = owed - paid;
-                      return (
-                        <div key={p.subcontractorId} className="px-4 py-3 space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <HardHat className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0" />
-                              <div>
-                                <span className="text-sm font-medium">{p.subName ?? "Sub"}</span>
-                                {p.compensationType === 'allocation'
-                                  ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">%Alloc</span>
-                                  : p.compensationType === 'fixed'
-                                    ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">Fixed</span>
-                                    : <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Hourly</span>
-                                }
-                                {p.paymentStatus === 'paid' && <span className="ml-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Paid</span>}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-bold">${fmt(owed)}</p>
-                              {paid > 0 && <p className="text-[10px] text-emerald-600">Paid: ${fmt(paid)}</p>}
-                              {bal > 0.01 ? <p className="text-[10px] text-orange-600">Balance: ${fmt(bal)}</p> : paid > 0 ? <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p> : null}
-                            </div>
-                          </div>
-                          {p.compensationType === 'allocation' && (
-                            <div className="pl-6 text-[10px] text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</div>
-                          )}
-                          {p.compensationType === 'fixed' && (
-                            <div className="pl-6 text-[10px] text-orange-600">Fixed: ${fmt(p.fixedAmount ?? 0)}</div>
-                          )}
-                          {p.compensationType === 'hourly' && p.totalHours > 0 && (
-                            <div className="pl-6 text-[10px] text-blue-600">Hourly · {p.totalHours.toFixed(1)} hrs</div>
-                          )}
-                          {p.paymentStatus !== 'paid' && owed > 0.01 && (
-                            <div className="pl-6">
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${p.subcontractorId}`, {
-                                      method: "POST", headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ amount: owed, subName: p.subName }),
-                                    });
-                                    await refreshPayments();
-                                    toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"} marked paid` });
-                                  } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
-                                }}
-                                className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors"
-                              >
-                                Mark Paid
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
+                      return <SubPaymentRowCard key={p.subcontractorId} p={p} jobId={job.id} owed={owed} onRefresh={refreshPayments} />;
                     })}
                   </div>
                 </div>
@@ -1762,9 +1653,182 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   );
 }
 
+// ─── Sub Payment Row Card ──────────────────────────────────────────────────────
+function SubPaymentRowCard({ p, jobId, owed, onRefresh }: {
+  p: SubPaymentRow;
+  jobId: number;
+  owed: number;
+  onRefresh: () => Promise<void>;
+}) {
+  const { toast } = useToast();
+  const paid = p.amountPaid ?? 0;
+  const balance = Math.max(0, owed - paid);
+  const pct = owed > 0 ? Math.min(100, Math.round((paid / owed) * 100)) : 0;
+
+  const [payInput, setPayInput] = useState(() => balance > 0.01 ? balance.toFixed(2) : owed > 0 ? owed.toFixed(2) : "");
+  const [paying, setPaying] = useState(false);
+  const [editingOwed, setEditingOwed] = useState(false);
+  const [owedInput, setOwedInput] = useState(() => owed > 0 ? owed.toFixed(2) : "");
+  const [savingOwed, setSavingOwed] = useState(false);
+
+  function fmt(n: number) {
+    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function handlePay(amount: number) {
+    if (amount <= 0) return;
+    setPaying(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${jobId}/pay-worker/${p.subcontractorId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ amount, agreedOwed: owed > 0 ? owed : undefined, subName: p.subName }),
+      });
+      if (!r.ok) throw new Error();
+      const data = await r.json();
+      await onRefresh();
+      const isPartial = data.status === "partial";
+      toast({
+        title: isPartial ? "Partial payment recorded" : "Payment recorded",
+        description: isPartial
+          ? `${p.subName ?? "Sub"}: $${fmt(amount)} paid — $${fmt(owed - (data.accumulated ?? 0))} remaining`
+          : `${p.subName ?? "Sub"} fully paid`,
+      });
+    } catch {
+      toast({ title: "Failed to record payment", variant: "destructive" });
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  async function handleSaveOwed() {
+    const val = parseFloat(owedInput);
+    if (isNaN(val) || val <= 0) return;
+    setSavingOwed(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${jobId}/sub-payments/${p.subcontractorId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ amountOwed: val }),
+      });
+      if (!r.ok) throw new Error();
+      await onRefresh();
+      setEditingOwed(false);
+      toast({ title: "Agreed owed updated" });
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+    } finally {
+      setSavingOwed(false);
+    }
+  }
+
+  const isFullyPaid = p.paymentStatus === "paid";
+  const isPartial = p.paymentStatus === "partial";
+
+  return (
+    <div className="px-4 py-3 space-y-1.5">
+      {/* Name + status row */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <HardHat className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="text-sm font-medium text-foreground">{p.subName ?? "Sub"}</span>
+            {p.compensationType === "allocation"
+              ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">%Alloc</span>
+              : p.compensationType === "fixed"
+                ? <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">Fixed</span>
+                : <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Hourly</span>
+            }
+            {isFullyPaid
+              ? <span className="ml-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Paid</span>
+              : isPartial
+                ? <span className="ml-1 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">● Partial</span>
+                : null
+            }
+          </div>
+        </div>
+        <div className="text-right flex-shrink-0 ml-2">
+          <p className="text-sm font-bold text-foreground">${fmt(owed)}</p>
+          {isPartial && <p className="text-[10px] text-amber-600">Paid: ${fmt(paid)}</p>}
+          {balance > 0.01 && !isFullyPaid && <p className="text-[10px] text-orange-600">Balance: ${fmt(balance)}</p>}
+          {isFullyPaid && paid > 0 && <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p>}
+        </div>
+      </div>
+
+      {/* Comp type detail */}
+      {p.compensationType === "allocation" && <div className="pl-6 text-[10px] text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</div>}
+      {p.compensationType === "fixed" && <div className="pl-6 text-[10px] text-orange-600">Fixed: ${fmt(p.fixedAmount ?? 0)}</div>}
+      {p.compensationType === "hourly" && p.totalHours > 0 && <div className="pl-6 text-[10px] text-blue-600">Hourly · {p.totalHours.toFixed(1)} hrs</div>}
+
+      {/* Progress bar (partial only) */}
+      {isPartial && owed > 0 && (
+        <div className="pl-6 space-y-0.5">
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>${fmt(paid)} paid</span><span>{pct}% of ${fmt(owed)}</span>
+          </div>
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          {p.lastPaidAt && <p className="text-[10px] text-muted-foreground">Last payment: {new Date(p.lastPaidAt).toLocaleDateString()}</p>}
+        </div>
+      )}
+
+      {/* Agreed Owed inline edit (only when not paid) */}
+      {!isFullyPaid && (
+        <div className="pl-6">
+          {editingOwed ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">Agreed Owed: $</span>
+              <input type="number" step="0.01" min="0" value={owedInput} onChange={e => setOwedInput(e.target.value)}
+                className="w-24 px-2 py-0.5 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/30" />
+              <button onClick={handleSaveOwed} disabled={savingOwed}
+                className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors disabled:opacity-50">
+                {savingOwed ? "…" : "Save"}
+              </button>
+              <button onClick={() => { setEditingOwed(false); setOwedInput(owed > 0 ? owed.toFixed(2) : ""); }}
+                className="text-[10px] text-muted-foreground hover:text-foreground">Cancel</button>
+            </div>
+          ) : (
+            <button onClick={() => { setEditingOwed(true); setOwedInput(owed > 0 ? owed.toFixed(2) : ""); }}
+              className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <Pencil className="w-2.5 h-2.5" /> Edit Agreed Owed
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Payment section (only when not fully paid) */}
+      {!isFullyPaid && owed > 0.01 && (
+        <div className="pl-6 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground">Amount: $</span>
+            <input type="number" step="0.01" min="0.01" value={payInput} onChange={e => setPayInput(e.target.value)}
+              className="w-24 px-2 py-0.5 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-emerald-500/30" />
+            <button
+              onClick={() => { const a = parseFloat(payInput); if (!isNaN(a) && a > 0) handlePay(a); }}
+              disabled={paying}
+              className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full hover:bg-emerald-100 transition-colors disabled:opacity-50">
+              {paying ? "…" : "Record Payment"}
+            </button>
+          </div>
+          {isPartial && balance > 0.01 ? (
+            <button onClick={() => handlePay(balance)} disabled={paying}
+              className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50">
+              Pay Full Balance (${fmt(balance)})
+            </button>
+          ) : !isPartial ? (
+            <button onClick={() => handlePay(owed)} disabled={paying}
+              className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50">
+              Mark Paid (${fmt(owed)})
+            </button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
 type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; description: string | null; rateSnapshot: number | null };
-type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null };
+type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
 function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; onClose: () => void; initialTab?: "hours" | "payments" | "benchmark" }) {
@@ -2590,7 +2654,7 @@ function JobCard({
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
 
-  type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null };
+  type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid?: number; paymentStatus?: string };
   const [unpaidSubs, setUnpaidSubs] = useState<OutstandingSubRow[] | null>(null);
   const [markingSubId, setMarkingSubId] = useState<number | null>(null);
   const hasSubs = Array.isArray(job.subcontractorIds) && (job.subcontractorIds as number[]).length > 0;
@@ -2612,6 +2676,15 @@ function JobCard({
   })();
 
   function outstandingAmount(sub: OutstandingSubRow): number {
+    const fullOwed = sub.amountOwed != null ? sub.amountOwed
+      : sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0)
+      : sub.compensationType === "allocation" ? toSplit * ((sub.allocationPct ?? 0) / 100)
+      : 0;
+    const alreadyPaid = sub.amountPaid ?? 0;
+    return Math.max(0, fullOwed - alreadyPaid);
+  }
+
+  function agreedOwedAmount(sub: OutstandingSubRow): number {
     if (sub.amountOwed != null) return sub.amountOwed;
     if (sub.compensationType === "fixed") return sub.fixedAmount ?? 0;
     if (sub.compensationType === "allocation") return toSplit * ((sub.allocationPct ?? 0) / 100);
@@ -2626,10 +2699,11 @@ function JobCard({
     }
     setMarkingSubId(sub.subcontractorId);
     try {
+      const agreedOwed = agreedOwedAmount(sub);
       const res = await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${sub.subcontractorId}`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, subName: sub.subName }),
+        body: JSON.stringify({ amount, agreedOwed: agreedOwed > 0 ? agreedOwed : undefined, subName: sub.subName }),
       });
       if (!res.ok) throw new Error();
       toast({ title: "Marked paid", description: `${sub.subName} — ${formatCurrency(amount)} recorded.` });
