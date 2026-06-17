@@ -3629,6 +3629,68 @@ export default function Jobs() {
   const createPaymentLinkMutation = useCreateInvoicePaymentLink();
   const { toast } = useToast();
 
+  type CloseJobDialogSub = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null };
+  const [closeJobDialog, setCloseJobDialog] = useState<{ job: Job; subs: CloseJobDialogSub[]; toSplit: number } | null>(null);
+  const [closeJobBusy, setCloseJobBusy] = useState(false);
+
+  function computeCloseJobSubAmount(sub: CloseJobDialogSub, toSplit: number): number {
+    if (sub.amountOwed != null) return sub.amountOwed;
+    if (sub.compensationType === "fixed") return sub.fixedAmount ?? 0;
+    if (sub.compensationType === "allocation") return toSplit * ((sub.allocationPct ?? 0) / 100);
+    return 0;
+  }
+
+  async function handleCloseJobMarkAllPaid() {
+    if (!closeJobDialog) return;
+    const { job, subs, toSplit } = closeJobDialog;
+    setCloseJobBusy(true);
+    try {
+      await Promise.all(subs.map(sub => {
+        const amount = computeCloseJobSubAmount(sub, toSplit);
+        if (amount <= 0) return Promise.resolve();
+        return fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${sub.subcontractorId}`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount, subName: sub.subName }),
+        });
+      }));
+      await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
+      queryClient.invalidateQueries();
+      setCloseJobDialog(null);
+      toast({ title: "Job completed", description: "All sub payments have been recorded." });
+    } catch {
+      toast({ title: "Failed to record payments", variant: "destructive" });
+    } finally {
+      setCloseJobBusy(false);
+    }
+  }
+
+  async function handleCloseJobKeepOutstanding() {
+    if (!closeJobDialog) return;
+    const { job, subs, toSplit } = closeJobDialog;
+    setCloseJobBusy(true);
+    try {
+      const subsPayload = subs
+        .map(sub => ({ subcontractorId: sub.subcontractorId, amount: computeCloseJobSubAmount(sub, toSplit), subName: sub.subName }))
+        .filter(s => s.amount > 0);
+      if (subsPayload.length > 0) {
+        await fetch(`${BASE}/api/jobs/${job.id}/record-sub-expenses`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subs: subsPayload }),
+        });
+      }
+      await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
+      queryClient.invalidateQueries();
+      setCloseJobDialog(null);
+      toast({ title: "Job completed", description: "Sub payments remain outstanding and are tracked in the books." });
+    } catch {
+      toast({ title: "Failed to complete job", variant: "destructive" });
+    } finally {
+      setCloseJobBusy(false);
+    }
+  }
+
   type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
   const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
 
@@ -3748,39 +3810,48 @@ export default function Jobs() {
   }
 
   async function handleMarkCompleted(job: Job) {
-    // Hard close gate: all subs must be paid, and any invoice must be paid
-    try {
-      const payments: Array<{ paymentStatus: string }> = await fetch(
-        `${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }
-      ).then(r => r.ok ? r.json() : []).catch(() => []);
-      const unpaid = payments.filter(p => p.paymentStatus !== "paid");
-      if (unpaid.length > 0) {
-        toast({
-          title: "Cannot close job",
-          description: `${unpaid.length} sub${unpaid.length > 1 ? "s are" : " is"} not yet marked paid. Mark all subs paid before closing.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      const invoiceSummary = invoiceSummaryMap.get(job.id);
-      if (invoiceSummary && invoiceSummary.status !== "paid") {
-        toast({
-          title: "Cannot close job",
-          description: "The invoice has not been paid yet. Collect payment or void the invoice before closing.",
-          variant: "destructive",
-        });
-        return;
-      }
-    } catch {
+    // Invoice gate — preserved from before: unpaid invoice blocks close with a toast
+    const invoiceSummary = invoiceSummaryMap.get(job.id);
+    if (invoiceSummary && invoiceSummary.status !== "paid") {
       toast({
         title: "Cannot close job",
-        description: "Could not verify payment status. Please try again.",
+        description: "The invoice has not been paid yet. Collect payment or void the invoice before closing.",
         variant: "destructive",
       });
       return;
     }
-    await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
-    queryClient.invalidateQueries();
+
+    // Fetch outstanding fixed/allocation subs and profit data in parallel
+    try {
+      const [subsData, profitData] = await Promise.all([
+        fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" })
+          .then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
+          .then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
+
+      if ((subsData as unknown[]).length === 0) {
+        // No unpaid fixed/allocation subs — close immediately (same as before)
+        await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
+        queryClient.invalidateQueries();
+        return;
+      }
+
+      // Compute allocation split pool from profit data
+      const toSplit = profitData ? (() => {
+        const income = Math.max(0, profitData.grossInvoiced - profitData.jobExpenses);
+        const afterWorkers = Math.max(0, income - profitData.subLaborCost);
+        return Math.max(0, afterWorkers - afterWorkers * 0.05);
+      })() : 0;
+
+      setCloseJobDialog({ job, subs: subsData, toSplit });
+    } catch {
+      toast({
+        title: "Cannot close job",
+        description: "Could not verify sub payment status. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string, currentTotal: number = 0, jobId: number = 0) {
@@ -4309,6 +4380,85 @@ export default function Jobs() {
               </div>
               <p className="text-xs text-gray-400 text-center">
                 Share this link with your client. Square will process the payment and send them a receipt.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close-Job Dialog — shown when unpaid fixed/allocation subs exist on job completion */}
+      {closeJobDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-500" />
+            <div className="p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <HardHat className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900 text-lg leading-tight">Unpaid Job Payments</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">"{closeJobDialog.job.title}" has unpaid subs. How would you like to proceed?</p>
+                </div>
+              </div>
+
+              {/* Sub list */}
+              <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+                <div className="px-3 py-2 border-b border-amber-200/60">
+                  <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Outstanding Payments</p>
+                </div>
+                <div className="divide-y divide-amber-100">
+                  {closeJobDialog.subs.map(sub => {
+                    const amt = computeCloseJobSubAmount(sub, closeJobDialog.toSplit);
+                    const isAllocationNoData = sub.compensationType === "allocation" && amt === 0;
+                    return (
+                      <div key={sub.subcontractorId} className="flex items-center gap-3 px-3 py-2.5">
+                        <HardHat className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-amber-900 truncate">{sub.subName}</p>
+                          <p className="text-xs text-amber-700">
+                            {sub.compensationType === "allocation"
+                              ? isAllocationNoData
+                                ? `${sub.allocationPct ?? 0}% allocation — amount TBD`
+                                : `${sub.allocationPct ?? 0}% → ${formatCurrency(amt)}`
+                              : formatCurrency(amt)
+                            }
+                          </p>
+                        </div>
+                        {isAllocationNoData && (
+                          <span className="text-[10px] text-amber-600 font-medium italic flex-shrink-0">No invoice yet</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="space-y-2.5 pt-1">
+                <button
+                  onClick={handleCloseJobMarkAllPaid}
+                  disabled={closeJobBusy}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors disabled:opacity-50 shadow-sm">
+                  {closeJobBusy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
+                  Mark All Paid Now
+                </button>
+                <button
+                  onClick={handleCloseJobKeepOutstanding}
+                  disabled={closeJobBusy}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors disabled:opacity-50 shadow-sm">
+                  {closeJobBusy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Complete Job &amp; Keep As Outstanding
+                </button>
+                <button
+                  onClick={() => setCloseJobDialog(null)}
+                  disabled={closeJobBusy}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50">
+                  Cancel
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 text-center">
+                "Keep As Outstanding" books the cost now but leaves payment due — visible in the banner until paid.
               </p>
             </div>
           </div>

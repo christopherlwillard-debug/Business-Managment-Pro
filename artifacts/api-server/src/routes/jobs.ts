@@ -843,6 +843,51 @@ router.post("/:id/record-owner-draw", async (req, res) => {
   }
 });
 
+// Record expense entries for unpaid fixed/allocation subs without changing paymentStatus.
+// Used by "Complete Job & Keep As Outstanding" flow so costs land in the books immediately.
+router.post("/:id/record-sub-expenses", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const subs: Array<{ subcontractorId: number; amount: number; subName: string }> = req.body.subs ?? [];
+    if (!Array.isArray(subs) || subs.length === 0) return res.json({ ok: true, created: 0 });
+
+    const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+    const today = new Date().toISOString().split("T")[0];
+    let created = 0;
+
+    for (const sub of subs) {
+      const subId = parseInt(String(sub.subcontractorId));
+      const amount = parseFloat(String(sub.amount ?? "0"));
+      if (isNaN(subId) || amount <= 0) continue;
+      // Idempotent: skip if a non-hours-linked subcontractor expense already exists for this sub+job
+      const [existing] = await db.select({ id: expensesTable.id })
+        .from(expensesTable)
+        .where(and(
+          eq(expensesTable.jobId, jobId),
+          eq(expensesTable.subcontractorId, subId),
+          eq(expensesTable.category, "Subcontractor"),
+          isNull(expensesTable.jobSubHoursId),
+        ));
+      if (existing) continue;
+      await db.insert(expensesTable).values({
+        description: `Sub payment outstanding — ${sub.subName}`,
+        amount: amount.toFixed(2),
+        category: "Subcontractor",
+        date: today,
+        jobId,
+        subcontractorId: subId,
+        businessLine: job?.businessLine,
+      });
+      created++;
+    }
+    res.json({ ok: true, created });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to record sub expenses" });
+  }
+});
+
 // Outstanding unpaid fixed/allocation subs for a single job — used by the job card banner
 router.get("/:id/outstanding-sub-payments", async (req, res) => {
   try {
