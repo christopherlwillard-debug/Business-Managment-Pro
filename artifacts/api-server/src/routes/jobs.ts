@@ -26,18 +26,21 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
   const allPaid = allRows.length > 0 && allRows.every(r => {
     // paymentStatus='paid' is authoritative — set by pay-worker endpoint
     if (r.paymentStatus === "paid") return true;
+    // partial is explicitly not paid
+    if (r.paymentStatus === "partial") return false;
     const compType = r.compensationType ?? "hourly";
     const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
     if (compType === "allocation") {
-      // Allocation owed requires split-pool context; rely on paymentStatus or amountPaid > 0
-      return paid > 0;
+      // Allocation owed requires split-pool context not available here.
+      // Treat as unpaid unless paymentStatus is explicitly "paid" (handled above).
+      return false;
     }
     const owed = r.amountOwed != null
       ? parseFloat(r.amountOwed)
       : compType === "fixed"
         ? parseFloat(r.fixedAmount ?? "0")
         : parseFloat(r.computedOwed ?? "0");
-    return owed <= 0 || paid >= owed;
+    return owed <= 0 || paid >= owed - 0.005;
   });
   await db.update(jobsTable).set({ subPaid: allPaid }).where(eq(jobsTable.id, jobId));
   return allPaid;

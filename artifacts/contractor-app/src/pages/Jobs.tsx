@@ -3735,15 +3735,19 @@ export default function Jobs() {
   const createPaymentLinkMutation = useCreateInvoicePaymentLink();
   const { toast } = useToast();
 
-  type CloseJobDialogSub = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null };
+  type CloseJobDialogSub = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid: number | null };
   const [closeJobDialog, setCloseJobDialog] = useState<{ job: Job; subs: CloseJobDialogSub[]; toSplit: number } | null>(null);
   const [closeJobBusy, setCloseJobBusy] = useState(false);
 
   function computeCloseJobSubAmount(sub: CloseJobDialogSub, toSplit: number): number {
-    if (sub.amountOwed != null) return sub.amountOwed;
-    if (sub.compensationType === "fixed") return sub.fixedAmount ?? 0;
-    if (sub.compensationType === "allocation") return toSplit * ((sub.allocationPct ?? 0) / 100);
-    return 0;
+    // Compute the total agreed owed amount
+    const totalOwed = sub.amountOwed != null ? sub.amountOwed
+      : sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0)
+      : sub.compensationType === "allocation" ? toSplit * ((sub.allocationPct ?? 0) / 100)
+      : 0;
+    // Subtract any partial payments already recorded to avoid double-billing
+    const alreadyPaid = sub.amountPaid ?? 0;
+    return Math.max(0, totalOwed - alreadyPaid);
   }
 
   async function handleCloseJobMarkAllPaid() {

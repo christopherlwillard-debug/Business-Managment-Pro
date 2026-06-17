@@ -593,6 +593,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       jobId: jobSubcontractorsTable.jobId,
       amountOwed: jobSubcontractorsTable.amountOwed,
       fixedAmount: jobSubcontractorsTable.fixedAmount,
+      amountPaid: jobSubcontractorsTable.amountPaid,
       compensationType: jobSubcontractorsTable.compensationType,
       businessLine: jobsTable.businessLine,
     })
@@ -600,19 +601,24 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
       .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(and(
-        eq(jobSubcontractorsTable.paymentStatus, "unpaid"),
+        inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
         inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
         blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
       ));
 
-    const outstandingSubPayments = outstandingSubRows.map(r => ({
-      subName: r.subName,
-      jobTitle: r.jobTitle ?? "",
-      jobId: r.jobId,
-      compensationType: r.compensationType,
-      amount: r.amountOwed != null ? parseFloat(r.amountOwed) : r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
-      businessLine: r.businessLine,
-    }));
+    const outstandingSubPayments = outstandingSubRows.map(r => {
+      const fullOwed = r.amountOwed != null ? parseFloat(r.amountOwed) : r.fixedAmount != null ? parseFloat(r.fixedAmount) : null;
+      const alreadyPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+      const remaining = fullOwed != null ? Math.max(0, fullOwed - alreadyPaid) : null;
+      return {
+        subName: r.subName,
+        jobTitle: r.jobTitle ?? "",
+        jobId: r.jobId,
+        compensationType: r.compensationType,
+        amount: remaining,
+        businessLine: r.businessLine,
+      };
+    });
     const outstandingSubTotal = outstandingSubPayments.reduce((s, i) => s + (i.amount ?? 0), 0);
 
     res.json({
@@ -738,6 +744,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       jobId: jobSubcontractorsTable.jobId,
       amountOwed: jobSubcontractorsTable.amountOwed,
       fixedAmount: jobSubcontractorsTable.fixedAmount,
+      amountPaid: jobSubcontractorsTable.amountPaid,
       compensationType: jobSubcontractorsTable.compensationType,
       businessLine: jobsTable.businessLine,
     })
@@ -745,18 +752,23 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
       .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(and(
-        eq(jobSubcontractorsTable.paymentStatus, "unpaid"),
+        inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
         inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
         blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
       ));
 
-    const outstandingSubItems = outstandingSubRows.map(r => ({
-      subName: r.subName,
-      jobTitle: r.jobTitle ?? "",
-      jobId: r.jobId,
-      compensationType: r.compensationType,
-      amount: r.amountOwed != null ? parseFloat(r.amountOwed) : r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
-    }));
+    const outstandingSubItems = outstandingSubRows.map(r => {
+      const fullOwed = r.amountOwed != null ? parseFloat(r.amountOwed) : r.fixedAmount != null ? parseFloat(r.fixedAmount) : null;
+      const alreadyPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+      const remaining = fullOwed != null ? Math.max(0, fullOwed - alreadyPaid) : null;
+      return {
+        subName: r.subName,
+        jobTitle: r.jobTitle ?? "",
+        jobId: r.jobId,
+        compensationType: r.compensationType,
+        amount: remaining,
+      };
+    });
     const outstandingSubTotal = outstandingSubItems.reduce((s, i) => s + (i.amount ?? 0), 0);
     const outstandingSubLiability = { total: outstandingSubTotal, items: outstandingSubItems };
 
