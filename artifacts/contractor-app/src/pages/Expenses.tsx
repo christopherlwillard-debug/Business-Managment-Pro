@@ -1763,7 +1763,7 @@ export default function Expenses() {
                         <tbody className="divide-y divide-border/50">
                           {monthExp.map(exp => {
                             const isEditing = editingRow?.id === exp.id;
-                            if (isEditing) {
+                            if (false && isEditing) {
                               return (
                                 <tr key={exp.id} className="bg-amber-500/5 border-l-2 border-amber-500">
                                   <td className="px-3 py-2">
@@ -1960,8 +1960,8 @@ export default function Expenses() {
                             }
                             return (
                               <tr key={exp.id}
-                                onClick={() => setViewExpense(exp)}
-                                className="hover:bg-muted/30 transition-colors cursor-pointer group">
+                                onClick={() => { if (!isEditing) setViewExpense(exp); }}
+                                className={`hover:bg-muted/30 transition-colors cursor-pointer group${isEditing ? " bg-amber-50/60 dark:bg-amber-900/10 ring-2 ring-inset ring-amber-400" : ""}`}>
                                 <td className="px-6 py-4 text-muted-foreground">{formatDate(exp.date)}</td>
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -2324,6 +2324,176 @@ export default function Expenses() {
         onClose={() => setImportOpen(false)}
         onImported={() => { setImportOpen(false); refetch(); }}
       />
+
+      {/* Edit Expense Modal */}
+      {editingRow && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={e => { if (e.target === e.currentTarget) { setEditReceiptFile(null); setEditingRow(null); } }}
+        >
+          <div className="bg-background rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg border border-border flex flex-col max-h-[92vh]">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-shrink-0">
+              <h3 className="font-bold text-base">Edit Expense</h3>
+              <button onClick={() => { setEditReceiptFile(null); setEditingRow(null); }} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Date</label>
+                  <input type="date" value={editingRow.date}
+                    onChange={e => setEditingRow(r => r && ({ ...r, date: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">$</span>
+                    <input type="number" step="0.01" min="0" value={editingRow.amount}
+                      onChange={e => setEditingRow(r => r && ({ ...r, amount: e.target.value }))}
+                      className="w-full pl-7 pr-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Description</label>
+                <input type="text" value={editingRow.description}
+                  onChange={e => setEditingRow(r => r && ({ ...r, description: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50"
+                  placeholder="What was this expense for?" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Vendor / Paid To</label>
+                <VendorCombobox value={editingRow.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Category</label>
+                <select value={editingRow.category}
+                  onChange={e => setEditingRow(r => r && ({ ...r, category: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none">
+                  {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Linked Job</label>
+                <select value={editingRow.jobId}
+                  onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none">
+                  <option value="">— No job linked —</option>
+                  {(jobs ?? []).filter((j: any) => j.status !== "completed" && j.status !== "cancelled")
+                    .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
+                  {(jobs ?? []).some((j: any) => j.status === "completed" || j.status === "cancelled") && (
+                    <optgroup label="Closed">
+                      {(jobs ?? []).filter((j: any) => j.status === "completed" || j.status === "cancelled")
+                        .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Notes</label>
+                <input type="text" value={editingRow.notes}
+                  onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50"
+                  placeholder="Optional notes" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Business Line</label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[
+                    { val: "", label: "Untagged" },
+                    { val: "general_contracting", label: "General Contracting" },
+                    { val: "asphalt_sealing", label: "Asphalt Sealing" },
+                  ].map(({ val, label }) => (
+                    <button key={val} type="button"
+                      onClick={() => setEditingRow(r => r && ({ ...r, businessLine: val }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        editingRow.businessLine === val
+                          ? val === "asphalt_sealing" ? "bg-amber-500 text-white border-amber-500" : val === "general_contracting" ? "bg-blue-600 text-white border-blue-600" : "bg-muted text-foreground border-border"
+                          : "text-muted-foreground border-border hover:bg-muted"
+                      }`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer py-1">
+                <input type="checkbox" checked={editingRow.excludeFromNetProfit}
+                  onChange={e => setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }))}
+                  className="w-4 h-4 accent-amber-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-1.5"><EyeOff className="w-3.5 h-3.5" /> Write-off</p>
+                  <p className="text-xs text-muted-foreground">Exclude this expense from net profit calculation</p>
+                </div>
+              </label>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Receipt</label>
+                {editReceiptFile ? (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <span className="text-sm text-emerald-700 font-medium flex-1 truncate">{editReceiptFile.name}</span>
+                    <button type="button" onClick={() => { setEditReceiptFile(null); if (editReceiptInputRef.current) editReceiptInputRef.current.value = ""; }}
+                      className="text-red-500 hover:text-red-700 flex-shrink-0"><X className="w-4 h-4" /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button type="button" onClick={() => editReceiptInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      Upload Receipt
+                    </button>
+                    {googleConfigured && (
+                      <button type="button" onClick={handleDrivePickEdit} disabled={drivePickingEdit}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:text-blue-600 hover:border-blue-300 transition-colors disabled:opacity-60">
+                        {drivePickingEdit ? <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" /> : <svg className="w-3.5 h-3.5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>}
+                        Google Drive
+                      </button>
+                    )}
+                  </div>
+                )}
+                <input ref={editReceiptInputRef} type="file" className="hidden"
+                  accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) setEditReceiptFile(f); }} />
+              </div>
+            </div>
+            <div className="px-5 pb-5 pt-3 border-t border-border flex gap-3 flex-shrink-0">
+              <button
+                onClick={async () => {
+                  if (!editingRow) return;
+                  await updateExpense.mutateAsync({
+                    id: editingRow.id,
+                    data: {
+                      description: editingRow.description,
+                      amount: parseFloat(editingRow.amount),
+                      date: editingRow.date,
+                      category: editingRow.category,
+                      vendor: editingRow.vendor || undefined,
+                      jobId: editingRow.jobId ? parseInt(editingRow.jobId) : undefined,
+                      notes: editingRow.notes || undefined,
+                      receiptUrl: undefined,
+                      excludeFromNetProfit: editingRow.excludeFromNetProfit,
+                      businessLine: editingRow.businessLine || null,
+                    },
+                  });
+                  if (editReceiptFile) {
+                    await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
+                  }
+                  await qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+                  if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
+                  setEditReceiptFile(null);
+                  setEditingRow(null);
+                }}
+                disabled={updateExpense.isPending || uploadMutation.isPending}
+                className="flex-1 py-3 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors text-sm">
+                {updateExpense.isPending || uploadMutation.isPending ? "Saving…" : "Save Changes"}
+              </button>
+              <button
+                onClick={() => { setEditReceiptFile(null); setEditingRow(null); }}
+                className="px-5 py-3 rounded-xl border border-border text-sm text-muted-foreground font-semibold hover:bg-muted transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit-row receipt lightbox */}
       {editLightboxUrl && (

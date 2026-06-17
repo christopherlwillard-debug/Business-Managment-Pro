@@ -3,7 +3,7 @@ import { useClientProfile, useUpdateClientServiceDate, useSquareStatus } from "@
 import {
   X, Phone, Mail, MapPin, Users, Briefcase, Receipt, CreditCard,
   Route, Calendar, Clock, ChevronRight, Edit2, Check, RefreshCw,
-  Link as LinkIcon, DollarSign, Upload, Zap,
+  Link as LinkIcon, DollarSign, Upload, Zap, FileText,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -234,7 +234,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
               <p className="text-xs text-muted-foreground mt-0.5">
                 {summary.totalJobs} job{summary.totalJobs !== 1 ? "s" : ""} ·{" "}
                 {summary.totalInvoices} invoice{summary.totalInvoices !== 1 ? "s" : ""} ·{" "}
-                {formatCents(summary.totalRevenueCents)} collected
+                {formatCents(summary.totalRevenueCents + Math.round((summary.paidInvoicesTotal ?? 0) * 100))} collected
               </p>
             )}
           </div>
@@ -422,7 +422,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                       {[
                         { label: "Jobs", value: summary.totalJobs, color: "text-blue-600" },
                         { label: "Invoices Paid", value: `${summary.paidInvoices}/${summary.totalInvoices}`, color: "text-emerald-600" },
-                        { label: "Collected", value: formatCents(summary.totalRevenueCents), color: "text-amber-600" },
+                        { label: "Collected", value: formatCents(summary.totalRevenueCents + Math.round((summary.paidInvoicesTotal ?? 0) * 100)), color: "text-amber-600" },
                       ].map(s => (
                         <div key={s.label} className="bg-muted/40 rounded-xl p-3 text-center">
                           <p className={cn("text-lg font-bold", s.color)}>{s.value}</p>
@@ -580,7 +580,8 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
 
                 const filteredSquareCents = filteredSquare.reduce((s, p) => s + p.amountCents, 0);
                 const filteredOtherCents = filteredOther.reduce((s, oi) => s + Math.round(parseFloat(oi.amount) * 100), 0);
-                const filteredTotalCents = filteredSquareCents + filteredOtherCents;
+                const paidInvoicesTotalCents = Math.round((summary.paidInvoicesTotal ?? 0) * 100);
+                const filteredTotalCents = filteredSquareCents + filteredOtherCents + paidInvoicesTotalCents;
 
                 return (
                 <div className="p-5 space-y-5">
@@ -626,10 +627,10 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                           {isFiltered ? "Total in range" : "Total collected"}
                         </p>
                         <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
-                          {isFiltered ? formatCents(filteredTotalCents) : formatCents(summary.totalRevenueCents)}
+                          {isFiltered ? formatCents(filteredTotalCents) : formatCents(summary.totalRevenueCents + paidInvoicesTotalCents)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-4 mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-800">
+                      <div className="flex items-center gap-4 mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-800 flex-wrap">
                         <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
                           <CreditCard className="w-3 h-3" />
                           <span>Square: {isFiltered ? formatCents(filteredSquareCents) : formatCents(summary.squareRevenueCents)}</span>
@@ -638,6 +639,12 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                           <DollarSign className="w-3 h-3" />
                           <span>Other: {isFiltered ? formatCents(filteredOtherCents) : formatCents(summary.otherRevenueCents)}</span>
                         </div>
+                        {paidInvoicesTotalCents > 0 && (
+                          <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+                            <FileText className="w-3 h-3" />
+                            <span>Invoices: {formatCents(paidInvoicesTotalCents)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

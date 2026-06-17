@@ -256,6 +256,7 @@ export default function Banking() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["plaid-connection"] });
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["plaid-balance"] });
       toast({ title: "Sync complete", description: `${data.synced} transaction${data.synced !== 1 ? "s" : ""} imported.` });
     },
     onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),

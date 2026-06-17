@@ -4,3 +4,4 @@
 - [Business isolation architecture](business-isolation.md) — recurring_expenses and expenses have businessId FK; reports route still uses businessLine text slug; Business type includes parentBusinessId for shell/DBA structure
 - [Card editor panel architecture](card-editor-panel.md) — specialContent injection into InspectorPanel was unreliable; replaced with selectedCardData state captured at click-time + standalone panel that returns early before InspectorPanel renders
 - [Owner Capital Ledger](owner-capital-ledger.md) — owner_capital_entries table replaces single ownerPersonalInvestment setting; auto-migrates on first GET; drizzle push needs interactive TTY so use psql directly
+- [Plaid balance cache](plaid-balance-cache.md) — cache reduced to 1 hour; sync route now also refreshes balance; Banking.tsx sync must invalidate ["plaid-balance"]
