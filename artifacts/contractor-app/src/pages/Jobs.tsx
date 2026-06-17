@@ -1175,12 +1175,12 @@ function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
                   </div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
-                      const owed = p.compensationType === "allocation"
+                      const calcOwed = p.compensationType === "allocation"
                         ? toSplit * ((p.allocationPct ?? 0) / 100)
-                        : p.amountOwed != null ? p.amountOwed
                         : p.compensationType === "fixed" ? (p.fixedAmount ?? p.computedOwed ?? 0)
                         : p.computedOwed ?? 0;
-                      return <SubPaymentRowCard key={p.subcontractorId} p={p} jobId={job.id} owed={owed} onRefresh={refreshPayments} />;
+                      const owed = p.amountOwed != null ? p.amountOwed : calcOwed;
+                      return <SubPaymentRowCard key={p.subcontractorId} p={p} jobId={job.id} owed={owed} calculatedOwed={calcOwed} onRefresh={refreshPayments} />;
                     })}
                   </div>
                 </div>
@@ -1582,8 +1582,12 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sub Payment Records</p></div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
-                      const owed = owedFor(p, toSplit);
-                      return <SubPaymentRowCard key={p.subcontractorId} p={p} jobId={job.id} owed={owed} onRefresh={refreshPayments} />;
+                      const calcOwed = p.compensationType === "allocation"
+                        ? toSplit * ((p.allocationPct ?? 0) / 100)
+                        : p.compensationType === "fixed" ? (p.fixedAmount ?? p.computedOwed ?? 0)
+                        : p.computedOwed ?? 0;
+                      const owed = p.amountOwed != null ? p.amountOwed : calcOwed;
+                      return <SubPaymentRowCard key={p.subcontractorId} p={p} jobId={job.id} owed={owed} calculatedOwed={calcOwed} onRefresh={refreshPayments} />;
                     })}
                   </div>
                 </div>
@@ -1654,16 +1658,18 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
 }
 
 // ─── Sub Payment Row Card ──────────────────────────────────────────────────────
-function SubPaymentRowCard({ p, jobId, owed, onRefresh }: {
+function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
   p: SubPaymentRow;
   jobId: number;
-  owed: number;
+  owed: number;           // effective owed (override ?? calculated)
+  calculatedOwed: number; // raw calculated value (before any override)
   onRefresh: () => Promise<void>;
 }) {
   const { toast } = useToast();
   const paid = p.amountPaid ?? 0;
   const balance = Math.max(0, owed - paid);
   const pct = owed > 0 ? Math.min(100, Math.round((paid / owed) * 100)) : 0;
+  const hasOverride = p.amountOwed != null; // true when user has manually set an agreed owed
 
   const [payInput, setPayInput] = useState(() => balance > 0.01 ? balance.toFixed(2) : owed > 0 ? owed.toFixed(2) : "");
   const [paying, setPaying] = useState(false);
@@ -1700,19 +1706,18 @@ function SubPaymentRowCard({ p, jobId, owed, onRefresh }: {
     }
   }
 
-  async function handleSaveOwed() {
-    const val = parseFloat(owedInput);
-    if (isNaN(val) || val <= 0) return;
+  async function handleSaveOwed(valueOrNull: number | null) {
+    if (valueOrNull !== null && (isNaN(valueOrNull) || valueOrNull < 0)) return;
     setSavingOwed(true);
     try {
       const r = await fetch(`${BASE}/api/jobs/${jobId}/sub-payments/${p.subcontractorId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ amountOwed: val }),
+        body: JSON.stringify({ amountOwed: valueOrNull }),
       });
       if (!r.ok) throw new Error();
       await onRefresh();
       setEditingOwed(false);
-      toast({ title: "Agreed owed updated" });
+      toast({ title: valueOrNull === null ? "Override cleared — using calculated amount" : "Agreed owed updated" });
     } catch {
       toast({ title: "Failed to update", variant: "destructive" });
     } finally {
@@ -1747,15 +1752,28 @@ function SubPaymentRowCard({ p, jobId, owed, onRefresh }: {
         </div>
         <div className="text-right flex-shrink-0 ml-2">
           <p className="text-sm font-bold text-foreground">${fmt(owed)}</p>
+          {hasOverride && calculatedOwed > 0 && Math.abs(calculatedOwed - owed) > 0.005 && (
+            <p className="text-[10px] text-muted-foreground line-through">Calc: ${fmt(calculatedOwed)}</p>
+          )}
           {isPartial && <p className="text-[10px] text-amber-600">Paid: ${fmt(paid)}</p>}
           {balance > 0.01 && !isFullyPaid && <p className="text-[10px] text-orange-600">Balance: ${fmt(balance)}</p>}
           {isFullyPaid && paid > 0 && <p className="text-[10px] text-emerald-600 font-semibold">✓ Settled</p>}
         </div>
       </div>
 
-      {/* Comp type detail */}
-      {p.compensationType === "allocation" && <div className="pl-6 text-[10px] text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</div>}
-      {p.compensationType === "fixed" && <div className="pl-6 text-[10px] text-orange-600">Fixed: ${fmt(p.fixedAmount ?? 0)}</div>}
+      {/* Comp type detail — always show calculated basis as reference */}
+      {p.compensationType === "allocation" && (
+        <div className="pl-6 text-[10px] text-purple-600">
+          {(p.allocationPct ?? 0).toFixed(1)}% of split pool
+          {calculatedOwed > 0 && <span className="ml-1 text-muted-foreground">· Calc: ${fmt(calculatedOwed)}</span>}
+        </div>
+      )}
+      {p.compensationType === "fixed" && (
+        <div className="pl-6 text-[10px] text-orange-600">
+          Fixed: ${fmt(p.fixedAmount ?? 0)}
+          {hasOverride && <span className="ml-1 text-muted-foreground">· Override active</span>}
+        </div>
+      )}
       {p.compensationType === "hourly" && p.totalHours > 0 && <div className="pl-6 text-[10px] text-blue-600">Hourly · {p.totalHours.toFixed(1)} hrs</div>}
 
       {/* Progress bar (partial only) */}
@@ -1775,22 +1793,36 @@ function SubPaymentRowCard({ p, jobId, owed, onRefresh }: {
       {!isFullyPaid && (
         <div className="pl-6">
           {editingOwed ? (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] text-muted-foreground">Agreed Owed: $</span>
               <input type="number" step="0.01" min="0" value={owedInput} onChange={e => setOwedInput(e.target.value)}
                 className="w-24 px-2 py-0.5 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/30" />
-              <button onClick={handleSaveOwed} disabled={savingOwed}
+              <button onClick={() => handleSaveOwed(parseFloat(owedInput))} disabled={savingOwed}
                 className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors disabled:opacity-50">
                 {savingOwed ? "…" : "Save"}
               </button>
+              {hasOverride && (
+                <button onClick={() => handleSaveOwed(null)} disabled={savingOwed}
+                  className="text-[10px] font-semibold text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-full hover:bg-muted/80 transition-colors disabled:opacity-50">
+                  Clear Override
+                </button>
+              )}
               <button onClick={() => { setEditingOwed(false); setOwedInput(owed > 0 ? owed.toFixed(2) : ""); }}
                 className="text-[10px] text-muted-foreground hover:text-foreground">Cancel</button>
             </div>
           ) : (
-            <button onClick={() => { setEditingOwed(true); setOwedInput(owed > 0 ? owed.toFixed(2) : ""); }}
-              className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
-              <Pencil className="w-2.5 h-2.5" /> Edit Agreed Owed
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setEditingOwed(true); setOwedInput(owed > 0 ? owed.toFixed(2) : ""); }}
+                className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
+                <Pencil className="w-2.5 h-2.5" /> {hasOverride ? "Edit Override" : "Set Agreed Owed"}
+              </button>
+              {hasOverride && (
+                <button onClick={() => handleSaveOwed(null)} disabled={savingOwed}
+                  className="text-[10px] text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors">
+                  × Clear Override
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

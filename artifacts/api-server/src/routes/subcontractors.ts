@@ -192,9 +192,13 @@ router.get("/outstanding-balances", async (req, res) => {
   try {
     const includeSettled = req.query.includeSettled === "true";
 
+    // Only fixed + allocation subs are tracked here; hourly owed requires hours×rate context
     const whereClause = includeSettled
-      ? undefined
-      : inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]);
+      ? inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"])
+      : and(
+          inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
+          inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"])
+        );
 
     const rows = await db.select({
       subcontractorId: jobSubcontractorsTable.subcontractorId,
