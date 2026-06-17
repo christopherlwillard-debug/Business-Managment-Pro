@@ -687,7 +687,15 @@ router.get("/:id/sub-payments", async (req, res) => {
     res.json(rows.map(r => {
       const computedOwed = parseFloat(r.computedOwed ?? "0");
       const manualOverride = r.amountOwedOverride != null ? parseFloat(r.amountOwedOverride) : null;
-      const amountOwed = manualOverride != null ? manualOverride : computedOwed;
+      const compType = r.compensationType ?? "hourly";
+      // For fixed/allocation, amountOwed is null unless manually overridden —
+      // their owed amounts are fixedAmount / allocationPct×pool, resolved in the UI.
+      // For hourly, fall back to computedOwed (hours × rate) when no override.
+      const amountOwed = manualOverride != null
+        ? manualOverride
+        : compType === "hourly"
+          ? computedOwed
+          : null;
       return {
         subcontractorId: r.subcontractorId,
         subName: r.subName,

@@ -3621,7 +3621,14 @@ export default function Jobs() {
         });
         return;
       }
-    } catch { /* gate failures should not block — fall through */ }
+    } catch {
+      toast({
+        title: "Cannot close job",
+        description: "Could not verify payment status. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
     queryClient.invalidateQueries();
   }
