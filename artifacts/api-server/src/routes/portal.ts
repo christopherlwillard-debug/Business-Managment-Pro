@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { sectionGuard } from "./guards";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -423,30 +423,29 @@ tokenRouter.get("/income-report", async (req, res) => {
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
 
-    // Fetch expense-based payments (category=subcontractor) with optional jobId
-    const expensePayments = await db
+    // Fetch pay-worker payments from the dedicated ledger table
+    const subPayments = await db
       .select({
-        id: expensesTable.id,
-        amount: expensesTable.amount,
-        date: expensesTable.date,
-        description: expensesTable.description,
-        jobId: expensesTable.jobId,
-        notes: expensesTable.notes,
+        id: subPaymentRecordsTable.id,
+        amount: subPaymentRecordsTable.amount,
+        date: subPaymentRecordsTable.paymentDate,
+        description: subPaymentRecordsTable.description,
+        jobId: subPaymentRecordsTable.jobId,
+        notes: subPaymentRecordsTable.notes,
         jobTitle: jobsTable.title,
       })
-      .from(expensesTable)
-      .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
+      .from(subPaymentRecordsTable)
+      .leftJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
       .where(
         and(
-          eq(expensesTable.subcontractorId, sub.id),
-          sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
-          gte(expensesTable.date, startDate),
-          lte(expensesTable.date, endDate),
+          eq(subPaymentRecordsTable.subcontractorId, sub.id),
+          gte(subPaymentRecordsTable.paymentDate, startDate),
+          lte(subPaymentRecordsTable.paymentDate, endDate),
         )
       )
-      .orderBy(expensesTable.date);
+      .orderBy(subPaymentRecordsTable.paymentDate);
 
-    // Fetch direct payments from paymentsTable
+    // Fetch direct payments from paymentsTable (manually recorded, separate flow)
     const directPayments = await db
       .select()
       .from(paymentsTable)
@@ -467,17 +466,17 @@ tokenRouter.get("/income-report", async (req, res) => {
       jobId: number | null;
       jobTitle: string | null;
       notes: string | null;
-      source: "payment" | "expense";
+      source: "payment" | "ledger";
     }> = [
-      ...expensePayments.map(e => ({
-        id: `exp-${e.id}`,
+      ...subPayments.map(e => ({
+        id: `spr-${e.id}`,
         date: e.date,
         amount: parseFloat(e.amount),
-        description: e.description,
+        description: e.description ?? null,
         jobId: e.jobId ?? null,
         jobTitle: e.jobTitle ?? null,
         notes: e.notes ?? null,
-        source: "expense" as const,
+        source: "ledger" as const,
       })),
       ...directPayments.map(p => ({
         id: `pay-${p.id}`,
@@ -550,7 +549,7 @@ tokenRouter.get("/tax-report", async (req, res) => {
 
     const yearStr = String(year);
 
-    // Qualifying income = all payments + subcontractor-category expenses for the year
+    // Qualifying income = manual payments + pay-worker ledger records for the year
     const [qualifyingPayRow] = await db
       .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
       .from(paymentsTable)
@@ -560,17 +559,17 @@ tokenRouter.get("/tax-report", async (req, res) => {
           eq(paymentsTable.year, year)
         )
       );
-    const [qualifyingExpRow] = await db
-      .select({ total: sql<string>`COALESCE(SUM(${expensesTable.amount}), 0)` })
-      .from(expensesTable)
+    const [qualifyingSprRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
+      .from(subPaymentRecordsTable)
       .where(
         and(
-          eq(expensesTable.subcontractorId, sub.id),
-          sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
-          sql`${expensesTable.date} LIKE ${yearStr + "-%"}`
+          eq(subPaymentRecordsTable.subcontractorId, sub.id),
+          gte(subPaymentRecordsTable.paymentDate, `${yearStr}-01-01`),
+          lte(subPaymentRecordsTable.paymentDate, `${yearStr}-12-31`)
         )
       );
-    const qualifyingIncome = parseFloat(qualifyingPayRow?.total ?? "0") + parseFloat(qualifyingExpRow?.total ?? "0");
+    const qualifyingIncome = parseFloat(qualifyingPayRow?.total ?? "0") + parseFloat(qualifyingSprRow?.total ?? "0");
 
     const [rate, grossIncome] = await Promise.all([getRate(), computeYtd(sub.id, year)]);
 

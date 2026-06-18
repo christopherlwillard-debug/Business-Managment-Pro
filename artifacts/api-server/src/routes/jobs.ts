@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, subPaymentRecordsTable } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { z } from "zod/v4";
@@ -985,8 +985,20 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     if (paymentAmount <= 0) return res.status(400).json({ error: "No amount to pay" });
 
     const today = new Date().toISOString();
+    const paymentDateStr = today.split("T")[0]; // YYYY-MM-DD for sub_payment_records
     const subName = String(req.body.subName ?? `Sub #${subId}`);
     const clientAgreedOwed = req.body.agreedOwed != null ? parseFloat(String(req.body.agreedOwed)) : null;
+    const idempotencyKey = req.body.idempotencyKey ? String(req.body.idempotencyKey) : null;
+
+    // Idempotency guard — if this key was already processed, return early
+    if (idempotencyKey) {
+      const [existing] = await db.select({ id: subPaymentRecordsTable.id, amount: subPaymentRecordsTable.amount })
+        .from(subPaymentRecordsTable)
+        .where(eq(subPaymentRecordsTable.idempotencyKey, idempotencyKey));
+      if (existing) {
+        return res.json({ ok: true, amount: parseFloat(existing.amount), accumulated: 0, status: "duplicate" });
+      }
+    }
 
     // All state reads and writes happen inside a single transaction with a row-level lock
     // (SELECT FOR UPDATE) so concurrent payment calls cannot both read stale prevPaid
@@ -1042,6 +1054,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         eq(jobSubcontractorsTable.subcontractorId, subId),
       ));
 
+      // Phase 1 dual-write: keep expense insert for backward-compat, also write to ledger
       await tx.insert(expensesTable).values({
         description: `${subName} — ${typeLabel}`,
         amount: paymentAmount.toFixed(2),
@@ -1050,6 +1063,18 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         jobId,
         subcontractorId: subId,
         businessLine: job.businessLine,
+      });
+
+      await tx.insert(subPaymentRecordsTable).values({
+        jobId,
+        subcontractorId: subId,
+        businessLine: job.businessLine,
+        amount: paymentAmount.toFixed(2),
+        paymentDate: paymentDateStr,
+        description: `${subName} — ${typeLabel}`,
+        createdFrom: "pay-worker",
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+        ...(agreedOwed != null ? { agreedOwedSnapshot: agreedOwed.toFixed(2) } : {}),
       });
 
       txResult = { ok: true, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
