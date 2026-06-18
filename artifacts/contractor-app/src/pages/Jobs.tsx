@@ -1619,12 +1619,17 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   {payments.map(p => {
                     const owed = owedFor(p, toSplit);
                     const paid = p.amountPaid ?? 0;
-                    const bal = owed - paid;
-                    const settled = (p.paymentStatus === 'paid') || (bal <= 0.01 && paid > 0);
+                    const bal = Math.max(0, owed - paid);
+                    const settled = p.paymentStatus === 'paid';
+                    const isPartial = p.paymentStatus === 'partial';
+                    const isOverpaidRow = settled && owed > 0 && paid > owed + 0.005;
+                    const overpaidAmt = isOverpaidRow ? paid - owed : 0;
+                    const borderCls = settled ? "border-emerald-200 bg-emerald-50/60" : isPartial ? "border-amber-200 bg-amber-50/60" : "border-orange-200 bg-orange-50/60";
+                    const iconCls = settled ? "text-emerald-600" : isPartial ? "text-amber-500" : "text-orange-500";
                     return (
-                      <div key={p.subcontractorId} className={`rounded-xl border p-3 flex items-center justify-between ${settled ? "border-emerald-200 bg-emerald-50/60" : "border-orange-200 bg-orange-50/60"}`}>
+                      <div key={p.subcontractorId} className={`rounded-xl border p-3 flex items-center justify-between ${borderCls}`}>
                         <div className="flex items-center gap-2">
-                          <HardHat className={`w-4 h-4 ${settled ? "text-emerald-600" : "text-orange-500"}`} />
+                          <HardHat className={`w-4 h-4 ${iconCls}`} />
                           <div>
                             <p className="text-sm font-semibold">{p.subName ?? "Sub"}</p>
                             <p className="text-[10px] text-muted-foreground">{p.totalHours > 0 ? `${p.totalHours.toFixed(1)} hrs` : p.payType ?? "—"}</p>
@@ -1633,7 +1638,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                         <div className="text-right">
                           <p className="text-sm font-bold">{formatCurrency(owed)}</p>
                           {paid > 0 && <p className="text-[10px] text-emerald-600">Paid: {formatCurrency(paid)}</p>}
-                          {settled ? <p className="text-[10px] font-bold text-emerald-600">✓ Settled</p> : bal > 0 ? <p className="text-[10px] text-orange-600">Due: {formatCurrency(bal)}</p> : null}
+                          {settled && !isOverpaidRow && <p className="text-[10px] font-bold text-emerald-600">✓ Settled</p>}
+                          {settled && isOverpaidRow && <p className="text-[10px] font-bold text-amber-600">⚠ Overpaid +{formatCurrency(overpaidAmt)}</p>}
+                          {isPartial && <p className="text-[10px] font-bold text-amber-600">● Partial · Due {formatCurrency(bal)}</p>}
+                          {!settled && !isPartial && bal > 0 && <p className="text-[10px] text-orange-600">Due: {formatCurrency(bal)}</p>}
                         </div>
                       </div>
                     );
@@ -1878,6 +1886,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [editPayId, setEditPayId] = useState<number | null>(null);
   const [markingPaidId, setMarkingPaidId] = useState<number | null>(null);
+  const [resetPayId, setResetPayId] = useState<number | null>(null);
   type SubExpenseRow = { id: number; subcontractorId: number | null; subName: string | null; amount: string; date: string; description: string | null };
   const [subExpenses, setSubExpenses] = useState<SubExpenseRow[]>([]);
 
@@ -1989,6 +1998,23 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
       toast({ title: "Payment updated" });
     } catch {
       toast({ title: "Failed to save payment", variant: "destructive" });
+    }
+  }
+
+  async function handleResetPayment(subId: number) {
+    setResetPayId(subId);
+    try {
+      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${subId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountPaid: null }),
+      });
+      await loadData();
+      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: "Payment record reset", description: "Status set back to unpaid" });
+    } catch {
+      toast({ title: "Failed to reset payment", variant: "destructive" });
+    } finally {
+      setResetPayId(null);
     }
   }
 
@@ -2221,9 +2247,14 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                     : pay.computedOwed;
                   const amountPaid = pay.amountPaid ?? 0;
                   const balance = Math.max(0, displayOwed - amountPaid);
-                  const isPaid = (pay.paymentStatus === 'paid') || (balance <= 0.01 && displayOwed > 0);
+                  const isPaid = pay.paymentStatus === 'paid';
+                  const isPartialStatus = pay.paymentStatus === 'partial';
+                  const isOverpaidStatus = isPaid && amountPaid > 0 && displayOwed > 0 && amountPaid > displayOwed + 0.005;
+                  const overpaidByAmt = isOverpaidStatus ? parseFloat((amountPaid - displayOwed).toFixed(2)) : 0;
+                  const hasExpenses = subExpenses.some(e => e.subcontractorId === pay.subcontractorId);
                   const isEditing = editPayId === pay.subcontractorId;
                   const isMarkingThisOne = markingPaidId === pay.subcontractorId;
+                  const isResettingThisOne = resetPayId === pay.subcontractorId;
 
                   return (
                     <div key={pay.subcontractorId} className="rounded-xl border border-border overflow-hidden">
@@ -2235,8 +2266,12 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                             <p className="text-[10px] text-muted-foreground">{pay.totalHours.toFixed(1)} hrs logged</p>
                           )}
                         </div>
-                        {isPaid ? (
+                        {isOverpaidStatus ? (
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠ Overpaid +{formatCurrency(overpaidByAmt)}</span>
+                        ) : isPaid ? (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Paid ✓</span>
+                        ) : isPartialStatus ? (
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">● Partial · Due {formatCurrency(balance)}</span>
                         ) : displayOwed > 0 ? (
                           <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">{formatCurrency(balance)} owed</span>
                         ) : (
@@ -2360,21 +2395,42 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
 
                             {/* Action buttons */}
                             {canEdit("jobs") && (
-                              <div className="flex gap-2 pt-1">
-                                {!isPaid && displayOwed > 0 && (
+                              <>
+                                <div className="flex gap-2 pt-1">
+                                  {!isPaid && displayOwed > 0 && (
+                                    <button
+                                      onClick={() => handleQuickPay(pay.subcontractorId, balance, pay.subName)}
+                                      disabled={isMarkingThisOne}
+                                      className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                                      {isMarkingThisOne ? "Recording…" : `Mark Paid — ${formatCurrency(balance)}`}
+                                    </button>
+                                  )}
                                   <button
-                                    onClick={() => handleQuickPay(pay.subcontractorId, balance, pay.subName)}
-                                    disabled={isMarkingThisOne}
-                                    className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50">
-                                    {isMarkingThisOne ? "Recording…" : `Mark Paid — ${formatCurrency(balance)}`}
+                                    onClick={() => setEditPayId(pay.subcontractorId)}
+                                    className={`${!isPaid && displayOwed > 0 ? "px-3" : "flex-1"} py-2.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors`}>
+                                    {isPaid ? "Edit / Adjust" : displayOwed > 0 ? "Adjust" : "Set Amount"}
                                   </button>
+                                </div>
+                                {(amountPaid > 0 || pay.paymentStatus !== 'unpaid') && (
+                                  <div className="pt-1">
+                                    {!hasExpenses ? (
+                                      <button
+                                        onClick={() => handleResetPayment(pay.subcontractorId)}
+                                        disabled={isResettingThisOne}
+                                        className="w-full py-1.5 rounded-lg border border-amber-300 text-amber-700 bg-amber-50 text-xs font-medium hover:bg-amber-100 transition-colors disabled:opacity-50">
+                                        {isResettingThisOne ? "Resetting…" : "Reset Payment Record"}
+                                      </button>
+                                    ) : (
+                                      <div>
+                                        <button disabled className="w-full py-1.5 rounded-lg border border-border text-muted-foreground bg-muted text-xs font-medium cursor-not-allowed opacity-60">
+                                          Reset Payment Record
+                                        </button>
+                                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug">Payment expenses have been recorded. Edit the payment amount or add a reversing adjustment in Expenses.</p>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
-                                <button
-                                  onClick={() => setEditPayId(pay.subcontractorId)}
-                                  className={`${!isPaid && displayOwed > 0 ? "px-3" : "flex-1"} py-2.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors`}>
-                                  {isPaid ? "Edit / Adjust" : displayOwed > 0 ? "Adjust" : "Set Amount"}
-                                </button>
-                              </div>
+                              </>
                             )}
                           </>
                         ) : (

@@ -614,6 +614,7 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
     const jobId = parseInt(req.params.jobId);
     const subId = parseInt(req.params.subId);
     if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
+    // Strip paymentStatus — it is always derived server-side from the numbers, never accepted from the client.
     const { amountOwed, amountPaid, paidDate, paidNotes, compensationType, hourlyRate, fixedAmount, allocationPct } = req.body;
     const updates: Record<string, unknown> = {};
     if (amountOwed !== undefined) updates.amountOwed = amountOwed != null ? String(amountOwed) : null;
@@ -634,6 +635,50 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
       })
       .returning();
 
+    // Derive paymentStatus from the four-rule formula — status is never accepted from the client.
+    //   amountPaid = null/0  → "unpaid"
+    //   0 < paid < owed      → "partial"
+    //   paid = owed          → "paid"
+    //   paid > owed          → "paid" + isOverpaid flag
+    const paidNum = row.amountPaid != null ? parseFloat(row.amountPaid) : null;
+    const compType = row.compensationType ?? "hourly";
+
+    let effectiveOwed: number | null = null;
+    if (row.amountOwed != null) {
+      effectiveOwed = parseFloat(row.amountOwed);
+    } else if (compType === "fixed" && row.fixedAmount != null) {
+      effectiveOwed = parseFloat(row.fixedAmount);
+    } else if (compType === "hourly") {
+      const [hoursRow] = await db
+        .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
+        .from(jobSubHoursTable)
+        .where(and(eq(jobSubHoursTable.jobId, jobId), eq(jobSubHoursTable.subcontractorId, subId)));
+      const hoursTotal = parseFloat(hoursRow?.total ?? "0");
+      if (hoursTotal > 0) effectiveOwed = hoursTotal;
+    }
+
+    let newStatus: string;
+    let isOverpaid = false;
+    let overpaidBy = 0;
+
+    if (paidNum == null || paidNum <= 0) {
+      newStatus = "unpaid";
+    } else if (effectiveOwed == null || effectiveOwed <= 0) {
+      newStatus = "partial";
+    } else if (paidNum >= effectiveOwed - 0.005) {
+      newStatus = "paid";
+      if (paidNum > effectiveOwed + 0.005) {
+        isOverpaid = true;
+        overpaidBy = parseFloat((paidNum - effectiveOwed).toFixed(2));
+      }
+    } else {
+      newStatus = "partial";
+    }
+
+    await db.update(jobSubcontractorsTable)
+      .set({ paymentStatus: newStatus })
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, subId)));
+
     const allPaid = await recomputeSubPaid(jobId);
 
     res.json({
@@ -641,6 +686,9 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
       amountOwed: row.amountOwed != null ? parseFloat(row.amountOwed) : null,
       amountPaid: row.amountPaid != null ? parseFloat(row.amountPaid) : null,
       paidDate: row.paidDate, paidNotes: row.paidNotes,
+      paymentStatus: newStatus,
+      isOverpaid,
+      overpaidBy,
       allSubsPaid: allPaid,
     });
   } catch (err) {
