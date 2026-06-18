@@ -3154,8 +3154,8 @@ function JobCard({
             <HardHat className="w-3.5 h-3.5" /> All Subs Paid ✓
           </div>
         )}
-        {/* Close Job — appears on paid+completed jobs when all criteria met */}
-        {isCompleted && inv?.status === "paid" && canEdit("jobs") && onArchiveJob && (
+        {/* Close Job — all three criteria must be met: completed + invoice paid + subs settled */}
+        {isCompleted && inv?.status === "paid" && (!hasSubExpenses || localSubPaid) && canEdit("jobs") && onArchiveJob && (
           <button
             onClick={() => onArchiveJob(job)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-colors">
@@ -4554,13 +4554,13 @@ export default function Jobs() {
                 return (
                   <div className="flex flex-wrap gap-4 mb-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-border/50 text-sm">
                     <span className="text-muted-foreground">
-                      <span className="font-semibold text-foreground">{allClosedBase.length}</span> jobs closed
+                      Total Closed: <span className="font-semibold text-foreground">{allClosedBase.length}</span>
                     </span>
                     <span className="text-muted-foreground">
-                      Revenue: <span className="font-semibold text-foreground">{formatCurrency(totalRev)}</span>
+                      Total Revenue: <span className="font-semibold text-foreground">{formatCurrency(totalRev)}</span>
                     </span>
                     <span className={totalProfit >= 0 ? "text-emerald-700" : "text-red-600"}>
-                      Profit: <span className="font-semibold">{formatCurrency(totalProfit)}</span>
+                      Total Net Profit: <span className="font-semibold">{formatCurrency(totalProfit)}</span>
                     </span>
                   </div>
                 );
@@ -4601,7 +4601,8 @@ export default function Jobs() {
                       <table className="w-full text-sm min-w-[680px]">
                         <thead className="bg-muted/40 border-b border-border">
                           <tr>
-                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground w-24">Closed</th>
+                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground w-24">Date Closed</th>
+                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground w-14">Job #</th>
                             <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Job</th>
                             <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground hidden md:table-cell">Customer</th>
                             <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground hidden lg:table-cell">Location</th>
@@ -4629,6 +4630,7 @@ export default function Jobs() {
                                   onClick={() => setArchiveExpandedId(isExpanded ? null : job.id)}
                                 >
                                   <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{closedDateStr}</td>
+                                  <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">#{job.id}</td>
                                   <td className="px-3 py-2.5 font-medium text-foreground truncate max-w-[160px]">{job.title}</td>
                                   <td className="px-3 py-2.5 text-muted-foreground hidden md:table-cell truncate max-w-[120px]">{job.clientName ?? "—"}</td>
                                   <td className="px-3 py-2.5 text-muted-foreground hidden lg:table-cell truncate max-w-[120px]">{locationParts.join(", ") || "—"}</td>
@@ -4649,7 +4651,7 @@ export default function Jobs() {
                                 </tr>
                                 {isExpanded && (
                                   <tr className="border-t border-border/40 bg-muted/20">
-                                    <td colSpan={8} className="px-4 py-3">
+                                    <td colSpan={9} className="px-4 py-3">
                                       <div className="flex flex-wrap items-center gap-3 mb-3">
                                         {[
                                           { icon: <ImageIcon className="w-3 h-3" />, label: "Photos", value: photoCount },
