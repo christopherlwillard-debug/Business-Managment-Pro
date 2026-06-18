@@ -1,0 +1,258 @@
+#872 - Export closed job history to a CSV or PDF report
+What & Why
+The Closed Jobs archive table shows all settled jobs with revenue and profit totals, but there's no way to export that data for accounting, tax prep, or sharing with stakeholders. An export button would let Willard pull a year-end summary or hand records to a bookkeeper.
+
+Done looks like
+An "Export" button appears in the Closed Jobs section header
+Clicking it downloads a CSV (or PDF) with one row per closed job: date closed, job title, customer, location, revenue, net profit, invoice status, sub status
+Totals row at the bottom (revenue, profit)
+Filename includes the current date and optional business-line filter
+Relevant files
+artifacts/contractor-app/src/pages/Jobs.tsx — Closed Jobs section (around line 4537)
+artifacts/api-server/src/routes/jobs.ts — could add a GET /jobs/closed/export endpoint
+Dependencies
+Closed Jobs archive view — compact table for fully settled jobs
+
+I would definitely build CSV first and PDF second.
+
+For bookkeeping, taxes, accountants, and importing into spreadsheets, CSV is far more useful than PDF.
+
+I'd Modify #872
+Export Options
+Export Closed Jobs
+
+[Export CSV]
+[Export PDF]
+
+CSV first, PDF optional.
+
+CSV Columns
+
+I'd include more than the current fields because you'll eventually use this for tax prep:
+
+Date Closed	Job #	Job Name	Customer	Location	Revenue	Materials	Labor	Net Profit
+
+This lets you answer:
+
+Revenue by year
+Profit by year
+Average job size
+Material costs
+Labor costs
+
+without needing another export later.
+
+Add Filters Before Export
+
+Instead of exporting everything every time:
+
+Date Range
+[This Month]
+[This Quarter]
+[This Year]
+[Custom]
+
+Business Line
+[All]
+[GC]
+[Asphalt]
+
+Status
+[Closed Only]
+
+Then export only what you need.
+
+Totals Row
+
+I absolutely agree with:
+
+Totals
+
+Revenue: $150,000
+Materials: $40,000
+Labor: $35,000
+Net Profit: $75,000
+Jobs Closed: 42
+
+at the bottom of the export.
+
+One Thing I'd Add
+
+Because you're running multiple businesses under one LLC:
+
+Business Line
+
+as a column.
+
+Example:
+
+Business Line	Job
+GC	Plumbing
+GC	Trim Out
+Asphalt	Parking Lot Sealcoat
+
+Later you'll be glad you can filter and export only Willard's GC or only Willard's Asphalt.
+
+I'd Update the Ticket
+
+Add:
+
+CSV columns:
+Date Closed
+Job Number
+Business Line
+Job Name
+Customer
+Location
+Revenue
+Materials
+Labor
+Net Profit
+Invoice Status
+Sub Status
+
+and
+
+Export filters:
+Date Range
+Business Line
+
+That turns #872 from a simple export feature into something you'll actually hand to a CPA, banker, or bookkeeper at year-end without having to manipulate it first.
+
+#873 - Show closed jobs in financial reports and P&L summaries
+What & Why
+Closed jobs are now archived from the card view, but the Reports / P&L pages still filter by active job status. Closed jobs represent fully settled revenue and should count toward period totals on the Profit & Loss page and any business-line reports.
+
+Done looks like
+The P&L page includes closed jobs in its revenue/expense aggregations
+The Reports page job filter includes a "Closed" option or shows closed jobs when "All" is selected
+No double-counting: closed jobs that were already in completed/paid buckets transition cleanly
+Relevant files
+artifacts/contractor-app/src/pages/Reports.tsx (or equivalent P&L page)
+artifacts/api-server/src/routes/jobs.ts — profit-summary endpoint
+artifacts/api-server/src/routes/expenses.ts (if expenses are filtered by job status)
+Dependencies
+Closed Jobs archive view — compact table for fully settled jobs#872 - Export closed job history to a CSV or PDF report
+What & Why
+The Closed Jobs archive table shows all settled jobs with revenue and profit totals, but there's no way to export that data for accounting, tax prep, or sharing with stakeholders. An export button would let Willard pull a year-end summary or hand records to a bookkeeper.
+
+Done looks like
+An "Export" button appears in the Closed Jobs section header
+Clicking it downloads a CSV (or PDF) with one row per closed job: date closed, job title, customer, location, revenue, net profit, invoice status, sub status
+Totals row at the bottom (revenue, profit)
+Filename includes the current date and optional business-line filter
+Relevant files
+artifacts/contractor-app/src/pages/Jobs.tsx — Closed Jobs section (around line 4537)
+artifacts/api-server/src/routes/jobs.ts — could add a GET /jobs/closed/export endpoint
+Dependencies
+Closed Jobs archive view — compact table for fully settled jobs     i have a year end thing for my accountant so would i also want to include all of these as well?
+
+Yes, absolutely.
+
+For your accountant, #873 is actually more important than #872.
+
+Think about it this way:
+
+#871 = Organization
+
+Moves finished jobs out of the way.
+
+#872 = Export
+
+Lets you download the data.
+
+#873 = Accounting Accuracy
+
+Makes sure the data is actually included in your financial statements.
+
+If #873 is missing, your P&L could look like:
+
+Revenue: $80,000
+Expenses: $35,000
+Profit: $45,000
+
+when you've actually closed another $40,000 worth of jobs.
+
+That's a huge problem.
+
+For Year-End Accounting
+
+I would want a report like:
+
+Category	Amount
+Revenue	$150,000
+Materials	$40,000
+Labor	$35,000
+Fuel	$3,500
+Equipment	$2,000
+Other Expenses	$4,500
+Net Profit	$65,000
+
+Your accountant cares much more about this than individual job cards.
+
+I'd Actually Add #874
+
+Something like:
+
+Year-End Accountant Export
+
+Export a single CSV/XLSX containing:
+
+Date	Job	Customer	Revenue	Materials	Labor	Profit
+
+PLUS summary tabs:
+
+Revenue by Month
+
+Month	Revenue
+Jan	$12,000
+Feb	$18,000
+
+Expenses by Category
+
+Category	Amount
+Materials	$40,000
+Labor	$35,000
+Fuel	$3,500
+
+Subcontractor Payments
+
+Sub	Amount
+Dewayne	$18,000
+James	$14,000
+
+That is the kind of thing a CPA loves.
+
+For Your App Specifically
+
+Since you're building:
+
+Willard's GC
+Willard's Asphalt
+Future rental business
+
+I'd make sure every export includes:
+
+Business Line
+
+Example:
+
+Business Line	Revenue
+GC	$120,000
+Asphalt	$30,000
+
+Then your accountant can separate activities if needed.
+
+My Priority Order
+
+If I were prioritizing features:
+
+✅ #871 Closed Jobs Archive
+✅ #873 Include Closed Jobs in P&L
+✅ #872 Export Closed Jobs
+🔜 Year-End Accountant Export
+🔜 Business Line Financial Reports
+
+The reason is simple: if #873 isn't done, the exported numbers from #872 may not match your financial reports, which will create confusion later.
+
+So yes, I would definitely include #873, and I'd probably make it a required dependency before you rely on any year-end exports.

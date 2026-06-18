@@ -1,0 +1,193 @@
+Between the two, #876 is more important than #875.
+
+If I was prioritizing for a real business:
+
+Priority Order
+✅ #871 Closed Jobs Archive
+✅ #876 Closed Jobs Included in P&L & Reports
+✅ Year-End Accountant Package
+✅ #875 Export Closed Jobs CSV
+
+Reason:
+
+If the financial reports aren't including closed jobs correctly, then the CSV export can export the wrong numbers.
+
+I Would Actually Expand #876
+
+For your accountant, I wouldn't just verify P&L.
+
+I'd verify:
+
+Revenue
+Expenses
+Net Profit
+Materials
+Labor
+Subcontractor Payments
+Owner Draws
+
+all continue to work after a job moves to Closed.
+
+Because from an accounting perspective:
+
+Closed
+≠
+Gone
+
+It is still part of the company's books forever.
+
+What Your Accountant Will Actually Want
+
+At year-end your CPA is probably going to care more about:
+
+Profit & Loss
+Balance Sheet
+General Ledger
+Expense Categories
+Subcontractor Payments
+
+than the individual Closed Jobs table.
+
+So I'd honestly create a future ticket:
+
+#877 - Year-End Accountant Export
+
+Exports:
+
+Profit & Loss
+Revenue
+Materials
+Labor
+Fuel
+Equipment
+Office
+Net Profit
+Subcontractor Summary
+James      $14,250
+Dewayne    $18,700
+Revenue by Customer
+Cavco       $45,000
+Clayton     $32,000
+Revenue by Business Line
+GC          $120,000
+Asphalt      $30,000
+Closed Jobs Detail
+
+Your #875 export.
+
+One Change to #875
+
+I would add:
+
+Date Opened
+Date Closed
+Days Open
+
+Example:
+
+Job	Opened	Closed	Days
+Plumbing	6/1	6/17	16
+
+Later you'll be able to see:
+
+Average job duration
+Slow jobs
+Fast jobs
+
+without additional reporting.
+
+My Recommendation
+
+I'd tell Replit:
+
+Complete #876 before #875. Financial reports, P&L, dashboard KPIs, and year-end accounting reports must continue to include closed jobs after archiving. Once accounting accuracy is verified, implement #875 as a CSV export of the already-verified closed-job dataset.
+
+That sequence protects you from exporting numbers that don't match your books, which is the last thing you want when handing reports to your accountant.
+
+but is any of this needed?
+
+Honestly? Not all of it.
+
+Looking at where your app is today, I'd split these into Must Have, Nice to Have, and Don't Worry About Yet.
+
+Must Have
+#871 Closed Jobs Archive
+
+Yes.
+
+Once you get 50+ jobs, you'll hate scrolling through completed job cards.
+
+This solves a real problem.
+
+#876 Closed Jobs Included in P&L
+
+Yes.
+
+This is more of an audit than a feature.
+
+You need to make sure closing a job doesn't make revenue disappear from reports.
+
+Nice to Have
+#875 Export Closed Jobs CSV
+
+Eventually yes, but not urgent.
+
+Right now if your accountant needs information, they can pull it from:
+
+Profit & Loss
+Expenses
+Invoices
+Job records
+
+You don't have enough job volume yet where this becomes critical.
+
+Don't Worry About Yet
+
+Most of the extras we've discussed:
+
+PDF exports
+Closed job statistics
+Days open
+Revenue by customer reports
+Revenue by business line reports
+CPA packages
+Year-end reporting packages
+
+Those are things I'd build when you're doing:
+
+100+
+jobs per year
+
+not when you're still building the core workflow.
+
+If This Were My App
+
+I'd tell Replit:
+
+Priority 1:
+#871 Closed Jobs Archive
+
+Priority 2:
+#876 Verify closed jobs remain in P&L and reports
+
+Stop there.
+
+Then I'd move on to things that help you make money:
+
+Better estimating
+Material tracking
+Dealer/customer management
+Photo organization
+Mobile usability
+Scheduling
+Job costing accuracy
+
+Those will provide more value to Willard's GC in the next year than export features.
+
+So my answer is:
+
+✅ #871 = Needed
+✅ #876 = Needed (or at least verified)
+🟡 #875 = Nice to have later, not necessary right now
+
+If you're trying to avoid feature creep, I'd pause after #871 and #876. Those solve the real business problem without turning the app into accounting software.
