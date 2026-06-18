@@ -990,20 +990,20 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const clientAgreedOwed = req.body.agreedOwed != null ? parseFloat(String(req.body.agreedOwed)) : null;
     const idempotencyKey = req.body.idempotencyKey ? String(req.body.idempotencyKey) : null;
 
-    // Idempotency guard — if this key was already processed, return early
+    // Idempotency fast-path — check outside transaction for known-processed keys
     if (idempotencyKey) {
       const [existing] = await db.select({ id: subPaymentRecordsTable.id, amount: subPaymentRecordsTable.amount })
         .from(subPaymentRecordsTable)
         .where(eq(subPaymentRecordsTable.idempotencyKey, idempotencyKey));
       if (existing) {
-        return res.json({ ok: true, amount: parseFloat(existing.amount), accumulated: 0, status: "duplicate" });
+        return res.json({ ok: true, duplicate: true, paymentId: existing.id, amount: parseFloat(existing.amount), accumulated: 0, status: "duplicate" });
       }
     }
 
     // All state reads and writes happen inside a single transaction with a row-level lock
     // (SELECT FOR UPDATE) so concurrent payment calls cannot both read stale prevPaid
     // and overwrite each other's accumulated total.
-    let txResult: { ok: true; amount: number; accumulated: number; status: string } | null = null;
+    let txResult: { ok: true; paymentId: number; amount: number; accumulated: number; status: string } | null = null;
     await db.transaction(async (tx) => {
       // Lock the row for this transaction — prevents concurrent pay-worker calls
       // from reading stale amountPaid and computing the wrong accumulated total.
@@ -1065,7 +1065,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         businessLine: job.businessLine,
       });
 
-      await tx.insert(subPaymentRecordsTable).values({
+      const [spr] = await tx.insert(subPaymentRecordsTable).values({
         jobId,
         subcontractorId: subId,
         businessLine: job.businessLine,
@@ -1075,9 +1075,9 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         createdFrom: "pay-worker",
         ...(idempotencyKey ? { idempotencyKey } : {}),
         ...(agreedOwed != null ? { agreedOwedSnapshot: agreedOwed.toFixed(2) } : {}),
-      });
+      }).returning({ id: subPaymentRecordsTable.id });
 
-      txResult = { ok: true, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
+      txResult = { ok: true, paymentId: spr.id, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
     });
 
     await recomputeSubPaid(jobId);
@@ -1085,6 +1085,13 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
   } catch (err: any) {
     if (err?.alreadyPaid) return res.json({ ok: true, alreadyPaid: true });
     if (err?.notFound) return res.status(404).json({ error: "Sub not assigned to this job" });
+    // Idempotency: unique constraint violation on idempotency_key from a race — fetch and return existing
+    if ((err?.code === "23505" || err?.constraint?.includes("idempotency_key")) && idempotencyKey) {
+      const [existing] = await db.select({ id: subPaymentRecordsTable.id, amount: subPaymentRecordsTable.amount })
+        .from(subPaymentRecordsTable)
+        .where(eq(subPaymentRecordsTable.idempotencyKey, idempotencyKey));
+      if (existing) return res.json({ ok: true, duplicate: true, paymentId: existing.id, amount: parseFloat(existing.amount), accumulated: 0, status: "duplicate" });
+    }
     console.error(err);
     res.status(500).json({ error: "Failed to record payment" });
   }

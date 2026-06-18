@@ -441,6 +441,7 @@ tokenRouter.get("/income-report", async (req, res) => {
           eq(subPaymentRecordsTable.subcontractorId, sub.id),
           gte(subPaymentRecordsTable.paymentDate, startDate),
           lte(subPaymentRecordsTable.paymentDate, endDate),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
         )
       )
       .orderBy(subPaymentRecordsTable.paymentDate);
@@ -466,7 +467,7 @@ tokenRouter.get("/income-report", async (req, res) => {
       jobId: number | null;
       jobTitle: string | null;
       notes: string | null;
-      source: "payment" | "ledger";
+      source: "payment" | "expense";
     }> = [
       ...subPayments.map(e => ({
         id: `spr-${e.id}`,
@@ -476,7 +477,7 @@ tokenRouter.get("/income-report", async (req, res) => {
         jobId: e.jobId ?? null,
         jobTitle: e.jobTitle ?? null,
         notes: e.notes ?? null,
-        source: "ledger" as const,
+        source: "payment" as const,
       })),
       ...directPayments.map(p => ({
         id: `pay-${p.id}`,
@@ -566,7 +567,8 @@ tokenRouter.get("/tax-report", async (req, res) => {
         and(
           eq(subPaymentRecordsTable.subcontractorId, sub.id),
           gte(subPaymentRecordsTable.paymentDate, `${yearStr}-01-01`),
-          lte(subPaymentRecordsTable.paymentDate, `${yearStr}-12-31`)
+          lte(subPaymentRecordsTable.paymentDate, `${yearStr}-12-31`),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
         )
       );
     const qualifyingIncome = parseFloat(qualifyingPayRow?.total ?? "0") + parseFloat(qualifyingSprRow?.total ?? "0");

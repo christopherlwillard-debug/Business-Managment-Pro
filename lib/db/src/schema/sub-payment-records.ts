@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, boolean, date } from "drizzle-orm/pg-core";
 import { jobsTable } from "./jobs";
 import { subcontractorsTable } from "./subcontractors";
 
@@ -8,7 +8,7 @@ export const subPaymentRecordsTable = pgTable("sub_payment_records", {
   subcontractorId: integer("subcontractor_id").references(() => subcontractorsTable.id).notNull(),
   businessLine: text("business_line"),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-  paymentDate: text("payment_date").notNull(), // YYYY-MM-DD
+  paymentDate: date("payment_date").notNull(), // YYYY-MM-DD returned as string
   description: text("description"),
   notes: text("notes"),
   paymentMethod: text("payment_method"),
