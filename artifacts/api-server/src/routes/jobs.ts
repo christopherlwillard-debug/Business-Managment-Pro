@@ -81,6 +81,7 @@ type JobRow = {
   locationName: string | null;
   startDate: string | null;
   endDate: string | null;
+  closedAt: string | null;
   notes: string | null;
   businessLine: string | null;
   subPaid: boolean;
@@ -126,6 +127,7 @@ async function getJobWithSubs(jobId: number) {
       locationName: jobsTable.locationName,
       startDate: jobsTable.startDate,
       endDate: jobsTable.endDate,
+      closedAt: jobsTable.closedAt,
       notes: jobsTable.notes,
       businessLine: jobsTable.businessLine,
       subPaid: jobsTable.subPaid,
@@ -211,6 +213,7 @@ router.get("/", async (req, res) => {
         locationName: jobsTable.locationName,
         startDate: jobsTable.startDate,
         endDate: jobsTable.endDate,
+        closedAt: jobsTable.closedAt,
         notes: jobsTable.notes,
         businessLine: jobsTable.businessLine,
         subPaid: jobsTable.subPaid,
@@ -544,6 +547,34 @@ router.get("/distinct-home-models", async (_req, res) => {
   }
 });
 
+// Batch photo counts: GET /photo-counts?jobIds=1,2,3  →  Record<number, number>
+// Photos are stored as JSONB arrays in daily_logs.photo_urls
+router.get("/photo-counts", async (req, res) => {
+  try {
+    const { jobIds: jobIdsParam } = req.query;
+    if (!jobIdsParam || typeof jobIdsParam !== "string") return res.json({});
+    const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
+    if (jobIds.length === 0) return res.json({});
+
+    const rows = await db.select({
+      jobId: dailyLogsTable.jobId,
+      photoCount: sql<number>`COALESCE(SUM(jsonb_array_length(COALESCE(photo_urls, '[]'::jsonb))), 0)::int`,
+    }).from(dailyLogsTable)
+      .where(inArray(dailyLogsTable.jobId, jobIds))
+      .groupBy(dailyLogsTable.jobId);
+
+    const result: Record<number, number> = {};
+    for (const id of jobIds) result[id] = 0;
+    for (const row of rows) {
+      if (row.jobId != null) result[row.jobId] = row.photoCount;
+    }
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch photo counts" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -570,6 +601,13 @@ router.put("/:id", async (req, res) => {
     if (description !== undefined) updates.description = description;
     if ("clientId" in req.body) updates.clientId = clientId || null;
     if (status !== undefined) updates.status = status;
+    // Auto-manage closed_at: set when archiving, clear when reopening
+    if (status === "closed") {
+      const [cur] = await db.select({ closedAt: jobsTable.closedAt }).from(jobsTable).where(eq(jobsTable.id, id));
+      if (!cur?.closedAt) updates.closedAt = new Date().toISOString().split("T")[0];
+    } else if (status !== undefined) {
+      updates.closedAt = null;
+    }
     if (jobType !== undefined) updates.jobType = jobType;
     if ("homeModel" in req.body) updates.homeModel = homeModel || null;
     if (address !== undefined) updates.address = address;

@@ -1,4 +1,4 @@
-import { useState, useRef, ReactNode, useEffect, useMemo } from "react";
+import { useState, useRef, ReactNode, useEffect, useMemo, Fragment } from "react";
 import { useSearchParams, useLocation } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
@@ -30,7 +30,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 
@@ -2707,7 +2707,7 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
-  onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate,
+  onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -2728,6 +2728,7 @@ function JobCard({
   onGoToInvoices?: () => void;
   generatingLinkId?: number | null;
   onSmartEstimate?: (job: Job) => void;
+  onArchiveJob?: (job: Job) => void;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -3152,6 +3153,14 @@ function JobCard({
           <div className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <HardHat className="w-3.5 h-3.5" /> All Subs Paid ✓
           </div>
+        )}
+        {/* Close Job — appears on paid+completed jobs when all criteria met */}
+        {isCompleted && inv?.status === "paid" && canEdit("jobs") && onArchiveJob && (
+          <button
+            onClick={() => onArchiveJob(job)}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-colors">
+            <Archive className="w-3.5 h-3.5" /> Close Job
+          </button>
         )}
       </Card>
 
@@ -3772,6 +3781,10 @@ export default function Jobs() {
   const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [paidExpanded, setPaidExpanded] = useState(false);
+  const [closedExpanded, setClosedExpanded] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [archiveSort, setArchiveSort] = useState<"newest" | "oldest" | "revenue" | "profit">("newest");
+  const [archiveExpandedId, setArchiveExpandedId] = useState<number | null>(null);
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
@@ -3861,6 +3874,33 @@ export default function Jobs() {
     }
   }
 
+  async function handleArchiveJob(job: Job) {
+    try {
+      const outsData = await fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : []).catch(() => []);
+      if ((outsData as unknown[]).length > 0) {
+        const names = (outsData as Array<{ subName: string }>).map(s => s.subName).join(", ");
+        toast({ title: "Cannot close job", description: `Outstanding balance owed to: ${names}`, variant: "destructive" });
+        return;
+      }
+      await updateJob.mutateAsync({ id: job.id, data: { status: "closed" } });
+      queryClient.invalidateQueries();
+      toast({ title: "Job archived", description: `"${job.title}" moved to Closed Jobs.` });
+    } catch {
+      toast({ title: "Failed to close job", description: "Please try again.", variant: "destructive" });
+    }
+  }
+
+  async function handleReopenJob(job: Job) {
+    try {
+      await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
+      queryClient.invalidateQueries();
+      toast({ title: "Job reopened", description: `"${job.title}" moved back to active jobs.` });
+    } catch {
+      toast({ title: "Failed to reopen job", description: "Please try again.", variant: "destructive" });
+    }
+  }
+
   type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
   const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
 
@@ -3877,10 +3917,13 @@ export default function Jobs() {
   };
   const jobMatchesBL = (j: Job) => !jobBLFilter || j.businessLine === jobBLFilter;
   const jobMatchesPayout = (j: Job) => !needsPayoutFilter || (jobsWithSubExpenses.has(j.id) && !j.subPaid);
-  const scheduledJobs = jobs.filter(j => displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j));
+  const scheduledJobs = jobs.filter(j => j.status !== "closed" && displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j));
 
   // All completed jobs matching BL/payout — kept for invoice-summary fetching and section counts
-  const allCompletedBase = jobs.filter(j => displayStatus(j.status) === "completed" && jobMatchesBL(j) && jobMatchesPayout(j));
+  const allCompletedBase = jobs.filter(j => j.status !== "closed" && displayStatus(j.status) === "completed" && jobMatchesBL(j) && jobMatchesPayout(j));
+
+  // All closed (archived) jobs matching BL filter — not affected by global job search
+  const allClosedBase = jobs.filter(j => j.status === "closed" && jobMatchesBL(j));
 
   // Split by invoice payment status once summaries arrive
   const completedUnpaidBase = allCompletedBase.filter(j => invoiceSummaryMap.get(j.id)?.status !== "paid");
@@ -3894,11 +3937,11 @@ export default function Jobs() {
     ? paidBase.filter(j => jobMatchesSearch(j))
     : [];
 
-  // Fetch invoice summaries for scheduled + ALL completed jobs so split counts stay accurate
+  // Fetch invoice summaries for scheduled + ALL completed + closed jobs so counts stay accurate
   const visibleJobIds = useMemo(
-    () => [...scheduledJobs, ...allCompletedBase].map(j => j.id),
+    () => [...scheduledJobs, ...allCompletedBase, ...allClosedBase].map(j => j.id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scheduledJobs.map(j => j.id).join(","), allCompletedBase.map(j => j.id).join(",")]
+    [scheduledJobs.map(j => j.id).join(","), allCompletedBase.map(j => j.id).join(","), allClosedBase.map(j => j.id).join(",")]
   );
 
   useEffect(() => {
@@ -3940,6 +3983,43 @@ export default function Jobs() {
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleJobIds.join(",")]);
+
+  // Photo counts for closed jobs — single batch fetch
+  const [photoCountMap, setPhotoCountMap] = useState<Map<number, number>>(new Map());
+  useEffect(() => {
+    if (allClosedBase.length === 0) { setPhotoCountMap(new Map()); return; }
+    const ids = allClosedBase.map(j => j.id);
+    const controller = new AbortController();
+    fetch(`${BASE}/api/jobs/photo-counts?jobIds=${ids.join(",")}`, { credentials: "include", signal: controller.signal })
+      .then(r => r.ok ? r.json() as Promise<Record<string, number>> : Promise.reject())
+      .then(obj => {
+        if (controller.signal.aborted) return;
+        setPhotoCountMap(new Map(Object.entries(obj).map(([id, n]) => [parseInt(id, 10), n])));
+      })
+      .catch(() => { if (!controller.signal.aborted) setPhotoCountMap(new Map()); });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allClosedBase.map(j => j.id).join(",")]);
+
+  // Sorted/filtered closed jobs for the archive table (uses profitMap for sort)
+  const archiveSearchLower = archiveSearch.toLowerCase().trim();
+  const closedJobs = [...allClosedBase]
+    .filter(j =>
+      !archiveSearchLower ||
+      j.title?.toLowerCase().includes(archiveSearchLower) ||
+      j.clientName?.toLowerCase().includes(archiveSearchLower) ||
+      j.locationName?.toLowerCase().includes(archiveSearchLower) ||
+      j.city?.toLowerCase().includes(archiveSearchLower) ||
+      j.state?.toLowerCase().includes(archiveSearchLower)
+    )
+    .sort((a, b) => {
+      switch (archiveSort) {
+        case "oldest":  return (a.closedAt ?? a.endDate ?? "").localeCompare(b.closedAt ?? b.endDate ?? "");
+        case "revenue": return (profitMap.get(b.id)?.grossInvoiced ?? 0) - (profitMap.get(a.id)?.grossInvoiced ?? 0);
+        case "profit":  return (profitMap.get(b.id)?.netProfit ?? 0) - (profitMap.get(a.id)?.netProfit ?? 0);
+        default:        return (b.closedAt ?? b.endDate ?? "").localeCompare(a.closedAt ?? a.endDate ?? "");
+      }
+    });
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -4438,7 +4518,8 @@ export default function Jobs() {
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => navigate("/invoices")}
                         generatingLinkId={generatingLinkId}
-                        onSmartEstimate={j => setGcWizardJob(j)} />
+                        onSmartEstimate={j => setGcWizardJob(j)}
+                        onArchiveJob={handleArchiveJob} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -4450,7 +4531,171 @@ export default function Jobs() {
             </div>
           )}
 
-          {scheduledJobs.length === 0 && !searchLower && allCompletedBase.length === 0 && (
+          {/* ── Closed Jobs archive section ────────────────────────────── */}
+          {allClosedBase.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setClosedExpanded(v => !v)}
+                className="flex items-center gap-2 w-full text-left group mb-3"
+              >
+                <Archive className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                <h2 className="font-semibold text-foreground">Closed Jobs</h2>
+                <span className="text-sm text-muted-foreground">({allClosedBase.length})</span>
+                <span className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors">
+                  {closedExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </span>
+              </button>
+
+              {/* Summary bar — always visible */}
+              {(() => {
+                const totalRev = allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.grossInvoiced ?? 0), 0);
+                const totalProfit = allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.netProfit ?? 0), 0);
+                return (
+                  <div className="flex flex-wrap gap-4 mb-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-border/50 text-sm">
+                    <span className="text-muted-foreground">
+                      <span className="font-semibold text-foreground">{allClosedBase.length}</span> jobs closed
+                    </span>
+                    <span className="text-muted-foreground">
+                      Revenue: <span className="font-semibold text-foreground">{formatCurrency(totalRev)}</span>
+                    </span>
+                    <span className={totalProfit >= 0 ? "text-emerald-700" : "text-red-600"}>
+                      Profit: <span className="font-semibold">{formatCurrency(totalProfit)}</span>
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {closedExpanded && (
+                <>
+                  {/* Search + Sort controls */}
+                  <div className="flex gap-2 mb-3">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Search closed jobs…"
+                        value={archiveSearch}
+                        onChange={e => setArchiveSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <select
+                      value={archiveSort}
+                      onChange={e => setArchiveSort(e.target.value as typeof archiveSort)}
+                      className="px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none"
+                    >
+                      <option value="newest">Newest Closed</option>
+                      <option value="oldest">Oldest Closed</option>
+                      <option value="revenue">Highest Revenue</option>
+                      <option value="profit">Highest Profit</option>
+                    </select>
+                  </div>
+
+                  {closedJobs.length === 0 ? (
+                    <p className="py-4 text-sm text-muted-foreground text-center">
+                      No closed jobs match "{archiveSearch}".
+                    </p>
+                  ) : (
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <table className="w-full text-sm min-w-[680px]">
+                        <thead className="bg-muted/40 border-b border-border">
+                          <tr>
+                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground w-24">Closed</th>
+                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Job</th>
+                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground hidden md:table-cell">Customer</th>
+                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground hidden lg:table-cell">Location</th>
+                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Revenue</th>
+                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Profit</th>
+                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground hidden sm:table-cell">Photos</th>
+                            <th className="w-8"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {closedJobs.map(job => {
+                            const profit = profitMap.get(job.id);
+                            const netProfit = profit?.netProfit ?? 0;
+                            const grossInvoiced = profit?.grossInvoiced ?? 0;
+                            const photoCount = photoCountMap.get(job.id) ?? 0;
+                            const isExpanded = archiveExpandedId === job.id;
+                            const locationParts = [job.locationName, job.city, job.state].filter(Boolean);
+                            const closedDateStr = job.closedAt
+                              ? formatDate(job.closedAt)
+                              : job.endDate ? formatDate(job.endDate) : "—";
+                            return (
+                              <Fragment key={job.id}>
+                                <tr
+                                  className="border-t border-border/60 hover:bg-muted/30 cursor-pointer transition-colors"
+                                  onClick={() => setArchiveExpandedId(isExpanded ? null : job.id)}
+                                >
+                                  <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{closedDateStr}</td>
+                                  <td className="px-3 py-2.5 font-medium text-foreground truncate max-w-[160px]">{job.title}</td>
+                                  <td className="px-3 py-2.5 text-muted-foreground hidden md:table-cell truncate max-w-[120px]">{job.clientName ?? "—"}</td>
+                                  <td className="px-3 py-2.5 text-muted-foreground hidden lg:table-cell truncate max-w-[120px]">{locationParts.join(", ") || "—"}</td>
+                                  <td className="px-3 py-2.5 text-right font-semibold">{formatCurrency(grossInvoiced)}</td>
+                                  <td className={`px-3 py-2.5 text-right font-semibold ${netProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                                    {formatCurrency(netProfit)}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right hidden sm:table-cell">
+                                    {photoCount > 0 ? (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                                        <ImageIcon className="w-2.5 h-2.5" />{photoCount}
+                                      </span>
+                                    ) : <span className="text-muted-foreground text-xs">—</span>}
+                                  </td>
+                                  <td className="px-2 py-2.5 text-muted-foreground">
+                                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                  </td>
+                                </tr>
+                                {isExpanded && (
+                                  <tr className="border-t border-border/40 bg-muted/20">
+                                    <td colSpan={8} className="px-4 py-3">
+                                      <div className="flex flex-wrap items-center gap-3 mb-3">
+                                        {[
+                                          { icon: <ImageIcon className="w-3 h-3" />, label: "Photos", value: photoCount },
+                                          { icon: <Package className="w-3 h-3" />, label: "Materials", value: materialListCountByJob[job.id] ?? 0 },
+                                          { icon: <ClipboardList className="w-3 h-3" />, label: "Logs", value: (logsByJob[job.id] ?? []).length },
+                                          { icon: <Calculator className="w-3 h-3" />, label: "Est.", value: estimateTotalByJob[job.id] != null ? formatCurrency(estimateTotalByJob[job.id]) : "—" },
+                                          { icon: <DollarSign className="w-3 h-3" />, label: "Invoice", value: invoiceSummaryMap.get(job.id)?.status === "paid" ? "Paid ✓" : invoiceSummaryMap.get(job.id)?.status ?? "—" },
+                                          { icon: <HardHat className="w-3 h-3" />, label: "Subs", value: job.subPaid ? "Settled ✓" : "Outstanding" },
+                                        ].map(({ icon, label, value }) => (
+                                          <span key={label} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-background border border-border/60 text-xs text-muted-foreground">
+                                            {icon}
+                                            <span className="font-medium text-foreground">{label}:</span>
+                                            {String(value)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={e => { e.stopPropagation(); openEditJob(job); }}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors">
+                                          <Eye className="w-3 h-3" /> Open Full Job
+                                        </button>
+                                        {canEditJobs && (
+                                          <button
+                                            onClick={e => { e.stopPropagation(); handleReopenJob(job); }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold hover:bg-amber-100 transition-colors">
+                                            <RotateCcw className="w-3 h-3" /> Reopen Job
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {scheduledJobs.length === 0 && !searchLower && allCompletedBase.length === 0 && allClosedBase.length === 0 && (
             <div className="py-10 text-center text-muted-foreground">
               <p>No jobs found.</p>
             </div>

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, smallint, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, smallint, boolean, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
@@ -38,6 +38,7 @@ export const jobsTable = pgTable("jobs", {
   phases: jsonb("phases").$type<PhaseItem[]>(),
   permitChecklist: jsonb("permit_checklist").$type<PermitChecklistItem[]>(),
   homeModel: text("home_model"),
+  closedAt: date("closed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

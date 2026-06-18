@@ -89,6 +89,7 @@ export const JobStatus = {
   completed: "completed",
   invoiced: "invoiced",
   cancelled: "cancelled",
+  closed: "closed",
 } as const;
 
 export interface Job {
@@ -114,6 +115,7 @@ export interface Job {
   sqFt?: number | null;
   coats?: number | null;
   createdAt: string;
+  closedAt?: string | null;
   phases?: Array<{ name: string; completed: boolean }> | null;
   permitChecklist?: Array<{ label: string; checked: boolean }> | null;
 }
@@ -128,6 +130,7 @@ export const CreateJobRequestStatus = {
   completed: "completed",
   invoiced: "invoiced",
   cancelled: "cancelled",
+  closed: "closed",
 } as const;
 
 export interface CreateJobRequest {
