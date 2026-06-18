@@ -1695,7 +1695,7 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
     try {
       const r = await fetch(`${BASE}/api/jobs/${jobId}/pay-worker/${p.subcontractorId}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ amount, agreedOwed: owed > 0 ? owed : undefined, subName: p.subName }),
+        body: JSON.stringify({ amount, agreedOwed: owed > 0 ? owed : undefined, subName: p.subName, idempotencyKey: crypto.randomUUID() }),
       });
       if (!r.ok) throw new Error();
       const data = await r.json();
@@ -2023,7 +2023,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
     try {
       await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${subId}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, subName }),
+        body: JSON.stringify({ amount, subName, idempotencyKey: crypto.randomUUID() }),
       });
       await loadData();
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -2793,7 +2793,7 @@ function JobCard({
       const res = await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${sub.subcontractorId}`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, agreedOwed: agreedOwed > 0 ? agreedOwed : undefined, subName: sub.subName }),
+        body: JSON.stringify({ amount, agreedOwed: agreedOwed > 0 ? agreedOwed : undefined, subName: sub.subName, idempotencyKey: crypto.randomUUID() }),
       });
       if (!res.ok) throw new Error();
       toast({ title: "Marked paid", description: `${sub.subName} — ${formatCurrency(amount)} recorded.` });
@@ -3837,7 +3837,7 @@ export default function Jobs() {
         const res = await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${sub.subcontractorId}`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount, subName: sub.subName }),
+          body: JSON.stringify({ amount, subName: sub.subName, idempotencyKey: crypto.randomUUID() }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({})) as { error?: string };

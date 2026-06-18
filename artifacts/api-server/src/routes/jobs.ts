@@ -972,6 +972,8 @@ router.get("/:id/sub-payments", async (req, res) => {
 });
 
 router.post("/:id/pay-worker/:subId", async (req, res) => {
+  // Declared at handler scope so the catch block can reference it for idempotency race recovery
+  const idempotencyKey: string | null = req.body.idempotencyKey ? String(req.body.idempotencyKey) : null;
   try {
     const jobId = parseInt(req.params.id);
     const subId = parseInt(req.params.subId);
@@ -988,7 +990,6 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const paymentDateStr = today.split("T")[0]; // YYYY-MM-DD for sub_payment_records
     const subName = String(req.body.subName ?? `Sub #${subId}`);
     const clientAgreedOwed = req.body.agreedOwed != null ? parseFloat(String(req.body.agreedOwed)) : null;
-    const idempotencyKey = req.body.idempotencyKey ? String(req.body.idempotencyKey) : null;
 
     // Idempotency fast-path — check outside transaction for known-processed keys
     if (idempotencyKey) {
