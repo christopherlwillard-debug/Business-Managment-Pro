@@ -392,8 +392,10 @@ router.get("/profit-summary", async (req, res) => {
   }
 });
 
-// Subcontractor-category expenses for a job (not auto-linked to hours)
-// Used by the job card payments tab to detect existing expense records
+// Payment-category expenses for a job (not auto-linked to hours).
+// Covers both "Subcontractor" (allocation pay-worker, manual entries) and
+// "Labor" (hourly/fixed pay-worker). Used by the Sub Payments tab to determine
+// whether "Reset Payment Record" is safe — disabled whenever any row exists here.
 router.get("/:id/sub-expenses", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -411,7 +413,7 @@ router.get("/:id/sub-expenses", async (req, res) => {
       .leftJoin(subcontractorsTable, eq(subcontractorsTable.id, expensesTable.subcontractorId))
       .where(and(
         eq(expensesTable.jobId, id),
-        eq(expensesTable.category, "Subcontractor"),
+        inArray(expensesTable.category, ["Subcontractor", "Labor"]),
         isNull(expensesTable.jobSubHoursId),
       ));
     res.json(rows);
