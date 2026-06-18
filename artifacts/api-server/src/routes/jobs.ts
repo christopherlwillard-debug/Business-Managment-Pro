@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema } from "@workspace/db/schema";
-import { eq, and, count, inArray, sql, isNull } from "drizzle-orm";
+import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { z } from "zod/v4";
 
@@ -600,6 +600,122 @@ router.get("/photo-counts", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch photo counts" });
+  }
+});
+
+// Closed-jobs CSV export: GET /closed/export
+// Must be registered before /:id so "closed" is not parsed as a numeric id.
+router.get("/closed/export", async (req, res) => {
+  try {
+    const { from, to, businessLine } = req.query as Record<string, string | undefined>;
+
+    const conditions: ReturnType<typeof eq>[] = [eq(jobsTable.status, "closed") as ReturnType<typeof eq>];
+    if (from) conditions.push(sql`COALESCE(${jobsTable.closedAt}, ${jobsTable.endDate}) >= ${from}` as unknown as ReturnType<typeof eq>);
+    if (to)   conditions.push(sql`COALESCE(${jobsTable.closedAt}, ${jobsTable.endDate}) <= ${to}` as unknown as ReturnType<typeof eq>);
+    if (businessLine && businessLine !== "all") conditions.push(eq(jobsTable.businessLine, businessLine) as ReturnType<typeof eq>);
+
+    const jobs = await db.select({
+      id: jobsTable.id,
+      title: jobsTable.title,
+      clientName: clientsTable.name,
+      address: jobsTable.address,
+      city: jobsTable.city,
+      state: jobsTable.state,
+      locationName: jobsTable.locationName,
+      startDate: jobsTable.startDate,
+      closedAt: jobsTable.closedAt,
+      endDate: jobsTable.endDate,
+      businessLine: jobsTable.businessLine,
+      subPaid: jobsTable.subPaid,
+    })
+      .from(jobsTable)
+      .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+      .where(and(...conditions))
+      .orderBy(desc(sql`COALESCE(${jobsTable.closedAt}, ${jobsTable.endDate})`));
+
+    if (jobs.length === 0) {
+      return res.json({ rows: [], totals: { revenue: 0, materials: 0, labor: 0, netProfit: 0, count: 0 } });
+    }
+
+    const jobIds = jobs.map(j => j.id);
+
+    const [invoiceRows, expenseRows] = await Promise.all([
+      db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
+        .from(invoicesTable)
+        .where(inArray(invoicesTable.jobId, jobIds)),
+      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
+        .from(expensesTable)
+        .where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId))),
+    ]);
+
+    // Best invoice status: paid > overdue > sent > draft
+    const STATUS_RANK: Record<string, number> = { paid: 4, overdue: 3, sent: 2, draft: 1 };
+    const invoiceByJob = new Map<number, { status: string; revenue: number }>();
+    for (const inv of invoiceRows) {
+      if (inv.jobId == null) continue;
+      const existing = invoiceByJob.get(inv.jobId) ?? { status: "draft", revenue: 0 };
+      if ((STATUS_RANK[inv.status] ?? 0) > (STATUS_RANK[existing.status] ?? 0)) existing.status = inv.status;
+      if (inv.status === "paid") existing.revenue += parseFloat(inv.total ?? "0");
+      invoiceByJob.set(inv.jobId, existing);
+    }
+
+    const expensesByJob = new Map<number, { materials: number; labor: number }>();
+    for (const exp of expenseRows) {
+      if (exp.jobId == null) continue;
+      const existing = expensesByJob.get(exp.jobId) ?? { materials: 0, labor: 0 };
+      const amt = parseFloat(exp.amount ?? "0");
+      const cat = (exp.category ?? "").toLowerCase();
+      if (cat === "materials") existing.materials += amt;
+      else if (cat === "subcontractor" || cat === "labor") existing.labor += amt;
+      expensesByJob.set(exp.jobId, existing);
+    }
+
+    const rows = jobs.map(job => {
+      const inv = invoiceByJob.get(job.id) ?? { status: "draft", revenue: 0 };
+      const exp = expensesByJob.get(job.id) ?? { materials: 0, labor: 0 };
+
+      const dateOpened = job.startDate ?? "";
+      const dateClosed = job.closedAt ?? job.endDate ?? "";
+      let daysOpen = 0;
+      if (dateOpened && dateClosed) {
+        daysOpen = Math.max(0, Math.round(
+          (new Date(dateClosed).getTime() - new Date(dateOpened).getTime()) / (1000 * 60 * 60 * 24)
+        ));
+      }
+
+      const revenue = inv.revenue;
+      const materials = exp.materials;
+      const labor = exp.labor;
+      const netProfit = revenue - materials - labor;
+      const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+
+      return {
+        dateOpened,
+        dateClosed,
+        daysOpen,
+        jobNumber: job.id,
+        businessLine: job.businessLine ?? "",
+        jobName: job.title,
+        customer: job.clientName ?? "",
+        location,
+        revenue,
+        materials,
+        labor,
+        netProfit,
+        invoiceStatus: inv.status,
+        subStatus: job.subPaid ? "Settled" : "Outstanding",
+      };
+    });
+
+    const totals = rows.reduce(
+      (acc, r) => ({ revenue: acc.revenue + r.revenue, materials: acc.materials + r.materials, labor: acc.labor + r.labor, netProfit: acc.netProfit + r.netProfit, count: acc.count + 1 }),
+      { revenue: 0, materials: 0, labor: 0, netProfit: 0, count: 0 }
+    );
+
+    res.json({ rows, totals });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to export closed jobs" });
   }
 });
 

@@ -30,7 +30,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 
@@ -3786,6 +3786,12 @@ export default function Jobs() {
   const [archiveSearch, setArchiveSearch] = useState("");
   const [archiveSort, setArchiveSort] = useState<"newest" | "oldest" | "revenue" | "profit">("newest");
   const [archiveExpandedId, setArchiveExpandedId] = useState<number | null>(null);
+  const [csvPopoverOpen, setCsvPopoverOpen] = useState(false);
+  const [csvExporting, setCsvExporting] = useState(false);
+  const [csvPreset, setCsvPreset] = useState<"month" | "quarter" | "year" | "custom">("year");
+  const [csvCustomFrom, setCsvCustomFrom] = useState("");
+  const [csvCustomTo, setCsvCustomTo] = useState("");
+  const [csvBL, setCsvBL] = useState("all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
@@ -3926,6 +3932,64 @@ export default function Jobs() {
   };
   const jobMatchesBL = (j: Job) => !jobBLFilter || j.businessLine === jobBLFilter;
   const jobMatchesPayout = (j: Job) => !needsPayoutFilter || (jobsWithSubExpenses.has(j.id) && !j.subPaid);
+
+  async function handleExportCsv() {
+    setCsvExporting(true);
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    let exportFrom = "";
+    let exportTo = today;
+    if (csvPreset === "month") {
+      exportFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    } else if (csvPreset === "quarter") {
+      const qMonth = Math.floor(now.getMonth() / 3) * 3;
+      exportFrom = `${now.getFullYear()}-${String(qMonth + 1).padStart(2, "0")}-01`;
+    } else if (csvPreset === "year") {
+      exportFrom = `${now.getFullYear()}-01-01`;
+    } else {
+      exportFrom = csvCustomFrom;
+      exportTo = csvCustomTo || today;
+    }
+    try {
+      const params = new URLSearchParams();
+      if (exportFrom) params.set("from", exportFrom);
+      if (exportTo) params.set("to", exportTo);
+      if (csvBL && csvBL !== "all") params.set("businessLine", csvBL);
+      const res = await fetch(`${BASE}/api/jobs/closed/export?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Export failed");
+      const { rows, totals } = await res.json() as {
+        rows: { dateOpened: string; dateClosed: string; daysOpen: number; jobNumber: number; businessLine: string; jobName: string; customer: string; location: string; revenue: number; materials: number; labor: number; netProfit: number; invoiceStatus: string; subStatus: string }[];
+        totals: { revenue: number; materials: number; labor: number; netProfit: number; count: number };
+      };
+      const headers = ["Date Opened", "Date Closed", "Days Open", "Job #", "Business Line", "Job Name", "Customer", "Location", "Revenue", "Materials", "Labor", "Net Profit", "Invoice Status", "Sub Status"];
+      const csvRows = rows.map(r => [
+        r.dateOpened, r.dateClosed, String(r.daysOpen), `#${r.jobNumber}`,
+        r.businessLine, r.jobName, r.customer, r.location,
+        r.revenue.toFixed(2), r.materials.toFixed(2), r.labor.toFixed(2), r.netProfit.toFixed(2),
+        r.invoiceStatus, r.subStatus,
+      ]);
+      const totalsRow = ["TOTAL", "", "", "", "", "", "", "",
+        totals.revenue.toFixed(2), totals.materials.toFixed(2), totals.labor.toFixed(2), totals.netProfit.toFixed(2), "", ""];
+      const csvStr = [headers, ...csvRows, totalsRow]
+        .map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      const blPart = (csvBL && csvBL !== "all") ? csvBL : "all";
+      const filename = `closed-jobs-${blPart}-${today}.csv`;
+      const blob = new Blob([csvStr], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setCsvPopoverOpen(false);
+    } catch {
+      toast({ title: "Export failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setCsvExporting(false);
+    }
+  }
+
   const scheduledJobs = jobs.filter(j => j.status !== "closed" && displayStatus(j.status) === "scheduled" && jobMatchesSearch(j) && jobMatchesBL(j) && jobMatchesPayout(j));
 
   // All completed jobs matching BL/payout — kept for invoice-summary fetching and section counts
@@ -4562,18 +4626,85 @@ export default function Jobs() {
           {/* ── Closed Jobs archive section ────────────────────────────── */}
           {allClosedBase.length > 0 && (
             <div>
-              <button
-                type="button"
-                onClick={() => setClosedExpanded(v => !v)}
-                className="flex items-center gap-2 w-full text-left group mb-3"
-              >
-                <Archive className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                <h2 className="font-semibold text-foreground">Closed Jobs</h2>
-                <span className="text-sm text-muted-foreground">({allClosedBase.length})</span>
-                <span className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors">
-                  {closedExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </span>
-              </button>
+              <div className="flex items-center gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setClosedExpanded(v => !v)}
+                  className="flex items-center gap-2 flex-1 text-left group"
+                >
+                  <Archive className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                  <h2 className="font-semibold text-foreground">Closed Jobs</h2>
+                  <span className="text-sm text-muted-foreground">({allClosedBase.length})</span>
+                  <span className="ml-2 text-muted-foreground group-hover:text-foreground transition-colors">
+                    {closedExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </span>
+                </button>
+                {/* Export CSV button + popover */}
+                <div className="relative flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setCsvPopoverOpen(v => !v)}
+                    disabled={csvExporting}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+                  >
+                    {csvExporting
+                      ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      : <Download className="w-3 h-3" />}
+                    Export CSV
+                  </button>
+                  {csvPopoverOpen && !csvExporting && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setCsvPopoverOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-72 bg-card border border-border rounded-xl shadow-xl p-4 space-y-3">
+                        <p className="text-xs font-semibold text-foreground">Export Closed Jobs</p>
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1">Date Range</label>
+                          <select
+                            value={csvPreset}
+                            onChange={e => setCsvPreset(e.target.value as typeof csvPreset)}
+                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          >
+                            <option value="month">This Month</option>
+                            <option value="quarter">This Quarter</option>
+                            <option value="year">This Year</option>
+                            <option value="custom">Custom Range</option>
+                          </select>
+                          {csvPreset === "custom" && (
+                            <div className="flex gap-2 mt-1.5">
+                              <input type="date" value={csvCustomFrom} onChange={e => setCsvCustomFrom(e.target.value)}
+                                className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none" />
+                              <input type="date" value={csvCustomTo} onChange={e => setCsvCustomTo(e.target.value)}
+                                className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background focus:outline-none" />
+                            </div>
+                          )}
+                        </div>
+                        {businesses.length > 0 && (
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">Business Line</label>
+                            <select
+                              value={csvBL}
+                              onChange={e => setCsvBL(e.target.value)}
+                              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                              <option value="all">All Lines</option>
+                              {businesses.map((b: { slug: string; name: string }) => (
+                                <option key={b.slug} value={b.slug}>{b.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        <button
+                          onClick={handleExportCsv}
+                          disabled={csvPreset === "custom" && !csvCustomFrom}
+                          className="w-full py-2 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors disabled:opacity-50"
+                        >
+                          Download CSV
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
 
               {/* Summary bar — always visible */}
               {(() => {
