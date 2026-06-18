@@ -547,6 +547,34 @@ router.get("/distinct-home-models", async (_req, res) => {
   }
 });
 
+// Batch outstanding-sub check: GET /outstanding-sub-balances?jobIds=1,2,3
+// Returns Record<jobId, boolean> — true means job has outstanding fixed/allocation sub balance
+router.get("/outstanding-sub-balances", async (req, res) => {
+  try {
+    const { jobIds: jobIdsParam } = req.query;
+    if (!jobIdsParam || typeof jobIdsParam !== "string") return res.json({});
+    const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
+    if (jobIds.length === 0) return res.json({});
+
+    const rows = await db.select({ jobId: jobSubcontractorsTable.jobId })
+      .from(jobSubcontractorsTable)
+      .where(and(
+        inArray(jobSubcontractorsTable.jobId, jobIds),
+        inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+      ))
+      .groupBy(jobSubcontractorsTable.jobId);
+
+    const hasOutstanding = new Set(rows.map(r => r.jobId).filter((id): id is number => id != null));
+    const result: Record<number, boolean> = {};
+    for (const id of jobIds) result[id] = hasOutstanding.has(id);
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch outstanding sub balances" });
+  }
+});
+
 // Batch photo counts: GET /photo-counts?jobIds=1,2,3  →  Record<number, number>
 // Photos are stored as JSONB arrays in daily_logs.photo_urls
 router.get("/photo-counts", async (req, res) => {

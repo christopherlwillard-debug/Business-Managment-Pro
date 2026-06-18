@@ -2707,7 +2707,7 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
-  onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob,
+  onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -2729,6 +2729,7 @@ function JobCard({
   generatingLinkId?: number | null;
   onSmartEstimate?: (job: Job) => void;
   onArchiveJob?: (job: Job) => void;
+  subsSettled?: boolean;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -3154,8 +3155,8 @@ function JobCard({
             <HardHat className="w-3.5 h-3.5" /> All Subs Paid ✓
           </div>
         )}
-        {/* Close Job — all three criteria must be met: completed + invoice paid + subs settled */}
-        {isCompleted && inv?.status === "paid" && (!hasSubExpenses || localSubPaid) && canEdit("jobs") && onArchiveJob && (
+        {/* Close Job — all three criteria must be met: completed + invoice paid + subs settled (live-verified by parent) */}
+        {isCompleted && inv?.status === "paid" && subsSettled === true && canEdit("jobs") && onArchiveJob && (
           <button
             onClick={() => onArchiveJob(job)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-colors">
@@ -3876,10 +3877,18 @@ export default function Jobs() {
 
   async function handleArchiveJob(job: Job) {
     try {
-      const outsData = await fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" })
-        .then(r => r.ok ? r.json() : []).catch(() => []);
-      if ((outsData as unknown[]).length > 0) {
-        const names = (outsData as Array<{ subName: string }>).map(s => s.subName).join(", ");
+      // Fail-closed: if the outstanding check endpoint is unreachable, block the close
+      let outsData: Array<{ subName: string }>;
+      try {
+        const res = await fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" });
+        if (!res.ok) throw new Error("outstanding check failed");
+        outsData = await res.json();
+      } catch {
+        toast({ title: "Cannot close job", description: "Couldn't verify subcontractor settlements. Please try again.", variant: "destructive" });
+        return;
+      }
+      if (outsData.length > 0) {
+        const names = outsData.map(s => s.subName).join(", ");
         toast({ title: "Cannot close job", description: `Outstanding balance owed to: ${names}`, variant: "destructive" });
         return;
       }
@@ -3983,6 +3992,24 @@ export default function Jobs() {
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleJobIds.join(",")]);
+
+  // Outstanding sub-balance map for paidBase jobs — live check per the outstanding-sub-payments endpoint
+  // true = has outstanding, false = all settled; undefined = not yet loaded (button hidden)
+  const [outstandingBalanceMap, setOutstandingBalanceMap] = useState<Map<number, boolean>>(new Map());
+  useEffect(() => {
+    if (paidBase.length === 0) { setOutstandingBalanceMap(new Map()); return; }
+    const ids = paidBase.map(j => j.id);
+    const controller = new AbortController();
+    fetch(`${BASE}/api/jobs/outstanding-sub-balances?jobIds=${ids.join(",")}`, { credentials: "include", signal: controller.signal })
+      .then(r => r.ok ? r.json() as Promise<Record<string, boolean>> : Promise.reject())
+      .then(obj => {
+        if (controller.signal.aborted) return;
+        setOutstandingBalanceMap(new Map(Object.entries(obj).map(([id, v]) => [parseInt(id, 10), v])));
+      })
+      .catch(() => { if (!controller.signal.aborted) setOutstandingBalanceMap(new Map()); });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paidBase.map(j => j.id).join(",")]);
 
   // Photo counts for closed jobs — single batch fetch
   const [photoCountMap, setPhotoCountMap] = useState<Map<number, number>>(new Map());
@@ -4519,7 +4546,8 @@ export default function Jobs() {
                         onGoToInvoices={() => navigate("/invoices")}
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
-                        onArchiveJob={handleArchiveJob} />
+                        onArchiveJob={handleArchiveJob}
+                        subsSettled={!jobsWithSubExpenses.has(job.id) || outstandingBalanceMap.get(job.id) === false} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
