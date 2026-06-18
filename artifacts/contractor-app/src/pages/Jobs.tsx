@@ -3791,7 +3791,7 @@ export default function Jobs() {
   const [csvPreset, setCsvPreset] = useState<"month" | "quarter" | "year" | "custom">("year");
   const [csvCustomFrom, setCsvCustomFrom] = useState("");
   const [csvCustomTo, setCsvCustomTo] = useState("");
-  const [csvBL, setCsvBL] = useState("all");
+  const [csvBL, setCsvBL] = useState<string>(() => activeBusiness?.slug ?? "all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);

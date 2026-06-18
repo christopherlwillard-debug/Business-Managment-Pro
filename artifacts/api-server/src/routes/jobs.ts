@@ -659,20 +659,23 @@ router.get("/closed/export", async (req, res) => {
       invoiceByJob.set(inv.jobId, existing);
     }
 
-    const expensesByJob = new Map<number, { materials: number; labor: number }>();
+    const expensesByJob = new Map<number, { materials: number; labor: number; otherOpex: number }>();
     for (const exp of expenseRows) {
       if (exp.jobId == null) continue;
-      const existing = expensesByJob.get(exp.jobId) ?? { materials: 0, labor: 0 };
+      const existing = expensesByJob.get(exp.jobId) ?? { materials: 0, labor: 0, otherOpex: 0 };
       const amt = parseFloat(exp.amount ?? "0");
       const cat = (exp.category ?? "").toLowerCase();
+      // mileage and owner draw are tracked separately / excluded from operational net profit
+      if (cat === "mileage" || cat === "owner draw") { expensesByJob.set(exp.jobId, existing); continue; }
       if (cat === "materials") existing.materials += amt;
       else if (cat === "subcontractor" || cat === "labor") existing.labor += amt;
+      else existing.otherOpex += amt;
       expensesByJob.set(exp.jobId, existing);
     }
 
     const rows = jobs.map(job => {
       const inv = invoiceByJob.get(job.id) ?? { status: "draft", revenue: 0 };
-      const exp = expensesByJob.get(job.id) ?? { materials: 0, labor: 0 };
+      const exp = expensesByJob.get(job.id) ?? { materials: 0, labor: 0, otherOpex: 0 };
 
       const dateOpened = job.startDate ?? "";
       const dateClosed = job.closedAt ?? job.endDate ?? "";
@@ -686,7 +689,7 @@ router.get("/closed/export", async (req, res) => {
       const revenue = inv.revenue;
       const materials = exp.materials;
       const labor = exp.labor;
-      const netProfit = revenue - materials - labor;
+      const netProfit = revenue - materials - labor - exp.otherOpex;
       const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
 
       return {
