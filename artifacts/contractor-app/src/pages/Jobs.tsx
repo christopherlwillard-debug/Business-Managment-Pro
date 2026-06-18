@@ -2843,7 +2843,7 @@ function JobCard({
                   onClick={() => { setFinancialsInitialTab("hours"); setFinancialsPanelOpen(true); }}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors cursor-pointer">
                   <HardHat className="w-2.5 h-2.5" />
-                  Sub Unpaid — tap to pay
+                  Sub Pay Outstanding — tap to settle
                 </button>
               )}
               {Array.isArray(job.permitChecklist) && job.permitChecklist.length > 0 && (() => {
@@ -3089,12 +3089,12 @@ function JobCard({
           </button>
         )}
 
-        {/* Unpaid Job Payments banner — fixed/allocation subs not yet paid */}
+        {/* Worker Pay Due banner — fixed/allocation subs not yet paid */}
         {unpaidSubs && unpaidSubs.length > 0 && (
           <div className="mt-1 rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-amber-200/60">
               <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-              <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Unpaid Job Payments</span>
+              <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Worker Pay Due</span>
             </div>
             <div className="divide-y divide-amber-100">
               {unpaidSubs.map(sub => {
@@ -4973,8 +4973,8 @@ export default function Jobs() {
                   <HardHat className="w-5 h-5 text-amber-600" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-gray-900 text-lg leading-tight">Unpaid Job Payments</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">"{closeJobDialog.job.title}" has unpaid subs. How would you like to proceed?</p>
+                  <h2 className="font-bold text-gray-900 text-lg leading-tight">Worker Pay Due</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">"{closeJobDialog.job.title}" has workers not yet paid. How would you like to proceed?</p>
                 </div>
               </div>
 
