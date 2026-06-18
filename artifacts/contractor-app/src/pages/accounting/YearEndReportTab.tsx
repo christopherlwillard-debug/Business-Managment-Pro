@@ -6,7 +6,7 @@ import {
   RefreshCw, AlertCircle, FileSpreadsheet, TrendingUp, TrendingDown,
   ChevronUp, ChevronDown, Download, Printer, AlertTriangle,
   CheckCircle2, DollarSign, Navigation, HardHat, CalendarClock,
-  Shield, PieChart,
+  Shield, PieChart, Pencil, Check, X,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -344,6 +344,53 @@ export default function YearEndReportTab({ year }: { year: number }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<YearEndSection>>(new Set(ALL_YEAR_END_SECTIONS));
   const [showFullDeprecSchedule, setShowFullDeprecSchedule] = useState(false);
+  const [editingAssetId, setEditingAssetId] = useState<number | null>(null);
+  const [editPct, setEditPct] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  function startEditAsset(assetId: number, currentPct: number) {
+    setEditingAssetId(assetId);
+    setEditPct(String(currentPct));
+    setEditError(null);
+  }
+
+  function cancelEditAsset() {
+    setEditingAssetId(null);
+    setEditPct("");
+    setEditError(null);
+  }
+
+  async function saveAssetBusinessUse(assetId: number) {
+    const pct = parseInt(editPct, 10);
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+      setEditError("Enter a value between 0 and 100");
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`${BASE}/api/assets/${assetId}/business-use`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year, businessUsePct: pct }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save");
+      }
+      setEditingAssetId(null);
+      setEditPct("");
+      await refetch();
+      toast({ title: "Business use % updated", description: `${year} deduction recalculated.` });
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   const toggleSection = (key: YearEndSection) => {
     setExpandedSections(prev => {
@@ -590,9 +637,57 @@ export default function YearEndReportTab({ year }: { year: number }) {
                           <td className="px-4 py-2 text-right tabular-nums">{fmtMoney(r.purchasePrice)}</td>
                           <td className="px-4 py-2 text-muted-foreground capitalize">{r.depreciationMethod}</td>
                           <td className="px-4 py-2 text-right tabular-nums">
-                            {r.businessUsePct < 100
-                              ? <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">{r.businessUsePct}%</span>
-                              : <span className="text-muted-foreground text-xs">100%</span>}
+                            {editingAssetId === r.id ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={editPct}
+                                    onChange={e => setEditPct(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter") saveAssetBusinessUse(r.id);
+                                      if (e.key === "Escape") cancelEditAsset();
+                                    }}
+                                    disabled={editSaving}
+                                    autoFocus
+                                    className="w-16 text-right text-xs border border-border rounded px-1.5 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                  />
+                                  <span className="text-xs text-muted-foreground">%</span>
+                                  <button
+                                    onClick={() => saveAssetBusinessUse(r.id)}
+                                    disabled={editSaving}
+                                    className="p-0.5 rounded text-green-600 hover:bg-green-50 disabled:opacity-40"
+                                    title="Save"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={cancelEditAsset}
+                                    disabled={editSaving}
+                                    className="p-0.5 rounded text-muted-foreground hover:bg-muted/60 disabled:opacity-40"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                {editError && <span className="text-xs text-destructive">{editError}</span>}
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1 group">
+                                {r.businessUsePct < 100
+                                  ? <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800">{r.businessUsePct}%</span>
+                                  : <span className="text-muted-foreground text-xs">100%</span>}
+                                <button
+                                  onClick={() => startEditAsset(r.id, r.businessUsePct)}
+                                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-opacity"
+                                  title={`Edit ${year} business use % for ${r.name}`}
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums font-medium text-orange-600">{fmtMoney(r.annualDeduction)}</td>
                         </tr>
