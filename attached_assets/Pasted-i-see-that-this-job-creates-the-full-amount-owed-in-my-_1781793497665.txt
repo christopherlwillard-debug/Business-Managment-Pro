@@ -1,0 +1,121 @@
+i see that this job creates the full amount owed in my expenses and thats great just as long as when i mark the amount owed paid on job card as paid it does add another expense on here
+
+Correct. Based on how you've described wanting this system to work, there should only be one labor expense for the committed amount owed, not a new expense every time you make a payment.
+
+Using your example:
+
+Lot Model
+
+Dewayne worked:
+
+40 hrs × $25 = $1,000
+
+The moment those hours are approved, the system should create:
+
+Expense
+Category: Subcontractor
+Amount: $1,000
+Job: Lot Model
+Status: Unpaid
+
+That's exactly what I'm seeing in your Expenses screen.
+
+Then you pay him $200
+
+The system should do:
+
+Amount Owed: $1,000
+Amount Paid: $200
+Balance: $800
+Status: Partial
+
+But it should NOT create:
+
+New Expense: $200
+
+because then your books would show:
+
+Labor Expense = $1,200
+
+when the job only cost you:
+
+Labor Expense = $1,000
+
+which would overstate expenses and understate profit.
+
+Think of it this way
+
+The Expense record answers:
+
+"What did this job cost me?"
+
+The Payment record answers:
+
+"How much of that cost have I paid so far?"
+
+Those are different things.
+
+Cost = $1,000
+Paid = $200
+Balance = $800
+
+The cost never changes.
+
+Only the payment ledger changes.
+
+What I would verify in the code
+
+After #887 is finished, I'd specifically test:
+
+Step 1
+
+Create:
+
+Dewayne
+40 hrs @ $25
+
+Verify Expenses page shows:
+
+Subcontractor
+$1,000
+Step 2
+
+Record payment:
+
+$200
+
+Verify:
+
+Expenses page still shows ONE expense:
+$1,000
+
+not:
+
+$1,000
+$200
+Step 3
+
+Record remaining:
+
+$800
+
+Verify:
+
+Expenses page still shows ONE expense:
+$1,000
+
+and the sub payment record shows:
+
+Paid: $1,000
+Balance: $0
+Status: Paid
+
+If the app is currently creating a new expense every time you click Record Payment, I would consider that a bug because you're mixing:
+
+Expense Accounting
+
+with
+
+Cash Movement
+
+The expense already exists when the labor is committed. Payments should only update the payment ledger and outstanding balance, not create additional labor expenses. That's the cleanest setup for your P&L, taxes, and year-end reporting.

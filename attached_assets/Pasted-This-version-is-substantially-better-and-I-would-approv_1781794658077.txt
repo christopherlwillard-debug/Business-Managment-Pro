@@ -1,0 +1,141 @@
+This version is substantially better and I would approve it with only one significant modification.
+
+The one thing I'd change
+
+I would not add job_subcontractor_id yet.
+
+Your note already identifies the problem:
+
+job_subcontractors
+PK = (job_id, subcontractor_id)
+
+Trying to partially design around a future surrogate key can create confusion.
+
+For now I'd keep:
+
+job_id
+subcontractor_id
+
+in sub_payment_records.
+
+That's enough to uniquely identify:
+
+Plumbing
+James Willard
+$200 payment
+
+You can always add a surrogate ID later when you refactor job_subcontractors.
+
+So I'd remove:
+
+job_subcontractor_id INTEGER ...
+
+from this task entirely.
+
+I really like this part
+
+The migration audit step:
+
+SELECT ...
+FROM expenses
+WHERE subcontractor_id IS NOT NULL
+  AND job_sub_hours_id IS NULL
+
+before migrating.
+
+That's exactly the kind of protection you want.
+
+A lot of people would have written:
+
+INSERT ...
+SELECT ...
+FROM expenses
+WHERE category='Subcontractor'
+
+and accidentally migrated legitimate vendor/sub invoices that were never payment records.
+
+The tighter filter:
+
+description LIKE '%— % Pay%'
+
+is much safer.
+
+What this fixes in your app
+
+After #888 you would have:
+
+Expenses
+Dewayne Labor
+$1,000
+
+One row.
+
+Payment Ledger
+6/9  $200
+6/17 $800
+
+Separate rows.
+
+Portal
+
+Shows:
+
+Payment History
+
+$200
+$800
+
+instead of trying to reconstruct payments from expenses.
+
+1099
+
+Uses:
+
+Actual money paid
+
+which is the correct IRS concept.
+
+P&L
+
+Uses:
+
+Actual job cost
+
+which is the correct accounting concept.
+
+One thing I would add to the task
+
+Under "Done looks like":
+
+Subcontractor detail pages and future payment reports can show:
+Total Owed
+Total Paid
+Remaining Balance
+Payment History
+
+Because once sub_payment_records exists, you suddenly have the foundation for:
+
+James balance summary
+Payment history by worker
+Yearly 1099 totals
+Payment corrections
+Check register
+Cash flow reporting
+
+without touching expenses.
+
+Priority
+
+Looking at everything you've been working through, my order would now be:
+
+#887 — Fix Pay Breakdown committed cost math
+#888 — Separate payment ledger from expenses
+#879 — Stop Plaid auto-batching
+#871 — Closed Jobs archive
+#880 — Settings cleanup
+#882 — Worker Pay Due wording
+#881 — Year-End asset editing
+
+#887 and #888 are the ones that protect your financial data model. The others are mostly organization and UX improvements.
+
+Once those two are done, the app's accounting foundation will make a lot more sense, and many of the confusing behaviors you've been noticing will disappear because costs, payments, banking, and reporting will finally be separated into their proper lanes.

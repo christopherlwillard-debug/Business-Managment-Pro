@@ -1,0 +1,113 @@
+At this point, I think #888 is in very good shape and is solving the right problem.
+
+The only thing I'd add before you hand it to Replit is one more protection:
+
+Add idempotency protection
+
+Right now:
+
+Record Payment
+$200
+
+creates:
+
+sub_payment_records
+$200
+
+which is correct.
+
+But if the API gets called twice accidentally (double click, retry, network hiccup), you don't want:
+
+$200
+$200
+
+recorded twice.
+
+I'd add:
+
+Step 2.5 – Idempotency Guard
+
+Before inserting a payment record, verify the payment amount does not cause
+amountPaid to exceed the newly calculated accumulated amount unexpectedly.
+
+If the same request is replayed, return the existing result rather than
+creating a duplicate payment record.
+
+or at minimum:
+
+created_from = 'pay-worker'
+reference_number
+
+so future reconciliation is easier.
+
+One other future enhancement (not part of #888)
+
+Eventually you'll probably want:
+
+sub_payment_records
+
+payment_method
+reference_number
+cleared_date
+
+because once you're paying guys regularly you'll start asking:
+
+Did James cash check #1048?
+Did I ACH him already?
+What was that $200 payment for?
+
+But that's absolutely future work.
+
+From a business/accounting standpoint
+
+I think the architecture is now correct:
+
+Expenses
+What did this job cost me?
+
+Used by:
+
+P&L
+Job Profitability
+CPA
+Tax reports
+Closed Job exports
+Sub Payment Records
+What money did I actually pay somebody?
+
+Used by:
+
+Portal payment history
+Outstanding balances
+1099 totals
+Cash flow
+Future payment reports
+Job Subcontractors
+What do I still owe?
+
+Used by:
+
+Balance Due
+Partial payments
+Worker pay status
+
+Most importantly, this fixes the exact issue that started this whole discussion:
+
+Pay James $200
+
+should not:
+
+Change profit
+Change owner share
+Create duplicate labor expense
+Double-count job cost
+
+It should only:
+
+Increase amountPaid
+Reduce balanceDue
+Create a payment ledger entry
+
+which is exactly what #887 + #888 together are moving the app toward.
+
+If Replit implements #887 first and then #888, you'll have a much cleaner accounting foundation than you do today.

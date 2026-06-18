@@ -1,0 +1,160 @@
+ok so the amounts up top shouldne move when i add someone to the job i give hourly or percent and it should give amounts and not change when i start to pay people because then it will through me off to what i owe
+
+Yes. Looking at your screenshot, I think you've found a real workflow problem.
+
+Right now the top section is acting like a live cash flow calculator, while the bottom section is acting like a subcontractor ledger.
+
+Those are two different things.
+
+What's happening now
+
+James is allocated:
+
+50% of split pool
+= $855
+
+Then you paid him:
+
+$417.50
+
+Now the screen is mixing:
+
+What James should earn
+What James has been paid
+What James is still owed
+
+all together.
+
+That gets confusing fast.
+
+What I think it should do
+
+The top numbers should NEVER change because of payments.
+
+The top should answer:
+
+"How is this job's profit being allocated?"
+
+Example:
+
+Job Revenue           $1,800
+Growth Reserve        -$90
+
+Split Pool            $1,710
+
+James Allocation      $855
+Owner Allocation      $855
+
+Tax Reserve           -$213.75
+
+Owner Take Home       $641.25
+
+Those numbers should be frozen unless:
+
+revenue changes
+split percentage changes
+reserve percentage changes
+
+Paying James should not affect any of this.
+
+The bottom section should answer
+
+"What do I owe people?"
+
+For James:
+
+Allocated: $855.00
+
+Paid: $417.50
+
+Balance Due: $437.50
+
+Status: Partial
+
+or if you override:
+
+Allocated: $855.00
+
+Agreed Owed: $617.50
+
+Paid: $417.50
+
+Balance Due: $200.00
+
+Status: Partial
+Even better
+
+I would separate them visually.
+
+Profit Allocation
+Split Pool: $1,710
+
+James Allocation: $855
+Owner Allocation: $855
+
+Owner Take Home: $641.25
+
+This never changes from payments.
+
+Subcontractor Payments
+James Willard
+
+Allocation: $855.00
+Agreed Owed: $617.50
+
+Paid: $417.50
+Balance Due: $200.00
+
+68% Complete
+Another thing I notice
+
+This line:
+
+Your Share (50%) $855
+
+is misleading.
+
+Because after James agreed to only take $617.50, your actual profit increased.
+
+The system is currently showing:
+
+James = $855
+You = $855
+
+while also showing:
+
+James Owed = $617.50
+
+Those can't both be true.
+
+Once an override exists, the allocation screen should probably show:
+
+James Agreed Amount     $617.50
+
+Owner Share            $1,092.50
+
+or clearly distinguish:
+
+Original Allocation    $855.00
+Agreed Owed            $617.50
+
+because right now the math becomes hard to follow.
+
+If I were redesigning this panel, I'd make it follow three questions:
+
+1. What profit exists?
+Revenue
+Expenses
+Split Pool
+2. How is profit allocated?
+Owner Allocation
+Sub Allocations
+Reserves
+3. Who still needs paid?
+Subcontractor Ledger
+
+Paid
+Balance Due
+Status
+
+Mixing allocation and payment status in the same numbers is exactly what causes the confusion you're feeling. The allocation should stay fixed; the payment ledger should track what remains owed.

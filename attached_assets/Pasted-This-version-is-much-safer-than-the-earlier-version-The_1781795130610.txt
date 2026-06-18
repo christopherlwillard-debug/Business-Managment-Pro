@@ -1,0 +1,120 @@
+This version is much safer than the earlier version.
+
+The biggest improvement is that you're doing a dual-write transition first instead of immediately ripping payment data out of expenses. That's exactly how I would handle an accounting system.
+
+There are only 3 things I'd still change:
+
+1. Add job_subcontractor_snapshot
+
+Right now you're storing:
+
+job_id
+subcontractor_id
+amount
+payment_date
+
+But imagine this:
+
+James is owed $617.50
+You pay him $200
+Later you edit Agreed Owed to $700
+Later you pay another $500
+
+Years later, you'll want to know:
+
+What agreement existed when that payment was made?
+
+I'd add:
+
+agreed_owed_snapshot NUMERIC(10,2)
+
+on the payment record.
+
+That preserves historical context.
+
+2. Add payment correction support now
+
+You already know you're going to need it because you created Task #870.
+
+Add:
+
+is_reversal BOOLEAN DEFAULT FALSE
+reverses_payment_id INTEGER NULL
+
+Now if you accidentally enter:
+
+$417.50
+
+instead of
+
+$400.00
+
+you can create:
+
+-$17.50
+
+as a reversal entry.
+
+Accountants love immutable ledgers.
+
+3. Don't call it "1099 income"
+
+Call it:
+
+1099 Reportable Payments
+
+or
+
+Cash Payments This Year
+
+throughout the code.
+
+Reason:
+
+The portal is showing payments.
+
+The IRS cares about reportable payments.
+
+Calling it "income" tends to blur:
+
+Owed
+Income
+Expense
+Payment
+
+which are all different things.
+
+What I like most about this version
+
+You finally have three completely separate concepts:
+
+Job Cost
+expenses
+
+Answers:
+
+What did this job cost?
+
+Payment History
+sub_payment_records
+
+Answers:
+
+What did I actually pay James?
+
+Outstanding Balance
+job_subcontractors
+amountOwed
+amountPaid
+
+Answers:
+
+What do I still owe James?
+
+That separation is what your app has been missing.
+
+Before this, one table was trying to answer all three questions at once.
+
+After #887 and #888 are finished, your job costing, sub payments, portal, 1099s, outstanding balances, closed jobs, and year-end reporting will all be operating from much cleaner accounting logic.
+
+I would move forward with #887 first, then build this version of #888.

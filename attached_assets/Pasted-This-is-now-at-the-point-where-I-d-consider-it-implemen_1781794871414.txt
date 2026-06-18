@@ -1,0 +1,126 @@
+This is now at the point where I'd consider it implementation-ready.
+
+The addition of the idempotency key was the last thing I was worried about because payment systems are exactly where double-clicks and retries become expensive mistakes.
+
+A few small refinements I'd make:
+
+1. Don't skip updating amountPaid on duplicate requests
+
+Instead of:
+
+If duplicate idempotency key exists:
+return { ok: true, duplicate: true }
+
+I'd explicitly state:
+
+If duplicate idempotency key exists:
+- Do not insert a second payment record
+- Do not update amountPaid
+- Do not update paymentStatus
+- Return the previously created payment record
+
+That prevents ambiguity later.
+
+2. Add payment_id to the response
+
+When pay-worker succeeds:
+
+{
+  "ok": true,
+  "paymentId": 123,
+  "amountPaid": 417.50,
+  "remainingBalance": 200.00
+}
+
+That gives you a clean reference for future:
+
+payment corrections
+reversing entries
+audit trails
+check register
+
+Not required now, but almost free to add.
+
+3. One migration safeguard
+
+I'd slightly tighten:
+
+description LIKE '%— % Pay%'
+
+because description formats sometimes drift.
+
+Add this review step:
+
+Migration Dry Run
+
+Run the SELECT first and manually verify row count
+and sample data before running INSERT.
+Document the expected row count.
+
+Example:
+
+SELECT COUNT(*)
+FROM expenses
+WHERE subcontractor_id IS NOT NULL
+  AND job_sub_hours_id IS NULL
+  AND category IN ('Subcontractor','Labor')
+  AND description LIKE '%— % Pay%';
+
+Then compare:
+
+SELECT COUNT(*)
+FROM sub_payment_records
+WHERE created_from='migration';
+
+after migration.
+
+That gives you confidence you didn't accidentally pull in vendor bills.
+
+4. Future-proof 1099 wording
+
+I'd change:
+
+1099 qualifying income reads from sub_payment_records
+
+to:
+
+1099 cash-paid income reads from sub_payment_records
+
+because that's really what you're doing.
+
+The IRS cares about:
+
+money paid
+
+not
+
+money owed
+
+and that distinction is exactly why this table exists.
+
+Overall
+
+I think:
+
+#887 fixes the job economics.
+#888 fixes the accounting architecture.
+
+Together they solve most of the confusion you've been finding over the last few days:
+
+Revenue
+↓
+Committed Job Costs
+↓
+Profit Allocation
+
+separate from
+
+Payments Made
+↓
+Outstanding Balances
+↓
+1099 Reporting
+↓
+Portal Payment History
+
+That's a much cleaner model than trying to make the expenses table do all four jobs at once.

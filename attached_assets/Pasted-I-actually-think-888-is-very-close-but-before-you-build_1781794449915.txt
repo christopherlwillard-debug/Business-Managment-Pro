@@ -1,0 +1,155 @@
+I actually think #888 is very close, but before you build it I'd verify one thing:
+
+The big question
+
+What should drive:
+
+P&L
+Expenses page
+Sub Portal payment history
+1099 totals
+Outstanding balances
+
+Right now you potentially have two different concepts:
+
+Committed Cost
+
+Dewayne owed: $1,000
+
+Cash Payments
+
+6/10 Paid $200
+6/20 Paid $800
+The accounting side
+
+For your business books, I would want:
+
+Expenses
+Dewayne Labor
+$1,000
+
+ONE expense.
+
+That's the true job cost.
+
+The subcontractor side
+
+But James logging into the portal probably wants to see:
+
+Payment History
+
+6/10 - $200
+6/20 - $417.50
+
+not:
+
+$617.50
+
+because that doesn't tell him what checks he actually received.
+
+This is where I'd be careful
+
+If the portal is currently using:
+
+expenses
+WHERE category='Subcontractor'
+
+to build payment history,
+
+then the portal is actually reading the wrong table.
+
+It's using:
+
+Expense Ledger
+
+to simulate:
+
+Payment Ledger
+
+Those are different things.
+
+What I would do long term
+
+Keep:
+
+Expense Ledger
+
+One row per sub per job.
+
+Examples:
+
+Plumbing
+James
+$617.50
+
+Lot Model
+Dewayne
+$1,000
+
+Those drive:
+
+P&L
+Job costing
+Year-end reports
+Tax reports
+Profit calculations
+
+Then build a separate:
+
+Sub Payment Ledger
+
+from:
+
+job_subcontractors.amountPaid
+paidAt
+payment history
+payment adjustments
+
+or a dedicated payment table later.
+
+That drives:
+
+Portal payment history
+Outstanding balances
+"How much do I owe James?"
+Check history
+For now
+
+I would modify #888 slightly:
+
+Before removing payment-created expenses, audit:
+
+Sub Portal payment history
+1099 calculations
+Sub summary reports
+Any payroll/subcontractor reports
+
+to see whether they currently depend on those payment expense rows.
+
+If they do, then simply stopping expense creation will make those screens wrong.
+
+My suspicion from your screenshots is:
+
+Job costing wants one expense per committed amount ✅
+Outstanding balances already come from amountPaid vs amountOwed ✅
+Portal payment history may still be reading expenses ❌
+
+If that's true, I'd actually split this into:
+
+#888A
+
+Fix accounting:
+
+One committed expense per sub per job
+No duplicate expenses from partial payments
+#888B
+
+Fix portal/history:
+
+Payment history comes from payment records, not expense records
+Shows actual checks/payments made
+1099 totals come from committed labor cost, not duplicated payment entries
+
+That way you don't accidentally fix the accounting and break the subcontractor portal at the same time.
+
+Based on the architecture you've been building, I would absolutely move toward one expense row per worker per job. That's the cleaner accounting model. I would just audit the portal and 1099 logic first so you don't pull the rug out from features that are currently piggybacking on those payment expenses.

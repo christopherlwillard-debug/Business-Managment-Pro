@@ -1,0 +1,141 @@
+I think #888 is now solving the right problem, but I'd make one major change before you build it:
+
+Don't remove the payment expense entirely yet.
+
+You are in the middle of redesigning:
+
+Job costing
+Sub payments
+Sub portal
+1099 reporting
+Outstanding balances
+Closed jobs
+Year-end reports
+
+That's a lot of accounting logic changing at once.
+
+Instead I'd split this into Phase 1 and Phase 2.
+
+Phase 1 (Build Now)
+
+Create:
+
+sub_payment_records
+
+Update:
+
+pay-worker
+
+to write BOTH:
+
+sub_payment_records
+
+AND
+
+expenses
+
+for a short transition period.
+
+Then:
+
+Move portal payment history to sub_payment_records
+Move 1099 calculations to sub_payment_records
+Build payment history pages from sub_payment_records
+Verify reports for a few weeks
+
+Nothing breaks.
+
+Phase 2 (After Validation)
+
+Once you verify:
+
+Portal works
+1099 totals match
+Payment history matches
+Outstanding balances match
+
+Then:
+
+Remove expense creation from pay-worker
+
+and clean up the old records.
+
+The other thing I would add is:
+
+Link payment records to bank transactions
+
+Add nullable field:
+
+bank_transaction_id INTEGER
+
+to:
+
+sub_payment_records
+
+Not because you need it today.
+
+Because later you'll want:
+
+I paid James $417.50
+Show me the bank transaction
+
+or
+
+This ACH payment cleared the bank
+Match it to the sub payment
+
+That becomes incredibly useful once Banking and Accounting are cleaned up.
+
+One more field I'd add
+remaining_balance NUMERIC(10,2)
+
+No.
+
+Do NOT store it.
+
+Compute it.
+
+Store:
+
+amountOwed
+amountPaid
+
+Compute:
+
+remainingBalance = amountOwed - amountPaid
+
+everywhere.
+
+Otherwise you'll eventually have:
+
+Amount Owed: 617.50
+Amount Paid: 417.50
+Remaining: 250.00
+
+because one field got updated and another didn't.
+
+So if I were prioritizing:
+
+Must Have
+
+✅ sub_payment_records
+
+✅ idempotency_key
+
+✅ portal reads payment records
+
+✅ 1099 reads payment records
+
+Nice To Have
+
+✅ bank_transaction_id
+
+Skip
+
+❌ storing remaining balance
+
+And before building #888, I'd still finish #887 first.
+
+Right now the Pay Breakdown screen is showing the wrong economics of the job. That's something you'll look at every day.
+
+The payment-ledger redesign is important, but the waterfall math is the thing that affects every job immediately.
