@@ -120,6 +120,12 @@ function ProfitLossTab({ year }: { year: number }) {
 
             <div className="px-6 py-4 space-y-1">
               <PLSection title="Revenue" />
+              {(report.closedJobCount ?? 0) > 0 && (
+                <div className="flex items-center gap-1.5 px-2 py-1 mb-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                  Includes {report.closedJobCount} closed job{report.closedJobCount === 1 ? "" : "s"} — revenue and expenses fully counted
+                </div>
+              )}
               <PLRow label="Gross Receipts (Paid Invoices)" amount={report.revenue.grossReceipts} indent />
               {report.revenue.otherIncome > 0 && <PLRow label="Other Income" amount={report.revenue.otherIncome} indent />}
               <PLRow label="Total Revenue" amount={report.revenue.grossRevenue} bold separator />

@@ -32,6 +32,7 @@ interface ProfitLossReport {
   netOperatingIncome: number;
   deductions: { mileageDeduction: number; totalMiles: number; mileageRate: number; writeoffsTotal: number };
   netProfit: number;
+  closedJobCount?: number;
 }
 
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, sum, ne, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
@@ -772,6 +772,17 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const outstandingSubTotal = outstandingSubItems.reduce((s, i) => s + (i.amount ?? 0), 0);
     const outstandingSubLiability = { total: outstandingSubTotal, items: outstandingSubItems };
 
+    // Count jobs archived (closed) within this P&L year — purely informational for the UI badge
+    const [closedCountRow] = await db.select({ n: count() })
+      .from(jobsTable)
+      .where(and(
+        eq(jobsTable.status, "closed"),
+        gte(jobsTable.closedAt, startDate),
+        lte(jobsTable.closedAt, endDate),
+        blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
+      ));
+    const closedJobCount = closedCountRow?.n ?? 0;
+
     const grossReceipts = invRows.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue  = grossReceipts + otherIncome;
@@ -814,6 +825,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       deductions: { mileageDeduction, totalMiles, mileageRate, writeoffsTotal },
       netProfit,
       outstandingSubLiability,
+      closedJobCount,
     });
   } catch (err) {
     console.error(err);
