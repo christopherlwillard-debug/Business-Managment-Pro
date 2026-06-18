@@ -1,0 +1,184 @@
+I would absolutely build #879, #880, #881, and #882 before adding more features.
+
+If I were prioritizing them for Willard's GC specifically:
+
+Priority 1 — #879 Stop Plaid Auto-Batching
+
+This is the only one that can potentially save you money and reduce clutter immediately.
+
+Looking at your screenshots:
+
+Banking page already shows balances
+Banking page already shows transactions
+Banking page already lets you file transactions
+Reconcile page is filling with auto-generated Chase batches
+
+For your use case, the Reconcile page should probably become:
+
+Import Bank Statement
+Upload CSV
+Match Transactions
+
+and nothing more.
+
+The Banking page should own:
+
+Balances
+Transactions
+Plaid Sync
+Income
+Expenses
+
+One source of truth.
+
+Priority 2 — #880 Settings Cleanup
+
+This is the biggest UX confusion in the app right now.
+
+Right now I can see:
+
+LLC info
+Business info
+DBA info
+Company info
+Logo info
+
+all mixed together.
+
+What I'd want:
+
+Company Identity (Global)
+Willard's General Contracting LLC
+EIN
+Entity Type
+
+Used for:
+
+Taxes
+1099s
+CPA reports
+Year-end reports
+Business Profile (Per Business)
+
+Example:
+
+General Contracting
+
+Logo
+Phone
+Email
+Address
+License
+
+and
+
+Willard's Asphalt Sealing
+
+Logo
+Phone
+Email
+Address
+License
+
+That matches how you've structured the rest of the app now.
+
+Priority 3 — #882 Job Card Label Cleanup
+
+This is tiny but high value.
+
+Right now:
+
+PAID
+
+section
+
+contains
+
+UNPAID JOB PAYMENTS
+
+which sounds like:
+
+Customer hasn't paid
+
+when really it means:
+
+Subcontractor hasn't been paid
+
+I'd rename it:
+
+Worker Pay Due
+
+or
+
+Outstanding Sub Payments
+
+Every contractor will understand that instantly.
+
+Priority 4 — #881 Year-End Asset Edit
+
+This is definitely worth doing.
+
+The backend already exists.
+
+The workflow is just awkward.
+
+Currently:
+
+Year-End Report
+↓
+See wrong %
+↓
+Leave report
+↓
+Go Assets
+↓
+Find asset
+↓
+Edit
+↓
+Return
+
+Should become:
+
+Year-End Report
+↓
+Edit %
+↓
+Save
+↓
+Numbers recalc
+
+That's exactly the kind of friction removal that makes software feel polished.
+
+What I would NOT build yet
+
+I would pause:
+
+#875 Export Closed Jobs CSV
+#876 Closed Job P&L audit (unless you've found actual discrepancies)
+New reports
+More accounting screens
+More banking features
+
+Until you do a broader cleanup.
+
+My recommended next sprint
+#879 Stop Plaid Auto-Batching
+#880 Settings Cleanup
+#882 Job Label Cleanup
+#881 Inline Asset Edit
+
+Then immediately after:
+
+#900 Application Workflow Audit
+
+where you walk through every page and ask:
+
+What is the source of truth?
+Is there another page doing the same thing?
+Can this action be performed where the user is already looking?
+Is this page worth keeping?
+
+That audit will probably eliminate more complexity than adding 10 new features.
+
+Looking at your screenshots, the app has reached the point where the biggest gains are no longer new features—they're making the existing features easier to understand and use.

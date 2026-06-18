@@ -1,0 +1,584 @@
+Yes. Looking at the screenshots and everything you've built over the last few months, I don't think your biggest problem is missing features anymore.
+
+Your biggest problem is feature sprawl.
+
+You've built enough that the app is starting to feel like 3 different apps glued together:
+
+Operations (Jobs, Customers, Subs, Materials)
+Accounting (Banking, Expenses, P&L, Taxes)
+Asset & Business Management (Assets, Mileage, Settings, Business Profiles)
+
+The issue is that the boundaries are blurry.
+
+Biggest issue I see: duplicate workflows
+Banking page
+
+You already have:
+
+Connected accounts
+Balance
+Transactions
+Categorization
+Filing income
+Filing expenses
+
+Then you have:
+
+Accounting → Reconcile
+
+Which appears to:
+
+Import bank statements
+Match transactions
+Reconcile transactions
+
+That's basically a second banking workflow.
+
+My question is:
+
+What problem is Reconcile solving that Banking isn't?
+
+For a small contractor:
+
+Bank Feed
+      ↓
+Categorize
+      ↓
+P&L
+      ↓
+Taxes
+
+That's it.
+
+You don't need:
+
+Bank Feed
+      ↓
+Categorize
+      ↓
+Reconcile
+      ↓
+Match
+      ↓
+Import Batch
+      ↓
+Accounting
+
+That's QuickBooks-level complexity.
+
+For Willard's GC with one checking account, I'd seriously consider removing Reconcile entirely or hiding it behind an Advanced Accounting toggle.
+
+Second issue: Settings is a mess
+
+You actually pointed out the exact problem.
+
+Before multi-business:
+
+Settings
+ ├ Business Name
+ ├ Address
+ ├ Logo
+ ├ EIN
+
+made sense.
+
+After multi-business:
+
+Main Company
+  Willard's General Contracting LLC
+
+Business Lines
+  GC
+  Asphalt
+  Rentals
+
+Now you have:
+
+Main Company Defaults
+Business Settings
+DBA Logos
+Business Profiles
+
+all overlapping.
+
+I would split it:
+
+Company
+
+Only LLC-level stuff
+
+Company Name
+EIN
+Legal Structure
+Address
+Primary Phone
+Primary Email
+Business Lines
+
+Per-business stuff
+
+General Contracting
+
+Logo
+Invoice Prefix
+Phone
+Email
+Brand Colors
+Asphalt Sealing
+
+Logo
+Invoice Prefix
+Phone
+Email
+Brand Colors
+
+Much cleaner.
+
+Third issue: Jobs page is becoming overloaded
+
+Every card has:
+
+Daily Log
+Materials
+Estimates
+Smart Estimate Wizard
+Phases
+Financials
+Invoice
+
+That's almost a mini ERP system inside each card.
+
+I think your "Closed Jobs Archive" idea is exactly right.
+
+Active jobs:
+
+Big cards
+
+Closed jobs:
+
+Simple table
+
+Otherwise 200 jobs later you'll hate the page.
+
+Fourth issue: Accounting & Tax isn't actionable
+
+This screenshot is where I really agree with you.
+
+You showed:
+
+Asset Depreciation
+Mileage
+Estimated Tax Payments
+Estimated Tax Liability
+
+The numbers are there.
+
+But you can't do anything.
+
+Example:
+
+You see:
+
+Wildwood FSX
+100% business use
+
+But if your CPA says:
+
+Use 80%
+
+You have to leave the page.
+
+Go to Assets.
+
+Find asset.
+
+Edit.
+
+Return.
+
+That's poor workflow.
+
+What should happen:
+
+From Accounting:
+
+Wildwood FSX
+100% Business Use
+
+[ Edit ]
+
+One click.
+
+Done.
+
+Fifth issue: Too many places for the same financial data
+
+Right now revenue appears in:
+
+Jobs
+Banking
+Accounting
+P&L
+Year End Report
+
+Expenses appear in:
+
+Jobs
+Expenses
+Banking
+Accounting
+
+Assets appear in:
+
+Assets
+Accounting
+
+The rule should be:
+
+One owner page
+
+Example:
+
+Banking owns transactions
+
+Everything else reads from Banking.
+
+Never edit transactions anywhere else.
+
+Assets owns assets
+
+Everything else reads from Assets.
+
+Never edit depreciation settings elsewhere.
+
+Jobs owns job costing
+
+Everything else reads from Jobs.
+
+If I were restructuring the entire app
+
+I'd simplify the navigation to:
+
+Operations
+Dashboard
+Jobs
+Customers
+Subcontractors
+Materials
+Financial
+Banking
+Expenses
+Invoices
+Accounting & Tax
+Business
+Assets
+Mileage
+Business Lines
+Settings
+My recommendation before building more features
+
+I would stop feature development for a week and do a UX audit.
+
+Create a task called:
+
+#900 - App Simplification & Ownership Audit
+
+Goal:
+
+Every piece of data in the system must have exactly one authoritative home. Remove duplicate workflows, remove redundant screens, identify pages that only display information versus pages that own/edit information, and simplify navigation around Operations, Financial, and Business Management.
+
+I honestly think that task would improve the app more than the next 10 features.
+
+Right now you've got a lot of powerful functionality. The next step isn't adding more—it’s making sure a new user (or future-you six months from now) can immediately answer:
+
+Where do I manage money?
+Where do I manage jobs?
+Where do I manage assets?
+Where do I manage business settings?
+
+without seeing the same thing in three different places.
+
+Good — I now have a clear picture of both systems. Let me also explore the Year-End report assets section and the job card sub-payment display to complete my analysis before proposing any tasks:
+
+Now I have the full picture across all four problem areas. Here's my honest assessment before we create any tasks:
+
+1. Bank Reconcile vs. Banking Page
+Your instinct is right — the 6 AM daily Plaid sync automatically creates all those "Chase – BUS COMPLETE CHK" batches you see in the Reconcile tab. The Banking page already reads the same transaction data. You are paying for Plaid API calls that feed both places. The Reconcile tab was originally designed for manually uploading CSV bank statements to verify against records you'd already entered. Now that the Banking page handles Plaid live, the Reconcile tab is mostly duplicated noise — and the daily auto-batching is the cost center.
+
+2. Settings duplication
+You have two layers: a "Main Company Defaults" (LLC name, EIN, legal entity, global address) and a "per-business profile" (DBA name, phone, email, address, logo) — both in the Business tab, stacked on top of each other with overlapping fields. Now that you have proper per-business views, this double-entry is confusing and dated. The fix is clearer separation, not data deletion.
+
+3. Asset business-use % on Year-End report
+The Year-End report shows the % read-only. To change it you have to leave, go to Assets, expand the row, and edit it there. The backend API for updating it already exists (PUT /api/assets/:id/business-use) — it just needs an edit button on the Year-End page.
+
+4. Job card sub-payment label
+In your "Paid" section (where the client has paid the invoice), cards with outstanding worker/sub pay show a big bold "UNPAID JOB PAYMENTS" header — which looks like the job itself hasn't been paid. It's the opposite of what that section means. It should say "WORKER PAYMENTS DUE" or similar so it's clearly about paying your subs, not about the client payment.
+
+Let me now write up those four tasks:
+
+I think you're identifying the right problems, but I'd actually combine them into a larger cleanup effort instead of creating 4 separate little fixes.
+
+What I'm seeing is that you've reached the point where the app needs a Product Review Phase, not another feature phase.
+
+What I would rank as the biggest issues
+1. Banking vs Reconcile (Highest Priority)
+
+This is the first thing I'd investigate.
+
+From what you've shown:
+
+Banking
+
+Connect Plaid
+Pull transactions
+Categorize income
+Categorize expenses
+Show balances
+
+Reconcile
+
+Import bank statements
+Match transactions
+Create batches
+Show unmatched items
+
+For a single-owner contractor business, that's almost certainly overkill.
+
+Questions I'd ask:
+
+Are you ever manually importing CSV statements?
+Are you ever matching transactions manually?
+Are you ever using those Plaid-generated reconcile batches?
+
+If the answer is "no" to all three, I'd seriously consider:
+
+Keep:
+✓ Banking
+
+Hide:
+✓ Reconcile
+
+or
+
+Banking
+ ├ Transactions
+ ├ Categorization
+ └ Reconciliation
+
+as one unified page.
+
+The biggest reason is cost.
+
+Every unnecessary Plaid sync is literally costing money.
+
+2. Settings Needs Reorganized
+
+Right now I see:
+
+Main Company
+
+Willard's General Contracting LLC
+
+Then:
+
+Active Business
+
+General Contracting
+
+Then:
+
+DBA Logos
+
+Then:
+
+Invoice Defaults
+
+Then:
+
+More business settings
+
+That structure made sense before multi-business support.
+
+Now I'd restructure into:
+
+Company
+LLC Name
+EIN
+Legal Structure
+Primary Address
+Business Lines
+General Contracting
+Asphalt Sealing
+Rentals
+
+Each business gets:
+
+Logo
+Phone
+Email
+Invoice Settings
+Branding
+
+No duplicate address, phone, EIN, etc.
+
+3. Jobs Page Is Becoming Too Busy
+
+The screenshot tells the story.
+
+Every job card contains:
+
+Daily Log
+Materials
+Estimates
+Smart Wizard
+Phases
+Financials
+Invoice
+Sub Payments
+
+For active jobs, that's fine.
+
+For paid jobs, it's becoming clutter.
+
+That's why I think your Closed Jobs Archive is one of the best ideas you've had.
+
+Active jobs:
+
+Card view
+
+Closed jobs:
+
+Table view
+
+Newest first.
+
+Searchable.
+
+Expandable.
+
+Exactly like you described.
+
+4. Asset Workflow Is Broken
+
+This is a usability problem.
+
+You are looking at:
+
+Asset Depreciation
+Business Use %
+
+inside Year-End.
+
+But you can't edit it there.
+
+You have to:
+
+Leave page
+Go to Assets
+Find asset
+Edit asset
+Return
+
+That's unnecessary friction.
+
+I would absolutely add:
+
+[Edit]
+
+right beside business use %.
+
+Not because the feature is missing.
+
+Because the workflow is wrong.
+
+5. Job Payment Terminology Is Confusing
+
+This one jumped out immediately.
+
+You have:
+
+PAID
+
+section
+
+but inside:
+
+UNPAID JOB PAYMENTS
+
+The customer already paid.
+
+The job is paid.
+
+Only the subcontractor is unpaid.
+
+Those words mean completely different things.
+
+I would rename it:
+
+Subcontractor Balance Due
+
+or
+
+Worker Payments Due
+
+or
+
+Outstanding Sub Payments
+
+Much clearer.
+
+What I'd build next
+
+Not #875.
+
+Not #876.
+
+Not another feature.
+
+I'd create:
+
+#900 — Application Simplification & Workflow Audit
+
+Goal:
+
+Remove duplicate workflows, identify ownership of every piece of data, reduce navigation complexity, eliminate redundant Plaid usage, and make the application easier for a contractor to operate daily.
+
+Deliverables:
+
+Banking Audit
+Decide whether Reconcile stays, merges, or is hidden
+Measure Plaid cost impact
+Eliminate duplicate transaction workflows
+Settings Audit
+Separate Company vs Business Lines
+Remove duplicate fields
+Clarify ownership
+Jobs Audit
+Move closed jobs to archive table
+Simplify paid-job display
+Improve sub-payment wording
+Accounting Audit
+Make commonly edited tax values editable where viewed
+Remove dead-end read-only screens
+Navigation Audit
+
+Group everything into:
+
+Operations
+ Jobs
+ Customers
+ Subs
+ Materials
+
+Financial
+ Banking
+ Expenses
+ Invoices
+ Accounting
+
+Business
+ Assets
+ Mileage
+ Settings
+
+If this were my app, I'd spend the next 2–3 weeks doing cleanup and workflow improvements before adding another major feature. The foundation is getting strong enough now that every new feature is starting to expose inconsistencies in the navigation and ownership model. Fixing those now will make the app feel dramatically more professional without adding much new functionality.
