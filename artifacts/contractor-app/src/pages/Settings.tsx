@@ -1250,7 +1250,7 @@ function BusinessProfileCard() {
         <CardTitle className="font-display flex items-center gap-2 text-blue-800">
           <Building2 className="w-5 h-5" /> Active Business — {activeBusiness.name}
         </CardTitle>
-        <CardDescription className="text-blue-700/70">Profile for the currently selected business. Saved independently per business.</CardDescription>
+        <CardDescription className="text-blue-700/70">Contact info, address, and logo for this business line — these override the LLC defaults on invoices and estimates.</CardDescription>
       </CardHeader>
       <CardContent className="p-6 space-y-5">
         {/* Logo upload */}
@@ -1449,7 +1449,6 @@ export default function Settings() {
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [dbaLogoUrl, setDbaLogoUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [bottomNavHrefs, setBottomNavHrefs] = useState<string[]>(DEFAULT_BOTTOM_NAV_HREFS);
   const [success, setSuccess] = useState(false);
@@ -1492,7 +1491,6 @@ export default function Settings() {
         taxFilingFrequency: (s.taxFilingFrequency as string | undefined) ?? "quarterly",
       });
       setLogoUrl(s.logoUrl ?? null);
-      setDbaLogoUrl(s.dbaLogoUrl ?? null);
       const feat: Record<string, boolean> = {};
       FEATURE_OPTIONS.forEach(f => {
         feat[f.key] = Array.isArray(s.enabledFeatures) ? s.enabledFeatures.includes(f.key) : true;
@@ -1719,18 +1717,18 @@ export default function Settings() {
               <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
                 <CardTitle className="font-display flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-primary" />
-                  {activeBusiness ? "Main Company Defaults" : "Business Profile"}
+                  Company Identity
                 </CardTitle>
                 <CardDescription>
                   {activeBusiness
-                    ? "Global company info shared across all businesses — appears on invoices and reports."
-                    : "This information appears on all invoices, estimates, and reports."}
+                    ? "LLC-level legal information — used on all tax forms, 1099s, and year-end reports."
+                    : "Your legal company info — appears on all invoices, estimates, and reports."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
-                    <LF label="Company / Business Name">
+                    <LF label={activeBusiness ? "Legal Company Name (LLC)" : "Company / Business Name"}>
                       <input className={inp} value={form.companyName} onChange={e => setF("companyName", e.target.value)} placeholder="Smith Construction LLC" />
                     </LF>
                   </div>
@@ -1745,39 +1743,43 @@ export default function Settings() {
                   </LF>
                 </div>
 
-                <div className="border-t border-border/50 pt-4">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Contact Information</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <LF label="Business Email">
-                      <input className={inp} type="email" value={form.companyEmail} onChange={e => setF("companyEmail", e.target.value)} placeholder="contact@smithconstruction.com" />
-                    </LF>
-                    <LF label="Business Phone">
-                      <input className={inp} value={form.companyPhone} onChange={e => setF("companyPhone", e.target.value)} placeholder="(270) 555-0123" />
-                    </LF>
-                  </div>
-                </div>
+                {!activeBusiness && (
+                  <>
+                    <div className="border-t border-border/50 pt-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Contact Information</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <LF label="Business Email">
+                          <input className={inp} type="email" value={form.companyEmail} onChange={e => setF("companyEmail", e.target.value)} placeholder="contact@smithconstruction.com" />
+                        </LF>
+                        <LF label="Business Phone">
+                          <input className={inp} value={form.companyPhone} onChange={e => setF("companyPhone", e.target.value)} placeholder="(270) 555-0123" />
+                        </LF>
+                      </div>
+                    </div>
 
-                <div className="border-t border-border/50 pt-4">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Business Address</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="sm:col-span-2">
-                      <LF label="Street Address">
-                        <input className={inp} value={form.companyAddress} onChange={e => setF("companyAddress", e.target.value)} placeholder="123 Main Street" />
-                      </LF>
+                    <div className="border-t border-border/50 pt-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Business Address</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="sm:col-span-2">
+                          <LF label="Street Address">
+                            <input className={inp} value={form.companyAddress} onChange={e => setF("companyAddress", e.target.value)} placeholder="123 Main Street" />
+                          </LF>
+                        </div>
+                        <LF label="City">
+                          <input className={inp} value={form.companyCity} onChange={e => setF("companyCity", e.target.value)} placeholder="Owensboro" />
+                        </LF>
+                        <div className="grid grid-cols-2 gap-3">
+                          <LF label="State">
+                            <input className={inp} value={form.companyState} onChange={e => setF("companyState", e.target.value.toUpperCase())} placeholder="KY" maxLength={2} />
+                          </LF>
+                          <LF label="ZIP Code">
+                            <input className={inp} value={form.companyZip} onChange={e => setF("companyZip", e.target.value)} placeholder="42301" />
+                          </LF>
+                        </div>
+                      </div>
                     </div>
-                    <LF label="City">
-                      <input className={inp} value={form.companyCity} onChange={e => setF("companyCity", e.target.value)} placeholder="Owensboro" />
-                    </LF>
-                    <div className="grid grid-cols-2 gap-3">
-                      <LF label="State">
-                        <input className={inp} value={form.companyState} onChange={e => setF("companyState", e.target.value.toUpperCase())} placeholder="KY" maxLength={2} />
-                      </LF>
-                      <LF label="ZIP Code">
-                        <input className={inp} value={form.companyZip} onChange={e => setF("companyZip", e.target.value)} placeholder="42301" />
-                      </LF>
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -1801,25 +1803,6 @@ export default function Settings() {
                   logoUrl={logoUrl}
                   onUploaded={url => { setLogoUrl(url); queryClient.invalidateQueries(); }}
                   onRemoved={() => { setLogoUrl(null); queryClient.invalidateQueries(); }}
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/50 shadow-md bg-card">
-              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-                <CardTitle className="font-display flex items-center gap-2">
-                  <ImagePlus className="w-5 h-5 text-primary" /> DBA Logo — Willard's Asphalt Sealing
-                </CardTitle>
-                <CardDescription>Used on invoices and estimates when the Asphalt Sealing business line is selected. Falls back to the main logo if not set.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6">
-                <LogoUpload
-                  logoUrl={dbaLogoUrl}
-                  onUploaded={url => { setDbaLogoUrl(url); queryClient.invalidateQueries(); }}
-                  onRemoved={() => { setDbaLogoUrl(null); queryClient.invalidateQueries(); }}
-                  uploadPath="/api/settings/dba-logo"
-                  deletePath="/api/settings/dba-logo"
-                  responseKey="dbaLogoUrl"
                 />
               </CardContent>
             </Card>
