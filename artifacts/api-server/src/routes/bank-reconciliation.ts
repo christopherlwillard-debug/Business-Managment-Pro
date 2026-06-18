@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { db, bankImportBatchesTable, bankTransactionsTable, expensesTable, invoicesTable, otherIncomeTable } from "@workspace/db";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sql, notLike } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 
 const router = Router();
@@ -226,9 +226,11 @@ router.post("/batches", wrapAsync(async (req, res) => {
   res.status(201).json(batch);
 }));
 
-// GET /api/bank-reconciliation/batches — list all batches with counts
+// GET /api/bank-reconciliation/batches — list all batches with counts (excludes Plaid-auto batches)
 router.get("/batches", wrapAsync(async (req, res) => {
-  const batches = await db.select().from(bankImportBatchesTable).orderBy(sql`${bankImportBatchesTable.importedAt} DESC`);
+  const batches = await db.select().from(bankImportBatchesTable)
+    .where(notLike(bankImportBatchesTable.fileName, "plaid-conn-%"))
+    .orderBy(sql`${bankImportBatchesTable.importedAt} DESC`);
 
   const batchesWithCounts = await Promise.all(batches.map(async b => {
     const txs = await db.select().from(bankTransactionsTable).where(eq(bankTransactionsTable.importBatchId, b.id));

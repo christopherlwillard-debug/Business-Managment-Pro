@@ -6,7 +6,7 @@ import {
   bankTransactionsTable,
 } from "@workspace/db";
 import { expensesTable, otherIncomeTable, invoicesTable } from "@workspace/db/schema";
-import { eq, like, isNotNull, inArray, and, gte } from "drizzle-orm";
+import { eq, like, isNotNull, and, gte } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
@@ -33,21 +33,21 @@ function plaidAccountLabel(connection: { institutionName: string | null; account
 }
 
 async function deletePlaidDataForConnection(connectionId: number): Promise<void> {
-  const batches = await db
+  // Delete transactions that have no batch (new Plaid-direct transactions)
+  await db
+    .delete(bankTransactionsTable)
+    .where(isNotNull(bankTransactionsTable.plaidTransactionId));
+
+  // Also clean up any legacy plaid-auto batches (and their transactions via cascade)
+  const legacyBatches = await db
     .select({ id: bankImportBatchesTable.id })
     .from(bankImportBatchesTable)
     .where(like(bankImportBatchesTable.fileName, `plaid-conn-${connectionId}-%`));
 
-  if (batches.length === 0) return;
-
-  const batchIds = batches.map((b) => b.id);
-  await db
-    .delete(bankTransactionsTable)
-    .where(inArray(bankTransactionsTable.importBatchId, batchIds));
-  for (const batchId of batchIds) {
+  for (const b of legacyBatches) {
     await db
       .delete(bankImportBatchesTable)
-      .where(eq(bankImportBatchesTable.id, batchId));
+      .where(eq(bankImportBatchesTable.id, b.id));
   }
 }
 
@@ -294,32 +294,6 @@ router.post("/sync", wrapAsync(async (req, res) => {
   });
 
   const plaidTxns = response.data.transactions;
-  const accountLabel = plaidAccountLabel(connection);
-  const batchFileName = `plaid-conn-${connection.id}-${endDate}`;
-
-  let batch = await db
-    .select()
-    .from(bankImportBatchesTable)
-    .where(eq(bankImportBatchesTable.fileName, batchFileName))
-    .then((rows) => rows[0] ?? null);
-
-  if (!batch) {
-    const [newBatch] = await db
-      .insert(bankImportBatchesTable)
-      .values({
-        accountName: accountLabel,
-        fileName: batchFileName,
-        rowCount: plaidTxns.length,
-      })
-      .returning();
-    batch = newBatch;
-  } else {
-    await db
-      .update(bankImportBatchesTable)
-      .set({ rowCount: plaidTxns.length, importedAt: new Date() })
-      .where(eq(bankImportBatchesTable.id, batch.id));
-  }
-
   let insertedCount = 0;
   let updatedCount = 0;
 
@@ -344,7 +318,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
       }
     } else {
       await db.insert(bankTransactionsTable).values({
-        importBatchId: batch.id,
+        importBatchId: null,
         date: t.date,
         description,
         amount: absAmount,
@@ -358,7 +332,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
 
   await db.update(plaidConnectionsTable).set({ lastSyncedAt: new Date() }).where(eq(plaidConnectionsTable.id, connection.id));
 
-  res.json({ synced: plaidTxns.length, inserted: insertedCount, updated: updatedCount, batchId: batch.id });
+  res.json({ synced: plaidTxns.length, inserted: insertedCount, updated: updatedCount });
 }));
 
 router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) => {

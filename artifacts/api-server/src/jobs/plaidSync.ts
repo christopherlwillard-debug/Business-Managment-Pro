@@ -1,17 +1,10 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { plaidConnectionsTable, bankImportBatchesTable, bankTransactionsTable } from "@workspace/db";
+import { plaidConnectionsTable, bankTransactionsTable } from "@workspace/db";
 import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
 import { eq } from "drizzle-orm";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-function plaidAccountLabel(connection: { institutionName: string | null; accountName: string | null }): string {
-  if (connection.institutionName && connection.accountName) {
-    return `${connection.institutionName} – ${connection.accountName}`;
-  }
-  return connection.institutionName ?? connection.accountName ?? "Connected Bank";
-}
 
 async function syncTransactions(connection: typeof plaidConnectionsTable.$inferSelect): Promise<void> {
   const client = getPlaidClient();
@@ -30,28 +23,6 @@ async function syncTransactions(connection: typeof plaidConnectionsTable.$inferS
   });
 
   const plaidTxns = response.data.transactions;
-  const accountLabel = plaidAccountLabel(connection);
-  const batchFileName = `plaid-conn-${connection.id}-${endDate}`;
-
-  let batch = await db
-    .select()
-    .from(bankImportBatchesTable)
-    .where(eq(bankImportBatchesTable.fileName, batchFileName))
-    .then((rows) => rows[0] ?? null);
-
-  if (!batch) {
-    const [newBatch] = await db
-      .insert(bankImportBatchesTable)
-      .values({ accountName: accountLabel, fileName: batchFileName, rowCount: plaidTxns.length })
-      .returning();
-    batch = newBatch;
-  } else {
-    await db
-      .update(bankImportBatchesTable)
-      .set({ rowCount: plaidTxns.length, importedAt: new Date() })
-      .where(eq(bankImportBatchesTable.id, batch.id));
-  }
-
   let insertedCount = 0;
   let updatedCount = 0;
 
@@ -76,7 +47,7 @@ async function syncTransactions(connection: typeof plaidConnectionsTable.$inferS
       }
     } else {
       await db.insert(bankTransactionsTable).values({
-        importBatchId: batch.id,
+        importBatchId: null,
         date: t.date,
         description,
         amount: absAmount,

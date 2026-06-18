@@ -95,7 +95,6 @@ interface PlaidTransaction {
 
 interface SyncResult {
   synced: number;
-  batchId: number;
 }
 
 interface Vendor {

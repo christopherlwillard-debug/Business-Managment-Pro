@@ -14,7 +14,7 @@ export const bankImportBatchesTable = pgTable("bank_import_batches", {
 
 export const bankTransactionsTable = pgTable("bank_transactions", {
   id: serial("id").primaryKey(),
-  importBatchId: integer("import_batch_id").notNull().references(() => bankImportBatchesTable.id, { onDelete: "cascade" }),
+  importBatchId: integer("import_batch_id").references(() => bankImportBatchesTable.id, { onDelete: "cascade" }),
   date: text("date").notNull(),
   description: text("description").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),

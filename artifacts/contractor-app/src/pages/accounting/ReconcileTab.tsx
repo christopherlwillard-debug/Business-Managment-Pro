@@ -261,8 +261,8 @@ export default function ReconcileTab() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Bank Statement Reconciliation</h2>
-          <p className="text-sm text-muted-foreground">Import CSV bank statements and match transactions to expenses and income.</p>
+          <h2 className="text-lg font-semibold">CSV Bank Statement Import</h2>
+          <p className="text-sm text-muted-foreground">Upload a CSV or Excel export from your bank and match transactions to expenses and income. Live Plaid transactions are managed on the Banking page.</p>
         </div>
         <button
           onClick={() => { setImportOpen(true); setPreview(null); setFileFile(null); setAccountName(""); }}
@@ -398,8 +398,9 @@ export default function ReconcileTab() {
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide px-1">Import Batches</h3>
           {batchesLoading && <div className="text-sm text-muted-foreground animate-pulse p-2">Loading…</div>}
           {!batchesLoading && batches.length === 0 && (
-            <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-6 text-center">
-              No batches yet. Import a statement to get started.
+            <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-6 text-center space-y-1">
+              <p className="font-medium">No CSV imports yet</p>
+              <p className="text-xs">Export a statement from your bank and import it here. Live transactions from Plaid are on the Banking page.</p>
             </div>
           )}
           {batches.map(batch => (
