@@ -1025,7 +1025,6 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       if (subRow.paymentStatus === "paid") throw Object.assign(new Error("ALREADY_PAID"), { alreadyPaid: true });
 
       const compType = subRow.compensationType ?? "hourly";
-      const category = (compType === "hourly" || compType === "fixed") ? "Labor" : "Subcontractor";
       const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
 
       // Agreed owed: DB override → client-supplied → fixedAmount (fixed only)
@@ -1054,17 +1053,6 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         eq(jobSubcontractorsTable.jobId, jobId),
         eq(jobSubcontractorsTable.subcontractorId, subId),
       ));
-
-      // Phase 1 dual-write: keep expense insert for backward-compat, also write to ledger
-      await tx.insert(expensesTable).values({
-        description: `${subName} — ${typeLabel}`,
-        amount: paymentAmount.toFixed(2),
-        category,
-        date: today,
-        jobId,
-        subcontractorId: subId,
-        businessLine: job.businessLine,
-      });
 
       const [spr] = await tx.insert(subPaymentRecordsTable).values({
         jobId,
