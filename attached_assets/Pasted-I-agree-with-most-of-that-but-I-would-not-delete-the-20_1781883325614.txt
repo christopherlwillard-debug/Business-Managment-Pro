@@ -1,0 +1,70 @@
+I agree with most of that, but I would not delete the $200 expense yet.
+
+The reason is what you told me earlier:
+
+James's portal is still showing correctly.
+You manually changed James's expense to $417.50 and the portal still understood it.
+We now know there are multiple systems touching subcontractor pay (expenses, sub_payment_records, job_subcontractors, portal reporting).
+
+Before deleting anything, I'd verify one thing:
+
+Check Dewayne's Portal
+
+Does Dewayne's portal currently show:
+
+Total earned: $1,000
+Paid: $200
+Remaining: $800
+
+or something equivalent?
+
+If it does, then the portal is reading from the correct sources and we can safely test cleanup.
+
+What the screenshots prove
+
+They prove:
+
+Job Card
+
+Owed = $1,000 ✅
+Paid = $200 ✅
+Balance = $800 ✅
+
+Expenses
+
+$1,000 Auto Hours expense ✅
+$200 Labor Pay expense ⚠️
+
+What they do not prove is whether that $200 expense is still being used somewhere else for reporting.
+
+Because Phase 1 intentionally left the old expense write in place.
+
+What I'd do right now
+Leave the $200 expense alone for the moment.
+Pay nothing else on Dewayne.
+Check:
+Dewayne portal
+Subcontractor detail page
+Any income/tax report for Dewayne
+
+If all of those still show:
+
+Owed: $1,000
+Paid: $200
+Balance: $800
+
+then we know the new ledger is working and the $200 expense is truly redundant.
+
+At that point I'd be comfortable deleting the duplicate expense and moving forward.
+
+The bigger issue I see from your screenshots is actually the reset behavior:
+
+When you removed Dewayne and re-added him, the 40 hours came back automatically. That tells me the hours records survived the reset. That's a real bug because a user expects "reset" to mean "start over."
+
+So if I were prioritizing fixes:
+
+Fix Hourly Reset Not Clearing Hours
+Verify Dewayne's portal after the Phase 1 ledger changes
+Then complete Phase 2 and stop creating Labor Pay expenses entirely
+
+That sequence is safer than immediately deleting historical rows while you're still validating the new workflow.

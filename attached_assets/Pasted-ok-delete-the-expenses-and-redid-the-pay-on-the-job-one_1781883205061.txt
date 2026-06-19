@@ -1,0 +1,237 @@
+ok delete the expenses and redid the pay on the job, one thing i noticed is that when i reset the job pay for hourly and deleted when i added my subs to the job it still remembered dewayne had 40 hours even tho i had not put in anything yet. then on expenses it put the total amount owed as an expenses but then also put the 200 i gave him upfront
+
+That actually tells us two separate bugs still exist.
+
+Bug #1 — Hours weren't really reset
+
+You said:
+
+I reset the job pay for hourly and deleted it, but when I added Dewayne back it still remembered 40 hours.
+
+That means the reset removed the subcontractor assignment, but did not delete the underlying job_sub_hours records.
+
+So when you re-added Dewayne, the system found:
+
+Dewayne
+40 hours
+$25/hr
+
+already sitting in the hours table and immediately rebuilt the $1,000 owed amount.
+
+That's actually a data cleanup bug.
+
+The expected behavior should be:
+
+Remove Dewayne from job
+→ ask:
+Keep hours?
+Delete hours?
+
+or
+
+Reset hourly pay
+→ remove hours records too
+
+Otherwise the system isn't truly resetting anything.
+
+Bug #2 — The $200 upfront payment still created an expense
+
+This is actually expected right now because #888 is only Phase 1.
+
+Current behavior:
+
+40 hours × $25
+=
+$1,000 expense
+
+Then:
+
+Pay Dewayne $200
+=
+$200 payment expense
++
+$200 payment ledger record
+
+So now you have:
+
+Expenses
+---------
+$1,000
+$200
+---------
+$1,200
+
+which is exactly the duplicate-cost problem we've been discussing.
+
+That's why I was hesitant to tell you to rebuild everything earlier.
+
+What I think happened
+
+You essentially proved:
+
+Hours auto-create committed cost expense.
+Pay button still creates expense entries.
+Pay button also creates payment ledger entries.
+Therefore Dewayne gets counted twice on the expense side.
+
+Which means the remaining Phase 2 work from #888 is still needed eventually.
+
+For your business right now
+
+The workflow you described is completely normal:
+
+Job starts
+↓
+Dewayne earns $1,000
+↓
+Pay him $200 upfront
+↓
+Customer pays
+↓
+Pay remaining $800
+
+The job cost is still:
+
+$1,000
+
+not:
+
+$1,200
+
+not:
+
+$1,800
+
+The payments are cash flow.
+The $1,000 is job cost.
+
+So I would add two new cleanup tasks:
+
+#890 - Reset Hourly Sub Removes Hours
+
+Resetting/removing an hourly sub should optionally delete related hour records.
+
+#891 - Finish Payment Ledger Split
+
+Stop pay-worker from creating expense rows.
+Expenses = committed cost only.
+sub_payment_records = payment history only.
+
+Because what you just observed is basically real-world proof that both are still needed.
+
+sorry forgot to add images
+
+The screenshots actually confirm exactly what's happening.
+
+What I see
+
+Job Card (Lot Model)
+
+Dewayne owed: $1,000
+Paid: $200
+Balance: $800
+
+That part is correct.
+
+Expenses
+
+You now have:
+
+Dewayne Lamb — 40h @ $25/hr = $1,000 (Auto Hours)
+Dewayne Lamb — Labor Pay = $200
+
+Total expense impact:
+
+$1,000
++ $200
+--------
+$1,200
+The problem
+
+The system is currently treating:
+
+The labor cost ($1,000)
+The payment of that labor cost ($200)
+
+as two separate expenses.
+
+From an accounting standpoint that's wrong.
+
+The $200 payment is simply reducing what you owe Dewayne. It does not increase the cost of the job.
+
+The job cost remains:
+
+Dewayne labor = $1,000
+
+whether you've paid him:
+
+$0
+$200
+$800
+or $1,000
+
+The cost doesn't change.
+
+What I would do right now
+
+For this specific job:
+
+Delete the:
+
+Dewayne Lamb — Labor Pay
+$200
+
+expense row.
+
+Keep the:
+
+Dewayne Lamb — 40h @ $25/hr
+$1,000
+
+expense row.
+
+Leave the job card showing:
+
+Paid: $200
+Balance: $800
+
+because that's the correct payment tracking.
+
+One thing I would NOT do
+
+Do not reset Dewayne again.
+
+The job card is currently correct:
+
+Owed = $1,000
+Paid = $200
+Balance = $800
+
+That's exactly what you wanted.
+
+The only bad data is the extra expense row.
+
+What happens if you pay the remaining $800 today?
+
+With the current code, it will likely create another:
+
+Dewayne Lamb — Labor Pay
+$800
+
+expense row.
+
+Then your expenses become:
+
+$1,000 Auto Hours
+$200 Labor Pay
+$800 Labor Pay
+---------
+$2,000
+
+while the real job cost is still only:
+
+$1,000
+
+So until Phase 2 is finished, I would expect every payment you record on hourly jobs to create these duplicate expense entries.
+
+Based on these screenshots, you've proven the duplicate-expense issue is real and still active. The job card math is correct; the expense creation logic is what's inflating your expenses.
