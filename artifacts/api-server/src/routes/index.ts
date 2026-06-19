@@ -176,6 +176,17 @@ router.use("/portal", portalRouter);
 router.use("/pay", payPublicRouter);
 router.use("/public/site", websitePublicRouter);
 router.use("/integrations/wix", wixIntegrationRouter);
+
+// Admin migrations: allow curl-triggered one-time ops via MIGRATION_KEY header
+// without a browser session. Must be mounted before requireAuth.
+router.use("/admin/migrations", (req, res, next) => {
+  const key = process.env["MIGRATION_KEY"];
+  if (key && req.headers["x-migration-key"] === key) {
+    return adminMigrationsRouter(req, res, next);
+  }
+  next(); // no valid key — fall through to requireAuth path below
+});
+
 router.use(requireAuth);
 router.use(requireAccess);
 
