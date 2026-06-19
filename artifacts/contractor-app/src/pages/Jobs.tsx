@@ -3305,6 +3305,13 @@ function JobFormDialog({
   const [subCompDefaults, setSubCompDefaults] = useState<Record<number, { compensationType: string; rate: string }>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [clearHoursForSubIds, setClearHoursForSubIds] = useState<number[]>([]);
+  const [removeSubPrompt, setRemoveSubPrompt] = useState<{ subId: number; subName: string; pendingIds: number[] } | null>(null);
+
+  useEffect(() => {
+    setClearHoursForSubIds([]);
+    setRemoveSubPrompt(null);
+  }, [open, editJob?.id]);
 
   function setField(k: string, v: string) {
     setFormState(f => ({ ...f, [k]: v }));
@@ -3336,6 +3343,13 @@ function JobFormDialog({
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });
+        if (clearHoursForSubIds.length > 0) {
+          await fetch(`${BASE}/api/jobs/${editJob.id}/sub-hours`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ subIds: clearHoursForSubIds }),
+          }).catch(console.error);
+        }
         // Apply per-sub compensation defaults if set
         const compEntries = Object.entries(subCompDefaults).filter(([, c]) => c.rate.trim() !== "");
         if (compEntries.length > 0) {
@@ -3382,6 +3396,7 @@ function JobFormDialog({
   const isCreate = !editJob;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
       <div className={`relative w-full bg-card border border-border shadow-2xl flex flex-col ${
@@ -3567,7 +3582,23 @@ function JobFormDialog({
             <label className="block text-sm font-medium text-foreground mb-1">
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
             </label>
-            <SubcontractorPicker subcontractors={subcontractors} selected={subIds} onChange={setSubIds} />
+            <SubcontractorPicker
+              subcontractors={subcontractors}
+              selected={subIds}
+              onChange={(newIds) => {
+                if (editJob) {
+                  const removed = subIds.filter(id => !newIds.includes(id));
+                  if (removed.length > 0) {
+                    const removedSub = subcontractors.find(s => s.id === removed[0]);
+                    if (removedSub) {
+                      setRemoveSubPrompt({ subId: removedSub.id, subName: removedSub.name, pendingIds: newIds });
+                      return;
+                    }
+                  }
+                }
+                setSubIds(newIds);
+              }}
+            />
             {subIds.length > 0 && (
               <div className="mt-2 space-y-1.5">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Compensation per sub</p>
@@ -3681,6 +3712,36 @@ function JobFormDialog({
         </form>
       </div>
     </div>
+    {removeSubPrompt && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setRemoveSubPrompt(null)} />
+        <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+          <h3 className="font-bold text-foreground text-base">Remove {removeSubPrompt.subName}?</h3>
+          <p className="text-sm text-muted-foreground">What should happen to their logged hours on this job?</p>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => { setSubIds(removeSubPrompt.pendingIds); setRemoveSubPrompt(null); }}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+            >
+              Keep hours
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSubIds(removeSubPrompt.pendingIds);
+                setClearHoursForSubIds(prev => [...prev, removeSubPrompt.subId]);
+                setRemoveSubPrompt(null);
+              }}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:opacity-90 transition-colors"
+            >
+              Remove hours
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

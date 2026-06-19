@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable, expensesTable, jobsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { recomputeSubPaid } from "./jobs";
 
 const router = Router();
@@ -150,6 +150,42 @@ router.put("/sub-hours/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update sub hours entry" });
+  }
+});
+
+// DELETE /:jobId/sub-hours — bulk-delete all hours (and their linked expenses) for the given subIds.
+// Called when the user removes a sub from a job and chooses "Remove hours".
+router.delete("/:jobId/sub-hours", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const subIds: number[] = Array.isArray(req.body.subIds)
+      ? (req.body.subIds as unknown[]).map(Number).filter((n: number) => !isNaN(n) && n > 0)
+      : [];
+    if (subIds.length === 0) return res.json({ ok: true, deleted: 0 });
+
+    const rows = await db
+      .select({ id: jobSubHoursTable.id })
+      .from(jobSubHoursTable)
+      .where(and(
+        eq(jobSubHoursTable.jobId, jobId),
+        inArray(jobSubHoursTable.subcontractorId, subIds),
+      ));
+
+    for (const row of rows) {
+      await deleteLinkedExpense(row.id).catch(e => console.error("Auto-expense deletion failed:", e.message));
+    }
+
+    const hoursIds = rows.map(r => r.id);
+    if (hoursIds.length > 0) {
+      await db.delete(jobSubHoursTable).where(inArray(jobSubHoursTable.id, hoursIds));
+    }
+
+    await recomputeSubPaid(jobId).catch(() => {});
+    res.json({ ok: true, deleted: hoursIds.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to bulk-delete sub hours" });
   }
 });
 
