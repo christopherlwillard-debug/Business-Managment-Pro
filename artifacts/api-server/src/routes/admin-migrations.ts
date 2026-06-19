@@ -62,4 +62,49 @@ router.post("/backfill-mileage-business", async (_req, res) => {
   }
 });
 
+// Phase 2 cleanup: delete expense rows created by the pay-worker dual-write
+// (Task #892). Phase 1 (Task #888) wrote both to sub_payment_records AND to
+// expenses; Phase 2 removes the expense write. This endpoint deletes the
+// historical pay-worker expense rows so the books aren't double-counted.
+// Safe to run multiple times (idempotent — returns 0 on subsequent runs).
+router.post("/delete-payworker-expenses", async (_req, res) => {
+  try {
+    // Dry-run count first
+    const [countRow] = await db.execute<{ count: string }>(
+      `SELECT count(*)::text AS count FROM expenses
+       WHERE subcontractor_id IS NOT NULL
+         AND job_sub_hours_id IS NULL
+         AND (
+           description LIKE '%— Labor Pay'
+           OR description LIKE '%— Fixed Pay'
+           OR description LIKE '%— Allocation Pay'
+         )`
+    );
+    const before = parseInt((countRow as any).count ?? "0");
+
+    if (before === 0) {
+      console.log("[admin/migrations] delete-payworker-expenses: 0 rows found — already clean");
+      res.json({ deleted: 0, message: "No pay-worker expense rows found — DB already clean" });
+      return;
+    }
+
+    await db.execute(
+      `DELETE FROM expenses
+       WHERE subcontractor_id IS NOT NULL
+         AND job_sub_hours_id IS NULL
+         AND (
+           description LIKE '%— Labor Pay'
+           OR description LIKE '%— Fixed Pay'
+           OR description LIKE '%— Allocation Pay'
+         )`
+    );
+
+    console.log(`[admin/migrations] delete-payworker-expenses: deleted ${before} rows`);
+    res.json({ deleted: before });
+  } catch (err) {
+    console.error("[admin/migrations] delete-payworker-expenses failed:", err);
+    res.status(500).json({ error: "Migration failed" });
+  }
+});
+
 export default router;
