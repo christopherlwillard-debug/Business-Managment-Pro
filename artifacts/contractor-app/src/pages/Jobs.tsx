@@ -3343,12 +3343,16 @@ function JobFormDialog({
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });
-        if (clearHoursForSubIds.length > 0) {
-          await fetch(`${BASE}/api/jobs/${editJob.id}/sub-hours`, {
+        const idsToClear = [...new Set(clearHoursForSubIds.filter(id => !subIds.includes(id)))];
+        if (idsToClear.length > 0) {
+          const delRes = await fetch(`${BASE}/api/jobs/${editJob.id}/sub-hours`, {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ subIds: clearHoursForSubIds }),
-          }).catch(console.error);
+            body: JSON.stringify({ subIds: idsToClear }),
+          }).catch(() => null);
+          if (!delRes || !delRes.ok) {
+            toast({ title: "Hours could not be removed", description: "Job was saved, but the hour records were not deleted. Try removing them manually.", variant: "destructive" });
+          }
         }
         // Apply per-sub compensation defaults if set
         const compEntries = Object.entries(subCompDefaults).filter(([, c]) => c.rate.trim() !== "");
