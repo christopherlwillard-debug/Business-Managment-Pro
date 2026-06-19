@@ -93,6 +93,32 @@ async function backfillMileageBusiness(): Promise<void> {
   }
 }
 
+// One-time cleanup: delete expense rows created by the pay-worker dual-write
+// (Task #888 Phase 1 → Phase 2). The pay-worker route no longer writes to
+// expenses (Task #892), but any rows created before that deploy still exist.
+// This runs at every startup and is a no-op once the rows are gone.
+async function deletePayworkerExpenses(): Promise<void> {
+  try {
+    const result = await db.execute<{ id: number; description: string; amount: string }>(
+      `DELETE FROM expenses
+       WHERE subcontractor_id IS NOT NULL
+         AND job_sub_hours_id IS NULL
+         AND (
+           description LIKE '%— Labor Pay'
+           OR description LIKE '%— Fixed Pay'
+           OR description LIKE '%— Allocation Pay'
+         )
+       RETURNING id, description, amount`
+    );
+    const rows = Array.isArray(result) ? result : (result as any).rows ?? [];
+    if (rows.length > 0) {
+      console.log(`[startup] Deleted ${rows.length} pay-worker expense row(s):`, rows.map((r: any) => `#${r.id} ${r.description} $${r.amount}`).join(", "));
+    }
+  } catch (err) {
+    console.error("[startup] deletePayworkerExpenses failed (non-fatal):", err);
+  }
+}
+
 async function seedDefaultBusinesses(): Promise<void> {
   try {
     const existing = await db.select({ id: businessesTable.id }).from(businessesTable).limit(1);
@@ -111,6 +137,7 @@ async function seedDefaultBusinesses(): Promise<void> {
 async function start() {
   await seedDefaultBusinesses();
   await backfillMileageBusiness();
+  await deletePayworkerExpenses();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     startRecurringExpensesJob();
