@@ -108,3 +108,36 @@ export async function computeAllocationSplitPool(
     }
   );
 }
+
+// ── Sub-owed helper ────────────────────────────────────────────────────────────
+
+export interface SubOwedInput {
+  compensationType: string | null;
+  amountOwed: string | null;       // manual override — authoritative when set
+  fixedAmount: string | null;
+  allocationPct: string | null;
+  computedOwed?: string | null;    // pre-fetched hours×rate total for hourly subs
+}
+
+/**
+ * Returns the owed amount for a single sub row.
+ *
+ * - Manual amountOwed override wins for all types.
+ * - fixed  → fixedAmount
+ * - allocation → splitPool × (allocationPct / 100); null when allocationPct missing
+ * - hourly → computedOwed (caller must pre-fetch hours×rate and pass it here)
+ *
+ * Epsilon for "paid enough": callers should use `paid >= owed - 0.01`.
+ */
+export function computeSubOwed(sub: SubOwedInput, splitPool: number): number | null {
+  if (sub.amountOwed != null) return parseFloat(sub.amountOwed);
+  const compType = sub.compensationType ?? "hourly";
+  if (compType === "fixed") return parseFloat(sub.fixedAmount ?? "0");
+  if (compType === "allocation") {
+    if (sub.allocationPct == null) return null;
+    return splitPool * (parseFloat(sub.allocationPct) / 100);
+  }
+  // hourly — pre-fetched hours total
+  if (sub.computedOwed != null) return parseFloat(sub.computedOwed);
+  return null;
+}

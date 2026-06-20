@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, subPaymentRecordsTable } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
-import { computeAllocationSplitPool } from "../lib/allocation.js";
+import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -14,6 +14,7 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
   const allRows = await db.select({
     compensationType: jobSubcontractorsTable.compensationType,
     fixedAmount: jobSubcontractorsTable.fixedAmount,
+    allocationPct: jobSubcontractorsTable.allocationPct,
     paymentStatus: jobSubcontractorsTable.paymentStatus,
     amountOwed: jobSubcontractorsTable.amountOwed,
     amountPaid: jobSubcontractorsTable.amountPaid,
@@ -24,24 +25,19 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
     ), 0)`,
   }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
 
+  // Fetch split pool once if any allocation sub needs it
+  const hasAllocation = allRows.some(r => (r.compensationType ?? "hourly") === "allocation");
+  const splitPool = hasAllocation ? (await computeAllocationSplitPool(jobId)).splitPool : 0;
+
   const allPaid = allRows.length > 0 && allRows.every(r => {
     // paymentStatus='paid' is authoritative — set by pay-worker endpoint
     if (r.paymentStatus === "paid") return true;
     // partial is explicitly not paid
     if (r.paymentStatus === "partial") return false;
-    const compType = r.compensationType ?? "hourly";
     const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
-    if (compType === "allocation") {
-      // Allocation owed requires split-pool context not available here.
-      // Treat as unpaid unless paymentStatus is explicitly "paid" (handled above).
-      return false;
-    }
-    const owed = r.amountOwed != null
-      ? parseFloat(r.amountOwed)
-      : compType === "fixed"
-        ? parseFloat(r.fixedAmount ?? "0")
-        : parseFloat(r.computedOwed ?? "0");
-    return owed <= 0 || paid >= owed - 0.005;
+    const owed = computeSubOwed(r, splitPool);
+    if (owed === null) return false; // owed unknown → treat as unpaid
+    return owed <= 0 || paid >= owed - 0.01;
   });
   await db.update(jobsTable).set({ subPaid: allPaid }).where(eq(jobsTable.id, jobId));
   return allPaid;
@@ -843,6 +839,9 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
         .where(and(eq(jobSubHoursTable.jobId, jobId), eq(jobSubHoursTable.subcontractorId, subId)));
       const hoursTotal = parseFloat(hoursRow?.total ?? "0");
       if (hoursTotal > 0) effectiveOwed = hoursTotal;
+    } else if (compType === "allocation" && row.allocationPct != null) {
+      const pool = await computeAllocationSplitPool(jobId);
+      effectiveOwed = pool.splitPool * (parseFloat(row.allocationPct) / 100);
     }
 
     let newStatus: string;
