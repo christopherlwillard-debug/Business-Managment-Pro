@@ -1044,11 +1044,21 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       // paidAt = first payment date (set once); lastPaidAt = most recent
       const newPaidAt = subRow.paidAt ?? today;
 
+      // Lock the agreed owed amount on first payment so future revenue changes
+      // cannot shift the balance. Only set when no override exists yet and the
+      // client supplied an agreedOwed value. Hourly subs don't send agreedOwed
+      // — their obligation is hours × rate and doesn't drift.
+      const lockAmountOwed =
+        dbOwedOverride == null && clientAgreedOwed != null && clientAgreedOwed > 0
+          ? clientAgreedOwed.toFixed(2)
+          : undefined;
+
       await tx.update(jobSubcontractorsTable).set({
         paymentStatus: newStatus,
         paidAt: newPaidAt,
         lastPaidAt: today,
         amountPaid: newAccumulated.toFixed(2),
+        ...(lockAmountOwed !== undefined ? { amountOwed: lockAmountOwed } : {}),
       }).where(and(
         eq(jobSubcontractorsTable.jobId, jobId),
         eq(jobSubcontractorsTable.subcontractorId, subId),

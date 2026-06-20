@@ -1769,17 +1769,20 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
         </div>
       </div>
 
-      {/* Comp type detail — always show calculated basis as reference */}
+      {/* Comp type detail — show locked agreed amount once obligation is set, calc otherwise */}
       {p.compensationType === "allocation" && (
         <div className="pl-6 text-[10px] text-purple-600">
           {(p.allocationPct ?? 0).toFixed(1)}% of split pool
-          {calculatedOwed > 0 && <span className="ml-1 text-muted-foreground">· Calc: ${fmt(calculatedOwed)}</span>}
+          {hasOverride
+            ? <span className="ml-1 text-muted-foreground">· Agreed: ${fmt(owed)}</span>
+            : calculatedOwed > 0 && <span className="ml-1 text-muted-foreground">· Calc: ${fmt(calculatedOwed)}</span>
+          }
         </div>
       )}
       {p.compensationType === "fixed" && (
         <div className="pl-6 text-[10px] text-orange-600">
           Fixed: ${fmt(p.fixedAmount ?? 0)}
-          {hasOverride && <span className="ml-1 text-muted-foreground">· Override active</span>}
+          {hasOverride && <span className="ml-1 text-muted-foreground">· Agreed: ${fmt(owed)}</span>}
         </div>
       )}
       {p.compensationType === "hourly" && p.totalHours > 0 && <div className="pl-6 text-[10px] text-blue-600">Hourly · {p.totalHours.toFixed(1)} hrs</div>}
