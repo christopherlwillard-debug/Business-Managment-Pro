@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { mileageLogsTable, expensesTable, businessesTable } from "@workspace/db/schema";
+import { mileageLogsTable, expensesTable, businessesTable, recurringExpensesTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -101,6 +101,48 @@ router.post("/delete-payworker-expenses", async (_req, res) => {
     res.json({ deleted: before });
   } catch (err) {
     console.error("[admin/migrations] delete-payworker-expenses failed:", err);
+    res.status(500).json({ error: "Migration failed" });
+  }
+});
+
+// Backfill: assign the primary business to recurring_expenses rows with null businessId.
+// Idempotent — returns 0 on subsequent runs when all rows are already assigned.
+router.post("/backfill-recurring-business", async (_req, res) => {
+  try {
+    const [primaryBusiness] = await db
+      .select({ id: businessesTable.id, name: businessesTable.name })
+      .from(businessesTable)
+      .orderBy(asc(businessesTable.sortOrder), asc(businessesTable.id))
+      .limit(1);
+
+    if (!primaryBusiness) {
+      res.status(400).json({ error: "No businesses found — cannot backfill" });
+      return;
+    }
+
+    const orphans = await db
+      .select({ id: recurringExpensesTable.id })
+      .from(recurringExpensesTable)
+      .where(isNull(recurringExpensesTable.businessId));
+
+    if (orphans.length === 0) {
+      res.json({ updated: 0, businessId: primaryBusiness.id, businessName: primaryBusiness.name });
+      return;
+    }
+
+    await db
+      .update(recurringExpensesTable)
+      .set({ businessId: primaryBusiness.id })
+      .where(isNull(recurringExpensesTable.businessId));
+
+    console.log(
+      `[admin/migrations] backfill-recurring-business: tagged ${orphans.length} recurring expenses ` +
+      `→ businessId=${primaryBusiness.id} (${primaryBusiness.name})`
+    );
+
+    res.json({ updated: orphans.length, businessId: primaryBusiness.id, businessName: primaryBusiness.name });
+  } catch (err) {
+    console.error("[admin/migrations] backfill-recurring-business failed:", err);
     res.status(500).json({ error: "Migration failed" });
   }
 });

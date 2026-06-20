@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { recurringExpensesTable, expensesTable, jobsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, isNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -36,8 +36,9 @@ function formatTemplate(t: typeof recurringExpensesTable.$inferSelect, jobTitle?
 router.get("/", async (req, res) => {
   try {
     const { businessId } = req.query;
-    const condition = businessId
-      ? eq(recurringExpensesTable.businessId, parseInt(businessId as string))
+    const bizId = businessId ? parseInt(businessId as string) : null;
+    const condition = bizId
+      ? or(eq(recurringExpensesTable.businessId, bizId), isNull(recurringExpensesTable.businessId))
       : undefined;
     const rows = await db
       .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
