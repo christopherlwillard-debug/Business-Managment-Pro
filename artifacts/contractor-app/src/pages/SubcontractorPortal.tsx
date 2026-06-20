@@ -1994,9 +1994,9 @@ function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subNa
           <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-6 text-center">
             <p className="text-xs font-bold uppercase tracking-widest text-emerald-700 mb-2">Total Received from Contractor</p>
             <p className="text-5xl font-display font-bold text-emerald-700">{formatCurrency(data.totalPaid)}</p>
-            {data.totalPaid >= 600 && (
+            {data.totalPaid >= 2000 && (
               <p className="text-xs text-emerald-600 mt-3 bg-emerald-100 rounded-lg px-3 py-1.5 inline-block">
-                ⚠️ You will receive a 1099-NEC for {data.year} — income ≥ $600
+                ⚠️ You will receive a 1099-NEC for {data.year} — income ≥ $2,000
               </p>
             )}
           </div>

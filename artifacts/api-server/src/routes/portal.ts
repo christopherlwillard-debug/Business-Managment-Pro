@@ -458,6 +458,33 @@ tokenRouter.get("/income-report", async (req, res) => {
       )
       .orderBy(paymentsTable.paymentDate);
 
+    // Fetch manually-entered Subcontractor expenses (old payment path, pre-sub_payment_records).
+    // Exclude rows where jobSubHoursId IS NOT NULL — those are sub hours auto-expenses
+    // that are already represented in subPaymentRecordsTable, so skipping them prevents
+    // double-counting.
+    const expensePayments = await db
+      .select({
+        id: expensesTable.id,
+        amount: expensesTable.amount,
+        date: expensesTable.date,
+        description: expensesTable.description,
+        jobId: expensesTable.jobId,
+        notes: expensesTable.notes,
+        jobTitle: jobsTable.title,
+      })
+      .from(expensesTable)
+      .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
+      .where(
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
+          gte(expensesTable.date, startDate),
+          lte(expensesTable.date, endDate),
+          sql`${expensesTable.jobSubHoursId} IS NULL`,
+        )
+      )
+      .orderBy(expensesTable.date);
+
     // Build unified payment entries
     const entries: Array<{
       id: string;
@@ -488,6 +515,16 @@ tokenRouter.get("/income-report", async (req, res) => {
         jobTitle: null,
         notes: p.notes ?? null,
         source: "payment" as const,
+      })),
+      ...expensePayments.map(e => ({
+        id: `exp-${e.id}`,
+        date: e.date ?? "",
+        amount: parseFloat(e.amount ?? "0"),
+        description: e.description ?? null,
+        jobId: e.jobId ?? null,
+        jobTitle: e.jobTitle ?? null,
+        notes: e.notes ?? null,
+        source: "expense" as const,
       })),
     ].sort((a, b) => a.date.localeCompare(b.date));
 
