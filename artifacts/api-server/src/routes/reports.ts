@@ -5,6 +5,7 @@ import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "d
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
+import { computeAllocationSplitPools } from "../lib/allocation.js";
 
 const router = Router();
 
@@ -134,54 +135,12 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       .from(jobSubcontractorsTable)
       .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id));
 
-    // Build split pools for allocation subs that don't yet have a locked amountOwed.
-    // Formula matches GET /:id/profit exactly: grossInvoiced (all invoices) minus
-    // jobExpenses, minus subLaborCost (hours-based if available, else Subcontractor
-    // expenses), then apply 5% growth reserve.
     const allocationJobIds = [...new Set(
       subPayRows
         .filter(r => r.amountOwed == null && r.compensationType === "allocation" && r.jobId != null)
         .map(r => r.jobId as number),
     )];
-    const splitPoolMap = new Map<number, number>();
-    if (allocationJobIds.length > 0) {
-      const [poolInvs, poolExps, poolHours] = await Promise.all([
-        db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
-          .from(invoicesTable).where(inArray(invoicesTable.jobId, allocationJobIds)),
-        db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
-          .from(expensesTable).where(and(
-            inArray(expensesTable.jobId, allocationJobIds),
-            isNull(expensesTable.jobSubHoursId),
-          )),
-        db.select({
-          jobId: jobSubHoursTable.jobId,
-          total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
-        })
-          .from(jobSubHoursTable)
-          .where(inArray(jobSubHoursTable.jobId, allocationJobIds))
-          .groupBy(jobSubHoursTable.jobId),
-      ]);
-      const hoursMap = new Map(poolHours.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
-      for (const jobId of allocationJobIds) {
-        const grossInvoiced = poolInvs
-          .filter(i => i.jobId === jobId)
-          .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-        let jobCosts = 0, flatSubCost = 0;
-        for (const exp of poolExps.filter(e => e.jobId === jobId)) {
-          if (exp.category === "Owner Draw") continue;
-          if (exp.category === "Subcontractor") {
-            flatSubCost += parseFloat(exp.amount ?? "0");
-          } else {
-            jobCosts += parseFloat(exp.amount ?? "0");
-          }
-        }
-        const hoursLaborCost = hoursMap.get(jobId) ?? 0;
-        const subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : flatSubCost;
-        const income = Math.max(0, grossInvoiced - jobCosts);
-        const afterWorkers = Math.max(0, income - subLaborCost);
-        splitPoolMap.set(jobId, Math.max(0, afterWorkers - afterWorkers * 0.05));
-      }
-    }
+    const splitPoolMap = await computeAllocationSplitPools(allocationJobIds);
 
     let subContractorOwed = 0;
     let subContractorPaid = 0;
@@ -191,7 +150,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       if (r.amountOwed != null) {
         owed = parseFloat(r.amountOwed);
       } else if (r.compensationType === "allocation" && r.allocationPct != null && r.jobId != null) {
-        const pool = splitPoolMap.get(r.jobId) ?? 0;
+        const pool = splitPoolMap.get(r.jobId)?.splitPool ?? 0;
         owed = pool * (parseFloat(r.allocationPct) / 100);
       } else {
         owed = parseFloat(r.computedOwed ?? "0");
@@ -668,59 +627,19 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
       ));
 
-    // Compute split pools for allocation subs in this route — same canonical formula as
-    // GET /:id/profit: grossInvoiced (all invoices) - jobExpenses - subLaborCost, then 5% reserve.
     const outstandingAllocJobIds = [...new Set(
       outstandingSubRows
         .filter(r => r.amountOwed == null && r.compensationType === "allocation" && r.jobId != null)
         .map(r => r.jobId as number),
     )];
-    const outstandingPoolMap = new Map<number, number>();
-    if (outstandingAllocJobIds.length > 0) {
-      const [oInvs, oExps, oHours] = await Promise.all([
-        db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
-          .from(invoicesTable).where(inArray(invoicesTable.jobId, outstandingAllocJobIds)),
-        db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
-          .from(expensesTable).where(and(
-            inArray(expensesTable.jobId, outstandingAllocJobIds),
-            isNull(expensesTable.jobSubHoursId),
-          )),
-        db.select({
-          jobId: jobSubHoursTable.jobId,
-          total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
-        })
-          .from(jobSubHoursTable)
-          .where(inArray(jobSubHoursTable.jobId, outstandingAllocJobIds))
-          .groupBy(jobSubHoursTable.jobId),
-      ]);
-      const oHoursMap = new Map(oHours.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
-      for (const jobId of outstandingAllocJobIds) {
-        const grossInvoiced = oInvs
-          .filter(i => i.jobId === jobId)
-          .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-        let jobCosts = 0, flatSubCost = 0;
-        for (const exp of oExps.filter(e => e.jobId === jobId)) {
-          if (exp.category === "Owner Draw") continue;
-          if (exp.category === "Subcontractor") {
-            flatSubCost += parseFloat(exp.amount ?? "0");
-          } else {
-            jobCosts += parseFloat(exp.amount ?? "0");
-          }
-        }
-        const hoursLaborCost = oHoursMap.get(jobId) ?? 0;
-        const subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : flatSubCost;
-        const income = Math.max(0, grossInvoiced - jobCosts);
-        const afterWorkers = Math.max(0, income - subLaborCost);
-        outstandingPoolMap.set(jobId, Math.max(0, afterWorkers - afterWorkers * 0.05));
-      }
-    }
+    const outstandingPoolMap = await computeAllocationSplitPools(outstandingAllocJobIds);
 
     const outstandingSubPayments = outstandingSubRows.map(r => {
       let fullOwed: number | null;
       if (r.amountOwed != null) {
         fullOwed = parseFloat(r.amountOwed);
       } else if (r.compensationType === "allocation" && r.allocationPct != null && r.jobId != null) {
-        const pool = outstandingPoolMap.get(r.jobId) ?? 0;
+        const pool = outstandingPoolMap.get(r.jobId)?.splitPool ?? 0;
         fullOwed = pool * (parseFloat(r.allocationPct) / 100);
       } else if (r.fixedAmount != null) {
         fullOwed = parseFloat(r.fixedAmount);

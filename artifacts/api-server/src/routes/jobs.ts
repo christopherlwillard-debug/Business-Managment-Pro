@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, subPaymentRecordsTable } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
+import { computeAllocationSplitPool } from "../lib/allocation.js";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -1181,33 +1182,12 @@ router.post("/:id/record-sub-expenses", async (req, res) => {
     const [jobRow] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
     const today = new Date().toISOString().split("T")[0];
 
-    // 2. Compute toSplit for allocation subs — same waterfall as GET /:id/profit
+    // 2. Compute toSplit for allocation subs — shared helper (allocation.ts)
     let toSplit = 0;
     const hasAllocation = unpaidSubs.some(s => s.compensationType === "allocation");
     if (hasAllocation) {
-      const [invRows, expRows] = await Promise.all([
-        db.select({ total: invoicesTable.total }).from(invoicesTable).where(eq(invoicesTable.jobId, jobId)),
-        db.select({ amount: expensesTable.amount, category: expensesTable.category })
-          .from(expensesTable).where(and(eq(expensesTable.jobId, jobId), isNull(expensesTable.jobSubHoursId))),
-      ]);
-      const grossInvoiced = invRows.reduce((s, r) => s + parseFloat(r.total ?? "0"), 0);
-      let jobExpenses = 0, flatSubCost = 0;
-      for (const exp of expRows) {
-        if (exp.category === "Owner Draw") continue;
-        if (exp.category === "Subcontractor" || exp.category === "Labor") {
-          flatSubCost += parseFloat(exp.amount ?? "0");
-        } else {
-          jobExpenses += parseFloat(exp.amount ?? "0");
-        }
-      }
-      const [subHoursRow] = await db
-        .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
-        .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, jobId));
-      const hoursLaborCost = parseFloat(subHoursRow?.total ?? "0");
-      const subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : flatSubCost;
-      const income = Math.max(0, grossInvoiced - jobExpenses);
-      const afterWorkers = Math.max(0, income - subLaborCost);
-      toSplit = Math.max(0, afterWorkers - afterWorkers * 0.05);
+      const pool = await computeAllocationSplitPool(jobId);
+      toSplit = pool.splitPool;
     }
 
     // 3. Fetch sub names
