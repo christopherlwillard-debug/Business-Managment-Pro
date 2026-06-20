@@ -67,7 +67,6 @@ router.post("/backfill-mileage-business", async (_req, res) => {
 // expenses; Phase 2 removes the expense write. This endpoint deletes the
 // historical pay-worker expense rows so the books aren't double-counted.
 // Safe to run multiple times (idempotent — returns 0 on subsequent runs).
-// Auth: requireOwner session OR x-migration-key header (see routes/index.ts mounting).
 router.post("/delete-payworker-expenses", async (_req, res) => {
   // Phantom rows created by the old pay-worker dual-write code have:
   //   subcontractorId IS NOT NULL  (they are linked to a sub)
