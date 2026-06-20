@@ -1,0 +1,206 @@
+alot of issues
+
+Yeah, there are several accounting logic issues jumping out from these screenshots.
+
+1. Worker Pay Due = $NaN (Critical Bug)
+
+On both job cards:
+
+James Willard
+50% → $NaN
+
+That's a calculation failure.
+
+This means somewhere the code is doing something like:
+
+jobProfit * workerPercentage
+
+but one of the values is:
+
+undefined
+null
+''
+NaN
+
+instead of a number.
+
+This is a priority bug because:
+
+It prevents accurate worker pay tracking.
+It makes the "Mark Paid" workflow unreliable.
+It can affect subcontractor reports and tax calculations downstream.
+
+I'd create:
+
+#902 - Fix Worker Pay Due showing $NaN on job cards
+2. Dashboard vs Job P&L Doesn't Make Sense
+
+Jobs page:
+
+Plumbing Net Profit = $1,500
+Lot Model Net Profit = $3,000
+
+Total visible = $4,500
+
+But Dashboard MTD:
+
+Net Profit = $2,434.08
+
+Possible reasons:
+
+Expenses not linked to jobs
+Other Income being counted differently
+Sub payments included in one calculation but not another
+Tax/mileage deductions leaking into operational profit
+
+Need a reconciliation report showing:
+
+Revenue
+- Job expenses
+- Overhead
+- Mileage
+- Sub payments
+= Dashboard Profit
+
+Right now the numbers aren't traceable.
+
+3. Active Jobs = 0 While Paid Jobs Exist
+
+Dashboard shows:
+
+Active Jobs = 0
+
+Yet Jobs page has:
+
+Paid (2)
+Plumbing
+Lot Model
+
+Question:
+
+Are these completed jobs?
+
+If so, "Active Jobs" is technically correct.
+
+If not, dashboard logic is wrong.
+
+Need to verify job statuses.
+
+4. Outstanding Sub Payments = $0 With Unpaid Subs
+
+Accounting page shows:
+
+Outstanding Sub Payments
+$0.00
+
+Then immediately below:
+
+James Willard
+Plumbing
+Allocation
+
+James Willard
+Lot Model
+Allocation
+
+and the job cards show:
+
+Sub Pay Outstanding — tap to settle
+
+So:
+
+Outstanding = $0
+
+while:
+
+Outstanding exists
+
+Those cannot both be true.
+
+Looks like allocation-based subs aren't included in the outstanding total.
+
+I'd log:
+
+#903 - Outstanding Sub Payment total ignores allocation workers
+5. Dashboard Shows Sub Paid = $3,417.50
+
+Yet Job Cards Show Unpaid Workers
+
+Dashboard:
+
+Sub Paid
+$3,417.50
+
+But:
+
+Lot Model
+Sub Pay Outstanding
+
+Plumbing
+Sub Pay Outstanding
+
+Need to determine:
+
+Was $3,417.50 paid to different workers?
+Or are settled payments not linked to jobs?
+Or is dashboard counting expenses while jobs count allocations?
+
+Potential reporting mismatch.
+
+6. Revenue Sources Need Separation
+
+Accounting page:
+
+Collected: $14,800
+
+Includes:
+
+Invoices
+Other Income
+
+Then:
+
+Other Income = $3,700
+
+For taxes that's fine.
+
+For job profitability it creates confusion.
+
+I'd separate:
+
+Job Revenue
+Other Income
+
+everywhere.
+
+7. Tax Calculation Looks Aggressive
+
+The page says:
+
+Estimated Tax Liability
+$655.48
+
+while:
+
+Net Profit
+$3,539.25
+
+That's around 18.5%.
+
+Not necessarily wrong, but I would verify:
+
+Self-employment tax
+Federal income tax
+Kentucky tax
+Owensboro occupational tax
+
+are being calculated independently and not double-counted.
+
+Biggest Issues I'd Fix First
+$NaN worker pay bug (#902)
+Income report mismatch (#901)
+Outstanding sub payment total mismatch (#903)
+Profit reconciliation between Jobs and Dashboard
+Tax calculation audit
+
+The $NaN bug is the most urgent because it's directly affecting worker compensation tracking and probably the root cause of several downstream reporting inconsistencies.

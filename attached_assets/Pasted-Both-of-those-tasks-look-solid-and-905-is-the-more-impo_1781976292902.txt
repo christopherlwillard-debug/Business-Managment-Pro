@@ -1,0 +1,97 @@
+Both of those tasks look solid, and #905 is the more important accounting fix.
+
+#904 — Approved
+
+The diagnosis is correct:
+
+profitData.subLaborCost
+
+doesn't exist in the profit-summary payload, so:
+
+income - undefined = NaN
+
+which propagates to:
+
+50% → $NaN
+
+I'd take Option A for now. It's a one-line fix that immediately restores the job card functionality.
+
+The Pay Breakdown panel is already the source of truth, so the inline card only needs to stop breaking.
+
+#905 — This is the real financial bug
+
+Based on your screenshots and your confirmation:
+
+James owed = $1,520
+Dashboard says sub owed = $0
+
+That means every metric built from subContractorRemaining is wrong.
+
+Specifically:
+
+Your Actual Profit
+Owner Distributions
+Undrawn Balance
+Sub Owed
+Remaining
+
+are all overstated.
+
+The key thing I like about #905 is this line:
+
+Tax reserve and growth reserve are already reflected
+in the allocation percentage calculation.
+DO NOT subtract them again.
+
+That matches how you've described your business model.
+
+Your worker allocations are already calculated from the reduced split pool, so if you subtract tax reserve and growth reserve again at the dashboard level, you'd be double-counting.
+
+Example using your numbers
+
+Current dashboard:
+
+Operational Profit = $3,539.25
+Sub Owed = $0
+Actual Profit = $3,539.25
+
+Reality:
+
+Operational Profit = $3,539.25
+Sub Owed = $1,520.00
+Actual Profit = $2,019.25
+
+That's the number that should flow through:
+
+Owner Distributions
+Actual Profit
+Undrawn Balance
+Remaining
+Priority Order
+
+I'd implement:
+
+#904 first
+
+because it's tiny and fixes the visible $NaN bug.
+
+Then:
+
+#905 immediately after
+
+because it fixes the financial statements.
+
+One thing I'd verify during #905
+
+For allocation jobs, make sure the split pool calculation matches the same formula used in the Pay Breakdown panel.
+
+You don't want:
+
+Pay Breakdown Panel = $1,520 owed
+Dashboard = $1,487 owed
+
+because two different formulas are being used.
+
+If possible, both should call the same helper/service so there's only one source of truth for allocation calculations.
+
+Overall, #905 looks like the fix that will finally make your dashboard reflect reality instead of showing all $3,539 as available profit.

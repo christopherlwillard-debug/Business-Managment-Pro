@@ -1,0 +1,286 @@
+I agree. Looking at your screenshots, the numbers don't reconcile.
+
+Your dashboard shows:
+
+Operational Profit (YTD):     $3,539.25
+Estimated Tax Owed:             $655.48
+
+So the maximum owner drawable profit should be roughly:
+
+$3,539.25
+-   655.48 taxes
+-----------
+$2,883.77
+
+before considering any growth reserve, emergency reserve, retained earnings, or unpaid obligations.
+
+But then another screen shows:
+
+Undrawn Balance: $3,539.25
+
+which is treating 100% of profit as available to draw.
+
+That's the flaw.
+
+What should happen
+
+Your Owner Distributions card should not use:
+
+Operating Profit
+
+It should use:
+
+Available Owner Draw
+=
+Operating Profit
+- Tax Reserve
+- Growth Reserve
+- Unpaid Sub Obligations
+- Any Required Retained Earnings
+
+For your current numbers:
+
+Operating Profit       $3,539.25
+Tax Reserve             (655.48)
+-------------------------------
+Available Draw         $2,883.77
+
+And if you're using your 25% tax reserve + 5% growth reserve system:
+
+Operating Profit       $3,539.25
+Tax Reserve             (912.30)
+Growth Reserve          (384.13)
+-------------------------------
+Available Draw         $2,242.82
+
+which is much closer to reality.
+
+Another issue
+
+I also noticed:
+
+Outstanding Sub Payments: $0.00
+
+while the jobs page still shows:
+
+Sub Pay Outstanding — tap to settle
+
+If those workers are actually owed money, then available draw should be reduced again.
+
+Example:
+
+Operating Profit       $3,539.25
+Tax Reserve             (912.30)
+Growth Reserve          (384.13)
+Subs Owed               (600.00)
+-------------------------------
+Available Draw         $1,642.82
+I would create another task
+
+#904 - Fix Owner Draw Calculation
+
+Current behavior:
+
+Undrawn Balance = Operating Profit
+
+Desired behavior:
+
+Undrawn Balance =
+Operating Profit
+- Tax Reserve
+- Growth Reserve
+- Outstanding Sub Obligations
+
+And change the card label from:
+
+Undrawn Balance
+
+to something like:
+
+Available Owner Draw
+
+because "Undrawn Balance" implies all profit is available, which isn't true once you're reserving taxes and growth capital.
+
+Based on the screenshots, I think this is one of the more important accounting fixes because it directly affects how much money you think you can safely take out of the business.
+
+yes i still owe one sub a total of 1520
+
+Then the dashboard is definitely overstating what you can safely draw.
+
+Using the numbers from your screenshots:
+
+Operational Profit (YTD):    $3,539.25
+Sub still owed:             ($1,520.00)
+--------------------------------------
+True available profit:       $2,019.25
+
+Then if you apply the tax reserve shown on the tax page:
+
+Remaining profit:            $2,019.25
+Estimated tax owed:           ($655.48)
+--------------------------------------
+Practical owner draw:        $1,363.77
+
+Or using your own reserve system:
+
+Tax reserve:                 ($912.30)
+Growth reserve:              ($384.13)
+Sub owed:                  ($1,520.00)
+--------------------------------------
+Available draw:               $722.82
+
+So depending on which methodology you're using, your actual available draw is somewhere between about $700 and $1,400, not $3,539.
+
+The underlying issue
+
+Your dashboard currently appears to be treating:
+
+Outstanding Sub Payments = $0
+
+which is clearly wrong because:
+
+James Willard
+Lot Model
+Plumbing
+
+still show unpaid allocations, and you know the real amount owed is:
+
+$1,520
+
+That means the calculation feeding:
+
+Your Actual Profit
+Undrawn Balance
+Owner Distributions
+
+is missing unpaid allocation-based subcontractor obligations.
+
+I'd treat this as a high-priority accounting bug
+
+#904 – Available Draw ignores unpaid subcontractor obligations
+
+Current:
+
+Available Draw = Operating Profit
+
+Should be:
+
+Available Draw =
+Operating Profit
+- Outstanding Sub Obligations
+- Tax Reserve
+- Growth Reserve
+Another issue visible in the screenshots
+
+The accounting page shows:
+
+Outstanding Sub Payments: $0.00
+
+but the table underneath lists unpaid subs.
+
+That's likely the root bug. Fixing that total may automatically fix:
+
+Owner Distributions
+Available Draw
+Actual Profit
+Tax & Growth Reserve calculations
+
+because all of them probably rely on the same "outstanding subs" number.
+
+Before changing anything, I'd have the developer trace exactly where:
+
+Outstanding Sub Payments
+
+is calculated and why allocation-based workers are excluded from the total. That's probably the source of multiple dashboard inaccuracies.
+
+well i have it on my job cards how much i can take out after taxes and growth so i wouldnt need to double dip that
+
+Correct. If your job cards already calculate worker allocations after tax reserve and growth reserve, then you absolutely do not want to subtract those again at the dashboard level.
+
+The real issue is probably this:
+
+What the dashboard should be showing
+
+If your system works like:
+
+Job Revenue
+- Job Expenses
+= Job Profit
+
+Job Profit
+- Tax Reserve
+- Growth Reserve
+= Owner Share
+
+and the job cards already store/pay based on that owner share, then the dashboard should only subtract:
+
+Unpaid Worker Obligations
+
+that have not yet been recorded as expenses.
+
+Using your numbers
+
+Dashboard says:
+
+Operational Profit = $3,539.25
+
+You know:
+
+James still owed = $1,520
+
+So a more realistic number is:
+
+$3,539.25
+- $1,520.00
+-----------
+$2,019.25
+
+If the tax and growth reserves are already baked into the worker allocation math, then $2,019.25 is likely much closer to your true available draw than the current $3,539.25.
+
+What worries me
+
+Your screenshots show:
+
+Outstanding Sub Payments = $0.00
+
+while simultaneously showing:
+
+Sub Pay Outstanding — tap to settle
+
+on jobs.
+
+That tells me the dashboard isn't recognizing allocation-based unpaid subs at all.
+
+The bug I'd focus on
+
+Not:
+
+Available Draw doesn't subtract tax reserve
+
+But:
+
+Available Draw ignores unpaid allocation-based worker obligations
+
+Because if the job cards already account for tax/growth, then the dashboard should simply be:
+
+Available Draw
+=
+Actual Profit
+- Unpaid Worker Allocations
+
+The first thing I'd have the developer trace is:
+
+Where does the $1,520 owed to James exist in the database?
+Why does the dashboard calculate:
+Outstanding Sub Payments = $0
+
+instead of $1,520?
+
+I suspect fixing that one calculation will automatically fix:
+
+Owner Draw
+Actual Profit
+Outstanding Subs
+Dashboard accuracy
+
+all in one shot.
