@@ -1684,6 +1684,8 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
   const [editingOwed, setEditingOwed] = useState(false);
   const [owedInput, setOwedInput] = useState(() => owed > 0 ? owed.toFixed(2) : "");
   const [savingOwed, setSavingOwed] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const history = p.paymentHistory ?? [];
 
   function fmt(n: number) {
     return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1800,6 +1802,29 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
         </div>
       )}
 
+      {/* Payment History — collapsible, hidden when no records */}
+      {history.length > 0 && (
+        <div className="pl-6">
+          <button
+            onClick={() => setHistoryOpen(h => !h)}
+            className="text-[10px] text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <span>{historyOpen ? "▼" : "▶"}</span>
+            <span>Payment History ({history.length})</span>
+          </button>
+          {historyOpen && (
+            <div className="mt-1 space-y-0.5 border-l border-border/50 pl-2 ml-0.5">
+              {history.map((e, i) => (
+                <div key={i} className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>{new Date(e.date + "T12:00:00").toLocaleDateString()}</span>
+                  <span className="font-medium">${fmt(e.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Agreed Owed inline edit (only when not paid) */}
       {!isFullyPaid && (
         <div className="pl-6">
@@ -1871,7 +1896,7 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
 
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
 type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; description: string | null; rateSnapshot: number | null };
-type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null };
+type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null; paymentHistory?: { date: string; amount: number }[] };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
 function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; onClose: () => void; initialTab?: "hours" | "payments" | "benchmark" }) {

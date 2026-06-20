@@ -923,6 +923,26 @@ router.get("/:id/sub-payments", async (req, res) => {
       .from(jobSubcontractorsTable)
       .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(eq(jobSubcontractorsTable.jobId, id));
+    // Fetch all individual payment records for this job in one query,
+    // newest first. Grouped by sub so each row can include its history.
+    const paymentRecords = await db
+      .select({
+        subcontractorId: subPaymentRecordsTable.subcontractorId,
+        paymentDate: subPaymentRecordsTable.paymentDate,
+        amount: subPaymentRecordsTable.amount,
+      })
+      .from(subPaymentRecordsTable)
+      .where(eq(subPaymentRecordsTable.jobId, id))
+      .orderBy(desc(subPaymentRecordsTable.paymentDate), desc(subPaymentRecordsTable.id));
+
+    const historyMap: Record<number, { date: string; amount: number }[]> = {};
+    for (const rec of paymentRecords) {
+      const subId = rec.subcontractorId;
+      if (subId == null) continue;
+      if (!historyMap[subId]) historyMap[subId] = [];
+      historyMap[subId].push({ date: rec.paymentDate ?? "", amount: parseFloat(rec.amount ?? "0") });
+    }
+
     res.json(rows.map(r => {
       const computedOwed = parseFloat(r.computedOwed ?? "0");
       const manualOverride = r.amountOwedOverride != null ? parseFloat(r.amountOwedOverride) : null;
@@ -963,6 +983,7 @@ router.get("/:id/sub-payments", async (req, res) => {
         paidAt: r.paidAt ?? null,
         lastPaidAt: r.lastPaidAt ?? null,
         totalHours: parseFloat(r.totalHours ?? "0"),
+        paymentHistory: historyMap[r.subcontractorId ?? -1] ?? [],
       };
     }));
   } catch (err) {
