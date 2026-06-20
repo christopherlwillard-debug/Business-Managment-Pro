@@ -835,7 +835,7 @@ function RecurringModal({
   onClose: () => void;
   jobs: any[];
 }) {
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const createRecurring = useCreateRecurring();
   const saveVendor      = useSaveVendor();
   const [vendor, setVendor]     = useState("");
@@ -864,7 +864,7 @@ function RecurringModal({
         frequency:   fd.get("frequency") as string,
         startDate:   fd.get("startDate") as string,
         endDate:     (fd.get("endDate") as string) || undefined,
-        businessId:  activeBusiness?.id ?? undefined,
+        businessId:  activeBusiness?.id ?? businesses?.[0]?.id ?? undefined,
       });
 
       if (vendor.trim()) {

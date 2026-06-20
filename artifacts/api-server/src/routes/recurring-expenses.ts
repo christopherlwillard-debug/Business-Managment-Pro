@@ -36,8 +36,13 @@ function formatTemplate(t: typeof recurringExpensesTable.$inferSelect, jobTitle?
 router.get("/", async (req, res) => {
   try {
     const { businessId } = req.query;
-    const bizId = businessId ? parseInt(businessId as string) : null;
-    const condition = bizId
+    const rawBizId = businessId != null ? parseInt(businessId as string) : NaN;
+    if (businessId != null && isNaN(rawBizId)) {
+      res.status(400).json({ error: "businessId must be a number" });
+      return;
+    }
+    const bizId = !isNaN(rawBizId) ? rawBizId : null;
+    const condition = bizId != null
       ? or(eq(recurringExpensesTable.businessId, bizId), isNull(recurringExpensesTable.businessId))
       : undefined;
     const rows = await db
