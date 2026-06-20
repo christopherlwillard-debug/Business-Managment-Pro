@@ -1,0 +1,189 @@
+Yes — the way #899 is written, it would show directly on the Job Card inside Pay Breakdown, under each subcontractor.
+
+So for James it would become something like:
+
+James Willard                [Partial]
+
+Agreed Owed: $617.50
+Paid: $417.50
+Balance: $200.00
+
+Payment History
+06/17/2026    $200.00
+06/20/2026    $217.50
+
+And for Dewayne:
+
+Dewayne Lamb                 [Partial]
+
+Agreed Owed: $1,000.00
+Paid: $200.00
+Balance: $800.00
+
+Payment History
+06/20/2026    $200.00
+
+Personally, I think it belongs there because that's where you're making payment decisions.
+
+When you're looking at:
+
+Owed: $1,000
+Paid: $200
+Balance: $800
+
+the very next question is usually:
+
+"When did I pay him that $200?"
+
+You shouldn't have to:
+
+Open Expenses
+Open Banking
+Open Portal
+Search transactions
+
+just to answer that.
+
+If it were my app, I'd actually go one step further and make it collapsible:
+
+Dewayne Lamb     [Partial]
+Owed $1,000 | Paid $200 | Balance $800
+
+▶ Payment History (1)
+
+Click it:
+
+▼ Payment History (1)
+
+06/20/2026    $200.00
+
+That keeps the card clean but gives you the audit trail when needed.
+
+Long term, once you finish the sub_payment_records work, this becomes extremely valuable because it turns the job card into the source of truth:
+
+What was agreed?
+How much has been paid?
+What's left?
+When were payments made?
+
+all in one place. That's much more useful than digging through the Expenses page.
+
+it already does that
+
+Then I'd probably not build #899 at all until you verify what already exists.
+
+From your screenshots earlier, I remember seeing:
+
+Paid amount
+Balance amount
+Last Payment date
+
+If clicking into the sub already shows:
+
+06/17/2026 - $200
+06/20/2026 - $217.50
+
+then #899 is literally rebuilding something you already have.
+
+Before creating another task, I'd ask:
+
+What question can't you answer today?
+
+Can you already answer:
+
+How much do I owe James? ✓
+How much have I paid James? ✓
+When did I pay James? ✓
+What payments were made to James? ✓
+
+If the answer is yes, then #899 is feature duplication, which is exactly the problem you've been noticing throughout the app.
+
+This is actually the bigger lesson from the app review you've been doing:
+
+A lot of recent tasks are adding another view of information that already exists somewhere else.
+
+Instead of adding #899, I'd spend the time on things that are actually broken:
+
+#897 — lock agreed amounts so balances don't drift.
+Hourly sub reset bug — removing/readding Dewayne shouldn't remember 40 hours.
+Phase 2 pay-worker cleanup — stop creating duplicate expense rows.
+Closed Jobs archive — keeps the Jobs page manageable.
+
+Those solve real workflow problems.
+
+Before approving any new task now, I'd ask:
+
+"What can't I do today that I need to do?"
+
+If the answer is "nothing, it's already visible," then don't build it.
+
+That's actually the direction I'd push the app right now: less new functionality, more consolidation and cleanup. You've reached the stage where UX debt is becoming more important than feature count.
+
+doesnt say when so i guess that would be good 
+
+Then yes, I would keep a version of #899, but I'd shrink the scope.
+
+You don't need another payment system. You already have:
+
+Agreed Owed
+Paid
+Balance
+Payment records in sub_payment_records
+
+What's missing is simply:
+
+Last Payment: 06/20/2026
+
+and ideally:
+
+Payment History
+06/20/2026    $200.00
+06/10/2026    $217.50
+
+That solves the real-world questions:
+
+"Did I pay him last week or last month?"
+"Was that $200 payment recorded?"
+"How many payments have I made on this job?"
+"Why does the balance say $800?"
+
+I'd actually simplify the task to:
+
+Show Payment History on Sub Card
+
+Done looks like
+
+Under each sub in Pay Breakdown, show:
+Last Payment Date
+Payment Count
+If Payment Count > 0, allow expanding:
+Date
+Amount
+Read-only
+Newest payment first
+
+Example:
+
+Dewayne Lamb
+Owed: $1,000
+Paid: $200
+Balance: $800
+
+Last Payment: 06/20/2026
+Payments: 1
+
+▼ View Payment History
+
+06/20/2026    $200.00
+
+That gives you the missing information without creating another major feature.
+
+Based on everything you've shown me, I'd rank your priorities:
+
+#897 Lock obligations ⭐⭐⭐⭐⭐
+Fix hourly reset bug ⭐⭐⭐⭐⭐
+Show payment dates/history on sub cards ⭐⭐⭐⭐
+Closed Jobs archive ⭐⭐⭐⭐
+Settings cleanup / Reconcile cleanup ⭐⭐⭐
+
+The payment date/history feature becomes much more valuable now that you're starting to do partial payments regularly. Without dates, six months from now you'll be asking "I know I paid him something... but when?" and that's exactly the information the ledger already has.
