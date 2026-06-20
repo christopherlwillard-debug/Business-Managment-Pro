@@ -4,7 +4,7 @@ import {
   invoicesTable, expensesTable, mileageLogsTable,
   paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable, businessesTable
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, desc, count, ne } from "drizzle-orm";
+import { eq, and, gte, lte, sum, desc, count, ne, or, isNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -107,7 +107,7 @@ router.get("/schedule-c", async (req, res) => {
     const endDate = `${year}-12-31`;
 
     const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
+      blFilter ? or(eq(col, blFilter), isNull(col)) : undefined;
 
     // Resolve businessId from slug for mileage isolation
     let mileageBusinessId: number | null = null;
@@ -115,7 +115,7 @@ router.get("/schedule-c", async (req, res) => {
       const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
       mileageBusinessId = biz?.id ?? null;
     }
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    const mileageWhere = mileageBusinessId ? or(eq(mileageLogsTable.businessId, mileageBusinessId), isNull(mileageLogsTable.businessId)) : undefined;
 
     // 1. Gross Receipts (Line 1) - only paid/sent invoices
     const [grossResult] = await db

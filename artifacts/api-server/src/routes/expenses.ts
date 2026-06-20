@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, sql, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNull, or } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -79,7 +79,7 @@ router.get("/", async (req, res) => {
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
-    if (businessId) conditions.push(eq(expensesTable.businessId, parseInt(businessId as string)));
+    if (businessId) conditions.push(or(eq(expensesTable.businessId, parseInt(businessId as string)), isNull(expensesTable.businessId)));
 
     const expenses = await buildExpenseQuery()
       .where(conditions.length > 0 ? and(...conditions) : undefined)

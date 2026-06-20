@@ -224,10 +224,11 @@ router.post("/parse-spreadsheet", upload.single("file"), async (req, res) => {
 // Accepts a JSON array of expense rows, creates all of them
 router.post("/bulk", async (req, res) => {
   try {
-    const { expenses: rows } = req.body as { expenses: any[] };
+    const { expenses: rows, businessId } = req.body as { expenses: any[]; businessId?: number | string };
     if (!Array.isArray(rows) || rows.length === 0)
       return res.status(400).json({ error: "No expense rows provided" });
 
+    const parsedBusinessId = businessId ? parseInt(String(businessId)) : null;
     const today = new Date().toISOString().slice(0, 10);
     const values = rows.map(r => ({
       description: String(r.description ?? "Imported expense").slice(0, 255),
@@ -238,6 +239,7 @@ router.post("/bulk", async (req, res) => {
       notes:       r.notes ? String(r.notes).slice(0, 1000) : null,
       jobId:       r.jobId ? parseInt(r.jobId) : null,
       receiptUrl:  null,
+      businessId:  parsedBusinessId,
     }));
 
     const created = await db.insert(expensesTable).values(values).returning();
