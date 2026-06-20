@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable } from "@workspace/db/schema";
-import { eq, and, sql, inArray, ne } from "drizzle-orm";
+import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { eq, and, sql, inArray, ne, gte, lte } from "drizzle-orm";
 
 const router = Router();
 
@@ -35,8 +35,26 @@ async function computeHasLinkedRecords(subcontractorId: number): Promise<boolean
 }
 
 export async function computeYtd(subcontractorId: number, year: number): Promise<number> {
-  const yearStr = String(year);
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
 
+  // sub_payment_records: pay-worker payments (new path). Exclude reversals.
+  const [sprRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
+    .from(subPaymentRecordsTable)
+    .where(
+      and(
+        eq(subPaymentRecordsTable.subcontractorId, subcontractorId),
+        gte(subPaymentRecordsTable.paymentDate, startDate),
+        lte(subPaymentRecordsTable.paymentDate, endDate),
+        sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+      )
+    );
+
+  // expenses (category=Subcontractor, jobSubHoursId IS NULL): manually-entered
+  // old-path payments only. Rows where jobSubHoursId IS NOT NULL are sub-hours
+  // auto-expenses that are already represented in sub_payment_records — excluding
+  // them prevents double-counting.
   const [expRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${expensesTable.amount}), 0)` })
     .from(expensesTable)
@@ -44,10 +62,13 @@ export async function computeYtd(subcontractorId: number, year: number): Promise
       and(
         eq(expensesTable.subcontractorId, subcontractorId),
         sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
-        sql`${expensesTable.date} LIKE ${yearStr + "-%"}`
+        gte(expensesTable.date, startDate),
+        lte(expensesTable.date, endDate),
+        sql`${expensesTable.jobSubHoursId} IS NULL`,
       )
     );
 
+  // paymentsTable: direct/manual payments recorded via the payments flow.
   const [payRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
     .from(paymentsTable)
@@ -58,12 +79,8 @@ export async function computeYtd(subcontractorId: number, year: number): Promise
       )
     );
 
-  // NOTE: job_subcontractors.amount_paid is intentionally NOT included here.
-  // Sub hours auto-create linked expenses in expensesTable (category="Subcontractor"),
-  // so expRow already captures those payments. Adding amount_paid on top would
-  // double-count the same dollars in YTD totals and 1099 calculations.
-
   return (
+    parseFloat(sprRow?.total ?? "0") +
     parseFloat(expRow?.total ?? "0") +
     parseFloat(payRow?.total ?? "0")
   );
