@@ -2788,8 +2788,8 @@ function JobCard({
   // Compute split pool for allocation sub amounts (mirrors JobFinancialsPanel waterfall)
   const toSplit = (() => {
     if (!profitData) return 0;
-    const income = Math.max(0, profitData.grossInvoiced - profitData.jobExpenses);
-    const afterWorkers = Math.max(0, income - profitData.subLaborCost);
+    const income = Math.max(0, (profitData.grossInvoiced ?? 0) - (profitData.jobExpenses ?? 0));
+    const afterWorkers = Math.max(0, income - (profitData.subLaborCost ?? 0));
     return Math.max(0, afterWorkers - afterWorkers * 0.05);
   })();
 
