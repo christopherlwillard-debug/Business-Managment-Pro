@@ -1,0 +1,121 @@
+i think everything is going off my net profit that is before what i owe subs and thats just going to give the wrong numbers to everything 
+
+I think you're spotting a deeper issue than the Dewayne payment.
+
+Looking at your screenshots:
+
+Dashboard
+
+It shows:
+
+Collected (MTD): $4,500
+Expenses (MTD): $2,065.92
+Net Profit: $2,434.08
+
+Then lower down:
+
+Sub Owed: $1,520
+Sub Paid: $3,417.50
+Remaining: $1,520
+Your Actual Profit: $914.08
+
+That tells me the dashboard is already recognizing:
+
+Operational Profit = $2,434.08
+Less unpaid sub obligations = $1,520
+Actual Profit = $914.08
+
+which is good.
+
+The part that worries me
+
+The Tax & Growth page appears to be using:
+
+Owner share
+Tax reserve
+Growth fund
+Take-home
+
+based on profit calculations that may not be subtracting unpaid sub obligations.
+
+If that's true, then the app is doing:
+
+Revenue
+- Recorded expenses
+= Net Profit
+
+instead of:
+
+Revenue
+- Recorded expenses
+- Outstanding subcontractor obligations
+= Real economic profit
+
+And for your business model, that's a huge difference.
+
+Example
+
+Say:
+
+Collected: $10,000
+
+Expenses paid: $2,000
+
+Subs still owed: $3,000
+
+Accounting profit:
+
+$10,000 - $2,000 = $8,000
+
+Economic reality:
+
+$10,000
+- $2,000
+- $3,000 owed to subs
+= $5,000
+
+If tax reserve, growth reserve, owner draw, and take-home are calculated from $8,000 instead of $5,000, every number becomes inflated.
+
+The question I'd answer before changing anything
+
+You need to determine:
+
+Is the Tax & Growth page using "Net Profit" or "Actual Profit"?
+
+Because your dashboard is already calculating both.
+
+If Tax & Growth is based on:
+
+Net Profit = $2,933.14
+
+instead of:
+
+Actual Profit
+= Net Profit - unpaid subs
+
+then yes, I would consider that a logic bug.
+
+What I would want the app to show
+
+Three distinct concepts:
+
+Operational Profit
+$2,434.08
+
+Sub Obligations Outstanding
+($1,520.00)
+
+Owner Profit Available
+$914.08
+
+Then calculate:
+
+Tax Reserve
+Growth Fund
+Owner Take-Home
+
+from Owner Profit Available, not Operational Profit.
+
+Because money owed to Dewayne, James, or any other sub is not your profit. It's already committed.
+
+From what I can see in the screenshots, your dashboard seems to understand that distinction, but I'm not convinced the Tax & Growth page does. That's the area I'd investigate next before making any more payment-related changes.
