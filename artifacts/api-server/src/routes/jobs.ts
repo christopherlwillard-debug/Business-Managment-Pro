@@ -356,16 +356,27 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, expRows] = await Promise.all([
+    const [invRows, expRows, hoursRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
       db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
         .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId))),
+      db.select({
+        jobId: jobSubHoursTable.jobId,
+        total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+      })
+        .from(jobSubHoursTable)
+        .where(inArray(jobSubHoursTable.jobId, jobIds))
+        .groupBy(jobSubHoursTable.jobId),
     ]);
 
-    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; netProfit: number }> = {};
-    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, jobExpenses: 0, netProfit: 0 };
+    const hoursMap = new Map(hoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
+    const flatSubCostMap: Record<number, number> = {};
+    for (const id of jobIds) flatSubCostMap[id] = 0;
+
+    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost: number; netProfit: number }> = {};
+    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, jobExpenses: 0, subLaborCost: 0, netProfit: 0 };
 
     for (const inv of invRows) {
       if (inv.jobId == null) continue;
@@ -380,10 +391,17 @@ router.get("/profit-summary", async (req, res) => {
       const r = result[exp.jobId];
       if (!r) continue;
       if (exp.category === "Owner Draw") continue;
-      if (exp.category === "Subcontractor") continue; // sub costs shown in Sub Labor Cost, not here
+      if (exp.category === "Subcontractor") {
+        flatSubCostMap[exp.jobId] = (flatSubCostMap[exp.jobId] ?? 0) + parseFloat(exp.amount ?? "0");
+        continue;
+      }
       r.jobExpenses += parseFloat(exp.amount ?? "0");
     }
-    for (const id of jobIds) result[id].netProfit = result[id].collected - result[id].jobExpenses;
+    for (const id of jobIds) {
+      const hoursLaborCost = hoursMap.get(id) ?? 0;
+      result[id].subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : (flatSubCostMap[id] ?? 0);
+      result[id].netProfit = result[id].collected - result[id].jobExpenses;
+    }
 
     res.json(result);
   } catch (err) {
