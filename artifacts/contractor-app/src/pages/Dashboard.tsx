@@ -1059,7 +1059,7 @@ function NetProfitCard({ operationalNetProfit, excludedFromProfit, formulaExclud
                   · {excludedCount} write-off{excludedCount !== 1 ? "s" : ""} excluded ({formatCurrency(excludedFromProfit)})
                 </span>
               ) : (
-                <span className="ml-1 text-muted-foreground/70">· No write-offs excluded</span>
+                <span className="ml-1 text-muted-foreground/70">· Before mileage &amp; tax write-offs — see Tax page for adjusted figure</span>
               )}
             </p>
           </div>

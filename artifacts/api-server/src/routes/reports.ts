@@ -1292,24 +1292,16 @@ router.get("/reserve-summary", sectionGuard("jobs"), async (req, res) => {
       .where(inArray(jobSubHoursTable.jobId, jobIds))
       .groupBy(jobSubHoursTable.jobId);
 
-    const subPaymentRows = await db.select({
-      jobId: jobSubcontractorsTable.jobId,
-      paid: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.amountPaid}::numeric), 0)`,
-    }).from(jobSubcontractorsTable)
-      .where(inArray(jobSubcontractorsTable.jobId, jobIds))
-      .groupBy(jobSubcontractorsTable.jobId);
-
     const hoursCostByJob = new Map(subHoursRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
-    const paidByJob = new Map(subPaymentRows.map(r => [r.jobId, parseFloat(r.paid ?? "0")]));
 
     const monthMap = new Map<string, { revenue: number; subLaborCost: number; ownerShare: number; taxReserve: number; growthFund: number; takeHome: number }>();
 
     for (const inv of invoices) {
       if (!inv.jobId || !inv.issueDate) continue;
       const revenue = inv.status === "paid" ? parseFloat(inv.total ?? "0") : 0;
-      const hoursCost = hoursCostByJob.get(inv.jobId) ?? 0;
-      const paidCost = paidByJob.get(inv.jobId) ?? 0;
-      const subLaborCost = Math.max(hoursCost, paidCost);
+      // Use only logged hours × rate for subLaborCost. Allocation sub share is handled
+      // implicitly by OWNER_PCT — paying an allocation sub is cash movement, not a new cost.
+      const subLaborCost = hoursCostByJob.get(inv.jobId) ?? 0;
       const afterSubs = Math.max(0, revenue - subLaborCost);
       const growthFund = afterSubs * GROWTH_PCT;
       const toSplit = afterSubs - growthFund;
