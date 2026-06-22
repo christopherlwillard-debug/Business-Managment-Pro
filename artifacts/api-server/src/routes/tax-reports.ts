@@ -262,15 +262,18 @@ router.get("/schedule-c", async (req, res) => {
     // Line 2 — Returns and allowances (none for a contractor)
     scheduleLines.push({ line: 2, description: "Returns and allowances", amount: 0 });
 
-    // Line 3 — Line 1 minus Line 2
-    const line3Amount = grossReceipts; // no returns
+    // Line 3 — Line 1 minus Line 2 (no returns, so equals grossReceipts)
+    const line3Amount = grossReceipts;
     scheduleLines.push({ line: 3, description: "Subtract line 2 from line 1", amount: line3Amount });
 
-    // Line 4 — Cost of goods sold (zero; contractor does not maintain inventory)
-    scheduleLines.push({ line: 4, description: "Cost of goods sold (from Part III, line 42)", amount: 0 });
+    // Line 4 — Cost of goods sold.
+    // The expense loop (below) will push Line 4 when expenses["cogs"] > 0 (Materials, etc.).
+    // If COGS is zero the line stays absent, which is correct — the frontend shows "—" for missing lines.
+    // We read the already-computed value here so Lines 5 and 7 are accurate.
+    const cogsAmount = expenses["cogs"] || 0;
 
     // Line 5 — Gross profit (Line 3 minus Line 4)
-    const line5Amount = line3Amount; // no COGS
+    const line5Amount = line3Amount - cogsAmount;
     scheduleLines.push({ line: 5, description: "Gross profit. Subtract line 4 from line 3", amount: line5Amount });
 
     // Line 6 — Other income (all contracting revenue was already merged into Line 1)
