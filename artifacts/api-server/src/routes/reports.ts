@@ -926,7 +926,13 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
       mileageBusinessId = biz?.id ?? null;
     }
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    // Mirror Schedule C rule (Task #919):
+    // • No business filter → include ALL mileage (null businessId logs count globally)
+    // • Business filter active + slug resolved → only logs tagged to that business (strict eq, no null fallback)
+    // • Business filter active + slug not found → match nothing (safer than returning global totals for an invalid slug)
+    const mileageWhere = blFilter
+      ? (mileageBusinessId != null ? eq(mileageLogsTable.businessId, mileageBusinessId) : eq(mileageLogsTable.businessId, -1))
+      : undefined;
 
     const [
       invoices,
