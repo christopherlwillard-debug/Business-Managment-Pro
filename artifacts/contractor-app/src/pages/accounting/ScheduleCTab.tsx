@@ -10,6 +10,7 @@ import { useScheduleCReport } from "@workspace/api-client-react";
 import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const cl = "block text-xs font-semibold text-gray-500 mb-1";
 
 function loadHomeOffice(year: number) {
   try {
