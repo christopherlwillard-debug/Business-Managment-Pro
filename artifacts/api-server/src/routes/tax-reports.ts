@@ -115,7 +115,10 @@ router.get("/schedule-c", async (req, res) => {
       const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
       mileageBusinessId = biz?.id ?? null;
     }
-    const mileageWhere = mileageBusinessId ? or(eq(mileageLogsTable.businessId, mileageBusinessId), isNull(mileageLogsTable.businessId)) : undefined;
+    // When a business filter is active, only include mileage explicitly tagged to that business.
+    // Logs with null businessId are unassigned and must NOT be pulled into a filtered total.
+    // When there is no filter at all, include everything (null businessId logs belong to no specific business but count globally).
+    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
 
     // 1. Gross Receipts (Line 1) - only paid/sent invoices
     const [grossResult] = await db
@@ -255,6 +258,26 @@ router.get("/schedule-c", async (req, res) => {
         : "Gross receipts or sales",
       amount: grossReceipts,
     });
+
+    // Line 2 — Returns and allowances (none for a contractor)
+    scheduleLines.push({ line: 2, description: "Returns and allowances", amount: 0 });
+
+    // Line 3 — Line 1 minus Line 2
+    const line3Amount = grossReceipts; // no returns
+    scheduleLines.push({ line: 3, description: "Subtract line 2 from line 1", amount: line3Amount });
+
+    // Line 4 — Cost of goods sold (zero; contractor does not maintain inventory)
+    scheduleLines.push({ line: 4, description: "Cost of goods sold (from Part III, line 42)", amount: 0 });
+
+    // Line 5 — Gross profit (Line 3 minus Line 4)
+    const line5Amount = line3Amount; // no COGS
+    scheduleLines.push({ line: 5, description: "Gross profit. Subtract line 4 from line 3", amount: line5Amount });
+
+    // Line 6 — Other income (all contracting revenue was already merged into Line 1)
+    scheduleLines.push({ line: 6, description: "Other income, including federal and state gasoline or fuel tax credit or refund", amount: 0 });
+
+    // Line 7 — Gross income (Line 5 plus Line 6)
+    scheduleLines.push({ line: 7, description: "Gross income. Add lines 5 and 6", amount: line5Amount });
 
     // Expense lines
     for (const [categoryKey, expenseAmount] of Object.entries(expenses)) {
