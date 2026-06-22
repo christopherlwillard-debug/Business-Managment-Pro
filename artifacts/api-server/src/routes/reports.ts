@@ -991,7 +991,9 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const otherIncomeTotal = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = grossReceipts + otherIncomeTotal;
 
-    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
+    // Owner Draw is a personal distribution — not a Schedule C deduction.
+    // Exclude it here so totalExpenses matches the expensesBySchedC breakdown total.
+    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage" && e.category !== "Owner Draw");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
     const totalMiles = mileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
@@ -1099,22 +1101,30 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
 
     // ── Expenses by Schedule C Category ──────────────────────────────────────
     const SCHED_C_MAP: Record<string, string> = {
-      materials: "Line 36 – Materials/Supplies",
-      fuel: "Line 9 – Car & Truck Expenses",
-      equipment: "Line 13 – Depreciation / Sec. 179",
-      tools: "Line 22 – Supplies",
-      subcontractor: "Line 11 – Contract Labor",
-      insurance: "Line 15 – Insurance",
-      office: "Line 18 – Office",
-      phone: "Line 25 – Utilities (Phone)",
-      advertising: "Line 8 – Advertising",
-      repairs: "Line 21 – Repairs",
-      travel: "Line 24a – Travel",
-      meals: "Line 24b – Meals (50%)",
-      professional_fees: "Line 17 – Legal/Professional",
-      utilities: "Line 25 – Utilities",
-      rent: "Line 20a – Rent/Lease (Equipment)",
-      other: "Line 27a – Other",
+      // ── Exact DB category values (lowercased) ──────────────────────────────
+      "materials":             "Line 36 – Materials/Supplies",
+      "advertising":           "Line 8 – Advertising",
+      "fuel/travel":           "Line 9 – Car & Truck Expenses",
+      "insurance":             "Line 15 – Insurance",
+      "professional services": "Line 17 – Legal/Professional",
+      "office/admin":          "Line 18 – Office",
+      "rent/lease":            "Line 20a – Rent/Lease (Equipment)",
+      "repairs/maintenance":   "Line 21 – Repairs",
+      "tools/equipment":       "Line 22 – Supplies",
+      "utilities":             "Line 25 – Utilities",
+      "subcontractor":         "Line 11 – Contract Labor",
+      // ── Legacy / alternate lowercase keys ──────────────────────────────────
+      "fuel":                  "Line 9 – Car & Truck Expenses",
+      "equipment":             "Line 13 – Depreciation / Sec. 179",
+      "tools":                 "Line 22 – Supplies",
+      "office":                "Line 18 – Office",
+      "phone":                 "Line 25 – Utilities (Phone)",
+      "repairs":               "Line 21 – Repairs",
+      "travel":                "Line 24a – Travel",
+      "meals":                 "Line 24b – Meals (50%)",
+      "professional_fees":     "Line 17 – Legal/Professional",
+      "rent":                  "Line 20a – Rent/Lease (Equipment)",
+      "other":                 "Line 27a – Other",
     };
 
     const catMap = new Map<string, {
