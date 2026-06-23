@@ -379,6 +379,16 @@ export default function Banking() {
     onError: (err: Error) => toast({ title: "Failed to file income", description: err.message, variant: "destructive" }),
   });
 
+  const unmatchMutation = useMutation({
+    mutationFn: (txnId: number) =>
+      apiFetch(`/api/plaid/transactions/${txnId}/unmatch`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      toast({ title: "Link removed", description: "Transaction is available to file again." });
+    },
+    onError: (err: Error) => toast({ title: "Failed to remove link", description: err.message, variant: "destructive" }),
+  });
+
   const onPlaidSuccess = useCallback(
     (public_token: string, metadata: unknown) => {
       exchangeMutation.mutate({ public_token, metadata });
@@ -736,10 +746,22 @@ export default function Banking() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             {isFiled ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                {txn.matchedExpenseId ? "Matched ✓" : "Filed ✓"}
-                              </span>
+                              <div className="inline-flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  {txn.matchedExpenseId ? "Matched ✓" : "Filed ✓"}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs px-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                  title="Remove link"
+                                  onClick={() => unmatchMutation.mutate(txn.id)}
+                                  disabled={unmatchMutation.isPending}
+                                >
+                                  <Unlink className="w-3 h-3" />
+                                </Button>
+                              </div>
                             ) : isCredit ? (
                               <Button
                                 variant="outline"

@@ -666,6 +666,37 @@ router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => 
   res.json(result);
 }));
 
+router.post("/transactions/:txnId/unmatch", wrapAsync(async (req, res) => {
+  const txnId = Number(req.params.txnId);
+  if (isNaN(txnId)) {
+    res.status(400).json({ error: "Invalid transaction id" });
+    return;
+  }
+
+  const [txn] = await db
+    .select()
+    .from(bankTransactionsTable)
+    .where(eq(bankTransactionsTable.id, txnId));
+
+  if (!txn) {
+    res.status(404).json({ error: "Transaction not found" });
+    return;
+  }
+
+  if (txn.status !== "matched") {
+    res.status(409).json({ error: "Transaction is not currently matched" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(bankTransactionsTable)
+    .set({ status: "unmatched", matchedExpenseId: null, matchedInvoiceId: null, matchedOtherIncomeId: null })
+    .where(eq(bankTransactionsTable.id, txnId))
+    .returning();
+
+  res.json({ ok: true, transaction: updated });
+}));
+
 router.delete("/connection", wrapAsync(async (req, res) => {
   const connections = await db.select().from(plaidConnectionsTable).limit(1);
   if (connections.length === 0) {
