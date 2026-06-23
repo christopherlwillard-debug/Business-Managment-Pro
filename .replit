@@ -54,6 +54,5 @@ channel = "stable-25_05"
 
 [userenv.shared]
 PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"
-MIGRATION_KEY = "build-pro-migrate-2026"
 
 [userenv.production]
