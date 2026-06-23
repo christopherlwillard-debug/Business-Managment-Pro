@@ -168,7 +168,8 @@ export default function JobStatusPage() {
       return res.json();
     },
     retry: false,
-    staleTime: 1000 * 60 * 2,
+    staleTime: 0,
+    refetchInterval: 60_000,
   });
 
   if (isLoading) {

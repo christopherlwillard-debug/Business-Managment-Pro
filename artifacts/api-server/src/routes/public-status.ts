@@ -4,10 +4,11 @@ import {
   jobChecklistsTable,
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
+  jobChecklistItemPartsTable,
   jobsTable,
   clientsTable,
 } from "@workspace/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -59,10 +60,35 @@ router.get("/status/:token", async (req, res) => {
       const s = activeSections.find(s => s.id === i.jobChecklistSectionId);
       return s && !i.skipped;
     });
-    const completedCount = activeItems.filter(i => i.completed).length;
+
+    // Fetch parts for fractional completion (matches internal buildChecklistResponse logic)
+    const allItemIds = items.map(i => i.id);
+    const parts = allItemIds.length > 0
+      ? await db.select().from(jobChecklistItemPartsTable)
+          .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds))
+          .orderBy(asc(jobChecklistItemPartsTable.sortOrder))
+      : [];
+
+    const partsByItemId = new Map<number, typeof parts>();
+    for (const p of parts) {
+      if (!partsByItemId.has(p.jobChecklistItemId)) partsByItemId.set(p.jobChecklistItemId, []);
+      partsByItemId.get(p.jobChecklistItemId)!.push(p);
+    }
+
+    // Fractional overall percent: split items contribute completedParts/totalParts
+    let weightedComplete = 0;
+    for (const item of activeItems) {
+      const itemParts = partsByItemId.get(item.id) ?? [];
+      if (itemParts.length > 0) {
+        weightedComplete += itemParts.filter(p => p.completed).length / itemParts.length;
+      } else {
+        weightedComplete += item.completed ? 1 : 0;
+      }
+    }
     const overallPercent = activeItems.length === 0
       ? 0
-      : Math.round((completedCount / activeItems.length) * 100);
+      : Math.round((weightedComplete / activeItems.length) * 100);
+    const completedCount = activeItems.filter(i => i.completed).length;
 
     const locationParts = [row.jobAddress, row.jobCity, row.jobState].filter(Boolean);
 
@@ -79,9 +105,19 @@ router.get("/status/:token", async (req, res) => {
       totalItems: activeItems.length,
       completedItems: completedCount,
       sections: activeSections.map(s => {
-        const sectionItems = items.filter(i => i.jobChecklistSectionId === s.id);
-        const activeCount = sectionItems.filter(i => !i.skipped).length;
-        const doneCount = sectionItems.filter(i => i.completed && !i.skipped).length;
+        const sectionItems = items.filter(i => i.jobChecklistSectionId === s.id && !i.skipped);
+        const activeCount = sectionItems.length;
+        // Fractional section percent: same weighted logic
+        let sectionWeighted = 0;
+        for (const item of sectionItems) {
+          const itemParts = partsByItemId.get(item.id) ?? [];
+          if (itemParts.length > 0) {
+            sectionWeighted += itemParts.filter(p => p.completed).length / itemParts.length;
+          } else {
+            sectionWeighted += item.completed ? 1 : 0;
+          }
+        }
+        const doneCount = sectionItems.filter(i => i.completed).length;
         return {
           id: s.id,
           name: s.name,
@@ -89,8 +125,8 @@ router.get("/status/:token", async (req, res) => {
           sortOrder: s.sortOrder,
           totalItems: activeCount,
           completedItems: doneCount,
-          percentComplete: activeCount === 0 ? 0 : Math.round((doneCount / activeCount) * 100),
-          items: sectionItems.map(i => ({
+          percentComplete: activeCount === 0 ? 0 : Math.round((sectionWeighted / activeCount) * 100),
+          items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
             id: i.id,
             title: i.title,
             completed: i.completed,
