@@ -438,6 +438,18 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
     const { completed, notes } = req.body;
     const updates: Record<string, unknown> = {};
 
+    // Guard: if the item has parts, completed is derived from parts and cannot be set directly
+    if (completed !== undefined) {
+      const parts = await db
+        .select({ id: jobChecklistItemPartsTable.id })
+        .from(jobChecklistItemPartsTable)
+        .where(eq(jobChecklistItemPartsTable.jobChecklistItemId, itemId))
+        .limit(1);
+      if (parts.length > 0) {
+        return res.status(400).json({ error: "Completion is controlled by parts" });
+      }
+    }
+
     if (completed !== undefined) {
       updates.completed = completed;
       if (completed) {
