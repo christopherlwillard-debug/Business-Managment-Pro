@@ -66,7 +66,7 @@ export function buildChecklistPdfHtml(data: ChecklistPdfData): string {
         ? `<div class="item-note">${escHtml(item.notes)}</div>`
         : "";
       const photosHtml = item.photos && item.photos.length > 0
-        ? `<div class="item-photos">${item.photos.slice(0, 4).map(uri => `<img src="${uri}" class="item-photo" alt="Photo" />`).join("")}</div>`
+        ? `<div class="item-photos">${item.photos.slice(0, 3).map(uri => `<img src="${uri}" class="item-photo" alt="Photo" />`).join("")}</div>`
         : "";
 
       return `

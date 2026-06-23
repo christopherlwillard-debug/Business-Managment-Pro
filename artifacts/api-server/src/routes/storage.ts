@@ -35,6 +35,9 @@ function resolveObjectPolicy(
   if (wildcardPath.startsWith("uploads/logos/")) {
     return { kind: "owner" };
   }
+  if (wildcardPath.startsWith("uploads/checklist-photos/")) {
+    return { kind: "section", key: "jobs" };
+  }
   // All other paths default to owner-only.
   return { kind: "owner" };
 }
