@@ -174,6 +174,19 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(errorsRouter);
 
+// Pre-auth: allow MIGRATION_KEY header to bypass auth for one-time seed/migration operations.
+// router.use() strips the "/admin/migrations" prefix before passing to the subrouter,
+// so route matching inside adminMigrationsRouter works correctly.
+// If no valid key is present, next() falls through to requireAuth → requireOwner → same router.
+router.use("/admin/migrations", (req, res, next) => {
+  const key = req.headers["x-migration-key"];
+  const envKey = process.env["MIGRATION_KEY"];
+  if (envKey && key === envKey) {
+    return adminMigrationsRouter(req, res, next);
+  }
+  next();
+});
+
 router.use("/portal", portalRouter);
 router.use("/pay", payPublicRouter);
 router.use("/public/site", websitePublicRouter);
