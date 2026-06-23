@@ -614,38 +614,56 @@ router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => 
     return;
   }
 
-  const [txn] = await db
-    .select()
-    .from(bankTransactionsTable)
-    .where(eq(bankTransactionsTable.id, txnId));
+  const result = await db.transaction(async (tx) => {
+    const [txn] = await tx
+      .select()
+      .from(bankTransactionsTable)
+      .where(eq(bankTransactionsTable.id, txnId));
 
-  if (!txn) {
+    if (!txn) return { notFound: true } as const;
+    if (txn.status === "matched") return { conflict: true } as const;
+
+    const [expense] = await tx
+      .select({ id: expensesTable.id })
+      .from(expensesTable)
+      .where(eq(expensesTable.id, Number(expenseId)));
+
+    if (!expense) return { expenseNotFound: true } as const;
+
+    const [alreadyLinked] = await tx
+      .select({ id: bankTransactionsTable.id })
+      .from(bankTransactionsTable)
+      .where(eq(bankTransactionsTable.matchedExpenseId, Number(expenseId)));
+
+    if (alreadyLinked) return { alreadyLinked: true } as const;
+
+    const [updated] = await tx
+      .update(bankTransactionsTable)
+      .set({ status: "matched", matchedExpenseId: Number(expenseId) })
+      .where(eq(bankTransactionsTable.id, txnId))
+      .returning();
+
+    return updated;
+  });
+
+  if ("notFound" in result) {
     res.status(404).json({ error: "Transaction not found" });
     return;
   }
-
-  if (txn.status === "matched") {
+  if ("conflict" in result) {
     res.status(409).json({ error: "Transaction is already matched" });
     return;
   }
-
-  const [expense] = await db
-    .select({ id: expensesTable.id })
-    .from(expensesTable)
-    .where(eq(expensesTable.id, Number(expenseId)));
-
-  if (!expense) {
+  if ("expenseNotFound" in result) {
     res.status(404).json({ error: "Expense not found" });
     return;
   }
+  if ("alreadyLinked" in result) {
+    res.status(409).json({ error: "This expense is already linked to another bank transaction" });
+    return;
+  }
 
-  const [updated] = await db
-    .update(bankTransactionsTable)
-    .set({ status: "matched", matchedExpenseId: Number(expenseId) })
-    .where(eq(bankTransactionsTable.id, txnId))
-    .returning();
-
-  res.json(updated);
+  res.json(result);
 }));
 
 router.delete("/connection", wrapAsync(async (req, res) => {
