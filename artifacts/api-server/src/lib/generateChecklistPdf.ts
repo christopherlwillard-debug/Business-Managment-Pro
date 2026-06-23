@@ -5,12 +5,13 @@ import {
   jobChecklistsTable,
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
+  jobChecklistItemPhotosTable,
   jobsTable,
   clientsTable,
   checklistTemplatesTable,
   settingsTable,
 } from "@workspace/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, inArray } from "drizzle-orm";
 import { launchBrowser } from "./launchBrowser.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { buildChecklistPdfHtml } from "./checklistPdfTemplate.js";
@@ -117,6 +118,36 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     }
   }
 
+  // ── Fetch photos for all checklist items ─────────────────────────────────
+  const allItems = checklistData.sections.flatMap(s => s.items);
+  const allItemIds = allItems.map(i => i.id);
+  const rawPhotos = allItemIds.length > 0
+    ? await db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds))
+    : [];
+
+  // Resolve each photo to a base64 data URI for embedding in the PDF
+  const objStorage = new ObjectStorageService();
+  const photoDataUriByPhotoId = new Map<number, string>();
+  await Promise.all(rawPhotos.map(async (p) => {
+    try {
+      if (p.objectPath.startsWith("/objects/")) {
+        const file = await objStorage.getObjectEntityFile(p.objectPath);
+        const [buf] = await file.download();
+        const [meta] = await file.getMetadata();
+        const mime = (meta.contentType as string | undefined) ?? "image/jpeg";
+        photoDataUriByPhotoId.set(p.id, `data:${mime};base64,${(buf as Buffer).toString("base64")}`);
+      }
+    } catch { /* skip failed photos */ }
+  }));
+
+  const photosByItemId = new Map<number, string[]>();
+  for (const p of rawPhotos) {
+    const uri = photoDataUriByPhotoId.get(p.id);
+    if (!uri) continue;
+    if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
+    photosByItemId.get(p.jobChecklistItemId)!.push(uri);
+  }
+
   const html = buildChecklistPdfHtml({
     companyName: settings?.companyName ?? null,
     jobTitle: jobRow.title ?? "Job",
@@ -141,6 +172,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
         completedByName: (i as any).completedByName ?? null,
         completedAt: i.completedAt instanceof Date ? i.completedAt.toISOString() : (i.completedAt ?? null),
         notes: i.notes ?? null,
+        photos: photosByItemId.get(i.id) ?? [],
       })),
     })),
     signatureImageDataUri,

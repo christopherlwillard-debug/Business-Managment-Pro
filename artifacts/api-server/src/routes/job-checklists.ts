@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { db } from "@workspace/db";
 import {
   checklistTemplatesTable,
@@ -7,6 +8,7 @@ import {
   jobChecklistsTable,
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
+  jobChecklistItemPhotosTable,
   jobsTable,
   clientsTable,
   settingsTable,
@@ -19,6 +21,21 @@ import path from "node:path";
 import { launchBrowser } from "../lib/launchBrowser.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { buildChecklistPdfHtml } from "../lib/checklistPdfTemplate.js";
+
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|gif|webp|heic|heif)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
+
+function toServingUrl(objectPath: string): string {
+  if (objectPath.startsWith("/objects/")) return `/api/storage/objects/${objectPath.slice("/objects/".length)}`;
+  if (objectPath.startsWith("/uploads/")) return `/api${objectPath}`;
+  return objectPath;
+}
 
 const router = Router();
 
@@ -68,6 +85,17 @@ export async function buildChecklistResponse(checklistId: number) {
     .where(eq(jobChecklistItemsTable.jobChecklistId, checklistId))
     .orderBy(asc(jobChecklistItemsTable.sortOrder));
 
+  const itemIds = items.map(i => i.id);
+  const photos = itemIds.length > 0
+    ? await db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, itemIds))
+    : [];
+
+  const photosByItemId = new Map<number, Array<{ id: number; url: string; createdAt: Date }>>();
+  for (const p of photos) {
+    if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
+    photosByItemId.get(p.jobChecklistItemId)!.push({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt });
+  }
+
   const activeItems = items.filter(i => {
     const section = sections.find(s => s.id === i.jobChecklistSectionId);
     return section?.active && !i.skipped;
@@ -84,7 +112,10 @@ export async function buildChecklistResponse(checklistId: number) {
     completedItems: completedItems.length,
     sections: sections.map(s => ({
       ...s,
-      items: items.filter(i => i.jobChecklistSectionId === s.id),
+      items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
+        ...i,
+        photos: photosByItemId.get(i.id) ?? [],
+      })),
     })),
   };
 }
@@ -585,6 +616,69 @@ router.get("/:jobId/checklist/pdf", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
+// ── POST /jobs/:jobId/checklist/items/:itemId/photos ──────────────────────────
+router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.single("photo"), async (req, res) => {
+  try {
+    const itemId = parseInt(req.params.itemId, 10);
+    if (isNaN(itemId)) return res.status(400).json({ error: "Invalid itemId" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+    const [item] = await db
+      .select()
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.id, itemId));
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const objStorage = new ObjectStorageService();
+    const objectPath = await objStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      "uploads/checklist-photos",
+      req.file.originalname || `photo-${Date.now()}.jpg`,
+    );
+
+    const [photo] = await db
+      .insert(jobChecklistItemPhotosTable)
+      .values({ jobChecklistItemId: itemId, objectPath })
+      .returning();
+
+    res.json({ id: photo.id, url: toServingUrl(photo.objectPath), createdAt: photo.createdAt });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to upload photo" });
+  }
+});
+
+// ── DELETE /jobs/:jobId/checklist/items/:itemId/photos/:photoId ───────────────
+router.delete("/:jobId/checklist/items/:itemId/photos/:photoId", async (req, res) => {
+  try {
+    const photoId = parseInt(req.params.photoId, 10);
+    if (isNaN(photoId)) return res.status(400).json({ error: "Invalid photoId" });
+
+    const [photo] = await db
+      .select()
+      .from(jobChecklistItemPhotosTable)
+      .where(eq(jobChecklistItemPhotosTable.id, photoId));
+    if (!photo) return res.status(404).json({ error: "Photo not found" });
+
+    if (photo.objectPath.startsWith("/objects/")) {
+      try {
+        const objStorage = new ObjectStorageService();
+        await objStorage.deleteObject(photo.objectPath);
+      } catch { /* best-effort */ }
+    }
+
+    await db
+      .delete(jobChecklistItemPhotosTable)
+      .where(eq(jobChecklistItemPhotosTable.id, photoId));
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete photo" });
   }
 });
 

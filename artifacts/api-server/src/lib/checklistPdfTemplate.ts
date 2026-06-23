@@ -5,6 +5,7 @@ interface PdfItem {
   completedByName: string | null;
   completedAt: string | null;
   notes: string | null;
+  photos?: string[];
 }
 
 interface PdfSection {
@@ -64,13 +65,16 @@ export function buildChecklistPdfHtml(data: ChecklistPdfData): string {
       const noteLine = item.notes
         ? `<div class="item-note">${escHtml(item.notes)}</div>`
         : "";
+      const photosHtml = item.photos && item.photos.length > 0
+        ? `<div class="item-photos">${item.photos.slice(0, 4).map(uri => `<img src="${uri}" class="item-photo" alt="Photo" />`).join("")}</div>`
+        : "";
 
       return `
         <tr class="item-row">
           <td class="item-status ${statusClass}">${statusSymbol}</td>
           <td class="item-title">
             <span class="${item.completed ? "crossed" : item.skipped ? "na-text" : ""}">${escHtml(item.title)}</span>
-            ${metaLine}${noteLine}
+            ${metaLine}${noteLine}${photosHtml}
           </td>
         </tr>`;
     }).join("");
@@ -148,6 +152,8 @@ export function buildChecklistPdfHtml(data: ChecklistPdfData): string {
   .item-meta { font-size: 8pt; color: #16a34a; margin-top: 1px; }
   .item-note { font-size: 8.5pt; color: #555; font-style: italic; margin-top: 2px; }
   .section-note { font-size: 8.5pt; color: #555; font-style: italic; padding: 4px 8px 6px 40px; }
+  .item-photos { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
+  .item-photo { width: 80px; height: 60px; object-fit: cover; border-radius: 3px; border: 1px solid #ddd; }
 
   .public-notes {
     margin-top: 16px;

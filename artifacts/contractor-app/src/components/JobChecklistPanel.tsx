@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, X, ClipboardCheck, Plus, Check, Minus, ChevronDown, ChevronUp,
   Share2, ExternalLink, AlertCircle, Loader2, Copy, ToggleLeft, ToggleRight, Trash2,
-  MessageSquare, FileDown, Mail,
+  MessageSquare, FileDown, Mail, Camera,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -10,6 +10,11 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+interface ChecklistItemPhoto {
+  id: number;
+  url: string;
+}
+
 interface ChecklistItem {
   id: number;
   title: string;
@@ -19,6 +24,7 @@ interface ChecklistItem {
   skipped: boolean;
   notes: string | null;
   sortOrder: number;
+  photos: ChecklistItemPhoto[];
 }
 
 interface ChecklistSection {
@@ -95,6 +101,10 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState<Set<number>>(new Set());
+  const [uploadingPhotoFor, setUploadingPhotoFor] = useState<number | null>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
+  const [deletingPhoto, setDeletingPhoto] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -327,6 +337,54 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       toast({ title: "Failed to send email", description: err?.message ?? "Please try again.", variant: "destructive" });
     } finally {
       setSendingEmail(false);
+    }
+  }
+
+  async function handlePhotoUpload(itemId: number, file: File) {
+    setUploadingPhotoFor(itemId);
+    try {
+      const form = new FormData();
+      form.append("photo", file);
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${itemId}/photos`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      if (!r.ok) throw new Error("Upload failed");
+      await load();
+      setPhotoOpen(prev => { const s = new Set(prev); s.add(itemId); return s; });
+    } catch {
+      toast({ title: "Failed to upload photo", variant: "destructive" });
+    } finally {
+      setUploadingPhotoFor(null);
+    }
+  }
+
+  async function handlePhotoDelete(itemId: number, photoId: number) {
+    setDeletingPhoto(photoId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${itemId}/photos/${photoId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error("Delete failed");
+      setChecklist(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          sections: prev.sections.map(s => ({
+            ...s,
+            items: s.items.map(i => i.id === itemId
+              ? { ...i, photos: i.photos.filter(p => p.id !== photoId) }
+              : i
+            ),
+          })),
+        };
+      });
+    } catch {
+      toast({ title: "Failed to delete photo", variant: "destructive" });
+    } finally {
+      setDeletingPhoto(null);
     }
   }
 
@@ -673,9 +731,57 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                     )}
                                   </div>
                                 )}
+                                {/* Photos */}
+                                {(photoOpen.has(item.id) || item.photos.length > 0) && (
+                                  <div className="mt-1.5">
+                                    {item.photos.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                        {item.photos.map(photo => (
+                                          <div key={photo.id} className="relative group">
+                                            <img
+                                              src={`${BASE}${photo.url}`}
+                                              alt="Checklist photo"
+                                              className="w-16 h-12 object-cover rounded-lg border border-border cursor-pointer"
+                                              onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                                            />
+                                            {canEdit("jobs") && (
+                                              <button
+                                                onClick={() => handlePhotoDelete(item.id, photo.id)}
+                                                disabled={deletingPhoto === photo.id}
+                                                className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                              >
+                                                {deletingPhoto === photo.id
+                                                  ? <Loader2 className="w-2 h-2 animate-spin" />
+                                                  : <X className="w-2 h-2" />}
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {canEdit("jobs") && (
+                                      <label className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          capture="environment"
+                                          className="hidden"
+                                          onChange={e => {
+                                            const file = e.target.files?.[0];
+                                            if (file) handlePhotoUpload(item.id, file);
+                                            e.target.value = "";
+                                          }}
+                                        />
+                                        {uploadingPhotoFor === item.id
+                                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Uploading…</>
+                                          : <><Camera className="w-3 h-3" /> Add photo</>}
+                                      </label>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
-                              {/* Note icon + N/A toggle */}
+                              {/* Note icon + Camera + N/A toggle */}
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 {canEdit("jobs") && !item.skipped && (
                                   <button
@@ -684,6 +790,21 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                     className={`w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted/50 transition-colors mt-0.5 ${item.notes ? "text-emerald-500" : ""}`}
                                   >
                                     <MessageSquare className="w-3 h-3" />
+                                  </button>
+                                )}
+                                {canEdit("jobs") && !item.skipped && (
+                                  <button
+                                    onClick={() => setPhotoOpen(prev => {
+                                      const s = new Set(prev);
+                                      if (s.has(item.id)) s.delete(item.id); else s.add(item.id);
+                                      return s;
+                                    })}
+                                    title="Add photo"
+                                    className={`w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted/50 transition-colors mt-0.5 ${item.photos.length > 0 ? "text-emerald-500" : ""}`}
+                                  >
+                                    {uploadingPhotoFor === item.id
+                                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                                      : <Camera className="w-3 h-3" />}
                                   </button>
                                 )}
                                 {canEdit("jobs") && !item.completed && (
@@ -779,6 +900,27 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
           )}
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightboxPhoto && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxPhoto(null)}
+        >
+          <button
+            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            onClick={() => setLightboxPhoto(null)}
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={lightboxPhoto}
+            alt="Photo"
+            className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
