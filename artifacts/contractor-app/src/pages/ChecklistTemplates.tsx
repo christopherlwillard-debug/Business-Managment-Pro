@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Plus, X, Edit2, Trash2, ChevronDown, ChevronUp, Copy, Search,
   ClipboardCheck, Check, GripVertical, ToggleRight, ToggleLeft,
-  ArrowLeft, Loader2, AlertCircle,
+  ArrowLeft, Loader2, AlertCircle, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -365,16 +365,20 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
   }
 
   async function saveSection(sectionId: number, name: string) {
+    const trimmed = name.trim();
+    const original = t.sections.find(s => s.id === sectionId);
+    if (!trimmed || trimmed === original?.name) { setEditingSection(null); return; }
+    setT(cur => ({ ...cur, sections: cur.sections.map(s => s.id === sectionId ? { ...s, name: trimmed } : s) }));
+    setEditingSection(null);
     try {
       await apiFetch(`/api/checklist-templates/${t.id}/sections/${sectionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name: trimmed }),
       });
-      setT(prev => ({ ...prev, sections: prev.sections.map(s => s.id === sectionId ? { ...s, name } : s) }));
-      setEditingSection(null);
     } catch {
-      toast({ title: "Failed to save section", variant: "destructive" });
+      setT(cur => ({ ...cur, sections: cur.sections.map(s => s.id === sectionId ? { ...s, name: original?.name ?? s.name } : s) }));
+      toast({ title: "Failed to save section name", variant: "destructive" });
     }
   }
 
@@ -385,6 +389,39 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
       setT(prev => ({ ...prev, sections: prev.sections.filter(s => s.id !== sectionId) }));
     } catch {
       toast({ title: "Failed to delete section", variant: "destructive" });
+    }
+  }
+
+  async function reorderSection(sectionId: number, direction: "up" | "down") {
+    const idx = t.sections.findIndex(s => s.id === sectionId);
+    if (idx === -1) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= t.sections.length) return;
+
+    const prev = [...t.sections];
+    const a = prev[idx];
+    const b = prev[swapIdx];
+    const reordered = [...prev];
+    reordered[idx] = { ...b, sortOrder: a.sortOrder };
+    reordered[swapIdx] = { ...a, sortOrder: b.sortOrder };
+    setT(cur => ({ ...cur, sections: reordered }));
+
+    try {
+      await Promise.all([
+        apiFetch(`/api/checklist-templates/${t.id}/sections/${a.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sortOrder: b.sortOrder }),
+        }),
+        apiFetch(`/api/checklist-templates/${t.id}/sections/${b.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sortOrder: a.sortOrder }),
+        }),
+      ]);
+    } catch {
+      setT(cur => ({ ...cur, sections: prev }));
+      toast({ title: "Failed to reorder sections", variant: "destructive" });
     }
   }
 
@@ -484,27 +521,32 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
                   if (next.has(section.id)) next.delete(section.id); else next.add(section.id);
                   return next;
                 })}
-                className="flex-1 text-left min-w-0"
+                className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-muted-foreground"
               >
+                {expandedSections.has(section.id)
+                  ? <ChevronUp className="w-3.5 h-3.5" />
+                  : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              <div className="flex-1 min-w-0">
                 {editingSection?.id === section.id ? (
                   <input
                     value={editingSection.draft}
                     onChange={e => setEditingSection({ ...editingSection, draft: e.target.value })}
                     onKeyDown={e => { if (e.key === "Enter") saveSection(section.id, editingSection.draft); if (e.key === "Escape") setEditingSection(null); }}
-                    onClick={e => e.stopPropagation()}
                     className="w-full px-2 py-0.5 text-xs font-bold border border-border rounded-lg focus:outline-none"
                     autoFocus
                   />
                 ) : (
-                  <div className="flex items-center gap-2">
-                    {expandedSections.has(section.id)
-                      ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
-                      : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
-                    <span className="text-xs font-bold text-foreground">{section.name}</span>
-                    <span className="text-[10px] text-muted-foreground">({section.items.length})</span>
-                  </div>
+                  <button
+                    onClick={() => setEditingSection({ id: section.id, draft: section.name })}
+                    className="text-left text-xs font-bold text-foreground hover:text-emerald-600 transition-colors"
+                    title="Click to rename"
+                  >
+                    {section.name}
+                    <span className="text-[10px] font-normal text-muted-foreground ml-1">({section.items.length})</span>
+                  </button>
                 )}
-              </button>
+              </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 {editingSection?.id === section.id ? (
                   <>
@@ -517,6 +559,22 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
                   </>
                 ) : (
                   <>
+                    <button
+                      onClick={() => reorderSection(section.id, "up")}
+                      disabled={t.sections.findIndex(s => s.id === section.id) === 0}
+                      title="Move up"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 disabled:opacity-25 disabled:cursor-not-allowed"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => reorderSection(section.id, "down")}
+                      disabled={t.sections.findIndex(s => s.id === section.id) === t.sections.length - 1}
+                      title="Move down"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 disabled:opacity-25 disabled:cursor-not-allowed"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
                     <button onClick={() => setEditingSection({ id: section.id, draft: section.name })} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50">
                       <Edit2 className="w-3 h-3" />
                     </button>
