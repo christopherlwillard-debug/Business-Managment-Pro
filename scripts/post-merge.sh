@@ -766,97 +766,15 @@ pool.query(\`
   .catch(e => { console.error('checklist tables migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
-# Task #929: seed Manufactured Home Trim-Out template (only if no templates exist)
-(cd lib/db && node -e "
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-async function seed() {
-  const { rows: existing } = await pool.query('SELECT id FROM checklist_templates LIMIT 1');
-  if (existing.length > 0) {
-    console.log('checklist_templates already seeded — skipping');
-    return;
-  }
-
-  const { rows: [tmpl] } = await pool.query(
-    'INSERT INTO checklist_templates (name, category, active) VALUES (\$1, \$2, true) RETURNING id',
-    ['Manufactured Home Trim-Out', 'Manufactured Homes']
-  );
-
-  const sections = [
-    {
-      name: 'Interior Trim Out',
-      items: [
-        'Pick up all supplies from Home Center',
-        'Turn on heating or air if applicable',
-        'Mud/Texture all drywall cracks',
-        'Mud/Paint all ceiling cracks and dings',
-        'Install trim and mate-line transition bars',
-        'Fix loose trim throughout home',
-        'Seam carpet if needed',
-        'Paint all areas needing paint',
-        'Square and install mate-line interior doors',
-        'Square and adjust interior doors',
-        'Caulk interior doors (Drywall Homes)',
-        'Install interior light fixtures',
-        'Hang ceiling fans or loose lighting',
-        'Remove shipping materials',
-        'Repair damaged wall panels',
-        'Install toilet tank lids',
-        'Caulk throughout where needed',
-        'Install appliance shelves and remove strapping',
-        'Remove appliance plastic and packaging',
-        'Stack extra materials neatly',
-        'Clean home completely',
-        'Install window screens',
-        'Turn off water main shutoff when done',
-        'Turn checklist in with bill',
-        'Turn in all needed parts',
-      ],
-    },
-    {
-      name: 'Exterior Trim Out',
-      items: [
-        'Install vinyl siding on both ends',
-        'Install soffit on ends',
-        'Install fascia on ends',
-        'Install drip edge',
-        'Caulk all shipping material holes',
-        'Paint fascia and repair shipping damage',
-        'Install exterior light fixtures',
-        'Turn off water main shutoff',
-        'Leave breakers on and lights off',
-        'Turn checklist in with bill',
-        'Turn in all needed parts',
-      ],
-    },
-    {
-      name: 'Vinyl Skirting',
-      items: [
-        'Install vinyl skirting',
-        'Install bracing where needed (over 40\")',
-        'Install skirting door and leave key inside',
-        'Turn checklist in with bill',
-        'Turn in all needed parts',
-      ],
-    },
-  ];
-
-  for (let si = 0; si < sections.length; si++) {
-    const sec = sections[si];
-    const { rows: [section] } = await pool.query(
-      'INSERT INTO checklist_template_sections (template_id, name, sort_order) VALUES (\$1, \$2, \$3) RETURNING id',
-      [tmpl.id, sec.name, si]
-    );
-    for (let ii = 0; ii < sec.items.length; ii++) {
-      await pool.query(
-        'INSERT INTO checklist_template_items (section_id, title, sort_order) VALUES (\$1, \$2, \$3)',
-        [section.id, sec.items[ii], ii]
-      );
-    }
-  }
-  console.log('Manufactured Home Trim-Out template seeded');
-}
-
-seed().then(() => pool.end()).catch(e => { console.error('seed error:', e.message); pool.end(); process.exit(1); });
-")
+# Task #940: seed Manufactured Home Trim-Out checklist template via API endpoint.
+# The endpoint is idempotent — no-op if templates already exist.
+# Requires MIGRATION_KEY secret and API_BASE_URL env var (or falls back to localhost:8080).
+SEED_API_BASE="${API_BASE_URL:-http://localhost:8080}"
+echo "Seeding checklist templates via ${SEED_API_BASE}/api/admin/migrations/seed-checklist-templates ..."
+SEED_RESPONSE=$(curl -s -X POST "${SEED_API_BASE}/api/admin/migrations/seed-checklist-templates" \
+  -H "x-migration-key: ${MIGRATION_KEY}" \
+  -H "Content-Type: application/json")
+echo "Seed response: ${SEED_RESPONSE}"
+if echo "${SEED_RESPONSE}" | grep -q '"error"'; then
+  echo "Warning: checklist template seed returned an error — check logs. Continuing." >&2
+fi
