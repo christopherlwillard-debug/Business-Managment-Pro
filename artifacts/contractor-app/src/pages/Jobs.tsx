@@ -33,6 +33,7 @@ import {
   Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
+import { JobChecklistPanel } from "@/components/JobChecklistPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -2767,6 +2768,7 @@ function JobCard({
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"pl" | "breakdown" | "hours">("pl");
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
+  const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
@@ -3073,6 +3075,15 @@ function JobCard({
           </button>
         )}
 
+        {/* Checklist */}
+        <button
+          onClick={() => setChecklistPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+          <ClipboardList className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+          <span className="flex-1 text-left">Checklist</span>
+          <span className="text-[10px] text-muted-foreground">Track progress</span>
+        </button>
+
         {/* Job Financials — consolidated P&L, Pay Breakdown, Sub Hours */}
         <button
           onClick={() => { setFinancialsInitialTab("pl"); setFinancialsPanelOpen(true); }}
@@ -3213,6 +3224,9 @@ function JobCard({
       )}
       {phasesPanelOpen && (
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
+      )}
+      {checklistPanelOpen && (
+        <JobChecklistPanel job={job} onClose={() => setChecklistPanelOpen(false)} />
       )}
     </>
   );

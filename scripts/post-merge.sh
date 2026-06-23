@@ -700,3 +700,163 @@ pool.query(\`
 \`).then(() => { console.log('client_errors table ensured'); pool.end(); })
   .catch(e => { console.error('client_errors migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #929: create checklist template tables (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS checklist_templates (
+    id serial PRIMARY KEY NOT NULL,
+    name text NOT NULL,
+    category text,
+    active boolean NOT NULL DEFAULT true,
+    created_at timestamp DEFAULT now() NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS checklist_template_sections (
+    id serial PRIMARY KEY NOT NULL,
+    template_id integer NOT NULL REFERENCES checklist_templates(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    sort_order integer NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS checklist_template_items (
+    id serial PRIMARY KEY NOT NULL,
+    section_id integer NOT NULL REFERENCES checklist_template_sections(id) ON DELETE CASCADE,
+    title text NOT NULL,
+    sort_order integer NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS job_checklists (
+    id serial PRIMARY KEY NOT NULL,
+    job_id integer NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    template_id integer REFERENCES checklist_templates(id) ON DELETE SET NULL,
+    template_name text NOT NULL,
+    share_token text NOT NULL UNIQUE,
+    share_enabled boolean NOT NULL DEFAULT true,
+    status_override text,
+    public_notes text,
+    updated_at timestamp DEFAULT now() NOT NULL,
+    created_at timestamp DEFAULT now() NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS job_checklist_sections (
+    id serial PRIMARY KEY NOT NULL,
+    job_checklist_id integer NOT NULL REFERENCES job_checklists(id) ON DELETE CASCADE,
+    template_section_id integer,
+    name text NOT NULL,
+    active boolean NOT NULL DEFAULT true,
+    notes text,
+    sort_order integer NOT NULL DEFAULT 0,
+    percent_complete numeric(5,2) NOT NULL DEFAULT 0,
+    completed_at timestamp
+  );
+  CREATE TABLE IF NOT EXISTS job_checklist_items (
+    id serial PRIMARY KEY NOT NULL,
+    job_checklist_id integer NOT NULL REFERENCES job_checklists(id) ON DELETE CASCADE,
+    job_checklist_section_id integer NOT NULL REFERENCES job_checklist_sections(id) ON DELETE CASCADE,
+    title text NOT NULL,
+    completed boolean NOT NULL DEFAULT false,
+    completed_at timestamp,
+    completed_by_user_id text,
+    completed_by_name text,
+    skipped boolean NOT NULL DEFAULT false,
+    skipped_at timestamp,
+    notes text,
+    sort_order integer NOT NULL DEFAULT 0
+  );
+\`).then(() => { console.log('checklist tables ensured'); pool.end(); })
+  .catch(e => { console.error('checklist tables migration error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Task #929: seed Manufactured Home Trim-Out template (only if no templates exist)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function seed() {
+  const { rows: existing } = await pool.query('SELECT id FROM checklist_templates LIMIT 1');
+  if (existing.length > 0) {
+    console.log('checklist_templates already seeded — skipping');
+    return;
+  }
+
+  const { rows: [tmpl] } = await pool.query(
+    'INSERT INTO checklist_templates (name, category, active) VALUES (\$1, \$2, true) RETURNING id',
+    ['Manufactured Home Trim-Out', 'Manufactured Homes']
+  );
+
+  const sections = [
+    {
+      name: 'Interior Trim Out',
+      items: [
+        'Pick up all supplies from Home Center',
+        'Turn on heating or air if applicable',
+        'Mud/Texture all drywall cracks',
+        'Mud/Paint all ceiling cracks and dings',
+        'Install trim and mate-line transition bars',
+        'Fix loose trim throughout home',
+        'Seam carpet if needed',
+        'Paint all areas needing paint',
+        'Square and install mate-line interior doors',
+        'Square and adjust interior doors',
+        'Caulk interior doors (Drywall Homes)',
+        'Install interior light fixtures',
+        'Hang ceiling fans or loose lighting',
+        'Remove shipping materials',
+        'Repair damaged wall panels',
+        'Install toilet tank lids',
+        'Caulk throughout where needed',
+        'Install appliance shelves and remove strapping',
+        'Remove appliance plastic and packaging',
+        'Stack extra materials neatly',
+        'Clean home completely',
+        'Install window screens',
+        'Turn off water main shutoff when done',
+        'Turn checklist in with bill',
+        'Turn in all needed parts',
+      ],
+    },
+    {
+      name: 'Exterior Trim Out',
+      items: [
+        'Install vinyl siding on both ends',
+        'Install soffit on ends',
+        'Install fascia on ends',
+        'Install drip edge',
+        'Caulk all shipping material holes',
+        'Paint fascia and repair shipping damage',
+        'Install exterior light fixtures',
+        'Turn off water main shutoff',
+        'Leave breakers on and lights off',
+        'Turn checklist in with bill',
+        'Turn in all needed parts',
+      ],
+    },
+    {
+      name: 'Vinyl Skirting',
+      items: [
+        'Install vinyl skirting',
+        'Install bracing where needed (over 40\")',
+        'Install skirting door and leave key inside',
+        'Turn checklist in with bill',
+        'Turn in all needed parts',
+      ],
+    },
+  ];
+
+  for (let si = 0; si < sections.length; si++) {
+    const sec = sections[si];
+    const { rows: [section] } = await pool.query(
+      'INSERT INTO checklist_template_sections (template_id, name, sort_order) VALUES (\$1, \$2, \$3) RETURNING id',
+      [tmpl.id, sec.name, si]
+    );
+    for (let ii = 0; ii < sec.items.length; ii++) {
+      await pool.query(
+        'INSERT INTO checklist_template_items (section_id, title, sort_order) VALUES (\$1, \$2, \$3)',
+        [section.id, sec.items[ii], ii]
+      );
+    }
+  }
+  console.log('Manufactured Home Trim-Out template seeded');
+}
+
+seed().then(() => pool.end()).catch(e => { console.error('seed error:', e.message); pool.end(); process.exit(1); });
+")

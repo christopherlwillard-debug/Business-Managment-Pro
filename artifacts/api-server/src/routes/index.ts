@@ -69,6 +69,8 @@ import errorsRouter from "./errors";
 import adminErrorsRouter from "./admin-errors";
 import adminMigrationsRouter from "./admin-migrations";
 import ownerCapitalRouter from "./owner-capital";
+import checklistTemplatesRouter from "./checklist-templates";
+import jobChecklistsRouter from "./job-checklists";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -236,6 +238,8 @@ router.use("/job-type-benchmarks", requireOwner, jobTypeBenchmarksRouter);
 router.use("/website", requireOwner, websiteRouter);
 router.use("/admin/errors", requireOwner, adminErrorsRouter);
 router.use("/admin/migrations", requireOwner, adminMigrationsRouter);
+router.use("/checklist-templates", requireOwner, checklistTemplatesRouter);
+router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
 
 router.get("/integrations/wix/config", requireOwner, (req, res) => {
   const token = process.env["WIX_WEBHOOK_SECRET"] ?? null;

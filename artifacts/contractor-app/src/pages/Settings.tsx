@@ -2448,6 +2448,21 @@ export default function Settings() {
         <div className="mt-8 pt-6 border-t border-border">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Admin</h2>
           <a
+            href={`${BASE}/checklist-templates`}
+            className="flex items-center justify-between p-4 rounded-xl border border-border bg-card hover:bg-muted/50 transition-colors group mb-2"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <ClipboardList className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Checklist Templates</p>
+                <p className="text-xs text-muted-foreground">Manage job progress checklist templates</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </a>
+          <a
             href={`${BASE}/admin/errors`}
             className="flex items-center justify-between p-4 rounded-xl border border-border bg-card hover:bg-muted/50 transition-colors group"
           >

@@ -1,8 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { sectionGuard } from "./guards";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, settingsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable, jobChecklistsTable, jobChecklistSectionsTable, jobChecklistItemsTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, or, inArray, sql, asc } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -976,6 +976,183 @@ tokenRouter.post("/jobs/:jobId/complete", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to complete job" });
+  }
+});
+
+// ── Checklist access for subs — read + check/skip items on assigned jobs ──────
+
+// GET /:token/jobs/:jobId/checklist
+tokenRouter.get("/jobs/:jobId/checklist", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const jobId = parseInt(req.params.jobId);
+
+    // Verify sub is assigned to this job
+    const [assignment] = await db
+      .select({ jobId: jobSubcontractorsTable.jobId })
+      .from(jobSubcontractorsTable)
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, sub.id)));
+    if (!assignment) return res.status(403).json({ error: "Not assigned to this job" });
+
+    const [checklist] = await db
+      .select()
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.json(null);
+
+    const sections = await db
+      .select()
+      .from(jobChecklistSectionsTable)
+      .where(eq(jobChecklistSectionsTable.jobChecklistId, checklist.id))
+      .orderBy(asc(jobChecklistSectionsTable.sortOrder));
+
+    const items = await db
+      .select()
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.jobChecklistId, checklist.id));
+
+    const activeItems = items.filter(i => {
+      const section = sections.find(s => s.id === i.jobChecklistSectionId);
+      return section?.active && !i.skipped;
+    });
+    const completedItems = activeItems.filter(i => i.completed);
+    const overallPct = activeItems.length === 0
+      ? 0
+      : Math.round((completedItems.length / activeItems.length) * 100);
+
+    res.json({
+      ...checklist,
+      overallPercent: overallPct,
+      totalItems: activeItems.length,
+      completedItems: completedItems.length,
+      sections: sections.map(s => ({
+        ...s,
+        items: items.filter(i => i.jobChecklistSectionId === s.id),
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load checklist" });
+  }
+});
+
+// PATCH /:token/jobs/:jobId/checklist/items/:itemId — check/uncheck
+tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const jobId = parseInt(req.params.jobId);
+    const itemId = parseInt(req.params.itemId);
+
+    const [assignment] = await db
+      .select({ jobId: jobSubcontractorsTable.jobId })
+      .from(jobSubcontractorsTable)
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, sub.id)));
+    if (!assignment) return res.status(403).json({ error: "Not assigned to this job" });
+
+    const [item] = await db
+      .select()
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.id, itemId));
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const { completed } = req.body;
+    const updates: Record<string, unknown> = {};
+    if (completed !== undefined) {
+      updates.completed = completed;
+      if (completed) {
+        updates.completedAt = new Date();
+        updates.completedByUserId = `sub-${sub.id}`;
+        updates.completedByName = sub.name;
+      } else {
+        updates.completedAt = null;
+        updates.completedByUserId = null;
+        updates.completedByName = null;
+      }
+    }
+
+    await db.update(jobChecklistItemsTable).set(updates).where(eq(jobChecklistItemsTable.id, itemId));
+
+    // Recalc section progress
+    const sectionItems = await db
+      .select()
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.jobChecklistSectionId, item.jobChecklistSectionId));
+
+    const active = sectionItems.filter(i => !i.skipped);
+    const done = active.filter(i => (i.id === itemId ? !!completed : i.completed));
+    const pct = active.length === 0 ? 0 : Math.round((done.length / active.length) * 100);
+    const allDone = active.length > 0 && done.length === active.length;
+
+    await db.update(jobChecklistSectionsTable)
+      .set({ percentComplete: String(pct), completedAt: allDone ? new Date() : null })
+      .where(eq(jobChecklistSectionsTable.id, item.jobChecklistSectionId));
+
+    await db.update(jobChecklistsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(jobChecklistsTable.id, item.jobChecklistId));
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update item" });
+  }
+});
+
+// PATCH /:token/jobs/:jobId/checklist/items/:itemId/skip — skip/unskip
+tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId/skip", async (req, res) => {
+  try {
+    const sub = await getSubByToken(req.params.token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const jobId = parseInt(req.params.jobId);
+    const itemId = parseInt(req.params.itemId);
+
+    const [assignment] = await db
+      .select({ jobId: jobSubcontractorsTable.jobId })
+      .from(jobSubcontractorsTable)
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, sub.id)));
+    if (!assignment) return res.status(403).json({ error: "Not assigned to this job" });
+
+    const [item] = await db
+      .select()
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.id, itemId));
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const { skipped } = req.body;
+    await db.update(jobChecklistItemsTable)
+      .set({ skipped: !!skipped, skippedAt: skipped ? new Date() : null, completed: false, completedAt: null, completedByUserId: null, completedByName: null })
+      .where(eq(jobChecklistItemsTable.id, itemId));
+
+    const sectionItems = await db
+      .select()
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.jobChecklistSectionId, item.jobChecklistSectionId));
+
+    const active = sectionItems.filter(i => (i.id === itemId ? !skipped : !i.skipped));
+    const done = active.filter(i => i.completed);
+    const pct = active.length === 0 ? 0 : Math.round((done.length / active.length) * 100);
+    const allDone = active.length > 0 && done.length === active.length;
+
+    await db.update(jobChecklistSectionsTable)
+      .set({ percentComplete: String(pct), completedAt: allDone ? new Date() : null })
+      .where(eq(jobChecklistSectionsTable.id, item.jobChecklistSectionId));
+
+    await db.update(jobChecklistsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(jobChecklistsTable.id, item.jobChecklistId));
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to skip item" });
   }
 });
 

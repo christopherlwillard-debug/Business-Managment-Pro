@@ -39,6 +39,7 @@ const NotFound = lazy(() => import("./pages/not-found"));
 const WebsiteEditor = lazy(() => import("./pages/website/WebsiteEditor"));
 const PublicSite = lazy(() => import("./pages/website/PublicSite"));
 const AdminErrorLog = lazy(() => import("./pages/AdminErrorLog"));
+const ChecklistTemplates = lazy(() => import("./pages/ChecklistTemplates"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -312,6 +313,9 @@ function AdminApp() {
           </Route>
           <Route path="/admin/errors">
             <PermissionGuard ownerOnly><AdminErrorLog /></PermissionGuard>
+          </Route>
+          <Route path="/checklist-templates">
+            <PermissionGuard ownerOnly><ChecklistTemplates /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>
