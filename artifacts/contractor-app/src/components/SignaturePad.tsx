@@ -15,6 +15,12 @@ export function SignaturePad({ savedUrl, onSaved, onRemoved }: SignaturePadProps
   const padRef = useRef<SignaturePadLib | null>(null);
   const [mode, setMode] = useState<"preview" | "draw">(savedUrl ? "preview" : "draw");
   const [saving, setSaving] = useState(false);
+
+  // Sync mode when savedUrl arrives asynchronously (settings load after mount)
+  useEffect(() => {
+    setMode(savedUrl ? "preview" : "draw");
+  }, [savedUrl]);
+
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState("");
   const [isEmpty, setIsEmpty] = useState(true);
