@@ -2733,10 +2733,13 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 }
 
 // ─── Job Card ──────────────────────────────────────────────────────────────────
+type ChecklistSummary = { completedItems: number; totalItems: number; overallPercent: number };
+
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
+  checklistSummary,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -2759,9 +2762,11 @@ function JobCard({
   onSmartEstimate?: (job: Job) => void;
   onArchiveJob?: (job: Job) => void;
   subsSettled?: boolean;
+  checklistSummary?: ChecklistSummary | null;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
+  const qc = useQueryClient();
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
@@ -3081,7 +3086,23 @@ function JobCard({
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
           <ClipboardList className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
           <span className="flex-1 text-left">Checklist</span>
-          <span className="text-[10px] text-muted-foreground">Track progress</span>
+          {checklistSummary ? (
+            checklistSummary.overallPercent === 100 ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                Complete
+              </span>
+            ) : checklistSummary.overallPercent === 0 ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                {checklistSummary.completedItems}/{checklistSummary.totalItems} · 0%
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                {checklistSummary.completedItems}/{checklistSummary.totalItems} · {checklistSummary.overallPercent}%
+              </span>
+            )
+          ) : (
+            <span className="text-[10px] text-muted-foreground">Track progress</span>
+          )}
         </button>
 
         {/* Job Financials — consolidated P&L, Pay Breakdown, Sub Hours */}
@@ -3226,7 +3247,10 @@ function JobCard({
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
       )}
       {checklistPanelOpen && (
-        <JobChecklistPanel job={job} onClose={() => setChecklistPanelOpen(false)} />
+        <JobChecklistPanel job={job} onClose={() => {
+          setChecklistPanelOpen(false);
+          qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
+        }} />
       )}
     </>
   );
@@ -3872,6 +3896,20 @@ export default function Jobs() {
     acc[list.jobId] = (acc[list.jobId] ?? 0) + 1;
     return acc;
   }, {});
+
+  // Batch-fetch checklist summaries for all jobs (single query, not N+1)
+  const jobIds = jobs.map(j => j.id);
+  const { data: checklistSummaries = {} } = useQuery<Record<number, ChecklistSummary>>({
+    queryKey: ["checklist-summaries", jobIds.join(",")],
+    queryFn: async () => {
+      if (jobIds.length === 0) return {};
+      const res = await fetch(`${BASE}/api/jobs/checklist-summaries?jobIds=${jobIds.join(",")}`, { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: jobIds.length > 0,
+    staleTime: 30 * 1000,
+  });
 
   const { data: allEstimates = [] } = useListEstimates();
   const estimateTotalByJob = allEstimates.reduce<Record<number, number>>((acc, est) => {
@@ -4627,7 +4665,8 @@ export default function Jobs() {
                       onSendPaymentLink={handleGetPaymentLink}
                       onGoToInvoices={() => navigate("/invoices")}
                       generatingLinkId={generatingLinkId}
-                      onSmartEstimate={j => setGcWizardJob(j)} />
+                      onSmartEstimate={j => setGcWizardJob(j)}
+                      checklistSummary={checklistSummaries[job.id] ?? null} />
                   );
                 })}
               </div>
@@ -4669,7 +4708,8 @@ export default function Jobs() {
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => navigate("/invoices")}
                         generatingLinkId={generatingLinkId}
-                        onSmartEstimate={j => setGcWizardJob(j)} />
+                        onSmartEstimate={j => setGcWizardJob(j)}
+                        checklistSummary={checklistSummaries[job.id] ?? null} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -4718,7 +4758,8 @@ export default function Jobs() {
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
                         onArchiveJob={handleArchiveJob}
-                        subsSettled={!jobsWithSubExpenses.has(job.id) || outstandingBalanceMap.get(job.id) === false} />
+                        subsSettled={!jobsWithSubExpenses.has(job.id) || outstandingBalanceMap.get(job.id) === false}
+                        checklistSummary={checklistSummaries[job.id] ?? null} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">

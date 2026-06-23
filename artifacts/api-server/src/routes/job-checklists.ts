@@ -9,7 +9,7 @@ import {
   jobChecklistItemsTable,
   jobsTable,
 } from "@workspace/db/schema";
-import { eq, asc, and } from "drizzle-orm";
+import { eq, asc, and, inArray } from "drizzle-orm";
 import { getRequestUser } from "./guards";
 import crypto from "crypto";
 
@@ -81,6 +81,50 @@ export async function buildChecklistResponse(checklistId: number) {
     })),
   };
 }
+
+// ── GET /checklist-summaries?jobIds=1,2,3 ─────────────────────────────────────
+// Returns { [jobId]: { completedItems, totalItems, overallPercent } } for jobs that have checklists.
+router.get("/checklist-summaries", async (req, res) => {
+  try {
+    const raw = typeof req.query.jobIds === "string" ? req.query.jobIds : "";
+    const jobIds = raw.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
+    if (jobIds.length === 0) return res.json({});
+
+    const checklists = await db
+      .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
+      .from(jobChecklistsTable)
+      .where(inArray(jobChecklistsTable.jobId, jobIds));
+
+    if (checklists.length === 0) return res.json({});
+
+    const checklistIds = checklists.map(c => c.id);
+
+    const [sections, items] = await Promise.all([
+      db.select({ id: jobChecklistSectionsTable.id, jobChecklistId: jobChecklistSectionsTable.jobChecklistId, active: jobChecklistSectionsTable.active })
+        .from(jobChecklistSectionsTable)
+        .where(inArray(jobChecklistSectionsTable.jobChecklistId, checklistIds)),
+      db.select({ id: jobChecklistItemsTable.id, jobChecklistId: jobChecklistItemsTable.jobChecklistId, jobChecklistSectionId: jobChecklistItemsTable.jobChecklistSectionId, completed: jobChecklistItemsTable.completed, skipped: jobChecklistItemsTable.skipped })
+        .from(jobChecklistItemsTable)
+        .where(inArray(jobChecklistItemsTable.jobChecklistId, checklistIds)),
+    ]);
+
+    const activeSectionIds = new Set(sections.filter(s => s.active).map(s => s.id));
+
+    const result: Record<number, { completedItems: number; totalItems: number; overallPercent: number }> = {};
+    for (const cl of checklists) {
+      const activeItems = items.filter(i => i.jobChecklistId === cl.id && activeSectionIds.has(i.jobChecklistSectionId) && !i.skipped);
+      const completedItems = activeItems.filter(i => i.completed).length;
+      const totalItems = activeItems.length;
+      const overallPercent = totalItems === 0 ? 0 : Math.round((completedItems / totalItems) * 100);
+      result[cl.jobId] = { completedItems, totalItems, overallPercent };
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load checklist summaries" });
+  }
+});
 
 // ── GET /:jobId/checklist ─────────────────────────────────────────────────────
 router.get("/:jobId/checklist", async (req, res) => {
