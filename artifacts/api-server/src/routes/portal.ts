@@ -1055,10 +1055,17 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId", async (req, res) => {
       .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, sub.id)));
     if (!assignment) return res.status(403).json({ error: "Not assigned to this job" });
 
+    // Get checklist for this job first, then verify item belongs to it
+    const [checklist] = await db
+      .select()
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
+
     const [item] = await db
       .select()
       .from(jobChecklistItemsTable)
-      .where(eq(jobChecklistItemsTable.id, itemId));
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     const { completed } = req.body;
@@ -1067,7 +1074,7 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId", async (req, res) => {
       updates.completed = completed;
       if (completed) {
         updates.completedAt = new Date();
-        updates.completedByUserId = `sub-${sub.id}`;
+        updates.completedByUserId = String(sub.id);
         updates.completedByName = sub.name;
       } else {
         updates.completedAt = null;
@@ -1095,7 +1102,7 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId", async (req, res) => {
 
     await db.update(jobChecklistsTable)
       .set({ updatedAt: new Date() })
-      .where(eq(jobChecklistsTable.id, item.jobChecklistId));
+      .where(eq(jobChecklistsTable.id, checklist.id));
 
     res.json({ success: true });
   } catch (err) {
@@ -1120,10 +1127,17 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId/skip", async (req, res) 
       .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, sub.id)));
     if (!assignment) return res.status(403).json({ error: "Not assigned to this job" });
 
+    // Get checklist for this job first, then verify item belongs to it
+    const [checklist] = await db
+      .select()
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
+
     const [item] = await db
       .select()
       .from(jobChecklistItemsTable)
-      .where(eq(jobChecklistItemsTable.id, itemId));
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     const { skipped } = req.body;
@@ -1147,7 +1161,7 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId/skip", async (req, res) 
 
     await db.update(jobChecklistsTable)
       .set({ updatedAt: new Date() })
-      .where(eq(jobChecklistsTable.id, item.jobChecklistId));
+      .where(eq(jobChecklistsTable.id, checklist.id));
 
     res.json({ success: true });
   } catch (err) {

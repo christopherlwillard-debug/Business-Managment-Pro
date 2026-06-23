@@ -215,10 +215,17 @@ router.patch("/:jobId/checklist/sections/:sectionId", async (req, res) => {
     const sectionId = parseInt(req.params.sectionId);
     const jobId = parseInt(req.params.jobId);
 
+    // Verify section belongs to this job's checklist
+    const [checklist] = await db
+      .select()
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
+
     const [section] = await db
       .select()
       .from(jobChecklistSectionsTable)
-      .where(eq(jobChecklistSectionsTable.id, sectionId));
+      .where(and(eq(jobChecklistSectionsTable.id, sectionId), eq(jobChecklistSectionsTable.jobChecklistId, checklist.id)));
     if (!section) return res.status(404).json({ error: "Section not found" });
 
     const { active, notes } = req.body;
@@ -234,9 +241,9 @@ router.patch("/:jobId/checklist/sections/:sectionId", async (req, res) => {
     await db
       .update(jobChecklistsTable)
       .set({ updatedAt: new Date() })
-      .where(eq(jobChecklistsTable.jobId, jobId));
+      .where(eq(jobChecklistsTable.id, checklist.id));
 
-    const data = await buildChecklistResponse(section.jobChecklistId);
+    const data = await buildChecklistResponse(checklist.id);
     res.json(data);
   } catch (err) {
     console.error(err);
@@ -248,12 +255,20 @@ router.patch("/:jobId/checklist/sections/:sectionId", async (req, res) => {
 router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId);
+    const jobId = parseInt(req.params.jobId);
     const user = getRequestUser(req);
+
+    // Verify item belongs to this job's checklist
+    const [checklist] = await db
+      .select()
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
 
     const [item] = await db
       .select()
       .from(jobChecklistItemsTable)
-      .where(eq(jobChecklistItemsTable.id, itemId));
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     const { completed, notes } = req.body;
@@ -278,9 +293,9 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
       .set(updates)
       .where(eq(jobChecklistItemsTable.id, itemId));
 
-    await recalcSection(item.jobChecklistSectionId, item.jobChecklistId);
+    await recalcSection(item.jobChecklistSectionId, checklist.id);
 
-    const data = await buildChecklistResponse(item.jobChecklistId);
+    const data = await buildChecklistResponse(checklist.id);
     res.json(data);
   } catch (err) {
     console.error(err);
@@ -292,11 +307,19 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
 router.patch("/:jobId/checklist/items/:itemId/skip", async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId);
+    const jobId = parseInt(req.params.jobId);
+
+    // Verify item belongs to this job's checklist
+    const [checklist] = await db
+      .select()
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
 
     const [item] = await db
       .select()
       .from(jobChecklistItemsTable)
-      .where(eq(jobChecklistItemsTable.id, itemId));
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     const { skipped } = req.body;
@@ -312,9 +335,9 @@ router.patch("/:jobId/checklist/items/:itemId/skip", async (req, res) => {
       })
       .where(eq(jobChecklistItemsTable.id, itemId));
 
-    await recalcSection(item.jobChecklistSectionId, item.jobChecklistId);
+    await recalcSection(item.jobChecklistSectionId, checklist.id);
 
-    const data = await buildChecklistResponse(item.jobChecklistId);
+    const data = await buildChecklistResponse(checklist.id);
     res.json(data);
   } catch (err) {
     console.error(err);

@@ -8,6 +8,7 @@ import {
   Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
   Lock, KeyRound, Home, Store, ChevronDown, ImageIcon, Upload,
   MapPin, Calculator, PenLine, User, Download, TrendingUp,
+  ClipboardCheck, Check, Minus, Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -652,6 +653,7 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
   const qc = useQueryClient();
 
   const [expanded, setExpanded] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -660,12 +662,34 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [done, setDone] = useState(job.status === "completed");
+  const [togglingItem, setTogglingItem] = useState<number | null>(null);
 
   const { data: materialLists = [] } = useQuery<any[]>({
     queryKey: ["portal-job-material-lists", token, job.id],
     queryFn: () => apiFetch(`/portal/${token}/jobs/${job.id}/material-lists`),
     enabled: expanded && !done,
   });
+
+  const { data: checklist, refetch: refetchChecklist } = useQuery<any>({
+    queryKey: ["portal-job-checklist", token, job.id],
+    queryFn: () => apiFetch(`/portal/${token}/jobs/${job.id}/checklist`),
+    enabled: checklistOpen,
+  });
+
+  async function toggleChecklistItem(item: any) {
+    if (togglingItem !== null || item.skipped) return;
+    setTogglingItem(item.id);
+    try {
+      await apiFetch(`/portal/${token}/jobs/${job.id}/checklist/items/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completed: !item.completed }),
+      });
+      await refetchChecklist();
+    } finally {
+      setTogglingItem(null);
+    }
+  }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -734,11 +758,26 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
           }`}>{isCompleted ? "completed" : job.status?.replace("_", " ")}</span>
         </div>
 
+        {/* Checklist toggle button */}
+        <button
+          onClick={() => setChecklistOpen(o => !o)}
+          className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50/50 text-xs font-semibold hover:bg-emerald-50 transition-colors"
+        >
+          <ClipboardCheck className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="flex-1 text-left">Job Checklist</span>
+          {checklist && (
+            <span className="text-[10px] font-bold text-emerald-600">
+              {checklist.completedItems}/{checklist.totalItems} · {checklist.overallPercent}%
+            </span>
+          )}
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${checklistOpen ? "rotate-180" : ""}`} />
+        </button>
+
         {/* Expand/collapse field notes section */}
         {!isCompleted && (
           <button
             onClick={() => setExpanded(e => !e)}
-            className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-amber-300 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors"
+            className="mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-amber-300 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors"
           >
             <PenLine className="w-3.5 h-3.5" />
             <span className="flex-1 text-left">{expanded ? "Hide Field Notes" : "Add Field Notes & Complete"}</span>
@@ -753,6 +792,87 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
           </div>
         )}
       </div>
+
+      {/* Expandable checklist panel */}
+      {checklistOpen && (
+        <div className="border-t border-emerald-100 bg-emerald-50/30 px-4 py-3 space-y-3">
+          {!checklist ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : checklist.totalItems === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">No checklist attached to this job.</p>
+          ) : (
+            <>
+              {/* Overall progress bar */}
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <p className="text-xs font-semibold text-muted-foreground">{checklist.templateName}</p>
+                  <span className={`text-xs font-bold ${checklist.overallPercent === 100 ? "text-emerald-600" : "text-foreground"}`}>
+                    {checklist.overallPercent}%
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-emerald-100 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${checklist.overallPercent === 100 ? "bg-emerald-500" : "bg-emerald-400"}`}
+                    style={{ width: `${checklist.overallPercent}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Sections and items */}
+              {checklist.sections.filter((s: any) => s.active).map((section: any) => (
+                <div key={section.id} className="space-y-1">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{section.name}</p>
+                  {section.items.map((item: any) => (
+                    <button
+                      key={item.id}
+                      onClick={() => toggleChecklistItem(item)}
+                      disabled={togglingItem === item.id || item.skipped}
+                      className={`w-full flex items-start gap-2.5 text-left py-1.5 rounded-lg px-1 transition-colors ${
+                        item.skipped ? "opacity-50" : "hover:bg-emerald-50 active:bg-emerald-100"
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
+                        item.skipped ? "border-muted bg-muted" :
+                        item.completed ? "bg-emerald-500 border-emerald-500" :
+                        "border-muted-foreground/30"
+                      }`}>
+                        {togglingItem === item.id
+                          ? <Loader2 className="w-2.5 h-2.5 animate-spin text-muted-foreground" />
+                          : item.skipped
+                          ? <Minus className="w-2.5 h-2.5 text-muted-foreground" />
+                          : item.completed
+                          ? <Check className="w-2.5 h-2.5 text-white" />
+                          : null}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs leading-5 ${
+                          item.completed || item.skipped ? "line-through text-muted-foreground" : "text-foreground"
+                        }`}>
+                          {item.title}
+                        </p>
+                        {item.completed && item.completedByName && (
+                          <p className="text-[10px] text-emerald-600">✓ {item.completedByName}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ))}
+
+              {checklist.statusOverride && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  {checklist.statusOverride}
+                </p>
+              )}
+              {checklist.publicNotes && (
+                <p className="text-xs text-muted-foreground italic">{checklist.publicNotes}</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Expandable field notes form */}
       {expanded && !isCompleted && (
