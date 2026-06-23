@@ -1,0 +1,161 @@
+hese are both solid specs. Before you hand them to Replit, I'd make a few changes so you don't paint yourself into a corner later.
+
+Changes I'd Make to #929
+1. Don't store activeSectionIds as JSON
+
+Instead create:
+
+job_checklist_sections
+- id
+- jobChecklistId
+- templateSectionId
+- active
+
+Why?
+
+Easier queries
+Easier reporting
+Easier future dealer dashboards
+Easier progress calculations
+
+JSON arrays always become a headache later.
+
+2. Add Section Progress
+
+Add:
+
+job_checklist_sections
+- completedAt
+- percentComplete
+
+This lets you show:
+
+Interior Trim Out     22/25 (88%)
+Exterior Trim Out      8/11 (73%)
+Vinyl Skirting         N/A
+
+without recalculating every page load.
+
+3. Add Required Flag
+
+Some items may not apply.
+
+Example:
+
+☐ Hang ceiling fans
+
+Not every home ships with fans.
+
+Add:
+
+job_checklist_items
+- skipped boolean
+- skippedAt
+
+Then:
+
+✅ Completed
+⬜ Pending
+➖ Not Applicable
+
+Progress excludes skipped items.
+
+4. Store Last Updated
+
+Add:
+
+job_checklists
+- updatedAt
+
+Every check/uncheck updates it.
+
+Makes #930 easier.
+
+Changes I'd Make to #930
+1. Add Dealer Name
+
+Show:
+
+Customer: Smith Family
+Dealer: ABC Homes
+
+if available.
+
+Looks more professional.
+
+2. Add Status Labels
+
+Based on progress:
+
+0% = Not Started
+1-99% = In Progress
+100% = Complete
+
+Displayed beside progress bar.
+
+3. Don't Show Every Item Open By Default
+
+Some jobs have 40+ items.
+
+Public page:
+
+Interior Trim Out (22/25)
+▼ View Items
+
+Expandable.
+
+Cleaner on phones.
+
+4. Show Completion Date
+
+Instead of:
+
+✅ Install Window Screens
+
+Show:
+
+✅ Install Window Screens
+Completed June 22, 2026
+
+Looks polished for dealers.
+
+One Thing I'd Add Right Now
+
+Add a job-level field:
+
+job_checklists
+- publicNotes text
+
+You can type:
+
+Waiting on replacement bedroom door from factory.
+
+and the customer/dealer sees it on the status page.
+
+This will save you dozens of phone calls because most delays aren't checklist-related—they're waiting on parts.
+
+Future Feature (Easy Later)
+
+Once #929 and #930 are done, you can add:
+
+Dealer receives link:
+app.willardsgc.com/status/abc123
+
+and they see:
+
+Overall Progress: 84%
+
+Interior Trim Out
+22/25 Complete
+
+Exterior Trim Out
+10/11 Complete
+
+Last Updated:
+June 23, 2026
+3:14 PM
+
+Notes:
+Waiting on replacement exterior light fixture.
+
+For your manufactured home finishing business, this could become one of the most valuable features in the entire app because it eliminates a huge amount of dealer follow-up and makes your operation look much larger and more organized.

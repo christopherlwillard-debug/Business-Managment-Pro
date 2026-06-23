@@ -1,0 +1,76 @@
+also how do i prompt it that other checklists will added in future
+
+Add a small section under What & Why or Architecture Notes that tells the developer this system is intended to grow beyond manufactured homes.
+
+I'd add something like this:
+
+Future Expansion Requirement
+
+The checklist system must be template-driven and not hard-coded for manufactured home trim-out work. The seeded Manufactured Home Trim-Out template is only the first template. The architecture should support creating and attaching additional checklist templates in the future without requiring code changes or database schema changes.
+
+Examples of future templates include:
+
+Manufactured Home Warranty Service
+Sewer & Septic Tie-In
+Water Service Hookup
+Underpinning Installation
+Flooring Installation
+HVAC Platform Installation
+Asphalt Sealcoating
+Property Turnover / Rental Inspection
+Equipment Maintenance
+Safety Inspection
+
+Templates, sections, and items must be fully data-driven and editable through the Checklist Templates management page. Existing job checklists must function as snapshots of the template at the time they are attached to a job. Future edits to a template must not modify existing job checklists.
+
+I'd also modify your first sentence from:
+
+The first template — Manufactured Home Trim-Out — comes pre-loaded...
+
+to:
+
+The first seeded template is Manufactured Home Trim-Out. The system is designed to support unlimited future checklist templates across all business divisions.
+
+That makes it crystal clear to Replit that this isn't a one-off manufactured home feature—it's a reusable checklist engine that can later power asphalt jobs, rental property inspections, sewer hookups, warranty work, equipment maintenance, and anything else you add to the business.
+
+well i will uploaded the ones they send over to me and those can be made into lists but i will probably create my own as well
+
+In that case, I'd make the requirement even more specific.
+
+You don't just want multiple templates—you want the ability to convert dealer/factory PDFs into checklist templates and then modify them.
+
+Add something like this to the spec:
+
+Future Expansion Requirement
+
+The checklist system must be fully template-driven and support unlimited checklist templates.
+
+The seeded Manufactured Home Trim-Out template is only the initial template. In the future, Willard will receive checklist documents from dealers, manufacturers, communities, and service providers. These checklists may be manually entered into the system as new templates and then customized as needed.
+
+Examples include:
+
+Factory Trim-Out Checklists
+Dealer Delivery Checklists
+Warranty Service Checklists
+Community Move-In Checklists
+Sewer & Water Hookup Checklists
+Underpinning Checklists
+Flooring Installation Checklists
+Asphalt Sealcoating Checklists
+Equipment Maintenance Checklists
+
+The Checklist Templates page should allow creating templates from scratch, duplicating existing templates, editing sections and items, activating/deactivating templates, and attaching any template to a job.
+
+Job checklists must be snapshots of the template at the time they are attached. Future edits to a template must not modify existing job checklists.
+
+The architecture should be generic and not contain any hard-coded assumptions about manufactured homes, trim-out work, skirting, or specific checklist sections.
+
+I'd also add a future backlog item:
+
+Future Feature (Not Part of This Task)
+
+Import Checklist Template from PDF
+
+Upload a PDF checklist and automatically create a checklist template with sections and items extracted from the document. Willard can then review and edit the generated template before saving.
+
+That way when a dealer hands you a 3-page punch list, you can eventually upload it, have the app build the template automatically, make a few edits, and start using it immediately instead of manually typing 50 checklist items. That's probably where you'll end up once you have a dozen different dealers and manufacturers sending you their own forms.

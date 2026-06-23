@@ -1,0 +1,124 @@
+This version is much stronger than the original. If I were approving this for development, I'd call it about 95% complete.
+
+There are only a few things I'd tweak before sending it to Replit:
+
+1. Add a Job Status Override
+
+Sometimes a job isn't progressing because you're waiting on parts.
+
+Add to job_checklists:
+
+statusOverride text null
+
+Examples:
+
+Waiting on Factory Parts
+Weather Delay
+Awaiting Customer
+On Hold
+
+Then on the public page:
+
+Status: Waiting on Factory Parts
+
+instead of simply "42% Complete."
+
+2. Store Full User ID, Not Just Text Name
+
+Instead of:
+
+completedBy text
+
+I'd use:
+
+completedByUserId
+completedByName
+
+This gives you an audit trail later.
+
+If someone changes their display name, historical records stay accurate.
+
+3. Add Section Notes
+
+Right now you have checklist-level publicNotes.
+
+I'd also add:
+
+job_checklist_sections
+- notes text
+
+Example:
+
+Exterior Trim Out
+
+Note:
+Waiting on replacement exterior light fixture.
+
+Much more specific than one giant note field.
+
+4. Future-Proof Share Links
+
+Instead of only:
+
+shareToken uuid
+
+Add:
+
+shareEnabled boolean default true
+
+Later you can disable a link without deleting the checklist.
+
+Useful if a customer relationship goes sideways or a dealer should lose access.
+
+5. Progress Calculation Rule
+
+I would explicitly state:
+
+Progress is calculated using:
+
+Completed Items
+/
+(Active Items - Skipped Items)
+
+rounded to nearest whole number.
+
+Otherwise developers sometimes calculate it differently.
+
+6. Checklist Snapshot (Optional)
+
+One thing I'd strongly consider:
+
+When attaching a template to a job, copy all template items into the job checklist.
+
+Do not reference the template live.
+
+Example:
+
+Template v1
+  Install window screens
+
+Job A attached today
+
+Tomorrow:
+Template edited
+  Install window screens
+  Install door sweep
+
+Job A should not suddenly gain a new task.
+
+The spec mostly implies this already, but I'd explicitly state:
+
+Job checklists are snapshots of templates at the time they are attached. Future template edits do not modify existing job checklists.
+
+That prevents a lot of future bugs.
+
+Other than those few items, I'd green-light these two tasks. Together they solve a real problem for your manufactured-home business:
+
+Crews track work.
+Progress calculates automatically.
+Dealers stop calling.
+Customers can self-serve.
+You have documentation of completed work.
+Later you can add photos and automatic text updates without redesigning the system.
+
+The snapshot requirement is the one thing I'd definitely add before handing it off. That's the detail most developers forget and it becomes painful later.
