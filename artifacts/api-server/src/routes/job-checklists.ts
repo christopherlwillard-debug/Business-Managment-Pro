@@ -396,6 +396,55 @@ router.patch("/:jobId/checklist/items/:itemId/skip", async (req, res) => {
   }
 });
 
+// ── POST /:jobId/checklist/email — generate PDF and email it ──────────────────
+router.post("/:jobId/checklist/email", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+
+    const { email } = req.body;
+    if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ error: "A valid email address is required" });
+    }
+    const toEmail = email.trim();
+
+    const { generateChecklistPdfBuffer } = await import("../lib/generateChecklistPdf.js");
+    const result = await generateChecklistPdfBuffer(jobId);
+    if (!result) return res.status(404).json({ error: "No checklist found for this job" });
+
+    const [jobRow] = await db
+      .select({ title: jobsTable.title })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, jobId));
+
+    const [settings] = await db
+      .select({ companyName: settingsTable.companyName })
+      .from(settingsTable)
+      .limit(1);
+
+    const jobTitle = jobRow?.title ?? "your job";
+    const companyName = settings?.companyName ?? "Your contractor";
+
+    const { sendEmail } = await import("../lib/sendEmail.js");
+    await sendEmail({
+      to: toEmail,
+      subject: `Checklist Report: ${jobTitle}`,
+      html: `<p>Hello,</p><p>Please find the checklist report for <strong>${jobTitle}</strong> attached to this email.</p><p>— ${companyName}</p>`,
+      text: `Hello,\n\nPlease find the checklist report for "${jobTitle}" attached.\n\n— ${companyName}`,
+      attachment: {
+        filename: result.filename,
+        mimeType: "application/pdf",
+        base64Data: result.buffer.toString("base64"),
+      },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to send email" });
+  }
+});
+
 // ── GET /:jobId/checklist/pdf — download completed checklist as signed PDF ─────
 router.get("/:jobId/checklist/pdf", async (req, res) => {
   try {

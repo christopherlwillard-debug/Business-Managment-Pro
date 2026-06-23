@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, X, ClipboardCheck, Plus, Check, Minus, ChevronDown, ChevronUp,
   Share2, ExternalLink, AlertCircle, Loader2, Copy, ToggleLeft, ToggleRight, Trash2,
-  MessageSquare, FileDown,
+  MessageSquare, FileDown, Mail,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -57,7 +57,7 @@ interface Template {
 }
 
 interface JobChecklistPanelProps {
-  job: { id: number; title: string };
+  job: { id: number; title: string; clientEmail?: string | null };
   onClose: () => void;
 }
 
@@ -92,6 +92,9 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -298,6 +301,35 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
     }
   }
 
+  function openEmailForm() {
+    setEmailTo(job.clientEmail ?? "");
+    setShowEmailForm(true);
+  }
+
+  async function handleEmailPdf() {
+    const trimmed = emailTo.trim();
+    if (!trimmed) return;
+    setSendingEmail(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/email`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to send email");
+      }
+      setShowEmailForm(false);
+      toast({ title: "Email sent", description: `Checklist PDF sent to ${trimmed}` });
+    } catch (err: any) {
+      toast({ title: "Failed to send email", description: err?.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
   async function toggleShare() {
     if (!checklist) return;
     try {
@@ -478,19 +510,56 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                 </div>
               )}
 
-              {/* Download PDF */}
+              {/* Download PDF + Email PDF */}
               {canEdit("jobs") && (
-                <div className="px-5 py-3 border-b border-border/50 bg-background">
-                  <button
-                    onClick={handleDownloadPdf}
-                    disabled={downloadingPdf}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                  >
-                    {downloadingPdf
-                      ? <Loader2 className="w-4 h-4 animate-spin" />
-                      : <FileDown className="w-4 h-4" />}
-                    {downloadingPdf ? "Generating PDF…" : "Download as PDF"}
-                  </button>
+                <div className="px-5 py-3 border-b border-border/50 bg-background space-y-2">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={handleDownloadPdf}
+                      disabled={downloadingPdf}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      {downloadingPdf
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <FileDown className="w-4 h-4" />}
+                      {downloadingPdf ? "Generating PDF…" : "Download as PDF"}
+                    </button>
+                    <button
+                      onClick={openEmailForm}
+                      disabled={sendingEmail}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      <Mail className="w-4 h-4" />
+                      Email PDF
+                    </button>
+                  </div>
+                  {showEmailForm && (
+                    <div className="flex items-center gap-2 bg-muted/30 border border-border/60 rounded-xl px-3 py-2">
+                      <input
+                        type="email"
+                        autoFocus
+                        value={emailTo}
+                        onChange={e => setEmailTo(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleEmailPdf(); if (e.key === "Escape") setShowEmailForm(false); }}
+                        placeholder="recipient@email.com"
+                        className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none min-w-0"
+                      />
+                      <button
+                        onClick={() => setShowEmailForm(false)}
+                        className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={handleEmailPdf}
+                        disabled={sendingEmail || !emailTo.trim()}
+                        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                      >
+                        {sendingEmail ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
+                        {sendingEmail ? "Sending…" : "Send"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

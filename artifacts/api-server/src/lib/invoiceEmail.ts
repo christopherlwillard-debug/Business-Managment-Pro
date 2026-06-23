@@ -151,10 +151,17 @@ async function generateInvoicePdf(html: string): Promise<Buffer | null> {
   }
 }
 
+export interface ExtraAttachment {
+  filename: string;
+  mimeType: string;
+  buffer: Buffer;
+}
+
 /**
  * Send an invoice email. Uses SMTP (nodemailer) if fully configured, otherwise
  * falls back to the connected Gmail integration so emails work without any
  * additional SMTP setup. A PDF copy of the invoice is always attached.
+ * Pass `extraAttachments` to include additional files (e.g. a checklist PDF).
  */
 export async function sendInvoiceEmail(
   inv: InvoiceEmailInv,
@@ -162,6 +169,7 @@ export async function sendInvoiceEmail(
   to: string,
   subject: string,
   message?: string,
+  extraAttachments?: ExtraAttachment[],
 ): Promise<void> {
   const html = buildInvoiceEmailHtml(inv, settings, message);
   const total = parseFloat(inv.total ?? "0");
@@ -181,21 +189,135 @@ export async function sendInvoiceEmail(
       auth: { user: settings.smtpUser!, pass: settings.smtpPass! },
     });
 
+    const attachments: nodemailer.SendMailOptions["attachments"] = pdfBuffer
+      ? [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }]
+      : [];
+    for (const extra of extraAttachments ?? []) {
+      attachments.push({ filename: extra.filename, content: extra.buffer, contentType: extra.mimeType });
+    }
+
     await transporter.sendMail({
       from: `"${settings.companyName || "BuildPro"}" <${settings.companyEmail || settings.smtpUser}>`,
       to,
       subject,
       html,
       text,
-      attachments: pdfBuffer ? [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }] : [],
+      attachments,
     });
   } else {
-    await sendEmail({
+    // Gmail integration only supports a single attachment; bundle all PDFs
+    // by sending separate calls if there are extras, or use the first one.
+    // For simplicity: if there are extra attachments, send the invoice PDF first
+    // then append extras as additional sendEmail calls with the same thread context.
+    // Better approach: encode multiple parts via a helper that supports multipart/mixed with N attachments.
+    await sendEmailWithAttachments({
       to,
       subject,
       html,
       text,
-      ...(pdfBuffer ? { attachment: { filename: pdfFilename, mimeType: "application/pdf", base64Data: pdfBuffer.toString("base64") } } : {}),
+      attachments: [
+        ...(pdfBuffer ? [{ filename: pdfFilename, mimeType: "application/pdf", buffer: pdfBuffer }] : []),
+        ...(extraAttachments ?? []).map(e => ({ filename: e.filename, mimeType: e.mimeType, buffer: e.buffer })),
+      ],
     });
+  }
+}
+
+interface MultiAttachment {
+  filename: string;
+  mimeType: string;
+  buffer: Buffer;
+}
+
+async function sendEmailWithAttachments(opts: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  attachments: MultiAttachment[];
+}): Promise<void> {
+  const { to, subject, html, text, attachments } = opts;
+
+  if (attachments.length === 0) {
+    await sendEmail({ to, subject, html, text });
+    return;
+  }
+
+  // Use the first attachment via sendEmail's single-attachment path,
+  // then build a raw multipart/mixed message manually for multiple attachments.
+  if (attachments.length === 1) {
+    const a = attachments[0];
+    await sendEmail({
+      to, subject, html, text,
+      attachment: { filename: a.filename, mimeType: a.mimeType, base64Data: a.buffer.toString("base64") },
+    });
+    return;
+  }
+
+  // Multiple attachments: build a raw RFC 2822 multipart/mixed message
+  function b64url(input: string | Buffer): string {
+    const bytes = typeof input === "string" ? Buffer.from(input, "utf-8") : input;
+    return bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function sanitize(v: string) { return v.replace(/[\r\n]+/g, " ").trim(); }
+
+  const altBoundary = `==ALT${Date.now()}==`;
+  const mixedBoundary = `==MIX${Date.now()}==`;
+
+  const lines: string[] = [
+    `To: ${sanitize(to)}`,
+    `Subject: ${sanitize(subject)}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+    ``,
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    ``,
+    `--${altBoundary}`,
+    `Content-Type: text/plain; charset="UTF-8"`,
+    ``,
+    text,
+    ``,
+    `--${altBoundary}`,
+    `Content-Type: text/html; charset="UTF-8"`,
+    ``,
+    html,
+    ``,
+    `--${altBoundary}--`,
+    ``,
+  ];
+
+  for (const a of attachments) {
+    const safeFilename = sanitize(a.filename);
+    const b64 = a.buffer.toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? a.buffer.toString("base64");
+    lines.push(
+      `--${mixedBoundary}`,
+      `Content-Type: ${a.mimeType}; name="${safeFilename}"`,
+      `Content-Disposition: attachment; filename="${safeFilename}"`,
+      `Content-Transfer-Encoding: base64`,
+      ``,
+      b64,
+      ``,
+    );
+  }
+
+  lines.push(`--${mixedBoundary}--`);
+
+  const { ReplitConnectors } = await import("@replit/connectors-sdk");
+  const connectors = new ReplitConnectors();
+  const raw = b64url(lines.join("\r\n"));
+  const response = await connectors.proxy(
+    "google-mail",
+    "/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ raw }),
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Gmail send failed (${response.status}): ${body}`);
   }
 }

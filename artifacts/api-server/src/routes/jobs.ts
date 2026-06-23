@@ -69,6 +69,7 @@ type JobRow = {
   description: string | null;
   clientId: number | null;
   clientName: string | null;
+  clientEmail: string | null;
   status: string;
   jobType: string | null;
   homeModel: string | null;
@@ -115,6 +116,7 @@ async function getJobWithSubs(jobId: number) {
       description: jobsTable.description,
       clientId: jobsTable.clientId,
       clientName: clientsTable.name,
+      clientEmail: clientsTable.email,
       status: jobsTable.status,
       jobType: jobsTable.jobType,
       homeModel: jobsTable.homeModel,
@@ -202,6 +204,7 @@ router.get("/", async (req, res) => {
         description: jobsTable.description,
         clientId: jobsTable.clientId,
         clientName: clientsTable.name,
+        clientEmail: clientsTable.email,
         status: jobsTable.status,
         jobType: jobsTable.jobType,
         address: jobsTable.address,

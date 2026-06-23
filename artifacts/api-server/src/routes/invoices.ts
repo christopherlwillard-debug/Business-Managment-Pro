@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { launchBrowser } from "../lib/launchBrowser.js";
 import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
+import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
@@ -344,7 +345,20 @@ router.post("/:id/send", async (req, res) => {
     const companyName = mergedSettings.companyName ?? "BuildPro";
     const subjectLine = subject || `Invoice ${inv.invoiceNumber} from ${companyName}`;
 
-    await sendInvoiceEmail(fmt(inv), mergedSettings, to, subjectLine, message);
+    // If this invoice is linked to a job that has a checklist, attach the checklist PDF too
+    const extraAttachments = [];
+    if (inv.jobId) {
+      try {
+        const checklistPdf = await generateChecklistPdfBuffer(inv.jobId as number);
+        if (checklistPdf) {
+          extraAttachments.push({ filename: checklistPdf.filename, mimeType: "application/pdf", buffer: checklistPdf.buffer });
+        }
+      } catch (checklistErr) {
+        console.warn("[invoices/send] Could not generate checklist PDF — sending without it:", checklistErr);
+      }
+    }
+
+    await sendInvoiceEmail(fmt(inv), mergedSettings, to, subjectLine, message, extraAttachments.length ? extraAttachments : undefined);
 
     await db.update(invoicesTable).set({ status: "sent" }).where(eq(invoicesTable.id, id));
 
