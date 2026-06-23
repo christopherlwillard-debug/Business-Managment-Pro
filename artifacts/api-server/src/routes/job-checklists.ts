@@ -498,139 +498,39 @@ router.get("/:jobId/checklist/pdf", async (req, res) => {
     const jobId = parseInt(req.params.jobId);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
 
-    const [jobRow] = await db
-      .select({
-        id: jobsTable.id,
-        title: jobsTable.title,
-        address: jobsTable.address,
-        city: jobsTable.city,
-        state: jobsTable.state,
-        locationName: jobsTable.locationName,
-        clientName: clientsTable.name,
-      })
-      .from(jobsTable)
-      .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
-      .where(eq(jobsTable.id, jobId));
+    const { generateChecklistPdfBuffer } = await import("../lib/generateChecklistPdf.js");
+    const result = await generateChecklistPdfBuffer(jobId);
+    if (!result) return res.status(404).json({ error: "No checklist found for this job" });
 
-    if (!jobRow) return res.status(404).json({ error: "Job not found" });
-
-    const [checklistRow] = await db
-      .select()
-      .from(jobChecklistsTable)
-      .where(eq(jobChecklistsTable.jobId, jobId));
-
-    if (!checklistRow) return res.status(404).json({ error: "No checklist for this job" });
-
-    const checklistData = await buildChecklistResponse(checklistRow.id);
-    if (!checklistData) return res.status(404).json({ error: "Checklist not found" });
-
-    const [template] = await db
-      .select({ name: checklistTemplatesTable.name })
-      .from(checklistTemplatesTable)
-      .where(eq(checklistTemplatesTable.id, checklistRow.templateId));
-
-    const [settings] = await db
-      .select({ companyName: settingsTable.companyName, signatureImage: settingsTable.signatureImage })
-      .from(settingsTable)
-      .limit(1);
-
-    let signatureImageDataUri: string | null = null;
-    if (settings?.signatureImage) {
-      const rawPath = settings.signatureImage;
-      if (rawPath.startsWith("/objects/")) {
-        const objStorage = new ObjectStorageService();
-        const file = await objStorage.getObjectEntityFile(rawPath);
-        const [buf] = await file.download();
-        const [meta] = await file.getMetadata();
-        const mime = (meta.contentType as string | undefined) ?? "image/png";
-        signatureImageDataUri = `data:${mime};base64,${(buf as Buffer).toString("base64")}`;
-      } else if (rawPath.startsWith("/uploads/") || rawPath.startsWith("/api/uploads/")) {
-        const relative = rawPath.startsWith("/api/uploads/") ? rawPath.slice("/api/uploads/".length) : rawPath.slice("/uploads/".length);
-        const uploadsRoot = path.resolve("uploads");
-        const filePath = path.resolve(uploadsRoot, relative);
-        if (filePath.startsWith(uploadsRoot + path.sep) && fs.existsSync(filePath)) {
-          const buf = fs.readFileSync(filePath);
-          const ext = path.extname(filePath).toLowerCase().replace(".", "");
-          const mime = ext === "png" ? "image/png" : (ext === "jpg" || ext === "jpeg") ? "image/jpeg" : "image/png";
-          signatureImageDataUri = `data:${mime};base64,${buf.toString("base64")}`;
-        }
-      }
-    }
-
-    const html = buildChecklistPdfHtml({
-      companyName: settings?.companyName ?? null,
-      jobTitle: jobRow.title ?? "Job",
-      clientName: jobRow.clientName ?? null,
-      locationName: jobRow.locationName ?? null,
-      address: jobRow.address ?? null,
-      city: jobRow.city ?? null,
-      state: jobRow.state ?? null,
-      templateName: template?.name ?? "Checklist",
-      overallPercent: checklistData.overallPercent,
-      completedItems: checklistData.completedItems,
-      totalItems: checklistData.totalItems,
-      publicNotes: checklistData.publicNotes ?? null,
-      sections: checklistData.sections.map(s => ({
-        name: s.name,
-        active: s.active ?? true,
-        notes: s.notes ?? null,
-        items: s.items.map(i => ({
-          title: i.title,
-          completed: i.completed ?? false,
-          skipped: i.skipped ?? false,
-          completedByName: (i as any).completedByName ?? null,
-          completedAt: i.completedAt instanceof Date ? i.completedAt.toISOString() : (i.completedAt ?? null),
-          notes: i.notes ?? null,
-        })),
-      })),
-      signatureImageDataUri,
-      generatedDate: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
-    });
-
-    const browser = await launchBrowser();
-    let pdfBuffer: Buffer;
-    try {
-      const page = await browser.newPage();
-      await page.setRequestInterception(true);
-      page.on("request", (r) => {
-        const u = r.url();
-        if (u.startsWith("data:") || u === "about:blank") r.continue();
-        else r.abort();
-      });
-      await page.setContent(html, { waitUntil: "networkidle0" });
-      pdfBuffer = Buffer.from(await page.pdf({
-        format: "Letter",
-        printBackground: true,
-        margin: { top: "0.5in", bottom: "0.5in", left: "0.5in", right: "0.5in" },
-      }));
-      await page.close();
-    } finally {
-      await browser.close();
-    }
-
-    const safeTitle = (jobRow.title ?? "Checklist").replace(/[^a-z0-9 _-]/gi, "_");
-    const dateStr = new Date().toISOString().slice(0, 10);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="Checklist - ${safeTitle} - ${dateStr}.pdf"`);
-    res.send(pdfBuffer);
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to generate PDF" });
   }
 });
 
-// ── POST /jobs/:jobId/checklist/items/:itemId/photos ──────────────────────────
+// ── POST /:jobId/checklist/items/:itemId/photos ───────────────────────────────
 router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.single("photo"), async (req, res) => {
   try {
+    const jobId = parseInt(req.params.jobId, 10);
     const itemId = parseInt(req.params.itemId, 10);
-    if (isNaN(itemId)) return res.status(400).json({ error: "Invalid itemId" });
+    if (isNaN(jobId) || isNaN(itemId)) return res.status(400).json({ error: "Invalid parameters" });
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+    // Verify item belongs to this job's checklist (ownership check)
     const [item] = await db
-      .select()
+      .select({ id: jobChecklistItemsTable.id, jobChecklistId: jobChecklistItemsTable.jobChecklistId })
       .from(jobChecklistItemsTable)
       .where(eq(jobChecklistItemsTable.id, itemId));
     if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const [checklist] = await db
+      .select({ jobId: jobChecklistsTable.jobId })
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.id, item.jobChecklistId));
+    if (!checklist || checklist.jobId !== jobId) return res.status(403).json({ error: "Item does not belong to this job" });
 
     const objStorage = new ObjectStorageService();
     const objectPath = await objStorage.uploadBufferWithFilename(
@@ -652,17 +552,33 @@ router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.single("photo"
   }
 });
 
-// ── DELETE /jobs/:jobId/checklist/items/:itemId/photos/:photoId ───────────────
+// ── DELETE /:jobId/checklist/items/:itemId/photos/:photoId ────────────────────
 router.delete("/:jobId/checklist/items/:itemId/photos/:photoId", async (req, res) => {
   try {
+    const jobId = parseInt(req.params.jobId, 10);
+    const itemId = parseInt(req.params.itemId, 10);
     const photoId = parseInt(req.params.photoId, 10);
-    if (isNaN(photoId)) return res.status(400).json({ error: "Invalid photoId" });
+    if (isNaN(jobId) || isNaN(itemId) || isNaN(photoId)) return res.status(400).json({ error: "Invalid parameters" });
 
+    // Verify photo belongs to the given item (ownership check)
     const [photo] = await db
       .select()
       .from(jobChecklistItemPhotosTable)
-      .where(eq(jobChecklistItemPhotosTable.id, photoId));
+      .where(and(eq(jobChecklistItemPhotosTable.id, photoId), eq(jobChecklistItemPhotosTable.jobChecklistItemId, itemId)));
     if (!photo) return res.status(404).json({ error: "Photo not found" });
+
+    // Verify item belongs to this job's checklist
+    const [item] = await db
+      .select({ jobChecklistId: jobChecklistItemsTable.jobChecklistId })
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.id, itemId));
+    if (item) {
+      const [checklist] = await db
+        .select({ jobId: jobChecklistsTable.jobId })
+        .from(jobChecklistsTable)
+        .where(eq(jobChecklistsTable.id, item.jobChecklistId));
+      if (!checklist || checklist.jobId !== jobId) return res.status(403).json({ error: "Item does not belong to this job" });
+    }
 
     if (photo.objectPath.startsWith("/objects/")) {
       try {
