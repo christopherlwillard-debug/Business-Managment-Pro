@@ -27,7 +27,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2 } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -91,6 +92,12 @@ interface PlaidTransaction {
   matchedExpenseId: number | null;
   matchedInvoiceId: number | null;
   matchedOtherIncomeId: number | null;
+  matchedExpenseDescription: string | null;
+  matchedExpenseCategory: string | null;
+  matchedExpenseDate: string | null;
+  matchedExpenseVendor: string | null;
+  matchedExpenseAmount: string | null;
+  matchedExpenseJobId: number | null;
 }
 
 interface SyncResult {
@@ -747,10 +754,44 @@ export default function Banking() {
                           <td className="px-4 py-3 text-right">
                             {isFiled ? (
                               <div className="inline-flex items-center gap-2">
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                  {txn.matchedExpenseId ? "Matched ✓" : "Filed ✓"}
-                                </span>
+                                {txn.matchedExpenseId && txn.matchedExpenseDescription ? (
+                                  <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium cursor-default max-w-[180px]">
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                          <span className="truncate">
+                                            {txn.matchedExpenseVendor
+                                              ? `${txn.matchedExpenseVendor} – $${parseFloat(txn.matchedExpenseAmount ?? "0").toFixed(2)}`
+                                              : txn.matchedExpenseDescription}
+                                          </span>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="left" className="max-w-xs p-3 text-left space-y-1">
+                                        <p className="font-semibold text-sm">{txn.matchedExpenseDescription}</p>
+                                        {txn.matchedExpenseVendor && (
+                                          <p className="text-xs opacity-80">Vendor: {txn.matchedExpenseVendor}</p>
+                                        )}
+                                        {txn.matchedExpenseCategory && (
+                                          <p className="text-xs opacity-80">Category: {txn.matchedExpenseCategory}</p>
+                                        )}
+                                        {txn.matchedExpenseDate && (
+                                          <p className="text-xs opacity-80">
+                                            Date: {new Date(txn.matchedExpenseDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                          </p>
+                                        )}
+                                        {txn.matchedExpenseAmount && (
+                                          <p className="text-xs font-medium">Amount: ${parseFloat(txn.matchedExpenseAmount).toFixed(2)}</p>
+                                        )}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                    Filed ✓
+                                  </span>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="sm"

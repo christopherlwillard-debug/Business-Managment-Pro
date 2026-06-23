@@ -6,7 +6,7 @@ import {
   bankTransactionsTable,
 } from "@workspace/db";
 import { expensesTable, otherIncomeTable, invoicesTable } from "@workspace/db/schema";
-import { eq, like, isNotNull, and, gte, lte, notInArray } from "drizzle-orm";
+import { eq, like, isNotNull, and, gte, lte, notInArray, sql } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
@@ -253,8 +253,15 @@ router.get("/transactions", wrapAsync(async (req, res) => {
       matchedExpenseId: bankTransactionsTable.matchedExpenseId,
       matchedInvoiceId: bankTransactionsTable.matchedInvoiceId,
       matchedOtherIncomeId: bankTransactionsTable.matchedOtherIncomeId,
+      matchedExpenseDescription: expensesTable.description,
+      matchedExpenseCategory: expensesTable.category,
+      matchedExpenseDate: expensesTable.date,
+      matchedExpenseVendor: expensesTable.vendor,
+      matchedExpenseAmount: expensesTable.amount,
+      matchedExpenseJobId: expensesTable.jobId,
     })
     .from(bankTransactionsTable)
+    .leftJoin(expensesTable, eq(bankTransactionsTable.matchedExpenseId, expensesTable.id))
     .where(
       and(
         isNotNull(bankTransactionsTable.plaidTransactionId),
