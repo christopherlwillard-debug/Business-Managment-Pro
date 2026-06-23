@@ -9,6 +9,7 @@ import {
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
   jobChecklistItemPhotosTable,
+  jobChecklistItemPartsTable,
   jobsTable,
   clientsTable,
   settingsTable,
@@ -16,11 +17,7 @@ import {
 import { eq, asc, and, inArray } from "drizzle-orm";
 import { getRequestUser } from "./guards";
 import crypto from "crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { launchBrowser } from "../lib/launchBrowser.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { buildChecklistPdfHtml } from "../lib/checklistPdfTemplate.js";
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -38,6 +35,26 @@ function toServingUrl(objectPath: string): string {
 }
 
 const router = Router();
+
+// ── Helper: recalc parent item's completed from its parts ─────────────────────
+async function recalcItemFromParts(itemId: number): Promise<void> {
+  const parts = await db
+    .select()
+    .from(jobChecklistItemPartsTable)
+    .where(eq(jobChecklistItemPartsTable.jobChecklistItemId, itemId));
+  if (parts.length === 0) {
+    await db
+      .update(jobChecklistItemsTable)
+      .set({ completed: false, completedAt: null, completedByUserId: null, completedByName: null })
+      .where(eq(jobChecklistItemsTable.id, itemId));
+  } else {
+    const allDone = parts.every(p => p.completed);
+    await db
+      .update(jobChecklistItemsTable)
+      .set({ completed: allDone, completedAt: allDone ? new Date() : null, completedByUserId: null, completedByName: null })
+      .where(eq(jobChecklistItemsTable.id, itemId));
+  }
+}
 
 // ── Helper: recalculate section percentComplete + update checklist.updatedAt ──
 async function recalcSection(sectionId: number, checklistId: number) {
@@ -86,14 +103,23 @@ export async function buildChecklistResponse(checklistId: number) {
     .orderBy(asc(jobChecklistItemsTable.sortOrder));
 
   const itemIds = items.map(i => i.id);
-  const photos = itemIds.length > 0
-    ? await db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, itemIds))
-    : [];
+  const [photos, parts] = itemIds.length > 0
+    ? await Promise.all([
+        db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, itemIds)),
+        db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, itemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder)),
+      ])
+    : [[], []];
 
   const photosByItemId = new Map<number, Array<{ id: number; url: string; createdAt: Date }>>();
   for (const p of photos) {
     if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
     photosByItemId.get(p.jobChecklistItemId)!.push({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt });
+  }
+
+  const partsByItemId = new Map<number, typeof parts>();
+  for (const p of parts) {
+    if (!partsByItemId.has(p.jobChecklistItemId)) partsByItemId.set(p.jobChecklistItemId, []);
+    partsByItemId.get(p.jobChecklistItemId)!.push(p);
   }
 
   const activeItems = items.filter(i => {
@@ -115,6 +141,7 @@ export async function buildChecklistResponse(checklistId: number) {
       items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
         ...i,
         photos: photosByItemId.get(i.id) ?? [],
+        parts: partsByItemId.get(i.id) ?? [],
       })),
     })),
   };
@@ -508,6 +535,129 @@ router.get("/:jobId/checklist/pdf", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
+// ── POST /:jobId/checklist/items/:itemId/parts — create a part ────────────────
+router.post("/:jobId/checklist/items/:itemId/parts", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    if (isNaN(jobId) || isNaN(itemId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
+
+    const [item] = await db.select().from(jobChecklistItemsTable)
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const existing = await db.select({ id: jobChecklistItemPartsTable.id })
+      .from(jobChecklistItemPartsTable)
+      .where(eq(jobChecklistItemPartsTable.jobChecklistItemId, itemId));
+    if (existing.length >= 5) return res.status(400).json({ error: "Maximum of 5 parts per item" });
+
+    const { label } = req.body;
+    const sortOrder = existing.length;
+    await db.insert(jobChecklistItemPartsTable)
+      .values({ jobChecklistItemId: itemId, label: label ?? `Part ${existing.length + 1}`, sortOrder });
+
+    // If this is the first part, reset item to incomplete and recalc section
+    if (existing.length === 0) {
+      await db.update(jobChecklistItemsTable)
+        .set({ completed: false, completedAt: null, completedByUserId: null, completedByName: null })
+        .where(eq(jobChecklistItemsTable.id, itemId));
+      await recalcSection(item.jobChecklistSectionId, checklist.id);
+    }
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.status(201).json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create part" });
+  }
+});
+
+// ── PATCH /:jobId/checklist/items/:itemId/parts/:partId — toggle/rename ───────
+router.patch("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    const partId = parseInt(req.params.partId, 10);
+    if (isNaN(jobId) || isNaN(itemId) || isNaN(partId)) return res.status(400).json({ error: "Invalid parameters" });
+    const user = getRequestUser(req);
+
+    const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
+
+    const [item] = await db.select().from(jobChecklistItemsTable)
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const [part] = await db.select().from(jobChecklistItemPartsTable)
+      .where(and(eq(jobChecklistItemPartsTable.id, partId), eq(jobChecklistItemPartsTable.jobChecklistItemId, itemId)));
+    if (!part) return res.status(404).json({ error: "Part not found" });
+
+    const { completed, label } = req.body;
+    const updates: Record<string, unknown> = {};
+    if (completed !== undefined) {
+      updates.completed = completed;
+      if (completed) {
+        updates.completedAt = new Date();
+        updates.completedByUserId = user?.id ?? null;
+        updates.completedByName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null;
+      } else {
+        updates.completedAt = null;
+        updates.completedByUserId = null;
+        updates.completedByName = null;
+      }
+    }
+    if (label !== undefined) updates.label = label;
+
+    await db.update(jobChecklistItemPartsTable).set(updates).where(eq(jobChecklistItemPartsTable.id, partId));
+
+    if (completed !== undefined) {
+      await recalcItemFromParts(itemId);
+      await recalcSection(item.jobChecklistSectionId, checklist.id);
+    }
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update part" });
+  }
+});
+
+// ── DELETE /:jobId/checklist/items/:itemId/parts/:partId ──────────────────────
+router.delete("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    const partId = parseInt(req.params.partId, 10);
+    if (isNaN(jobId) || isNaN(itemId) || isNaN(partId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
+
+    const [item] = await db.select().from(jobChecklistItemsTable)
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const [part] = await db.select().from(jobChecklistItemPartsTable)
+      .where(and(eq(jobChecklistItemPartsTable.id, partId), eq(jobChecklistItemPartsTable.jobChecklistItemId, itemId)));
+    if (!part) return res.status(404).json({ error: "Part not found" });
+
+    await db.delete(jobChecklistItemPartsTable).where(eq(jobChecklistItemPartsTable.id, partId));
+
+    await recalcItemFromParts(itemId);
+    await recalcSection(item.jobChecklistSectionId, checklist.id);
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete part" });
   }
 });
 

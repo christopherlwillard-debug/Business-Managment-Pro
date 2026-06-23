@@ -6,6 +6,7 @@ import {
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
   jobChecklistItemPhotosTable,
+  jobChecklistItemPartsTable,
   jobsTable,
   clientsTable,
   checklistTemplatesTable,
@@ -118,12 +119,15 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     }
   }
 
-  // ── Fetch photos for all checklist items ─────────────────────────────────
+  // ── Fetch photos and parts for all checklist items ───────────────────────
   const allItems = checklistData.sections.flatMap(s => s.items);
   const allItemIds = allItems.map(i => i.id);
-  const rawPhotos = allItemIds.length > 0
-    ? await db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds))
-    : [];
+  const [rawPhotos, rawParts] = allItemIds.length > 0
+    ? await Promise.all([
+        db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds)),
+        db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder)),
+      ])
+    : [[], []];
 
   // Resolve each photo to a base64 data URI for embedding in the PDF
   const objStorage = new ObjectStorageService();
@@ -146,6 +150,12 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     if (!uri) continue;
     if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
     photosByItemId.get(p.jobChecklistItemId)!.push(uri);
+  }
+
+  const partsByItemId = new Map<number, Array<{ label: string; completed: boolean; completedByName: string | null }>>();
+  for (const p of rawParts) {
+    if (!partsByItemId.has(p.jobChecklistItemId)) partsByItemId.set(p.jobChecklistItemId, []);
+    partsByItemId.get(p.jobChecklistItemId)!.push({ label: p.label, completed: p.completed, completedByName: p.completedByName ?? null });
   }
 
   const html = buildChecklistPdfHtml({
@@ -173,6 +183,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
         completedAt: i.completedAt instanceof Date ? i.completedAt.toISOString() : (i.completedAt ?? null),
         notes: i.notes ?? null,
         photos: photosByItemId.get(i.id) ?? [],
+        parts: partsByItemId.get(i.id) ?? [],
       })),
     })),
     signatureImageDataUri,

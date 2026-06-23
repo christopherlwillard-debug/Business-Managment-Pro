@@ -15,6 +15,15 @@ interface ChecklistItemPhoto {
   url: string;
 }
 
+interface ChecklistItemPart {
+  id: number;
+  label: string;
+  sortOrder: number;
+  completed: boolean;
+  completedAt: string | null;
+  completedByName: string | null;
+}
+
 interface ChecklistItem {
   id: number;
   title: string;
@@ -25,6 +34,7 @@ interface ChecklistItem {
   notes: string | null;
   sortOrder: number;
   photos: ChecklistItemPhoto[];
+  parts: ChecklistItemPart[];
 }
 
 interface ChecklistSection {
@@ -105,6 +115,11 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [uploadingPhotoFor, setUploadingPhotoFor] = useState<number | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [deletingPhoto, setDeletingPhoto] = useState<number | null>(null);
+  const [splittingItem, setSplittingItem] = useState<number | null>(null);
+  const [partLabelDraft, setPartLabelDraft] = useState<Record<number, string>>({});
+  const [togglingPart, setTogglingPart] = useState<number | null>(null);
+  const [deletingPart, setDeletingPart] = useState<number | null>(null);
+  const [addingPartTo, setAddingPartTo] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -385,6 +400,101 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       toast({ title: "Failed to delete photo", variant: "destructive" });
     } finally {
       setDeletingPhoto(null);
+    }
+  }
+
+  async function handleSplitItem(item: ChecklistItem) {
+    if (splittingItem !== null) return;
+    setSplittingItem(item.id);
+    try {
+      await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}/parts`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Part 1" }),
+      });
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}/parts`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Part 2" }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to split item", variant: "destructive" });
+    } finally {
+      setSplittingItem(null);
+    }
+  }
+
+  async function handleTogglePart(item: ChecklistItem, part: ChecklistItemPart) {
+    if (togglingPart !== null) return;
+    setTogglingPart(part.id);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}/parts/${part.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completed: !part.completed }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to update part", variant: "destructive" });
+    } finally {
+      setTogglingPart(null);
+    }
+  }
+
+  async function handleRenamePart(item: ChecklistItem, partId: number, label: string) {
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}/parts/${partId}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+      setPartLabelDraft(prev => { const next = { ...prev }; delete next[partId]; return next; });
+    } catch {
+      toast({ title: "Failed to rename part", variant: "destructive" });
+    }
+  }
+
+  async function handleDeletePart(item: ChecklistItem, partId: number) {
+    setDeletingPart(partId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}/parts/${partId}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+      setPartLabelDraft(prev => { const next = { ...prev }; delete next[partId]; return next; });
+    } catch {
+      toast({ title: "Failed to delete part", variant: "destructive" });
+    } finally {
+      setDeletingPart(null);
+    }
+  }
+
+  async function handleAddPart(item: ChecklistItem) {
+    setAddingPartTo(item.id);
+    try {
+      const nextNum = item.parts.length + 1;
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}/parts`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: `Part ${nextNum}` }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to add part", variant: "destructive" });
+    } finally {
+      setAddingPartTo(null);
     }
   }
 
@@ -674,8 +784,8 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                             >
                               {/* Checkbox */}
                               <button
-                                onClick={() => canEdit("jobs") && toggleItem(item, section.id)}
-                                disabled={updatingItem === item.id || item.skipped || !canEdit("jobs")}
+                                onClick={() => canEdit("jobs") && !item.parts.length && toggleItem(item, section.id)}
+                                disabled={updatingItem === item.id || item.skipped || !canEdit("jobs") || item.parts.length > 0}
                                 className={`w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0 mt-0.5 transition-all ${
                                   item.skipped
                                     ? "border-muted bg-muted"
@@ -697,11 +807,16 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                               <div className="flex-1 min-w-0">
                                 <p
                                   className={`text-xs leading-5 ${
-                                    item.skipped ? "line-through text-muted-foreground" : item.completed ? "line-through text-muted-foreground" : "text-foreground"
-                                  } ${canEdit("jobs") && !item.skipped ? "cursor-pointer" : ""}`}
-                                  onClick={() => canEdit("jobs") && !item.skipped && toggleItem(item, section.id)}
+                                    item.skipped ? "line-through text-muted-foreground" : item.completed && !item.parts.length ? "line-through text-muted-foreground" : "text-foreground"
+                                  } ${canEdit("jobs") && !item.skipped && !item.parts.length ? "cursor-pointer" : ""}`}
+                                  onClick={() => canEdit("jobs") && !item.skipped && !item.parts.length && toggleItem(item, section.id)}
                                 >
                                   {item.title}
+                                  {item.parts.length > 0 && (
+                                    <span className="ml-1.5 text-[10px] font-bold text-muted-foreground tabular-nums">
+                                      {item.parts.filter(p => p.completed).length}/{item.parts.length}
+                                    </span>
+                                  )}
                                 </p>
                                 {item.completed && item.completedByName && (
                                   <p className="text-[10px] text-emerald-600">
@@ -779,6 +894,69 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                     )}
                                   </div>
                                 )}
+                                {/* Parts */}
+                                {item.parts.length > 0 && (
+                                  <div className="mt-1.5 space-y-0.5">
+                                    {item.parts.map(part => (
+                                      <div key={part.id} className="flex items-center gap-1.5 pl-0.5">
+                                        <button
+                                          onClick={() => canEdit("jobs") && handleTogglePart(item, part)}
+                                          disabled={togglingPart === part.id || !canEdit("jobs")}
+                                          className={`w-4 h-4 rounded flex items-center justify-center border-2 flex-shrink-0 transition-all ${
+                                            part.completed
+                                              ? "bg-emerald-500 border-emerald-500"
+                                              : "border-muted-foreground/30 hover:border-emerald-400"
+                                          }`}
+                                        >
+                                          {togglingPart === part.id
+                                            ? <Loader2 className="w-2 h-2 animate-spin text-muted-foreground" />
+                                            : part.completed
+                                            ? <Check className="w-2 h-2 text-white" />
+                                            : null}
+                                        </button>
+                                        <input
+                                          type="text"
+                                          value={partLabelDraft[part.id] ?? part.label}
+                                          onChange={e => setPartLabelDraft(prev => ({ ...prev, [part.id]: e.target.value }))}
+                                          onBlur={() => {
+                                            const draft = partLabelDraft[part.id];
+                                            if (draft !== undefined && draft !== part.label) {
+                                              handleRenamePart(item, part.id, draft.trim() || part.label);
+                                            }
+                                          }}
+                                          onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                                          readOnly={!canEdit("jobs")}
+                                          className={`flex-1 text-[11px] bg-transparent text-foreground min-w-0 focus:outline-none border-b border-transparent focus:border-emerald-400/60 ${
+                                            part.completed ? "line-through text-muted-foreground" : ""
+                                          } ${canEdit("jobs") ? "hover:border-muted-foreground/20" : ""}`}
+                                        />
+                                        {canEdit("jobs") && (
+                                          <button
+                                            onClick={() => handleDeletePart(item, part.id)}
+                                            disabled={deletingPart === part.id}
+                                            className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-muted-foreground/40 hover:text-destructive transition-colors"
+                                          >
+                                            {deletingPart === part.id
+                                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              : <X className="w-2.5 h-2.5" />}
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {canEdit("jobs") && item.parts.length < 5 && (
+                                      <button
+                                        onClick={() => handleAddPart(item)}
+                                        disabled={addingPartTo === item.id}
+                                        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-emerald-600 transition-colors pl-0.5 mt-0.5"
+                                      >
+                                        {addingPartTo === item.id
+                                          ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                          : <Plus className="w-2.5 h-2.5" />}
+                                        Add part
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
                               {/* Note icon + Camera + N/A toggle */}
@@ -807,7 +985,17 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                       : <Camera className="w-3 h-3" />}
                                   </button>
                                 )}
-                                {canEdit("jobs") && !item.completed && (
+                                {canEdit("jobs") && !item.skipped && item.parts.length === 0 && (
+                                  <button
+                                    onClick={() => handleSplitItem(item)}
+                                    disabled={splittingItem === item.id}
+                                    title="Split into parts"
+                                    className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-muted text-muted-foreground hover:bg-muted/30 transition-colors mt-0.5"
+                                  >
+                                    {splittingItem === item.id ? <Loader2 className="w-3 h-3 animate-spin inline" /> : "Split"}
+                                  </button>
+                                )}
+                                {canEdit("jobs") && !item.completed && !item.parts.length && (
                                   <button
                                     onClick={() => toggleSkip(item)}
                                     disabled={updatingItem === item.id}

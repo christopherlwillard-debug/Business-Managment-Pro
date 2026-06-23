@@ -70,6 +70,18 @@ export const jobChecklistItemPhotosTable = pgTable("job_checklist_item_photos", 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const jobChecklistItemPartsTable = pgTable("job_checklist_item_parts", {
+  id: serial("id").primaryKey(),
+  jobChecklistItemId: integer("job_checklist_item_id").notNull().references(() => jobChecklistItemsTable.id, { onDelete: "cascade" }),
+  label: text("label").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  completed: boolean("completed").notNull().default(false),
+  completedAt: timestamp("completed_at"),
+  completedByUserId: text("completed_by_user_id"),
+  completedByName: text("completed_by_name"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type ChecklistTemplate = typeof checklistTemplatesTable.$inferSelect;
 export type ChecklistTemplateSection = typeof checklistTemplateSectionsTable.$inferSelect;
 export type ChecklistTemplateItem = typeof checklistTemplateItemsTable.$inferSelect;
