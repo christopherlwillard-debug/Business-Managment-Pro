@@ -86,6 +86,7 @@
     "leaflet": "^1.9.4",
     "nanoid": "^5.1.11",
     "react-leaflet": "^5.0.0",
-    "react-plaid-link": "^4.1.1"
+    "react-plaid-link": "^4.1.1",
+    "signature_pad": "^5.1.3"
   }
 }

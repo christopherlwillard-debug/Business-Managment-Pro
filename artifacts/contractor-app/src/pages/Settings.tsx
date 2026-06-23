@@ -17,6 +17,7 @@ import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
 import { useToast } from "@/hooks/use-toast";
 import { FEATURE_OPTIONS } from "@/lib/featureOptions";
+import { SignaturePad } from "@/components/SignaturePad";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1818,13 +1819,10 @@ export default function Settings() {
                 <CardDescription>Upload your signature once — it auto-embeds at the bottom of every exported checklist PDF.</CardDescription>
               </CardHeader>
               <CardContent className="p-6">
-                <LogoUpload
-                  logoUrl={signatureUrl}
-                  onUploaded={url => setSignatureUrl(url)}
+                <SignaturePad
+                  savedUrl={signatureUrl}
+                  onSaved={url => setSignatureUrl(url)}
                   onRemoved={() => setSignatureUrl(null)}
-                  uploadPath="/api/settings/signature"
-                  deletePath="/api/settings/signature"
-                  responseKey="signatureImage"
                 />
               </CardContent>
             </Card>
