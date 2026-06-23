@@ -6,7 +6,7 @@ import {
   bankTransactionsTable,
 } from "@workspace/db";
 import { expensesTable, otherIncomeTable, invoicesTable } from "@workspace/db/schema";
-import { eq, like, isNotNull, and, gte } from "drizzle-orm";
+import { eq, like, isNotNull, and, gte, lte, notInArray } from "drizzle-orm";
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
@@ -546,6 +546,106 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
     }
     res.status(201).json(result);
   }
+}));
+
+router.get("/expenses/unmatched", wrapAsync(async (req, res) => {
+  const { amount, dateRange } = req.query as { amount?: string; dateRange?: string };
+
+  const matchedRows = await db
+    .select({ id: bankTransactionsTable.matchedExpenseId })
+    .from(bankTransactionsTable)
+    .where(isNotNull(bankTransactionsTable.matchedExpenseId));
+
+  const matchedIds = matchedRows
+    .map((r) => r.id)
+    .filter((id): id is number => id !== null);
+
+  const conditions = [];
+
+  if (matchedIds.length > 0) {
+    conditions.push(notInArray(expensesTable.id, matchedIds));
+  }
+
+  if (amount) {
+    const amt = parseFloat(amount);
+    if (!isNaN(amt)) {
+      const low = String((amt * 0.90).toFixed(2));
+      const high = String((amt * 1.10).toFixed(2));
+      conditions.push(gte(expensesTable.amount, low));
+      conditions.push(lte(expensesTable.amount, high));
+    }
+  }
+
+  if (dateRange) {
+    const days = parseInt(dateRange, 10) || 30;
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    conditions.push(gte(expensesTable.date, from));
+  }
+
+  const expenses = await db
+    .select({
+      id: expensesTable.id,
+      date: expensesTable.date,
+      description: expensesTable.description,
+      category: expensesTable.category,
+      amount: expensesTable.amount,
+      vendor: expensesTable.vendor,
+      jobId: expensesTable.jobId,
+    })
+    .from(expensesTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(expensesTable.date);
+
+  res.json(expenses);
+}));
+
+router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => {
+  const txnId = parseInt(String(req.params.txnId), 10);
+  if (isNaN(txnId)) {
+    res.status(400).json({ error: "Invalid transaction ID" });
+    return;
+  }
+
+  const { expenseId } = req.body as { expenseId?: number };
+  if (!expenseId || isNaN(Number(expenseId))) {
+    res.status(400).json({ error: "expenseId is required" });
+    return;
+  }
+
+  const [txn] = await db
+    .select()
+    .from(bankTransactionsTable)
+    .where(eq(bankTransactionsTable.id, txnId));
+
+  if (!txn) {
+    res.status(404).json({ error: "Transaction not found" });
+    return;
+  }
+
+  if (txn.status === "matched") {
+    res.status(409).json({ error: "Transaction is already matched" });
+    return;
+  }
+
+  const [expense] = await db
+    .select({ id: expensesTable.id })
+    .from(expensesTable)
+    .where(eq(expensesTable.id, Number(expenseId)));
+
+  if (!expense) {
+    res.status(404).json({ error: "Expense not found" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(bankTransactionsTable)
+    .set({ status: "matched", matchedExpenseId: Number(expenseId) })
+    .where(eq(bankTransactionsTable.id, txnId))
+    .returning();
+
+  res.json(updated);
 }));
 
 router.delete("/connection", wrapAsync(async (req, res) => {

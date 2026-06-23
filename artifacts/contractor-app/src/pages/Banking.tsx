@@ -27,7 +27,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -151,6 +151,16 @@ interface FileIncomeForm {
   jobId: string;
 }
 
+interface UnmatchedExpense {
+  id: number;
+  date: string;
+  description: string;
+  category: string;
+  amount: string;
+  vendor: string | null;
+  jobId: number | null;
+}
+
 function formatCurrency(amount: number | string | null | undefined, currency = "USD") {
   if (amount == null) return "—";
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -200,6 +210,10 @@ export default function Banking() {
     businessLine: "",
     notes: "",
   });
+
+  // Match to existing expense
+  const [matchingTxn, setMatchingTxn] = useState<PlaidTransaction | null>(null);
+  const [matchExpenseSearch, setMatchExpenseSearch] = useState("");
 
   // Income filing
   const [incomeFilingTxn, setIncomeFilingTxn] = useState<PlaidTransaction | null>(null);
@@ -256,6 +270,16 @@ export default function Banking() {
     queryFn: () => apiFetch<UnpaidInvoice[]>("/api/invoices?status=sent"),
     enabled: !!incomeFilingTxn,
     staleTime: 60_000,
+  });
+
+  const { data: unmatchedExpenses, isLoading: unmatchedExpensesLoading } = useQuery<UnmatchedExpense[]>({
+    queryKey: ["unmatched-expenses", matchingTxn?.amount],
+    queryFn: () => {
+      const amt = matchingTxn?.amount ?? "";
+      return apiFetch<UnmatchedExpense[]>(`/api/plaid/expenses/unmatched?amount=${encodeURIComponent(amt)}&dateRange=90`);
+    },
+    enabled: !!matchingTxn,
+    staleTime: 0,
   });
 
   const getLinkTokenMutation = useMutation({
@@ -320,6 +344,22 @@ export default function Banking() {
       toast({ title: "Expense filed", description: "Transaction has been recorded as an expense." });
     },
     onError: (err: Error) => toast({ title: "Failed to file expense", description: err.message, variant: "destructive" }),
+  });
+
+  const matchExpenseMutation = useMutation({
+    mutationFn: ({ txnId, expenseId }: { txnId: number; expenseId: number }) =>
+      apiFetch(`/api/plaid/transactions/${txnId}/match-expense`, {
+        method: "POST",
+        body: JSON.stringify({ expenseId }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+      setMatchingTxn(null);
+      setMatchExpenseSearch("");
+      toast({ title: "Transaction matched", description: "Bank transaction linked to existing expense." });
+    },
+    onError: (err: Error) => toast({ title: "Match failed", description: err.message, variant: "destructive" }),
   });
 
   const fileAsIncomeMutation = useMutation({
@@ -711,15 +751,29 @@ export default function Banking() {
                                 File as Income
                               </Button>
                             ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs px-2.5"
-                                onClick={() => openFilingSheet(txn)}
-                              >
-                                <Receipt className="w-3 h-3 mr-1" />
-                                File as Expense
-                              </Button>
+                              <div className="flex flex-col items-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs px-2.5"
+                                  onClick={() => openFilingSheet(txn)}
+                                >
+                                  <Receipt className="w-3 h-3 mr-1" />
+                                  File as Expense
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs px-2.5 text-blue-700 border-blue-300 hover:bg-blue-50"
+                                  onClick={() => {
+                                    setMatchingTxn(txn);
+                                    setMatchExpenseSearch("");
+                                  }}
+                                >
+                                  <Link2 className="w-3 h-3 mr-1" />
+                                  Match to Expense
+                                </Button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -882,6 +936,121 @@ export default function Banking() {
               </Button>
             </SheetFooter>
           </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Match to Expense Sheet ───────────────────────────────────────────── */}
+      <Sheet open={!!matchingTxn} onOpenChange={(open) => { if (!open) { setMatchingTxn(null); setMatchExpenseSearch(""); } }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-blue-600" />
+              Match to Expense
+            </SheetTitle>
+            <SheetDescription>
+              {matchingTxn && (
+                <>
+                  {new Date(matchingTxn.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  {" · "}
+                  <span className="font-medium">{formatCurrency(parseFloat(matchingTxn.amount))}</span>
+                  {" — "}
+                  {matchingTxn.description}
+                </>
+              )}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-5 space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="me-search">Search expenses</Label>
+              <Input
+                id="me-search"
+                placeholder="Name, category, vendor…"
+                value={matchExpenseSearch}
+                onChange={(e) => setMatchExpenseSearch(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            {unmatchedExpensesLoading ? (
+              <div className="space-y-2">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-14 bg-muted rounded animate-pulse" />
+                ))}
+              </div>
+            ) : !unmatchedExpenses || unmatchedExpenses.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-6 text-center">
+                No unmatched expenses found near this amount.
+                <br />
+                <span className="text-xs mt-1 block">Try "File as Expense" to create a new one.</span>
+              </div>
+            ) : (
+              (() => {
+                const search = matchExpenseSearch.toLowerCase();
+                const filtered = unmatchedExpenses.filter((exp) =>
+                  !search ||
+                  exp.description.toLowerCase().includes(search) ||
+                  exp.category.toLowerCase().includes(search) ||
+                  (exp.vendor ?? "").toLowerCase().includes(search)
+                );
+                return filtered.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">No results for "{matchExpenseSearch}"</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {filtered.length} expense{filtered.length !== 1 ? "s" : ""}
+                      {matchingTxn && ` near ${formatCurrency(parseFloat(matchingTxn.amount))}`}
+                    </p>
+                    {filtered.map((exp) => (
+                      <button
+                        key={exp.id}
+                        type="button"
+                        disabled={matchExpenseMutation.isPending}
+                        onClick={() => {
+                          if (!matchingTxn) return;
+                          matchExpenseMutation.mutate({ txnId: matchingTxn.id, expenseId: exp.id });
+                        }}
+                        className="w-full text-left rounded-lg border border-input px-4 py-3 hover:bg-blue-50 hover:border-blue-300 transition-colors disabled:opacity-50 group"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{exp.description}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {new Date(exp.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              {" · "}{exp.category}
+                              {exp.vendor ? ` · ${exp.vendor}` : ""}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold tabular-nums shrink-0 group-hover:text-blue-700">
+                            {formatCurrency(parseFloat(exp.amount))}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()
+            )}
+
+            {matchExpenseMutation.isPending && (
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                Linking…
+              </div>
+            )}
+          </div>
+
+          <SheetFooter className="mt-6">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => { setMatchingTxn(null); setMatchExpenseSearch(""); }}
+              disabled={matchExpenseMutation.isPending}
+            >
+              Cancel
+            </Button>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
 
