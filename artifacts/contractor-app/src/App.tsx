@@ -40,6 +40,7 @@ const WebsiteEditor = lazy(() => import("./pages/website/WebsiteEditor"));
 const PublicSite = lazy(() => import("./pages/website/PublicSite"));
 const AdminErrorLog = lazy(() => import("./pages/AdminErrorLog"));
 const ChecklistTemplates = lazy(() => import("./pages/ChecklistTemplates"));
+const JobStatusPage = lazy(() => import("./pages/JobStatusPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -343,6 +344,7 @@ function Router() {
       <Switch>
         <Route path="/portal/:token" component={SubcontractorPortal} />
         <Route path="/sub-login" component={SubLogin} />
+        <Route path="/status/:token" component={JobStatusPage} />
         <Route path="/pay/:payToken" component={Pay} />
         <Route path="/site/:slug/:page" component={PublicSite} />
         <Route path="/site/:slug" component={PublicSite} />

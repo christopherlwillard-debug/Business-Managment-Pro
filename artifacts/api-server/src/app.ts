@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import router from "./routes";
 import squareWebhookRouter from "./routes/square-webhook";
+import publicStatusRouter from "./routes/public-status";
 
 const app: Express = express();
 
@@ -14,6 +15,10 @@ app.use("/api/webhooks/square", squareWebhookRouter);
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+
+// Public routes — no auth required
+app.use("/api/public", publicStatusRouter);
+
 app.use(authMiddleware);
 
 app.use("/api", router);
