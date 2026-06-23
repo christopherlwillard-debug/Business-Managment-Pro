@@ -394,26 +394,36 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                 )}
               </div>
 
-              {/* Share / status link */}
+              {/* Share Progress Link */}
               {canEdit("jobs") && (
-                <div className="px-5 py-3 border-b border-border/50 bg-background flex items-center gap-3">
-                  <button
-                    onClick={toggleShare}
-                    className="flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {checklist.shareEnabled
-                      ? <ToggleRight className="w-5 h-5 text-emerald-500" />
-                      : <ToggleLeft className="w-5 h-5 text-muted-foreground/50" />}
-                    Public link {checklist.shareEnabled ? "on" : "off"}
-                  </button>
-                  {checklist.shareEnabled && (
+                <div className="px-5 py-3 border-b border-border/50 bg-background space-y-2">
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={copyStatusLink}
-                      className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-muted/40 transition-colors"
+                      onClick={toggleShare}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copied ? "Copied!" : "Copy Link"}
+                      {checklist.shareEnabled
+                        ? <ToggleRight className="w-5 h-5 text-emerald-500" />
+                        : <ToggleLeft className="w-5 h-5 text-muted-foreground/50" />}
+                      Share Progress Link
                     </button>
+                    <span className={`ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${checklist.shareEnabled ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+                      {checklist.shareEnabled ? "ON" : "OFF"}
+                    </span>
+                  </div>
+                  {checklist.shareEnabled && (
+                    <div className="flex items-center gap-2 bg-muted/30 border border-border/60 rounded-xl px-3 py-2">
+                      <span className="flex-1 text-[11px] text-muted-foreground font-mono truncate">
+                        {`${window.location.origin}${BASE}/status/${checklist.shareToken}`}
+                      </span>
+                      <button
+                        onClick={copyStatusLink}
+                        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs font-medium text-foreground hover:bg-muted/40 transition-colors"
+                      >
+                        {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                        {copied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

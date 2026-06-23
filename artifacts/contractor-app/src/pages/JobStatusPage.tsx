@@ -27,7 +27,7 @@ type StatusSection = {
 type StatusData = {
   jobTitle: string;
   location: string | null;
-  locationName: string | null;
+  dealerName: string | null;
   customerName: string | null;
   templateName: string;
   statusOverride: string | null;
@@ -43,6 +43,13 @@ function formatDate(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) +
+    " at " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 function StatusLabel({ pct, override }: { pct: number; override: string | null }) {
@@ -207,8 +214,8 @@ export default function JobStatusPage() {
           <h1 className="text-xl font-bold text-slate-900 leading-tight mb-1">{data.jobTitle}</h1>
 
           <div className="space-y-0.5 mb-3">
-            {data.locationName && (
-              <p className="text-sm text-slate-600">{data.locationName}</p>
+            {data.dealerName && (
+              <p className="text-sm text-slate-600">Dealer: <span className="font-medium text-slate-700">{data.dealerName}</span></p>
             )}
             {data.location && (
               <p className="text-sm text-slate-500">{data.location}</p>
@@ -269,7 +276,7 @@ export default function JobStatusPage() {
       {/* Footer */}
       <div className="max-w-lg mx-auto px-4 pb-8 text-center">
         <p className="text-xs text-slate-400">
-          Last updated {formatDate(data.updatedAt)}
+          Last updated {formatDateTime(data.updatedAt)}
         </p>
         <p className="text-xs text-slate-300 mt-1">Willard's General Contracting</p>
       </div>

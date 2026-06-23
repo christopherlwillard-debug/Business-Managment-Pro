@@ -68,7 +68,7 @@ router.get("/status/:token", async (req, res) => {
     res.json({
       jobTitle: row.jobTitle,
       location: locationParts.join(", ") || null,
-      locationName: row.locationName || null,
+      dealerName: row.locationName || null,
       customerName: row.clientName || null,
       templateName: row.checklist.templateName,
       statusOverride: row.checklist.statusOverride || null,
