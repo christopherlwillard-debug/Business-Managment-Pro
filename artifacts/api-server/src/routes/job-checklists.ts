@@ -57,6 +57,7 @@ async function recalcItemFromParts(itemId: number): Promise<void> {
 }
 
 // ── Helper: recalculate section percentComplete + update checklist.updatedAt ──
+// Split items contribute fractionally (e.g. 1/2 parts done = 0.5 item complete).
 async function recalcSection(sectionId: number, checklistId: number) {
   const items = await db
     .select()
@@ -64,9 +65,38 @@ async function recalcSection(sectionId: number, checklistId: number) {
     .where(eq(jobChecklistItemsTable.jobChecklistSectionId, sectionId));
 
   const active = items.filter(i => !i.skipped);
-  const completed = active.filter(i => i.completed);
-  const pct = active.length === 0 ? 0 : Math.round((completed.length / active.length) * 100);
-  const allCompleted = active.length > 0 && completed.length === active.length;
+
+  if (active.length === 0) {
+    await db.update(jobChecklistSectionsTable)
+      .set({ percentComplete: "0", completedAt: null })
+      .where(eq(jobChecklistSectionsTable.id, sectionId));
+    await db.update(jobChecklistsTable).set({ updatedAt: new Date() }).where(eq(jobChecklistsTable.id, checklistId));
+    return;
+  }
+
+  // Fetch parts for all active items so split items contribute fractionally
+  const activeIds = active.map(i => i.id);
+  const sectionParts = await db.select().from(jobChecklistItemPartsTable)
+    .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, activeIds));
+
+  const sectionPartsByItemId = new Map<number, typeof sectionParts>();
+  for (const p of sectionParts) {
+    if (!sectionPartsByItemId.has(p.jobChecklistItemId)) sectionPartsByItemId.set(p.jobChecklistItemId, []);
+    sectionPartsByItemId.get(p.jobChecklistItemId)!.push(p);
+  }
+
+  let weightedComplete = 0;
+  for (const item of active) {
+    const itemParts = sectionPartsByItemId.get(item.id) ?? [];
+    if (itemParts.length > 0) {
+      weightedComplete += itemParts.filter(p => p.completed).length / itemParts.length;
+    } else {
+      weightedComplete += item.completed ? 1 : 0;
+    }
+  }
+
+  const pct = Math.round((weightedComplete / active.length) * 100);
+  const allCompleted = weightedComplete >= active.length;
 
   await db
     .update(jobChecklistSectionsTable)
@@ -126,16 +156,25 @@ export async function buildChecklistResponse(checklistId: number) {
     const section = sections.find(s => s.id === i.jobChecklistSectionId);
     return section?.active && !i.skipped;
   });
-  const completedItems = activeItems.filter(i => i.completed);
-  const overallPct = activeItems.length === 0
-    ? 0
-    : Math.round((completedItems.length / activeItems.length) * 100);
+
+  // Compute overall percent with fractional contribution from split items
+  let weightedComplete = 0;
+  for (const item of activeItems) {
+    const itemParts = partsByItemId.get(item.id) ?? [];
+    if (itemParts.length > 0) {
+      weightedComplete += itemParts.filter(p => p.completed).length / itemParts.length;
+    } else {
+      weightedComplete += item.completed ? 1 : 0;
+    }
+  }
+  const overallPct = activeItems.length === 0 ? 0 : Math.round((weightedComplete / activeItems.length) * 100);
+  const fullyCompletedItems = activeItems.filter(i => i.completed).length;
 
   return {
     ...checklist,
     overallPercent: overallPct,
     totalItems: activeItems.length,
-    completedItems: completedItems.length,
+    completedItems: fullyCompletedItems,
     sections: sections.map(s => ({
       ...s,
       items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
@@ -562,13 +601,9 @@ router.post("/:jobId/checklist/items/:itemId/parts", async (req, res) => {
     await db.insert(jobChecklistItemPartsTable)
       .values({ jobChecklistItemId: itemId, label: label ?? `Part ${existing.length + 1}`, sortOrder });
 
-    // If this is the first part, reset item to incomplete and recalc section
-    if (existing.length === 0) {
-      await db.update(jobChecklistItemsTable)
-        .set({ completed: false, completedAt: null, completedByUserId: null, completedByName: null })
-        .where(eq(jobChecklistItemsTable.id, itemId));
-      await recalcSection(item.jobChecklistSectionId, checklist.id);
-    }
+    // Always recalc item completion and section after any part addition
+    await recalcItemFromParts(itemId);
+    await recalcSection(item.jobChecklistSectionId, checklist.id);
 
     const data = await buildChecklistResponse(checklist.id);
     res.status(201).json(data);
