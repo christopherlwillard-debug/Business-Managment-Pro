@@ -30,7 +30,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
@@ -2891,6 +2891,20 @@ function JobCard({
                   </span>
                 );
               })()}
+              {checklistSummary != null && checklistSummary.totalItems > 0 && (
+                <button
+                  onClick={() => setChecklistPanelOpen(true)}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                    checklistSummary.overallPercent === 100
+                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                      : checklistSummary.overallPercent > 0
+                        ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}>
+                  <CheckSquare className="w-2.5 h-2.5" />
+                  {checklistSummary.completedItems}/{checklistSummary.totalItems} · {checklistSummary.overallPercent}%
+                </button>
+              )}
             </div>
             {estimateTotal != null && (
               <p className="text-amber-600 font-bold text-sm">{formatCurrency(estimateTotal)}</p>
@@ -3089,7 +3103,7 @@ function JobCard({
           {checklistSummary ? (
             checklistSummary.overallPercent === 100 ? (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                Complete
+                {checklistSummary.completedItems}/{checklistSummary.totalItems} · 100%
               </span>
             ) : checklistSummary.overallPercent === 0 ? (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
