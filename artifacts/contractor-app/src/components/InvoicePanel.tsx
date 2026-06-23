@@ -802,6 +802,9 @@ export function InvoicePanel({
                       </button>
                       <p className="text-[10px] text-blue-500">Sends from your Gmail with PDF attached</p>
                     </div>
+                    <p className="text-[10px] text-blue-400">
+                      📎 {["Invoice PDF", ...(jobHasChecklist && attachChecklist ? ["Checklist PDF"] : [])].join(" · ")}
+                    </p>
                   </div>
                 )}
               </>
