@@ -16,6 +16,11 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/, "");
 }
 
+export interface GmailAttachment {
+  base64: string;
+  filename: string;
+}
+
 export interface GmailSendOptions {
   token: string;
   to: string;
@@ -24,10 +29,11 @@ export interface GmailSendOptions {
   text?: string;
   pdfBase64?: string;
   pdfFilename?: string;
+  extraAttachments?: GmailAttachment[];
 }
 
 export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
-  const { token, to, subject, html, text, pdfBase64, pdfFilename } = opts;
+  const { token, to, subject, html, text, pdfBase64, pdfFilename, extraAttachments = [] } = opts;
 
   // Base64-encode the HTML body so that = characters in data URIs (logo) are
   // not misinterpreted as quoted-printable escape sequences by email clients.
@@ -38,14 +44,31 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
     return btoa(binary).match(/.{1,76}/g)?.join("\r\n") ?? btoa(binary);
   };
 
+  const chunkBase64 = (b64: string) => b64.match(/.{1,76}/g)?.join("\r\n") ?? b64;
+
   let rfcLines: string[];
 
-  if (pdfBase64 && pdfFilename) {
+  const allAttachments: GmailAttachment[] = [
+    ...(pdfBase64 && pdfFilename ? [{ base64: pdfBase64, filename: pdfFilename }] : []),
+    ...extraAttachments,
+  ];
+
+  if (allAttachments.length > 0) {
     const outer = `==BPO${Date.now()}==`;
     const inner = `==BPI${Date.now()}A==`;
 
-    const chunkBase64 = (b64: string) => b64.match(/.{1,76}/g)?.join("\r\n") ?? b64;
-    const safeFilename = sanitizeFilename(pdfFilename);
+    const attachmentParts = allAttachments.map(att => {
+      const safe = sanitizeFilename(att.filename);
+      return [
+        `--${outer}`,
+        `Content-Type: application/pdf; name="${safe}"`,
+        `Content-Disposition: attachment; filename="${safe}"`,
+        `Content-Transfer-Encoding: base64`,
+        ``,
+        chunkBase64(att.base64),
+        ``,
+      ].join("\r\n");
+    });
 
     rfcLines = [
       `To: ${sanitizeHeader(to)}`,
@@ -70,13 +93,7 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
       ``,
       `--${inner}--`,
       ``,
-      `--${outer}`,
-      `Content-Type: application/pdf; name="${safeFilename}"`,
-      `Content-Disposition: attachment; filename="${safeFilename}"`,
-      `Content-Transfer-Encoding: base64`,
-      ``,
-      chunkBase64(pdfBase64),
-      ``,
+      ...attachmentParts.flatMap(p => p.split("\r\n")),
       `--${outer}--`,
     ];
   } else {

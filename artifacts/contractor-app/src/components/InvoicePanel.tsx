@@ -175,6 +175,8 @@ export function InvoicePanel({
   const [gmailSending, setGmailSending] = useState(false);
   const [gmailSent, setGmailSent] = useState(false);
   const [gmailPreview, setGmailPreview] = useState(false);
+  const [attachChecklist, setAttachChecklist] = useState(true);
+  const [jobHasChecklist, setJobHasChecklist] = useState(false);
 
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -237,6 +239,18 @@ export function InvoicePanel({
       .then(({ dataUri }) => setLogoDataUri(dataUri ?? null))
       .catch(() => setLogoDataUri(null));
   }, [open, logoUrl, form.businessLine]);
+
+  useEffect(() => {
+    const jobId = form.jobId ? parseInt(form.jobId) : NaN;
+    if (!open || isNaN(jobId)) { setJobHasChecklist(false); setAttachChecklist(true); return; }
+    fetch(`${base}/api/jobs/${jobId}/checklist/exists`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(({ exists }: { exists: boolean }) => {
+        setJobHasChecklist(exists);
+        setAttachChecklist(true);
+      })
+      .catch(() => { setJobHasChecklist(false); setAttachChecklist(true); });
+  }, [open, form.jobId]);
 
   function setField(k: string, v: string) {
     setFormState(f => ({ ...f, [k]: v }));
@@ -507,6 +521,24 @@ export function InvoicePanel({
         }
       } catch { /* non-fatal — send without PDF if rendering fails */ }
 
+      let checklistBase64: string | undefined;
+      let checklistFilename: string | undefined;
+      if (attachChecklist && jobHasChecklist && effectiveExistingInvoice.jobId) {
+        try {
+          const clResp = await fetch(`${base}/api/jobs/${effectiveExistingInvoice.jobId}/checklist/pdf`, { credentials: "include" });
+          if (clResp.ok) {
+            const clBuffer = await clResp.arrayBuffer();
+            let binary = "";
+            const bytes = new Uint8Array(clBuffer);
+            bytes.forEach(b => { binary += String.fromCharCode(b); });
+            checklistBase64 = btoa(binary);
+            const disp = clResp.headers.get("content-disposition") ?? "";
+            const match = disp.match(/filename="?([^"]+)"?/);
+            checklistFilename = match?.[1] ?? "Checklist.pdf";
+          }
+        } catch { /* non-fatal — send without checklist if fetch fails */ }
+      }
+
       await sendViaGmail({
         token,
         to: gmailTo.trim(),
@@ -515,6 +547,9 @@ export function InvoicePanel({
         text: gmailMessage.trim() || `Please see invoice ${effectiveExistingInvoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
         pdfBase64,
         pdfFilename,
+        extraAttachments: checklistBase64 && checklistFilename
+          ? [{ base64: checklistBase64, filename: checklistFilename }]
+          : undefined,
       });
       setGmailSent(true);
       toast({
@@ -748,6 +783,17 @@ export function InvoicePanel({
                         placeholder="Hi, please find your invoice attached…"
                         className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
                     </div>
+                    {jobHasChecklist && (
+                      <label className="flex items-center gap-2 cursor-pointer select-none pt-0.5">
+                        <input
+                          type="checkbox"
+                          checked={attachChecklist}
+                          onChange={e => setAttachChecklist(e.target.checked)}
+                          className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"
+                        />
+                        <span className="text-[10px] text-blue-700 font-medium">Attach checklist PDF</span>
+                      </label>
+                    )}
                     <div className="flex items-center gap-2 pt-0.5">
                       <button onClick={handleGmailSend} disabled={gmailSending || !gmailTo.trim()}
                         className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50">

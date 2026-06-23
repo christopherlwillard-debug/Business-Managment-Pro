@@ -314,7 +314,7 @@ router.delete("/:id", async (req, res) => {
 router.post("/:id/send", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { to, subject, message } = req.body as { to: string; subject: string; message: string };
+    const { to, subject, message, attachChecklist = true } = req.body as { to: string; subject: string; message: string; attachChecklist?: boolean };
 
     if (!to) return res.status(400).json({ error: "Recipient email is required" });
 
@@ -345,9 +345,9 @@ router.post("/:id/send", async (req, res) => {
     const companyName = mergedSettings.companyName ?? "BuildPro";
     const subjectLine = subject || `Invoice ${inv.invoiceNumber} from ${companyName}`;
 
-    // If this invoice is linked to a job that has a checklist, attach the checklist PDF too
+    // If this invoice is linked to a job that has a checklist, optionally attach it
     const extraAttachments = [];
-    if (inv.jobId) {
+    if (attachChecklist && inv.jobId) {
       try {
         const checklistPdf = await generateChecklistPdfBuffer(inv.jobId as number);
         if (checklistPdf) {

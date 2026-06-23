@@ -134,6 +134,22 @@ router.get("/checklist-summaries", async (req, res) => {
 });
 
 // ── GET /:jobId/checklist ─────────────────────────────────────────────────────
+router.get("/:jobId/checklist/exists", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const [row] = await db
+      .select({ id: jobChecklistsTable.id })
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId))
+      .limit(1);
+    res.json({ exists: !!row });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to check checklist existence" });
+  }
+});
+
 router.get("/:jobId/checklist", async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId);
