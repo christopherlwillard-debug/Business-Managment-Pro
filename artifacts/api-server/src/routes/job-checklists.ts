@@ -9,7 +9,7 @@ import {
   jobChecklistItemsTable,
   jobsTable,
 } from "@workspace/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and } from "drizzle-orm";
 import { getRequestUser } from "./guards";
 import crypto from "crypto";
 

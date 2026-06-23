@@ -11,7 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
-  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy,
+  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";

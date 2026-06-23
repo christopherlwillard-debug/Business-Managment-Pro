@@ -670,7 +670,7 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
     enabled: expanded && !done,
   });
 
-  const { data: checklist, refetch: refetchChecklist } = useQuery<any>({
+  const { data: checklist, isLoading: checklistLoading, refetch: refetchChecklist } = useQuery<any>({
     queryKey: ["portal-job-checklist", token, job.id],
     queryFn: () => apiFetch(`/portal/${token}/jobs/${job.id}/checklist`),
     enabled: checklistOpen,
@@ -684,6 +684,21 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: !item.completed }),
+      });
+      await refetchChecklist();
+    } finally {
+      setTogglingItem(null);
+    }
+  }
+
+  async function skipChecklistItem(item: any) {
+    if (togglingItem !== null) return;
+    setTogglingItem(item.id);
+    try {
+      await apiFetch(`/portal/${token}/jobs/${job.id}/checklist/items/${item.id}/skip`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipped: !item.skipped }),
       });
       await refetchChecklist();
     } finally {
@@ -796,12 +811,12 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
       {/* Expandable checklist panel */}
       {checklistOpen && (
         <div className="border-t border-emerald-100 bg-emerald-50/30 px-4 py-3 space-y-3">
-          {!checklist ? (
+          {checklistLoading ? (
             <div className="flex justify-center py-4">
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
-          ) : checklist.totalItems === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">No checklist attached to this job.</p>
+          ) : checklist === null || checklist === undefined ? (
+            <p className="text-xs text-muted-foreground text-center py-4">No checklist attached to this job yet.</p>
           ) : (
             <>
               {/* Overall progress bar */}
@@ -809,7 +824,7 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
                 <div className="flex justify-between items-center">
                   <p className="text-xs font-semibold text-muted-foreground">{checklist.templateName}</p>
                   <span className={`text-xs font-bold ${checklist.overallPercent === 100 ? "text-emerald-600" : "text-foreground"}`}>
-                    {checklist.overallPercent}%
+                    {checklist.completedItems}/{checklist.totalItems} · {checklist.overallPercent}%
                   </span>
                 </div>
                 <div className="h-1.5 rounded-full bg-emerald-100 overflow-hidden">
@@ -825,19 +840,17 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
                 <div key={section.id} className="space-y-1">
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{section.name}</p>
                   {section.items.map((item: any) => (
-                    <button
-                      key={item.id}
-                      onClick={() => toggleChecklistItem(item)}
-                      disabled={togglingItem === item.id || item.skipped}
-                      className={`w-full flex items-start gap-2.5 text-left py-1.5 rounded-lg px-1 transition-colors ${
-                        item.skipped ? "opacity-50" : "hover:bg-emerald-50 active:bg-emerald-100"
-                      }`}
-                    >
-                      <span className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
-                        item.skipped ? "border-muted bg-muted" :
-                        item.completed ? "bg-emerald-500 border-emerald-500" :
-                        "border-muted-foreground/30"
-                      }`}>
+                    <div key={item.id} className={`flex items-start gap-2 py-1.5 px-1 rounded-lg ${item.skipped ? "opacity-50" : ""}`}>
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => toggleChecklistItem(item)}
+                        disabled={togglingItem === item.id || item.skipped}
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
+                          item.skipped ? "border-muted bg-muted" :
+                          item.completed ? "bg-emerald-500 border-emerald-500" :
+                          "border-muted-foreground/30 hover:border-emerald-400"
+                        }`}
+                      >
                         {togglingItem === item.id
                           ? <Loader2 className="w-2.5 h-2.5 animate-spin text-muted-foreground" />
                           : item.skipped
@@ -845,8 +858,10 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
                           : item.completed
                           ? <Check className="w-2.5 h-2.5 text-white" />
                           : null}
-                      </span>
-                      <div className="flex-1 min-w-0">
+                      </button>
+
+                      {/* Title */}
+                      <div className="flex-1 min-w-0" onClick={() => !item.skipped && toggleChecklistItem(item)}>
                         <p className={`text-xs leading-5 ${
                           item.completed || item.skipped ? "line-through text-muted-foreground" : "text-foreground"
                         }`}>
@@ -856,7 +871,18 @@ function PortalJobCard({ job, token, onCompleted }: { job: any; token: string; o
                           <p className="text-[10px] text-emerald-600">✓ {item.completedByName}</p>
                         )}
                       </div>
-                    </button>
+
+                      {/* N/A skip toggle */}
+                      {!item.completed && (
+                        <button
+                          onClick={() => skipChecklistItem(item)}
+                          disabled={togglingItem === item.id}
+                          className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-muted/60 text-muted-foreground hover:bg-muted/30 transition-colors mt-0.5"
+                        >
+                          {item.skipped ? "Undo" : "N/A"}
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               ))}
