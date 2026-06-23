@@ -151,6 +151,49 @@ router.get("/logo-data-uri", async (req, res) => {
   }
 });
 
+// ── Signature image upload ──────────────────────────────────────────────────────
+router.post("/signature", logoUpload.single("logo"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const objectPath = await objectStorage.uploadBufferWithFilename(
+      req.file.buffer,
+      req.file.mimetype,
+      "uploads/signatures",
+      req.file.originalname
+    );
+    const servingUrl = toServingUrl(objectPath)!;
+    let [s] = await db.select().from(settingsTable).limit(1);
+    if (!s) {
+      [s] = await db.insert(settingsTable).values({ signatureImage: objectPath } as any).returning();
+    } else {
+      if (s.signatureImage && s.signatureImage.startsWith("/objects/")) {
+        try { await objectStorage.deleteObject(s.signatureImage); } catch { /* ignore */ }
+      }
+      [s] = await db.update(settingsTable).set({ signatureImage: objectPath, updatedAt: new Date() }).where(eq(settingsTable.id, s.id)).returning();
+    }
+    res.json({ signatureImage: servingUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to upload signature" });
+  }
+});
+
+router.delete("/signature", async (_req, res) => {
+  try {
+    const [s] = await db.select().from(settingsTable).limit(1);
+    if (s?.signatureImage) {
+      if (s.signatureImage.startsWith("/objects/")) {
+        try { await objectStorage.deleteObject(s.signatureImage); } catch { /* ignore */ }
+      }
+      await db.update(settingsTable).set({ signatureImage: null, updatedAt: new Date() }).where(eq(settingsTable.id, s.id));
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to remove signature" });
+  }
+});
+
 router.delete("/dba-logo", async (_req, res) => {
   try {
     let [s] = await db.select().from(settingsTable).limit(1);
@@ -239,6 +282,7 @@ function format(s: any) {
     ...s,
     logoUrl: toServingUrl(s.logoUrl),
     dbaLogoUrl: toServingUrl(s.dbaLogoUrl),
+    signatureImage: toServingUrl(s.signatureImage),
     defaultTaxRate: s.defaultTaxRate ? parseFloat(s.defaultTaxRate) : null,
     lateFeePercent: s.lateFeePercent ? parseFloat(s.lateFeePercent) : null,
     mileageRate: s.mileageRate ? parseFloat(s.mileageRate) : 0.725,

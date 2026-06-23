@@ -51,6 +51,8 @@ export const settingsTable = pgTable("settings", {
   calculatorDefaults: jsonb("calculator_defaults"),
   // Contractor portal quick links (label, url, optional username/password)
   quickLinks: jsonb("quick_links"),
+  // Company signature image — stored as object storage path; embedded in exported PDFs
+  signatureImage: text("signature_image"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

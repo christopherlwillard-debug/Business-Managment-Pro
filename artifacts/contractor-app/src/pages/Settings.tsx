@@ -1449,6 +1449,7 @@ export default function Settings() {
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [bottomNavHrefs, setBottomNavHrefs] = useState<string[]>(DEFAULT_BOTTOM_NAV_HREFS);
   const [success, setSuccess] = useState(false);
@@ -1491,6 +1492,7 @@ export default function Settings() {
         taxFilingFrequency: (s.taxFilingFrequency as string | undefined) ?? "quarterly",
       });
       setLogoUrl(s.logoUrl ?? null);
+      setSignatureUrl((s as any).signatureImage ?? null);
       const feat: Record<string, boolean> = {};
       FEATURE_OPTIONS.forEach(f => {
         feat[f.key] = Array.isArray(s.enabledFeatures) ? s.enabledFeatures.includes(f.key) : true;
@@ -1803,6 +1805,26 @@ export default function Settings() {
                   logoUrl={logoUrl}
                   onUploaded={url => { setLogoUrl(url); queryClient.invalidateQueries(); }}
                   onRemoved={() => { setLogoUrl(null); queryClient.invalidateQueries(); }}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Company Signature */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <ImagePlus className="w-5 h-5 text-primary" /> Company Signature
+                </CardTitle>
+                <CardDescription>Upload your signature once — it auto-embeds at the bottom of every exported checklist PDF.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <LogoUpload
+                  logoUrl={signatureUrl}
+                  onUploaded={url => setSignatureUrl(url)}
+                  onRemoved={() => setSignatureUrl(null)}
+                  uploadPath="/api/settings/signature"
+                  deletePath="/api/settings/signature"
+                  responseKey="signatureImage"
                 />
               </CardContent>
             </Card>

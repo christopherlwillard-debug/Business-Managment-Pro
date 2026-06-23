@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, X, ClipboardCheck, Plus, Check, Minus, ChevronDown, ChevronUp,
   Share2, ExternalLink, AlertCircle, Loader2, Copy, ToggleLeft, ToggleRight, Trash2,
-  MessageSquare,
+  MessageSquare, FileDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -91,6 +91,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [savingMeta, setSavingMeta] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -278,6 +279,25 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
     }
   }
 
+  async function handleDownloadPdf() {
+    setDownloadingPdf(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/pdf`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to generate PDF");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Checklist - ${job.title} - ${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Error", description: "Could not generate PDF. Please try again.", variant: "destructive" });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
+
   async function toggleShare() {
     if (!checklist) return;
     try {
@@ -455,6 +475,22 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Download PDF */}
+              {canEdit("jobs") && (
+                <div className="px-5 py-3 border-b border-border/50 bg-background">
+                  <button
+                    onClick={handleDownloadPdf}
+                    disabled={downloadingPdf}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    {downloadingPdf
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <FileDown className="w-4 h-4" />}
+                    {downloadingPdf ? "Generating PDF…" : "Download as PDF"}
+                  </button>
                 </div>
               )}
 
