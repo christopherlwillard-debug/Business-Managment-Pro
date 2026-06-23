@@ -11,6 +11,7 @@ type StatusItem = {
   completed: boolean;
   completedAt: string | null;
   skipped: boolean;
+  notes: string | null;
   sortOrder: number;
 };
 
@@ -141,6 +142,9 @@ function SectionCard({ section }: { section: StatusSection }) {
                 )}
                 {item.skipped && (
                   <p className="text-[11px] text-slate-400 mt-0.5">Not Applicable</p>
+                )}
+                {item.notes && (
+                  <p className="text-[11px] text-slate-500 italic mt-0.5">{item.notes}</p>
                 )}
               </div>
             </div>

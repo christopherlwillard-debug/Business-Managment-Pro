@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, X, ClipboardCheck, Plus, Check, Minus, ChevronDown, ChevronUp,
   Share2, ExternalLink, AlertCircle, Loader2, Copy, ToggleLeft, ToggleRight, Trash2,
+  MessageSquare,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -82,6 +83,9 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [attaching, setAttaching] = useState(false);
   const [sectionNotes, setSectionNotes] = useState<Record<number, string>>({});
   const [savingNotes, setSavingNotes] = useState<number | null>(null);
+  const [itemNoteOpen, setItemNoteOpen] = useState<Set<number>>(new Set());
+  const [itemNoteDraft, setItemNoteDraft] = useState<Record<number, string>>({});
+  const [savingItemNote, setSavingItemNote] = useState<number | null>(null);
   const [publicNotes, setPublicNotes] = useState("");
   const [statusOverride, setStatusOverride] = useState("");
   const [savingMeta, setSavingMeta] = useState(false);
@@ -211,6 +215,32 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       setChecklist(updated);
     } catch {
       toast({ title: "Failed to update section", variant: "destructive" });
+    }
+  }
+
+  function openItemNote(item: ChecklistItem) {
+    setItemNoteDraft(prev => ({ ...prev, [item.id]: item.notes ?? "" }));
+    setItemNoteOpen(prev => { const s = new Set(prev); s.add(item.id); return s; });
+  }
+
+  async function saveItemNote(item: ChecklistItem) {
+    const note = itemNoteDraft[item.id] ?? "";
+    setSavingItemNote(item.id);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: note }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+      setItemNoteOpen(prev => { const s = new Set(prev); s.delete(item.id); return s; });
+    } catch {
+      toast({ title: "Failed to save note", variant: "destructive" });
+    } finally {
+      setSavingItemNote(null);
     }
   }
 
@@ -500,11 +530,14 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                   : null}
                               </button>
 
-                              {/* Title + meta */}
-                              <div className="flex-1 min-w-0" onClick={() => canEdit("jobs") && !item.skipped && toggleItem(item, section.id)}>
-                                <p className={`text-xs leading-5 ${
-                                  item.skipped ? "line-through text-muted-foreground" : item.completed ? "line-through text-muted-foreground" : "text-foreground"
-                                }`}>
+                              {/* Title + meta + note */}
+                              <div className="flex-1 min-w-0">
+                                <p
+                                  className={`text-xs leading-5 ${
+                                    item.skipped ? "line-through text-muted-foreground" : item.completed ? "line-through text-muted-foreground" : "text-foreground"
+                                  } ${canEdit("jobs") && !item.skipped ? "cursor-pointer" : ""}`}
+                                  onClick={() => canEdit("jobs") && !item.skipped && toggleItem(item, section.id)}
+                                >
                                   {item.title}
                                 </p>
                                 {item.completed && item.completedByName && (
@@ -512,19 +545,53 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                     ✓ {item.completedByName} · {formatDate(item.completedAt)}
                                   </p>
                                 )}
+                                {/* Existing note display (when editor is closed) */}
+                                {item.notes && !itemNoteOpen.has(item.id) && (
+                                  <p className="text-[10px] text-muted-foreground italic mt-0.5">{item.notes}</p>
+                                )}
+                                {/* Note textarea (when open) */}
+                                {itemNoteOpen.has(item.id) && (
+                                  <div className="mt-1.5">
+                                    <textarea
+                                      autoFocus
+                                      value={itemNoteDraft[item.id] ?? ""}
+                                      onChange={e => setItemNoteDraft(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                      onBlur={() => saveItemNote(item)}
+                                      placeholder="Add a note…"
+                                      rows={2}
+                                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-border bg-muted/20 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/30 resize-none"
+                                    />
+                                    {savingItemNote === item.id && (
+                                      <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Saving…
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
-                              {/* N/A toggle */}
-                              {canEdit("jobs") && !item.completed && (
-                                <button
-                                  onClick={() => toggleSkip(item)}
-                                  disabled={updatingItem === item.id}
-                                  title={item.skipped ? "Unskip" : "Mark N/A"}
-                                  className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-muted text-muted-foreground hover:bg-muted/30 transition-colors mt-0.5"
-                                >
-                                  {item.skipped ? "Undo" : "N/A"}
-                                </button>
-                              )}
+                              {/* Note icon + N/A toggle */}
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {canEdit("jobs") && !item.skipped && (
+                                  <button
+                                    onClick={() => openItemNote(item)}
+                                    title="Add note"
+                                    className={`w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted/50 transition-colors mt-0.5 ${item.notes ? "text-emerald-500" : ""}`}
+                                  >
+                                    <MessageSquare className="w-3 h-3" />
+                                  </button>
+                                )}
+                                {canEdit("jobs") && !item.completed && (
+                                  <button
+                                    onClick={() => toggleSkip(item)}
+                                    disabled={updatingItem === item.id}
+                                    title={item.skipped ? "Unskip" : "Mark N/A"}
+                                    className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-muted text-muted-foreground hover:bg-muted/30 transition-colors mt-0.5"
+                                  >
+                                    {item.skipped ? "Undo" : "N/A"}
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
 

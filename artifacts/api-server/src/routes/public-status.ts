@@ -47,6 +47,7 @@ router.get("/status/:token", async (req, res) => {
         completed: jobChecklistItemsTable.completed,
         completedAt: jobChecklistItemsTable.completedAt,
         skipped: jobChecklistItemsTable.skipped,
+        notes: jobChecklistItemsTable.notes,
         sortOrder: jobChecklistItemsTable.sortOrder,
       })
       .from(jobChecklistItemsTable)
@@ -95,6 +96,7 @@ router.get("/status/:token", async (req, res) => {
             completed: i.completed,
             completedAt: i.completedAt,
             skipped: i.skipped,
+            notes: i.notes || null,
             sortOrder: i.sortOrder,
           })),
         };
