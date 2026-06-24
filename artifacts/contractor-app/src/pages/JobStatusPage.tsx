@@ -189,7 +189,8 @@ export default function JobStatusPage() {
       return res.json();
     },
     retry: false,
-    staleTime: 30_000,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
   });
 
   const { data, isLoading: detailLoading } = useQuery<StatusData>({
@@ -259,8 +260,8 @@ export default function JobStatusPage() {
 
   if (!summary) return null;
 
-  const pct = data?.overallPercent ?? summary.overallPercent;
-  const override = data?.statusOverride ?? summary.statusOverride;
+  const pct = summary.overallPercent;
+  const override = summary.statusOverride;
 
   return (
     <div className="min-h-screen bg-slate-50">
