@@ -868,7 +868,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                               <button
                                                 onClick={() => handlePhotoDelete(item.id, photo.id)}
                                                 disabled={deletingPhoto === photo.id}
-                                                className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100"
                                               >
                                                 {deletingPhoto === photo.id
                                                   ? <Loader2 className="w-2 h-2 animate-spin" />
