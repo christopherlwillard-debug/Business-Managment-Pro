@@ -168,14 +168,45 @@ export default function JobStatusPage() {
       return res.json();
     },
     retry: false,
-    staleTime: 0,
+    staleTime: 30_000,
     refetchInterval: 60_000,
   });
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-slate-50 animate-pulse">
+        <div className="bg-white border-b border-slate-200 px-4 pt-6 pb-5">
+          <div className="max-w-lg mx-auto">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-slate-200" />
+              <div className="h-4 w-40 bg-slate-200 rounded-full" />
+            </div>
+            <div className="h-6 w-3/4 bg-slate-200 rounded-full mb-2" />
+            <div className="h-4 w-1/2 bg-slate-100 rounded-full mb-3" />
+            <div className="h-7 w-28 bg-slate-200 rounded-full" />
+          </div>
+        </div>
+        <div className="bg-white border-b border-slate-100 px-4 py-4">
+          <div className="max-w-lg mx-auto">
+            <div className="flex justify-between items-end mb-2">
+              <div className="h-4 w-32 bg-slate-200 rounded-full" />
+              <div className="h-5 w-10 bg-slate-200 rounded-full" />
+            </div>
+            <div className="h-3 rounded-full bg-slate-200" />
+            <div className="h-3 w-32 bg-slate-100 rounded-full mt-1.5 ml-auto" />
+          </div>
+        </div>
+        <div className="px-4 py-4 space-y-3 max-w-lg mx-auto">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm px-4 py-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="h-4 bg-slate-200 rounded-full" style={{ width: `${45 + i * 10}%` }} />
+                <div className="h-4 w-8 bg-slate-100 rounded-full" />
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-100" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

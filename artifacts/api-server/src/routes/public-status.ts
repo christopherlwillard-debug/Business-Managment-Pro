@@ -34,26 +34,27 @@ router.get("/status/:token", async (req, res) => {
     if (!row) return res.status(404).json({ error: "Link not found" });
     if (!row.checklist.shareEnabled) return res.status(410).json({ error: "Link not available" });
 
-    const sections = await db
-      .select()
-      .from(jobChecklistSectionsTable)
-      .where(eq(jobChecklistSectionsTable.jobChecklistId, row.checklist.id))
-      .orderBy(asc(jobChecklistSectionsTable.sortOrder));
-
-    const items = await db
-      .select({
-        id: jobChecklistItemsTable.id,
-        jobChecklistSectionId: jobChecklistItemsTable.jobChecklistSectionId,
-        title: jobChecklistItemsTable.title,
-        completed: jobChecklistItemsTable.completed,
-        completedAt: jobChecklistItemsTable.completedAt,
-        skipped: jobChecklistItemsTable.skipped,
-        notes: jobChecklistItemsTable.notes,
-        sortOrder: jobChecklistItemsTable.sortOrder,
-      })
-      .from(jobChecklistItemsTable)
-      .where(eq(jobChecklistItemsTable.jobChecklistId, row.checklist.id))
-      .orderBy(asc(jobChecklistItemsTable.sortOrder));
+    const [sections, items] = await Promise.all([
+      db
+        .select()
+        .from(jobChecklistSectionsTable)
+        .where(eq(jobChecklistSectionsTable.jobChecklistId, row.checklist.id))
+        .orderBy(asc(jobChecklistSectionsTable.sortOrder)),
+      db
+        .select({
+          id: jobChecklistItemsTable.id,
+          jobChecklistSectionId: jobChecklistItemsTable.jobChecklistSectionId,
+          title: jobChecklistItemsTable.title,
+          completed: jobChecklistItemsTable.completed,
+          completedAt: jobChecklistItemsTable.completedAt,
+          skipped: jobChecklistItemsTable.skipped,
+          notes: jobChecklistItemsTable.notes,
+          sortOrder: jobChecklistItemsTable.sortOrder,
+        })
+        .from(jobChecklistItemsTable)
+        .where(eq(jobChecklistItemsTable.jobChecklistId, row.checklist.id))
+        .orderBy(asc(jobChecklistItemsTable.sortOrder)),
+    ]);
 
     const activeSections = sections.filter(s => s.active);
     const activeItems = items.filter(i => {
@@ -92,6 +93,7 @@ router.get("/status/:token", async (req, res) => {
 
     const locationParts = [row.jobAddress, row.jobCity, row.jobState].filter(Boolean);
 
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
     res.json({
       jobTitle: row.jobTitle,
       location: locationParts.join(", ") || null,
