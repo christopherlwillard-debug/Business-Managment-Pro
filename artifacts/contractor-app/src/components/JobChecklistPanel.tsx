@@ -120,6 +120,8 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [togglingPart, setTogglingPart] = useState<number | null>(null);
   const [deletingPart, setDeletingPart] = useState<number | null>(null);
   const [addingPartTo, setAddingPartTo] = useState<number | null>(null);
+  const [flashedSectionId, setFlashedSectionId] = useState<number | null>(null);
+  const [flashOverall, setFlashOverall] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -211,7 +213,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
     }
   }
 
-  async function toggleSkip(item: ChecklistItem) {
+  async function toggleSkip(item: ChecklistItem, sectionId: number) {
     if (updatingItem !== null) return;
     setUpdatingItem(item.id);
     try {
@@ -224,6 +226,9 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       if (!r.ok) throw new Error();
       const updated = await r.json();
       setChecklist(updated);
+      setFlashedSectionId(sectionId);
+      setFlashOverall(true);
+      setTimeout(() => { setFlashedSectionId(null); setFlashOverall(false); }, 1400);
     } catch {
       toast({ title: "Failed to update item", variant: "destructive" });
     } finally {
@@ -621,7 +626,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground">{checklist.templateName}</p>
-                    <p className="text-sm font-bold text-foreground">
+                    <p className={`text-sm font-bold transition-colors duration-75 ${flashOverall ? "text-emerald-600" : "text-foreground"}`}>
                       {checklist.completedItems} / {checklist.totalItems} items complete
                     </p>
                   </div>
@@ -750,7 +755,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-foreground truncate">{section.name}</p>
-                            <p className="text-[10px] text-muted-foreground">{doneCount}/{activeCount} · {Math.round(sectionPct)}%</p>
+                            <p className={`text-[10px] transition-colors duration-75 ${flashedSectionId === section.id ? "text-emerald-600 font-semibold" : "text-muted-foreground"}`}>{doneCount}/{activeCount} · {Math.round(sectionPct)}%</p>
                           </div>
                           <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden flex-shrink-0">
                             <div
@@ -996,7 +1001,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                 )}
                                 {canEdit("jobs") && !item.completed && !item.parts.length && (
                                   <button
-                                    onClick={() => toggleSkip(item)}
+                                    onClick={() => toggleSkip(item, section.id)}
                                     disabled={updatingItem === item.id}
                                     title={item.skipped ? "Unskip" : "Mark N/A"}
                                     className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-muted text-muted-foreground hover:bg-muted/30 transition-colors mt-0.5"
