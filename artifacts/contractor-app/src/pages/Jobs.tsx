@@ -2736,7 +2736,7 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 type ChecklistSummary = { completedItems: number; totalItems: number; overallPercent: number };
 
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, logCount, lastLogDate, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
+  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
   checklistSummary,
@@ -2746,8 +2746,6 @@ function JobCard({
   onDelete: (job: Job) => void;
   onReviewInvoice: (job: Job) => void;
   onMarkCompleted: (job: Job) => void;
-  logCount: number;
-  lastLogDate?: string;
   materialListCount: number;
   estimateTotal?: number;
   onLoadEstimateIntoInvoice?: (job: Job, estimates: Estimate[]) => void;
@@ -2767,7 +2765,7 @@ function JobCard({
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [logPanelOpen, setLogPanelOpen] = useState(false);
+  const [showSmartEstimate, setShowSmartEstimate] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
@@ -3028,22 +3026,6 @@ function JobCard({
           </div>
         )}
 
-        {/* Daily Log button + indicator */}
-        <button
-          onClick={() => setLogPanelOpen(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
-          <ClipboardList className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-          <span className="flex-1 text-left">Daily Log</span>
-          {logCount > 0 ? (
-            <span className="flex items-center gap-1">
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">{logCount}</span>
-              {lastLogDate && <span className="text-[10px] text-muted-foreground">Last: {formatDate(lastLogDate)}</span>}
-            </span>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">No entries</span>
-          )}
-        </button>
-
         {/* Material Lists button */}
         <button
           onClick={() => setMaterialsPanelOpen(true)}
@@ -3066,19 +3048,29 @@ function JobCard({
           <span className="text-[10px] text-muted-foreground">View / Build</span>
         </button>
 
-        {/* Smart Estimate Wizard — GC only */}
+        {/* Smart Estimate Wizard — GC only, hidden behind a toggle */}
         {job.businessLine === "general_contracting" && onSmartEstimate && canEdit("estimates") && (
-          <button
-            onClick={() => onSmartEstimate(job)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-xs font-bold text-amber-700 w-full">
-            <Wand2 className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-            <span className="flex-1 text-left">Smart Estimate Wizard</span>
-            <span className="text-[10px] text-amber-500 font-semibold">KY Rates</span>
-          </button>
+          showSmartEstimate ? (
+            <button
+              onClick={() => onSmartEstimate(job)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-xs font-bold text-amber-700 w-full">
+              <Wand2 className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="flex-1 text-left">Smart Estimate Wizard</span>
+              <span className="text-[10px] text-amber-500 font-semibold">KY Rates</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowSmartEstimate(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-amber-600 transition-colors w-full">
+              <Wand2 className="w-3 h-3 flex-shrink-0" />
+              <span>Smart Estimate Wizard</span>
+              <ChevronDown className="w-3 h-3 ml-auto" />
+            </button>
+          )
         )}
 
-        {/* Phases — GC only */}
-        {job.businessLine === "general_contracting" && (
+        {/* Phases — GC only, hidden when a checklist is active */}
+        {job.businessLine === "general_contracting" && !checklistSummary && (
           <button
             onClick={() => setPhasesPanelOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
@@ -3239,9 +3231,6 @@ function JobCard({
         )}
       </Card>
 
-      {logPanelOpen && (
-        <JobDailyLogPanel job={job} onClose={() => setLogPanelOpen(false)} />
-      )}
       {materialsPanelOpen && (
         <JobMaterialsPanel job={job} onClose={() => setMaterialsPanelOpen(false)} />
       )}
@@ -4661,13 +4650,10 @@ export default function Jobs() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {scheduledJobs.map(job => {
-                  const jobLogs = logsByJob[job.id] ?? [];
-                  const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
                   return (
                     <JobCard key={job.id} job={job} onEdit={openEditJob}
                       onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                       onMarkCompleted={handleMarkCompleted}
-                      logCount={jobLogs.length} lastLogDate={lastLog?.date}
                       materialListCount={materialListCountByJob[job.id] ?? 0}
                       estimateTotal={estimateTotalByJob[job.id]}
                       onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
@@ -4704,13 +4690,10 @@ export default function Jobs() {
               {completedExpanded && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {completedJobs.length > 0 ? completedJobs.map(job => {
-                    const jobLogs = logsByJob[job.id] ?? [];
-                    const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
                     return (
                       <JobCard key={job.id} job={job} onEdit={openEditJob}
                         onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                         onMarkCompleted={handleMarkCompleted}
-                        logCount={jobLogs.length} lastLogDate={lastLog?.date}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
                         estimateTotal={estimateTotalByJob[job.id]}
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
@@ -4752,13 +4735,10 @@ export default function Jobs() {
               {paidExpanded && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {paidJobs.length > 0 ? paidJobs.map(job => {
-                    const jobLogs = logsByJob[job.id] ?? [];
-                    const lastLog = jobLogs.sort((a, b) => b.date.localeCompare(a.date))[0];
                     return (
                       <JobCard key={job.id} job={job} onEdit={openEditJob}
                         onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                         onMarkCompleted={handleMarkCompleted}
-                        logCount={jobLogs.length} lastLogDate={lastLog?.date}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
                         estimateTotal={estimateTotalByJob[job.id]}
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
