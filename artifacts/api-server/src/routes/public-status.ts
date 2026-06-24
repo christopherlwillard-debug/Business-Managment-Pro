@@ -12,6 +12,56 @@ import { eq, asc, inArray } from "drizzle-orm";
 
 const router = Router();
 
+router.get("/status/:token/summary", async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const [row] = await db
+      .select({
+        checklist: jobChecklistsTable,
+        jobTitle: jobsTable.title,
+      })
+      .from(jobChecklistsTable)
+      .innerJoin(jobsTable, eq(jobChecklistsTable.jobId, jobsTable.id))
+      .where(eq(jobChecklistsTable.shareToken, token));
+
+    if (!row) return res.status(404).json({ error: "Link not found" });
+    if (!row.checklist.shareEnabled) return res.status(410).json({ error: "Link not available" });
+
+    const items = await db
+      .select({
+        id: jobChecklistItemsTable.id,
+        jobChecklistSectionId: jobChecklistItemsTable.jobChecklistSectionId,
+        completed: jobChecklistItemsTable.completed,
+        skipped: jobChecklistItemsTable.skipped,
+      })
+      .from(jobChecklistItemsTable)
+      .where(eq(jobChecklistItemsTable.jobChecklistId, row.checklist.id));
+
+    const sections = await db
+      .select({ id: jobChecklistSectionsTable.id, active: jobChecklistSectionsTable.active })
+      .from(jobChecklistSectionsTable)
+      .where(eq(jobChecklistSectionsTable.jobChecklistId, row.checklist.id));
+
+    const activeSectionIds = new Set(sections.filter(s => s.active).map(s => s.id));
+    const activeItems = items.filter(i => activeSectionIds.has(i.jobChecklistSectionId) && !i.skipped);
+    const completedCount = activeItems.filter(i => i.completed).length;
+    const overallPercent = activeItems.length === 0
+      ? 0
+      : Math.round((completedCount / activeItems.length) * 100);
+
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    res.json({
+      jobTitle: row.jobTitle,
+      statusOverride: row.checklist.statusOverride || null,
+      overallPercent,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load status summary" });
+  }
+});
+
 router.get("/status/:token", async (req, res) => {
   try {
     const { token } = req.params;
