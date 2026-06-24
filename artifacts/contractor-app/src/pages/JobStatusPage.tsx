@@ -19,6 +19,9 @@ type StatusItem = {
   skipped: boolean;
   notes: string | null;
   sortOrder: number;
+  partsTotal: number;
+  partsDone: number;
+  photos: { id: number }[];
 };
 
 type StatusSection = {
@@ -94,69 +97,115 @@ function StatusLabel({ pct, override }: { pct: number; override: string | null }
 
 function SectionCard({ section }: { section: StatusSection }) {
   const [expanded, setExpanded] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors text-left"
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-sm font-semibold text-slate-800 truncate pr-2">{section.name}</span>
-            <span className="text-xs font-bold text-slate-500 flex-shrink-0">
-              {section.completedItems}/{section.totalItems}
-            </span>
-          </div>
-          <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${section.percentComplete === 100 ? "bg-emerald-500" : "bg-emerald-400"}`}
-              style={{ width: `${section.percentComplete}%` }}
-            />
-          </div>
-        </div>
-        <div className="flex-shrink-0 text-slate-400">
-          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-slate-100 px-4 py-3 space-y-2">
-          {section.notes && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">
-              {section.notes}
-            </p>
-          )}
-          {section.items.map(item => (
-            <div key={item.id} className="flex items-start gap-3 py-1">
-              {item.skipped ? (
-                <Minus className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
-              ) : item.completed ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-              ) : (
-                <Square className="w-4 h-4 text-slate-300 flex-shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm leading-5 ${item.skipped ? "text-slate-400 line-through" : item.completed ? "text-slate-700" : "text-slate-800"}`}>
-                  {item.title}
-                </p>
-                {item.completed && item.completedAt && (
-                  <p className="text-[11px] text-emerald-600 font-medium mt-0.5">
-                    {formatDate(item.completedAt)}
-                  </p>
-                )}
-                {item.skipped && (
-                  <p className="text-[11px] text-slate-400 mt-0.5">Not Applicable</p>
-                )}
-                {item.notes && (
-                  <p className="text-[11px] text-slate-500 italic mt-0.5">{item.notes}</p>
-                )}
-              </div>
-            </div>
-          ))}
+    <>
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox}
+            alt=""
+            className="max-w-full max-h-full rounded-xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white text-lg font-bold"
+          >
+            ×
+          </button>
         </div>
       )}
-    </div>
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors text-left"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-sm font-semibold text-slate-800 truncate pr-2">{section.name}</span>
+              <span className="text-xs font-bold text-slate-500 flex-shrink-0">
+                {section.completedItems}/{section.totalItems}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${section.percentComplete === 100 ? "bg-emerald-500" : "bg-emerald-400"}`}
+                style={{ width: `${section.percentComplete}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex-shrink-0 text-slate-400">
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
+        </button>
+
+        {expanded && (
+          <div className="border-t border-slate-100 px-4 py-3 space-y-3">
+            {section.notes && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                {section.notes}
+              </p>
+            )}
+            {section.items.map(item => (
+              <div key={item.id} className="flex items-start gap-3 py-0.5">
+                {item.skipped ? (
+                  <Minus className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+                ) : item.completed ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-300 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className={`text-sm leading-5 ${item.skipped ? "text-slate-400 line-through" : item.completed ? "text-slate-700" : "text-slate-800"}`}>
+                      {item.title}
+                    </p>
+                    {item.partsTotal > 0 && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-slate-100 text-[10px] font-semibold text-slate-500 flex-shrink-0">
+                        {item.partsDone}/{item.partsTotal}
+                      </span>
+                    )}
+                  </div>
+                  {item.completed && item.completedAt && (
+                    <p className="text-[11px] text-emerald-600 font-medium mt-0.5">
+                      {formatDate(item.completedAt)}
+                    </p>
+                  )}
+                  {item.skipped && (
+                    <p className="text-[11px] text-slate-400 mt-0.5">Not Applicable</p>
+                  )}
+                  {item.notes && (
+                    <p className="text-[11px] text-slate-500 italic mt-0.5">{item.notes}</p>
+                  )}
+                  {item.photos.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {item.photos.map(photo => (
+                        <button
+                          key={photo.id}
+                          onClick={() => setLightbox(`${BASE}/api/public/checklist-photos/${photo.id}`)}
+                          className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0"
+                        >
+                          <img
+                            src={`${BASE}/api/public/checklist-photos/${photo.id}`}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

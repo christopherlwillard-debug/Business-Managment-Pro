@@ -1,14 +1,19 @@
 import { Router } from "express";
+import { Readable } from "stream";
 import { db } from "@workspace/db";
 import {
   jobChecklistsTable,
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
   jobChecklistItemPartsTable,
+  jobChecklistItemPhotosTable,
   jobsTable,
   clientsTable,
 } from "@workspace/db/schema";
 import { eq, asc, inArray } from "drizzle-orm";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+
+const objStorage = new ObjectStorageService();
 
 const router = Router();
 
@@ -112,13 +117,24 @@ router.get("/status/:token", async (req, res) => {
       return s && !i.skipped;
     });
 
-    // Fetch parts for fractional completion (matches internal buildChecklistResponse logic)
+    // Fetch parts + photos in parallel (both need item IDs)
     const allItemIds = items.map(i => i.id);
-    const parts = allItemIds.length > 0
-      ? await db.select().from(jobChecklistItemPartsTable)
-          .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds))
-          .orderBy(asc(jobChecklistItemPartsTable.sortOrder))
-      : [];
+    const [parts, photos] = allItemIds.length > 0
+      ? await Promise.all([
+          db.select().from(jobChecklistItemPartsTable)
+            .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds))
+            .orderBy(asc(jobChecklistItemPartsTable.sortOrder)),
+          db.select({ id: jobChecklistItemPhotosTable.id, jobChecklistItemId: jobChecklistItemPhotosTable.jobChecklistItemId })
+            .from(jobChecklistItemPhotosTable)
+            .where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds)),
+        ])
+      : [[], []] as [typeof parts, { id: number; jobChecklistItemId: number }[]];
+
+    const photosByItemId = new Map<number, number[]>();
+    for (const p of photos) {
+      if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
+      photosByItemId.get(p.jobChecklistItemId)!.push(p.id);
+    }
 
     const partsByItemId = new Map<number, typeof parts>();
     for (const p of parts) {
@@ -178,21 +194,67 @@ router.get("/status/:token", async (req, res) => {
           totalItems: activeCount,
           completedItems: doneCount,
           percentComplete: activeCount === 0 ? 0 : Math.round((sectionWeighted / activeCount) * 100),
-          items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
-            id: i.id,
-            title: i.title,
-            completed: i.completed,
-            completedAt: i.completedAt,
-            skipped: i.skipped,
-            notes: i.notes || null,
-            sortOrder: i.sortOrder,
-          })),
+          items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => {
+            const itemParts = partsByItemId.get(i.id) ?? [];
+            return {
+              id: i.id,
+              title: i.title,
+              completed: i.completed,
+              completedAt: i.completedAt,
+              skipped: i.skipped,
+              notes: i.notes || null,
+              sortOrder: i.sortOrder,
+              partsTotal: itemParts.length,
+              partsDone: itemParts.filter(p => p.completed).length,
+              photos: (photosByItemId.get(i.id) ?? []).map(id => ({ id })),
+            };
+          }),
         };
       }),
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load status page" });
+  }
+});
+
+router.get("/checklist-photos/:photoId", async (req, res) => {
+  try {
+    const photoId = parseInt(req.params.photoId);
+    if (isNaN(photoId)) return res.status(400).json({ error: "Invalid photo ID" });
+
+    const [photo] = await db
+      .select({
+        objectPath: jobChecklistItemPhotosTable.objectPath,
+        checklistShareEnabled: jobChecklistsTable.shareEnabled,
+      })
+      .from(jobChecklistItemPhotosTable)
+      .innerJoin(jobChecklistItemsTable, eq(jobChecklistItemPhotosTable.jobChecklistItemId, jobChecklistItemsTable.id))
+      .innerJoin(jobChecklistsTable, eq(jobChecklistItemsTable.jobChecklistId, jobChecklistsTable.id))
+      .where(eq(jobChecklistItemPhotosTable.id, photoId));
+
+    if (!photo) return res.status(404).json({ error: "Photo not found" });
+    if (!photo.checklistShareEnabled) return res.status(403).json({ error: "Checklist not publicly shared" });
+
+    const objectFile = await objStorage.getObjectEntityFile(photo.objectPath);
+    const response = await objStorage.downloadObject(objectFile, 3600);
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== "cache-control") res.setHeader(key, value);
+    });
+    res.setHeader("Cache-Control", "public, max-age=3600");
+
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Photo not found" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to serve photo" });
   }
 });
 
