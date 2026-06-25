@@ -273,9 +273,9 @@ export default function Banking() {
     staleTime: 60_000,
   });
 
-  const { data: unpaidInvoices } = useQuery<UnpaidInvoice[]>({
-    queryKey: ["invoices-unpaid"],
-    queryFn: () => apiFetch<UnpaidInvoice[]>("/api/invoices?status=sent"),
+  const { data: allInvoices } = useQuery<UnpaidInvoice[]>({
+    queryKey: ["invoices-all"],
+    queryFn: () => apiFetch<UnpaidInvoice[]>("/api/invoices"),
     enabled: !!incomeFilingTxn,
     staleTime: 60_000,
   });
@@ -377,7 +377,7 @@ export default function Banking() {
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
       qc.invalidateQueries({ queryKey: ["other-income"] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
-      qc.invalidateQueries({ queryKey: ["invoices-unpaid"] });
+      qc.invalidateQueries({ queryKey: ["invoices-all"] });
       setIncomeFilingTxn(null);
       if (data?.alreadyPaid) {
         toast({ title: "Deposit reconciled", description: "Invoice was already paid — deposit linked without changing the balance." });
@@ -1154,7 +1154,7 @@ export default function Banking() {
                 >
                   <Receipt className="w-4 h-4 mb-1.5" />
                   <div className="font-semibold">Match to Invoice</div>
-                  <div className="text-[10px] opacity-70 mt-0.5">Mark an existing unpaid invoice as collected</div>
+                  <div className="text-[10px] opacity-70 mt-0.5">Link deposit to an invoice (paid or unpaid)</div>
                 </button>
                 <button
                   type="button"
@@ -1184,21 +1184,23 @@ export default function Banking() {
                   required
                 >
                   <option value="">— Choose an invoice —</option>
-                  {unpaidInvoices && unpaidInvoices.length > 0 ? (
-                    unpaidInvoices.map((inv) => (
+                  {allInvoices && allInvoices.length > 0 ? (
+                    allInvoices.map((inv) => (
                       <option key={inv.id} value={String(inv.id)}>
                         {inv.invoiceNumber}
                         {inv.clientName ? ` — ${inv.clientName}` : ""}
                         {" · "}{formatCurrency(parseFloat(inv.total))}
-                        {inv.dueDate ? ` (due ${new Date(inv.dueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })})` : ""}
+                        {inv.status === "paid" ? " ✓ paid"
+                          : inv.status === "partial" ? " (partial)"
+                          : inv.dueDate ? ` (due ${new Date(inv.dueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })})` : ""}
                       </option>
                     ))
                   ) : (
-                    <option disabled value="">No unpaid invoices found</option>
+                    <option disabled value="">No invoices found</option>
                   )}
                 </select>
                 {(() => {
-                  const sel = unpaidInvoices?.find((inv) => String(inv.id) === incomeForm.invoiceId);
+                  const sel = allInvoices?.find((inv) => String(inv.id) === incomeForm.invoiceId);
                   const isFullyPaid = sel && parseFloat(sel.amountPaid ?? "0") >= parseFloat(sel.total);
                   return isFullyPaid ? (
                     <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
