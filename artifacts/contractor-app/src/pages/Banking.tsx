@@ -135,6 +135,7 @@ interface UnpaidInvoice {
   invoiceNumber: string;
   clientName?: string | null;
   total: string;
+  amountPaid?: string | null;
   dueDate?: string | null;
   status: string;
 }
@@ -280,11 +281,8 @@ export default function Banking() {
   });
 
   const { data: unmatchedExpenses, isLoading: unmatchedExpensesLoading } = useQuery<UnmatchedExpense[]>({
-    queryKey: ["unmatched-expenses", matchingTxn?.amount],
-    queryFn: () => {
-      const amt = matchingTxn?.amount ?? "";
-      return apiFetch<UnmatchedExpense[]>(`/api/plaid/expenses/unmatched?amount=${encodeURIComponent(amt)}&dateRange=90`);
-    },
+    queryKey: ["unmatched-expenses"],
+    queryFn: () => apiFetch<UnmatchedExpense[]>(`/api/plaid/expenses/unmatched?dateRange=90`),
     enabled: !!matchingTxn,
     staleTime: 0,
   });
@@ -371,17 +369,21 @@ export default function Banking() {
 
   const fileAsIncomeMutation = useMutation({
     mutationFn: ({ txnId, body }: { txnId: number; body: object }) =>
-      apiFetch(`/api/plaid/transactions/${txnId}/file-as-income`, {
+      apiFetch<{ ok: boolean; alreadyPaid?: boolean }>(`/api/plaid/transactions/${txnId}/file-as-income`, {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
       qc.invalidateQueries({ queryKey: ["other-income"] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices-unpaid"] });
       setIncomeFilingTxn(null);
-      toast({ title: "Income recorded", description: "Deposit has been filed successfully." });
+      if (data?.alreadyPaid) {
+        toast({ title: "Deposit reconciled", description: "Invoice was already paid — deposit linked without changing the balance." });
+      } else {
+        toast({ title: "Income recorded", description: "Deposit has been filed successfully." });
+      }
     },
     onError: (err: Error) => toast({ title: "Failed to file income", description: err.message, variant: "destructive" }),
   });
@@ -1195,9 +1197,19 @@ export default function Banking() {
                     <option disabled value="">No unpaid invoices found</option>
                   )}
                 </select>
-                <p className="text-xs text-muted-foreground">
-                  The invoice will be marked as <span className="font-medium">paid</span> and this deposit will be linked to it.
-                </p>
+                {(() => {
+                  const sel = unpaidInvoices?.find((inv) => String(inv.id) === incomeForm.invoiceId);
+                  const isFullyPaid = sel && parseFloat(sel.amountPaid ?? "0") >= parseFloat(sel.total);
+                  return isFullyPaid ? (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                      This invoice is already paid — this will just reconcile the deposit.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      The invoice will be marked as <span className="font-medium">paid</span> and this deposit will be linked to it.
+                    </p>
+                  );
+                })()}
               </div>
             ) : (
               /* ── Other income ── */

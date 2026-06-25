@@ -31,6 +31,7 @@ async function syncTransactions(connection: typeof plaidConnectionsTable.$inferS
     const txnType: "debit" | "credit" = t.amount > 0 ? "debit" : "credit";
     const description = t.merchant_name ?? t.name;
 
+    // Check for existing row by the posted transaction_id
     const existing = await db
       .select({ id: bankTransactionsTable.id, status: bankTransactionsTable.status })
       .from(bankTransactionsTable)
@@ -44,6 +45,36 @@ async function syncTransactions(connection: typeof plaidConnectionsTable.$inferS
           .set({ date: t.date, description, amount: absAmount, transactionType: txnType })
           .where(eq(bankTransactionsTable.id, existing.id));
         updatedCount++;
+      }
+    } else if (t.pending_transaction_id) {
+      // This is a posted transaction that replaces a pending one — update the pending row
+      // instead of inserting a duplicate
+      const pendingRow = await db
+        .select({ id: bankTransactionsTable.id, status: bankTransactionsTable.status })
+        .from(bankTransactionsTable)
+        .where(eq(bankTransactionsTable.plaidTransactionId, t.pending_transaction_id))
+        .then((rows) => rows[0] ?? null);
+
+      if (pendingRow) {
+        // Always update the core posted fields regardless of match status,
+        // so the row reflects the settled transaction (date, description, amount).
+        // Preserve any existing matched linkage (matchedExpenseId, etc.).
+        await db
+          .update(bankTransactionsTable)
+          .set({ plaidTransactionId: t.transaction_id, date: t.date, description, amount: absAmount, transactionType: txnType })
+          .where(eq(bankTransactionsTable.id, pendingRow.id));
+        updatedCount++;
+      } else {
+        await db.insert(bankTransactionsTable).values({
+          importBatchId: null,
+          date: t.date,
+          description,
+          amount: absAmount,
+          transactionType: txnType,
+          status: "unmatched",
+          plaidTransactionId: t.transaction_id,
+        });
+        insertedCount++;
       }
     } else {
       await db.insert(bankTransactionsTable).values({

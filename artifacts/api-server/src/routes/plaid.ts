@@ -487,28 +487,32 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
 
       // Re-fetch invoice inside transaction for consistency
       const [inv] = await tx
-        .select({ id: invoicesTable.id, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid })
+        .select({ id: invoicesTable.id, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, status: invoicesTable.status })
         .from(invoicesTable)
         .where(eq(invoicesTable.id, invoiceId));
       if (!inv) return { conflict: true } as const;
 
       const existingPaid = parseFloat(inv.amountPaid ?? "0");
-      const depositAmount = parseFloat(txn.amount ?? "0");
-      const newAmountPaid = existingPaid + depositAmount;
       const total = parseFloat(inv.total ?? "0");
-      const newStatus = newAmountPaid >= total ? "paid" : "partial";
+      const alreadyPaid = inv.status === "paid" || existingPaid >= total;
 
-      await tx
-        .update(invoicesTable)
-        .set({ status: newStatus, amountPaid: String(newAmountPaid) })
-        .where(eq(invoicesTable.id, invoiceId));
+      if (!alreadyPaid) {
+        const depositAmount = parseFloat(txn.amount ?? "0");
+        const newAmountPaid = existingPaid + depositAmount;
+        const newStatus = newAmountPaid >= total ? "paid" : "partial";
+
+        await tx
+          .update(invoicesTable)
+          .set({ status: newStatus, amountPaid: String(newAmountPaid) })
+          .where(eq(invoicesTable.id, invoiceId));
+      }
 
       await tx
         .update(bankTransactionsTable)
         .set({ status: "matched", matchedInvoiceId: invoiceId })
         .where(eq(bankTransactionsTable.id, txnId));
 
-      return { ok: true, matchedInvoiceId: invoiceId, invoiceStatus: newStatus };
+      return { ok: true, matchedInvoiceId: invoiceId, alreadyPaid };
     });
 
     if (result && "conflict" in result) {
@@ -556,7 +560,7 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
 }));
 
 router.get("/expenses/unmatched", wrapAsync(async (req, res) => {
-  const { amount, dateRange } = req.query as { amount?: string; dateRange?: string };
+  const { dateRange } = req.query as { dateRange?: string };
 
   const matchedRows = await db
     .select({ id: bankTransactionsTable.matchedExpenseId })
@@ -571,16 +575,6 @@ router.get("/expenses/unmatched", wrapAsync(async (req, res) => {
 
   if (matchedIds.length > 0) {
     conditions.push(notInArray(expensesTable.id, matchedIds));
-  }
-
-  if (amount) {
-    const amt = parseFloat(amount);
-    if (!isNaN(amt)) {
-      const low = String((amt * 0.90).toFixed(2));
-      const high = String((amt * 1.10).toFixed(2));
-      conditions.push(gte(expensesTable.amount, low));
-      conditions.push(lte(expensesTable.amount, high));
-    }
   }
 
   if (dateRange) {
