@@ -73,7 +73,7 @@ export function buildChecklistPdfHtml(data: ChecklistPdfData): string {
         ? `<div class="item-note">${escHtml(item.notes)}</div>`
         : "";
       const photosHtml = item.photos && item.photos.length > 0
-        ? `<div class="item-photos">${item.photos.slice(0, 3).map(uri => `<img src="${uri}" class="item-photo" alt="Photo" />`).join("")}</div>`
+        ? `<div class="item-photos">${item.photos.map(uri => `<img src="${uri}" class="item-photo" alt="Photo" />`).join("")}</div>`
         : "";
 
       const partsHtml = item.parts && item.parts.length > 0
@@ -171,8 +171,8 @@ export function buildChecklistPdfHtml(data: ChecklistPdfData): string {
   .item-meta { font-size: 8pt; color: #16a34a; margin-top: 1px; }
   .item-note { font-size: 8.5pt; color: #555; font-style: italic; margin-top: 2px; }
   .section-note { font-size: 8.5pt; color: #555; font-style: italic; padding: 4px 8px 6px 40px; }
-  .item-photos { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
-  .item-photo { width: 80px; height: 60px; object-fit: cover; border-radius: 3px; border: 1px solid #ddd; }
+  .item-photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 5px; }
+  .item-photo { width: 100%; height: 80px; object-fit: cover; border-radius: 3px; border: 1px solid #ddd; }
   .item-parts { margin-top: 3px; }
   .part-row { display: flex; align-items: center; gap: 6px; padding: 1px 0 1px 4px; }
   .part-status { font-size: 9.5pt; font-weight: bold; flex-shrink: 0; width: 14px; }
