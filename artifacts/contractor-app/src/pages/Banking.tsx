@@ -102,6 +102,8 @@ interface PlaidTransaction {
 
 interface SyncResult {
   synced: number;
+  inserted: number;
+  updated: number;
 }
 
 interface Vendor {
@@ -315,7 +317,11 @@ export default function Banking() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["plaid-connection"] });
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
-      toast({ title: "Sync complete", description: `${data.synced} transaction${data.synced !== 1 ? "s" : ""} imported.` });
+      const parts: string[] = [];
+      if (data.inserted > 0) parts.push(`${data.inserted} new`);
+      if (data.updated > 0) parts.push(`${data.updated} updated`);
+      const description = parts.length > 0 ? `Synced: ${parts.join(", ")}` : "No new transactions.";
+      toast({ title: "Sync complete", description });
     },
     onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
   });
@@ -598,19 +604,29 @@ export default function Banking() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => syncMutation.mutate()}
-            disabled={syncMutation.isPending}
-          >
-            {syncMutation.isPending ? (
-              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
+          <div className="flex flex-col items-end gap-0.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+            >
+              {syncMutation.isPending ? (
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Sync Transactions
+            </Button>
+            {connection.lastSyncedAt && (
+              <span className="text-xs text-muted-foreground">
+                Last synced:{" "}
+                {new Date(connection.lastSyncedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                {" at "}
+                {new Date(connection.lastSyncedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              </span>
             )}
-            Sync Transactions
-          </Button>
+          </div>
           <Button
             variant="outline"
             size="sm"
