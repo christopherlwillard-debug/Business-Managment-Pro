@@ -709,12 +709,13 @@ router.delete("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) 
 });
 
 // ── POST /:jobId/checklist/items/:itemId/photos ───────────────────────────────
-router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.single("photo"), async (req, res) => {
+router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.array("photos", 10), async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId, 10);
     const itemId = parseInt(req.params.itemId, 10);
     if (isNaN(jobId) || isNaN(itemId)) return res.status(400).json({ error: "Invalid parameters" });
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) return res.status(400).json({ error: "No files uploaded" });
 
     // Verify item belongs to this job's checklist (ownership check)
     const [item] = await db
@@ -724,25 +725,26 @@ router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.single("photo"
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     const [checklist] = await db
-      .select({ jobId: jobChecklistsTable.jobId })
+      .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
       .from(jobChecklistsTable)
       .where(eq(jobChecklistsTable.id, item.jobChecklistId));
     if (!checklist || checklist.jobId !== jobId) return res.status(403).json({ error: "Item does not belong to this job" });
 
     const objStorage = new ObjectStorageService();
-    const objectPath = await objStorage.uploadBufferWithFilename(
-      req.file.buffer,
-      req.file.mimetype,
-      "uploads/checklist-photos",
-      req.file.originalname || `photo-${Date.now()}.jpg`,
-    );
+    await Promise.all(files.map(async (file) => {
+      const objectPath = await objStorage.uploadBufferWithFilename(
+        file.buffer,
+        file.mimetype,
+        "uploads/checklist-photos",
+        file.originalname || `photo-${Date.now()}.jpg`,
+      );
+      await db
+        .insert(jobChecklistItemPhotosTable)
+        .values({ jobChecklistItemId: itemId, objectPath });
+    }));
 
-    const [photo] = await db
-      .insert(jobChecklistItemPhotosTable)
-      .values({ jobChecklistItemId: itemId, objectPath })
-      .returning();
-
-    res.json({ id: photo.id, url: toServingUrl(photo.objectPath), createdAt: photo.createdAt });
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to upload photo" });

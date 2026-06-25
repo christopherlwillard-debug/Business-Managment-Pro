@@ -112,7 +112,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [emailTo, setEmailTo] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [photoOpen, setPhotoOpen] = useState<Set<number>>(new Set());
-  const [uploadingPhotoFor, setUploadingPhotoFor] = useState<number | null>(null);
+  const [uploadingPhotoFor, setUploadingPhotoFor] = useState<Record<number, number>>({});
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [deletingPhoto, setDeletingPhoto] = useState<number | null>(null);
   const [splittingItem, setSplittingItem] = useState<number | null>(null);
@@ -360,23 +360,28 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
     }
   }
 
-  async function handlePhotoUpload(itemId: number, file: File) {
-    setUploadingPhotoFor(itemId);
+  async function handlePhotoUpload(itemId: number, files: FileList | File[]) {
+    const fileArr = Array.from(files);
+    if (fileArr.length === 0) return;
+    setUploadingPhotoFor(prev => ({ ...prev, [itemId]: fileArr.length }));
     try {
       const form = new FormData();
-      form.append("photo", file);
+      for (const file of fileArr) {
+        form.append("photos", file);
+      }
       const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${itemId}/photos`, {
         method: "POST",
         credentials: "include",
         body: form,
       });
       if (!r.ok) throw new Error("Upload failed");
-      await load();
+      const updated = await r.json();
+      setChecklist(updated);
       setPhotoOpen(prev => { const s = new Set(prev); s.add(itemId); return s; });
     } catch {
       toast({ title: "Failed to upload photo", variant: "destructive" });
     } finally {
-      setUploadingPhotoFor(null);
+      setUploadingPhotoFor(prev => { const next = { ...prev }; delete next[itemId]; return next; });
     }
   }
 
@@ -884,16 +889,17 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                         <input
                                           type="file"
                                           accept="image/*"
+                                          multiple
                                           className="hidden"
                                           onChange={e => {
-                                            const file = e.target.files?.[0];
-                                            if (file) handlePhotoUpload(item.id, file);
+                                            const files = e.target.files;
+                                            if (files && files.length > 0) handlePhotoUpload(item.id, files);
                                             e.target.value = "";
                                           }}
                                         />
-                                        {uploadingPhotoFor === item.id
-                                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Uploading…</>
-                                          : <><Camera className="w-3 h-3" /> Add photo</>}
+                                        {(uploadingPhotoFor[item.id] ?? 0) > 0
+                                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Uploading {uploadingPhotoFor[item.id]}…</>
+                                          : <><Camera className="w-3 h-3" /> Add photos</>}
                                       </label>
                                     )}
                                   </div>
@@ -984,7 +990,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                     title="Add photo"
                                     className={`w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted/50 transition-colors mt-0.5 ${item.photos.length > 0 ? "text-emerald-500" : ""}`}
                                   >
-                                    {uploadingPhotoFor === item.id
+                                    {(uploadingPhotoFor[item.id] ?? 0) > 0
                                       ? <Loader2 className="w-3 h-3 animate-spin" />
                                       : <Camera className="w-3 h-3" />}
                                   </button>
