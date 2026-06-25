@@ -83,6 +83,39 @@ function formatDate(iso: string | null) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+const MAX_RAW_FILE_MB = 20;
+const MAX_WIDTH_PX = 1200;
+const JPEG_QUALITY = 0.8;
+
+async function compressImage(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const { naturalWidth: w, naturalHeight: h } = img;
+      const scale = w > MAX_WIDTH_PX ? MAX_WIDTH_PX / w : 1;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { resolve(file); return; }
+          const ext = file.name.replace(/\.[^.]+$/, "") || "photo";
+          resolve(new File([blob], `${ext}.jpg`, { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        JPEG_QUALITY,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Could not read image")); };
+    img.src = objectUrl;
+  });
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const { toast } = useToast();
@@ -363,10 +396,22 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   async function handlePhotoUpload(itemId: number, files: FileList | File[]) {
     const fileArr = Array.from(files);
     if (fileArr.length === 0) return;
+
+    const oversized = fileArr.filter(f => f.size > MAX_RAW_FILE_MB * 1024 * 1024);
+    if (oversized.length > 0) {
+      toast({
+        title: "Photo too large",
+        description: `Each photo must be under ${MAX_RAW_FILE_MB} MB. Please choose a smaller file.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setUploadingPhotoFor(prev => ({ ...prev, [itemId]: fileArr.length }));
     try {
+      const compressed = await Promise.all(fileArr.map(f => compressImage(f)));
       const form = new FormData();
-      for (const file of fileArr) {
+      for (const file of compressed) {
         form.append("photos", file);
       }
       const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${itemId}/photos`, {
