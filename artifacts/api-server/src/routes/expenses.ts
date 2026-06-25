@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable } from "@workspace/db/schema";
+import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, isNull, or } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
@@ -60,6 +60,7 @@ const expenseSelect = {
   ...expensesTable,
   jobTitle: jobsTable.title,
   subcontractorName: subcontractorsTable.name,
+  businessName: businessesTable.name,
 };
 
 function buildExpenseQuery() {
@@ -67,7 +68,8 @@ function buildExpenseQuery() {
     .select(expenseSelect)
     .from(expensesTable)
     .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
-    .leftJoin(subcontractorsTable, eq(expensesTable.subcontractorId, subcontractorsTable.id));
+    .leftJoin(subcontractorsTable, eq(expensesTable.subcontractorId, subcontractorsTable.id))
+    .leftJoin(businessesTable, eq(expensesTable.businessId, businessesTable.id));
 }
 
 router.get("/", async (req, res) => {
@@ -133,7 +135,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, businessLine } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, businessLine, businessId } = req.body;
 
     // Capture old values before updating so we can recompute the old pair if it changed
     const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
@@ -145,6 +147,7 @@ router.put("/:id", async (req, res) => {
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
       ...(excludeFromNetProfit !== undefined && { excludeFromNetProfit: excludeFromNetProfit === true }),
       ...(businessLine !== undefined && { businessLine: validBusinessLines.includes(businessLine) ? businessLine : null }),
+      ...(businessId !== undefined && { businessId: businessId ? parseInt(String(businessId)) : null }),
     }).where(eq(expensesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 

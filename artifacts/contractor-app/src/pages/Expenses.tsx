@@ -93,6 +93,24 @@ function toMonthlyRate(amount: number, frequency: RecurringExpenseFrequency): nu
   return amount * (MONTHLY_MULTIPLIER[frequency] ?? 1);
 }
 
+// Resolve which business an expense belongs to, checking businessId first then businessLine slug.
+function getExpenseBiz(exp: any, businesses: any[]): { name: string; slug: string; idx: number } | null {
+  const biz = exp?.businessId
+    ? businesses.find((b: any) => b.id === exp.businessId)
+    : exp?.businessLine
+      ? businesses.find((b: any) => b.slug === exp.businessLine)
+      : null;
+  if (!biz) return null;
+  return { name: biz.name, slug: biz.slug, idx: businesses.findIndex((b: any) => b.id === biz.id) };
+}
+
+const BIZ_BADGE_COLORS = [
+  "bg-blue-50 text-blue-700 border-blue-200",
+  "bg-amber-50 text-amber-700 border-amber-200",
+  "bg-violet-50 text-violet-700 border-violet-200",
+  "bg-emerald-50 text-emerald-700 border-emerald-200",
+];
+
 // ─── Recurring expense hooks ───────────────────────────────────────────────────
 function useRecurringExpenses(businessId?: number | null) {
   return useQuery<RecurringExpense[]>({
@@ -1338,7 +1356,7 @@ export default function Expenses() {
     setBusinessLine(activeBusiness?.slug ?? undefined);
   }, [activeBusiness?.slug]);
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
-  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; businessLine: string} | null>(null);
+  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; businessLine: string; businessId: number | null} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
   const [editLightboxImgError, setEditLightboxImgError] = useState(false);
@@ -1515,7 +1533,7 @@ export default function Expenses() {
           subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
           excludeFromNetProfit,
           businessLine: businessLine || null,
-          businessId: activeBusiness?.id ?? null,
+          businessId: activeBusiness?.id ?? (businessLine ? businesses.find(b => b.slug === businessLine)?.id ?? null : null),
         },
       });
 
@@ -1904,7 +1922,7 @@ export default function Expenses() {
                                           key={val}
                                           type="button"
                                           title={val === "" ? "Untagged" : val === "general_contracting" ? "General Contracting" : "Asphalt Sealing"}
-                                          onClick={() => setEditingRow(r => r && ({ ...r, businessLine: val }))}
+                                          onClick={() => { const biz = businesses.find((b: any) => b.slug === val); setEditingRow(r => r && ({ ...r, businessLine: val, businessId: biz?.id ?? null })); }}
                                           className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
                                             editingRow.businessLine === val
                                               ? val === "asphalt_sealing" ? "bg-amber-500 text-white" : val === "general_contracting" ? "bg-blue-600 text-white" : "bg-muted text-foreground"
@@ -1934,6 +1952,7 @@ export default function Expenses() {
                                               receiptUrl: exp.receiptUrl,
                                               excludeFromNetProfit: editingRow.excludeFromNetProfit,
                                               businessLine: editingRow.businessLine || null,
+                                              businessId: editingRow.businessId,
                                             },
                                           });
                                           if (editReceiptFile) {
@@ -1958,6 +1977,8 @@ export default function Expenses() {
                                 </tr>
                               );
                             }
+                            const expBiz = getExpenseBiz(exp, businesses);
+                            const bizColorClass = expBiz ? BIZ_BADGE_COLORS[expBiz.idx % BIZ_BADGE_COLORS.length] : null;
                             return (
                               <tr key={exp.id}
                                 onClick={() => { if (!isEditing) setViewExpense(exp); }}
@@ -1990,6 +2011,15 @@ export default function Expenses() {
                                       <span className="inline-flex items-center gap-1 bg-violet-50 text-violet-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-violet-200 flex-shrink-0" title="Auto-created from sub hours logged on the job card. Edit hours on the job to update.">
                                         <HardHat className="w-2.5 h-2.5" /> Auto • Hours
                                       </span>
+                                    )}
+                                    {!activeBusiness && (
+                                      expBiz
+                                        ? <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${bizColorClass}`}>
+                                            <Briefcase className="w-2.5 h-2.5" /> {expBiz.name}
+                                          </span>
+                                        : <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-orange-200 flex-shrink-0">
+                                            <AlertTriangle className="w-2.5 h-2.5" /> No business
+                                          </span>
                                     )}
                                   </div>
                                   {exp.vendor && (
@@ -2045,6 +2075,7 @@ export default function Expenses() {
                                             jobId: exp.jobId ? String(exp.jobId) : "",
                                             notes: exp.notes ?? "",
                                             excludeFromNetProfit: exp.excludeFromNetProfit ?? false,
+                                            businessId: (exp as any).businessId ?? null,
                                             businessLine: exp.businessLine ?? "",
                                           }); }}
                                           className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
@@ -2403,14 +2434,13 @@ export default function Expenses() {
                 <div className="flex items-center gap-2 flex-wrap">
                   {[
                     { val: "", label: "Untagged" },
-                    { val: "general_contracting", label: "General Contracting" },
-                    { val: "asphalt_sealing", label: "Asphalt Sealing" },
-                  ].map(({ val, label }) => (
+                    ...businesses.map(b => ({ val: b.slug, label: b.name })),
+                  ].map(({ val, label }, mapIdx) => (
                     <button key={val} type="button"
-                      onClick={() => setEditingRow(r => r && ({ ...r, businessLine: val }))}
+                      onClick={() => { const biz = businesses.find((b: any) => b.slug === val); setEditingRow(r => r && ({ ...r, businessLine: val, businessId: biz?.id ?? null })); }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                         editingRow.businessLine === val
-                          ? val === "asphalt_sealing" ? "bg-amber-500 text-white border-amber-500" : val === "general_contracting" ? "bg-blue-600 text-white border-blue-600" : "bg-muted text-foreground border-border"
+                          ? mapIdx === 0 ? "bg-muted text-foreground border-border" : ["bg-blue-100 text-blue-800 border-blue-400", "bg-amber-100 text-amber-800 border-amber-400", "bg-violet-100 text-violet-800 border-violet-400"][(mapIdx - 1) % 3]
                           : "text-muted-foreground border-border hover:bg-muted"
                       }`}>{label}</button>
                   ))}
@@ -2471,6 +2501,7 @@ export default function Expenses() {
                       receiptUrl: undefined,
                       excludeFromNetProfit: editingRow.excludeFromNetProfit,
                       businessLine: editingRow.businessLine || null,
+                      businessId: editingRow.businessId,
                     },
                   });
                   if (editReceiptFile) {
