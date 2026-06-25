@@ -2,7 +2,21 @@ import cron from "node-cron";
 import { db } from "@workspace/db";
 import { plaidConnectionsTable, bankTransactionsTable } from "@workspace/db";
 import { getPlaidClient, isPlaidConfigured } from "../lib/plaid.js";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
+
+// Extract a payment reference code from a description (e.g. "JPM99clqfe2r" from Zelle).
+// Returns the code in lowercase, or null if none found.
+function extractRefCode(desc: string): string | null {
+  const m = desc.match(/\b([A-Z0-9]{8,})\b/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+// Build date strings ±N days around a YYYY-MM-DD date string.
+function shiftDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -77,16 +91,49 @@ async function syncTransactions(connection: typeof plaidConnectionsTable.$inferS
         insertedCount++;
       }
     } else {
-      await db.insert(bankTransactionsTable).values({
-        importBatchId: null,
-        date: t.date,
-        description,
-        amount: absAmount,
-        transactionType: txnType,
-        status: "unmatched",
-        plaidTransactionId: t.transaction_id,
-      });
-      insertedCount++;
+      // Fuzzy dedup fallback: Plaid's transactionsGet sometimes omits
+      // pending_transaction_id for settled transactions. If we find an existing
+      // unmatched row with the same amount, type, and similar description within
+      // ±5 days, treat it as the pending version and update it instead of inserting.
+      const refCode = extractRefCode(description);
+      const isDeposit = /deposit/i.test(description);
+      let fuzzyRow: { id: number } | null = null;
+      if (refCode || isDeposit) {
+        const descCond = refCode && !isDeposit
+          ? sql`LOWER(${bankTransactionsTable.description}) LIKE ${'%' + refCode + '%'}`
+          : sql`LOWER(${bankTransactionsTable.description}) LIKE '%deposit%'`;
+        const rows = await db
+          .select({ id: bankTransactionsTable.id })
+          .from(bankTransactionsTable)
+          .where(and(
+            eq(bankTransactionsTable.amount, absAmount),
+            eq(bankTransactionsTable.transactionType, txnType),
+            eq(bankTransactionsTable.status, "unmatched"),
+            gte(bankTransactionsTable.date, shiftDate(t.date, -5)),
+            lte(bankTransactionsTable.date, shiftDate(t.date, 5)),
+            descCond,
+          ))
+          .limit(1);
+        fuzzyRow = rows[0] ?? null;
+      }
+      if (fuzzyRow) {
+        await db
+          .update(bankTransactionsTable)
+          .set({ plaidTransactionId: t.transaction_id, date: t.date, description, amount: absAmount, transactionType: txnType })
+          .where(eq(bankTransactionsTable.id, fuzzyRow.id));
+        updatedCount++;
+      } else {
+        await db.insert(bankTransactionsTable).values({
+          importBatchId: null,
+          date: t.date,
+          description,
+          amount: absAmount,
+          transactionType: txnType,
+          status: "unmatched",
+          plaidTransactionId: t.transaction_id,
+        });
+        insertedCount++;
+      }
     }
   }
 
