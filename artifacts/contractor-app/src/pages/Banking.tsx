@@ -27,7 +27,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink, Trash2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -226,6 +226,9 @@ export default function Banking() {
 
   // Income filing
   const [incomeFilingTxn, setIncomeFilingTxn] = useState<PlaidTransaction | null>(null);
+
+  // Delete confirmation (inline — tracks which txn ID is pending confirm)
+  const [confirmDeleteTxnId, setConfirmDeleteTxnId] = useState<number | null>(null);
   const [incomeForm, setIncomeForm] = useState<FileIncomeForm>({
     mode: "other",
     invoiceId: "",
@@ -397,6 +400,20 @@ export default function Banking() {
       toast({ title: "Link removed", description: "Transaction is available to file again." });
     },
     onError: (err: Error) => toast({ title: "Failed to remove link", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteTxnMutation = useMutation({
+    mutationFn: (txnId: number) =>
+      apiFetch(`/api/plaid/transactions/${txnId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      setConfirmDeleteTxnId(null);
+      toast({ title: "Transaction removed", description: "The duplicate entry has been deleted." });
+    },
+    onError: (err: Error) => {
+      setConfirmDeleteTxnId(null);
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    },
   });
 
   const onPlaidSuccess = useCallback(
@@ -807,15 +824,32 @@ export default function Banking() {
                                 </Button>
                               </div>
                             ) : isCredit ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs px-2.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                                onClick={() => openIncomeFilingSheet(txn)}
-                              >
-                                <TrendingUp className="w-3 h-3 mr-1" />
-                                File as Income
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs px-2.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                  onClick={() => openIncomeFilingSheet(txn)}
+                                >
+                                  <TrendingUp className="w-3 h-3 mr-1" />
+                                  File as Income
+                                </Button>
+                                {confirmDeleteTxnId === txn.id ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-destructive">
+                                    <button className="font-semibold underline" onClick={() => deleteTxnMutation.mutate(txn.id)} disabled={deleteTxnMutation.isPending}>Yes</button>
+                                    <span>/</span>
+                                    <button className="text-muted-foreground" onClick={() => setConfirmDeleteTxnId(null)}>No</button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    title="Delete duplicate"
+                                    onClick={() => setConfirmDeleteTxnId(txn.id)}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <div className="flex flex-col items-end gap-1">
                                 <Button
@@ -839,6 +873,23 @@ export default function Banking() {
                                   <Link2 className="w-3 h-3 mr-1" />
                                   Match to Expense
                                 </Button>
+                                {confirmDeleteTxnId === txn.id ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-destructive">
+                                    <span className="text-muted-foreground mr-0.5">Delete?</span>
+                                    <button className="font-semibold underline" onClick={() => deleteTxnMutation.mutate(txn.id)} disabled={deleteTxnMutation.isPending}>Yes</button>
+                                    <span>/</span>
+                                    <button className="text-muted-foreground" onClick={() => setConfirmDeleteTxnId(null)}>No</button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    title="Delete duplicate"
+                                    onClick={() => setConfirmDeleteTxnId(txn.id)}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    Remove
+                                  </button>
+                                )}
                               </div>
                             )}
                           </td>

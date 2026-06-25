@@ -698,6 +698,25 @@ router.post("/transactions/:txnId/unmatch", wrapAsync(async (req, res) => {
   res.json({ ok: true, transaction: updated });
 }));
 
+router.delete("/transactions/:id", wrapAsync(async (req, res) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid transaction ID" }); return; }
+
+  const [txn] = await db
+    .select({ id: bankTransactionsTable.id, status: bankTransactionsTable.status })
+    .from(bankTransactionsTable)
+    .where(eq(bankTransactionsTable.id, id));
+
+  if (!txn) { res.status(404).json({ error: "Transaction not found" }); return; }
+  if (txn.status !== "unmatched") {
+    res.status(403).json({ error: "Only unmatched transactions can be deleted" });
+    return;
+  }
+
+  await db.delete(bankTransactionsTable).where(eq(bankTransactionsTable.id, id));
+  res.json({ ok: true });
+}));
+
 router.delete("/connection", wrapAsync(async (req, res) => {
   const connections = await db.select().from(plaidConnectionsTable).limit(1);
   if (connections.length === 0) {
