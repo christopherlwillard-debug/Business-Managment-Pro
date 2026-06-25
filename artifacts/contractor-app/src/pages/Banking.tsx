@@ -138,6 +138,7 @@ interface UnpaidInvoice {
   amountPaid?: string | null;
   dueDate?: string | null;
   status: string;
+  createdAt?: string | null;
 }
 
 interface FileExpenseForm {
@@ -1185,7 +1186,16 @@ export default function Banking() {
                 >
                   <option value="">— Choose an invoice —</option>
                   {allInvoices && allInvoices.length > 0 ? (
-                    allInvoices.map((inv) => (
+                    [...allInvoices]
+                      .sort((a, b) => {
+                        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                        if (bTime !== aTime) return bTime - aTime;
+                        const aPaid = a.status === "paid" ? 1 : 0;
+                        const bPaid = b.status === "paid" ? 1 : 0;
+                        return aPaid - bPaid;
+                      })
+                      .map((inv) => (
                       <option key={inv.id} value={String(inv.id)}>
                         {inv.invoiceNumber}
                         {inv.clientName ? ` — ${inv.clientName}` : ""}
