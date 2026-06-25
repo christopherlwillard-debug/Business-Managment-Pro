@@ -3382,6 +3382,31 @@ function JobFormDialog({
     setRemoveSubPrompt(null);
   }, [open, editJob?.id]);
 
+  // Pre-populate compensation types/rates when opening an existing job for edit
+  useEffect(() => {
+    if (!open || !editJob?.id) {
+      setSubCompDefaults({});
+      return;
+    }
+    fetch(`${BASE}/api/jobs/${editJob.id}/sub-payments`, { credentials: "include" })
+      .then(r => r.json())
+      .then((rows: Array<{ subcontractorId: number; compensationType: string; hourlyRate: number | null; fixedAmount: number | null; allocationPct: number | null }>) => {
+        if (!Array.isArray(rows)) return;
+        const defaults: Record<number, { compensationType: string; rate: string }> = {};
+        for (const row of rows) {
+          const ct = row.compensationType ?? "hourly";
+          const rate =
+            ct === "hourly"     ? (row.hourlyRate   != null ? String(row.hourlyRate)   : "")
+            : ct === "fixed"    ? (row.fixedAmount  != null ? String(row.fixedAmount)  : "")
+            : ct === "allocation" ? (row.allocationPct != null ? String(row.allocationPct) : "")
+            : "";
+          defaults[row.subcontractorId] = { compensationType: ct, rate };
+        }
+        setSubCompDefaults(defaults);
+      })
+      .catch(() => {});
+  }, [open, editJob?.id]);
+
   function setField(k: string, v: string) {
     setFormState(f => ({ ...f, [k]: v }));
   }
