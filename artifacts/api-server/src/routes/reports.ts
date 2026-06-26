@@ -1363,4 +1363,122 @@ router.get("/reserve-summary", sectionGuard("jobs"), async (req, res) => {
   }
 });
 
+// ─── My Pay Summary: running balance of what the business owes the owner ─────
+router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
+  try {
+    const GROWTH_PCT = 0.05;
+    const TAX_PCT    = 0.25;
+
+    // All paid invoices
+    const invoiceRows = await db.select({
+      jobId: invoicesTable.jobId,
+      total: invoicesTable.total,
+    }).from(invoicesTable).where(eq(invoicesTable.status, "paid"));
+
+    const jobIds = [...new Set(invoiceRows.map(r => r.jobId).filter((id): id is number => id != null))];
+
+    if (jobIds.length === 0) {
+      return res.json({ totalEarned: 0, totalWithdrawn: 0, remaining: 0, withdrawals: [] });
+    }
+
+    // Revenue per job
+    const revenueByJob = new Map<number, number>();
+    for (const row of invoiceRows) {
+      if (!row.jobId) continue;
+      revenueByJob.set(row.jobId, (revenueByJob.get(row.jobId) ?? 0) + parseFloat(row.total ?? "0"));
+    }
+
+    // Hourly sub labor cost per job
+    const hoursCostRows = await db.select({
+      jobId: jobSubHoursTable.jobId,
+      cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+    }).from(jobSubHoursTable).where(inArray(jobSubHoursTable.jobId, jobIds)).groupBy(jobSubHoursTable.jobId);
+    const hoursCostByJob = new Map(hoursCostRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+
+    // Fixed sub costs per job
+    const fixedSubRows = await db.select({
+      jobId: jobSubcontractorsTable.jobId,
+      cost: sql<string>`COALESCE(SUM(COALESCE(${jobSubcontractorsTable.fixedAmount}, 0)), 0)`,
+    }).from(jobSubcontractorsTable)
+      .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "fixed")))
+      .groupBy(jobSubcontractorsTable.jobId);
+    const fixedCostByJob = new Map(fixedSubRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+
+    // Allocation sub percentages per job (to derive owner's remaining %)
+    const allocRows = await db.select({
+      jobId: jobSubcontractorsTable.jobId,
+      totalAllocPct: sql<string>`COALESCE(SUM(COALESCE(${jobSubcontractorsTable.allocationPct}, 0)), 0)`,
+    }).from(jobSubcontractorsTable)
+      .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "allocation")))
+      .groupBy(jobSubcontractorsTable.jobId);
+    const allocPctByJob = new Map(allocRows.map(r => [r.jobId, parseFloat(r.totalAllocPct ?? "0")]));
+
+    // Per-job take-home using same formula as Pay Breakdown panel
+    let totalEarned = 0;
+    const jobBreakdown: Array<{ jobId: number; revenue: number; takeHome: number }> = [];
+    for (const [jobId, revenue] of revenueByJob) {
+      const hourlyCost   = hoursCostByJob.get(jobId) ?? 0;
+      const fixedCost    = fixedCostByJob.get(jobId) ?? 0;
+      const afterWorkers = Math.max(0, revenue - hourlyCost - fixedCost);
+      const growthReserve = afterWorkers * GROWTH_PCT;
+      const toSplit      = afterWorkers - growthReserve;
+      const totalAllocPct = allocPctByJob.get(jobId) ?? 0;
+      // Owner pct: if allocation subs exist, owner gets remainder; else owner gets 100%
+      const ownerPct     = totalAllocPct > 0 ? Math.max(0, 100 - totalAllocPct) : 100;
+      const ownerShare   = toSplit * (ownerPct / 100);
+      const takeHome     = ownerShare * (1 - TAX_PCT);
+      totalEarned += takeHome;
+      jobBreakdown.push({ jobId, revenue, takeHome });
+    }
+
+    // Total withdrawals: expenses with category "Owner Draw" + negative owner capital entries
+    const [withdrawalExpenses, ocEntries] = await Promise.all([
+      db.select({
+        id: expensesTable.id,
+        date: expensesTable.date,
+        amount: expensesTable.amount,
+        description: expensesTable.description,
+      }).from(expensesTable)
+        .where(eq(expensesTable.category, "Owner Draw"))
+        .orderBy(desc(expensesTable.date)),
+      db.select({
+        id: ownerCapitalEntriesTable.id,
+        date: ownerCapitalEntriesTable.date,
+        amount: ownerCapitalEntriesTable.amount,
+        description: ownerCapitalEntriesTable.description,
+      }).from(ownerCapitalEntriesTable)
+        .where(sql`CAST(${ownerCapitalEntriesTable.amount} AS numeric) < 0`)
+        .orderBy(desc(ownerCapitalEntriesTable.date)),
+    ]);
+
+    const withdrawals = [
+      ...withdrawalExpenses.map(e => ({
+        id: `exp-${e.id}`,
+        date: e.date,
+        amount: parseFloat(e.amount ?? "0"),
+        description: e.description ?? "Withdrawal",
+      })),
+      ...ocEntries.map(e => ({
+        id: `oc-${e.id}`,
+        date: e.date,
+        amount: Math.abs(parseFloat(String(e.amount ?? "0"))),
+        description: e.description ?? "Withdrawal",
+      })),
+    ].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+
+    const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amount, 0);
+
+    res.json({
+      totalEarned:    Math.max(0, totalEarned),
+      totalWithdrawn,
+      remaining:      Math.max(0, totalEarned - totalWithdrawn),
+      withdrawals,
+      jobBreakdown,
+    });
+  } catch (err) {
+    console.error("[owner-pay-summary]", err);
+    res.status(500).json({ error: "Failed to compute owner pay summary" });
+  }
+});
+
 export default router;

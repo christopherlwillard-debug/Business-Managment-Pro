@@ -110,7 +110,6 @@ export default function Dashboard() {
   const { activeBusiness, hasSelection, businesses } = useBusiness();
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
   const businessLine = activeBusiness ? activeBusiness.slug : localBLFilter;
-  const [drawDialogOpen, setDrawDialogOpen] = useState(false);
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: businessLine || undefined });
@@ -529,23 +528,8 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Owner Distributions card */}
-      {stats.operationalNetProfit !== undefined && (
-        <DistributionsCard
-          operationalNetProfit={stats.operationalNetProfit}
-          ownerDrawTotal={stats.ownerDrawTotal ?? 0}
-          undrawnBalance={stats.undrawnBalance ?? stats.operationalNetProfit}
-          periodLabel={periodLabel}
-          onRecordDraw={() => setDrawDialogOpen(true)}
-        />
-      )}
-
-      {/* Record Draw inline dialog */}
-      <RecordDrawDialog
-        open={drawDialogOpen}
-        onClose={() => setDrawDialogOpen(false)}
-        onSaved={() => queryClient.invalidateQueries()}
-      />
+      {/* My Pay running balance */}
+      <MyPayCard />
 
       {/* Subcontractor Pay section — only shown when there are sub expenses */}
       {((stats.subContractorOwed ?? 0) > 0 || (stats.subContractorPaid ?? 0) > 0) && (
@@ -886,13 +870,15 @@ function RecordDrawDialog({ open, onClose, onSaved }: { open: boolean; onClose: 
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`${BASE}/api/owner-capital`, {
+      const res = await fetch(`${BASE}/api/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          description: description.trim() || "Owner Draw",
-          amount: -Math.abs(parseFloat(amount)),
+          description: description.trim() || "Owner Withdrawal",
+          amount: parseFloat(amount),
+          category: "Owner Draw",
           date,
+          excludeFromNetProfit: true,
         }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -1117,5 +1103,158 @@ function MetricCard({ title, value, icon: Icon, isAlert, href }: {
     <Card className="shadow-md border-border/50 hover:shadow-lg transition-shadow duration-300">
       {inner}
     </Card>
+  );
+}
+
+// ─── My Pay Card ─────────────────────────────────────────────────────────────
+function MyPayCard() {
+  const qc = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(getTodayStr());
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["owner-pay-summary"],
+    queryFn: () => fetch(`${BASE}/api/reports/owner-pay-summary`).then(r => r.json()),
+  });
+
+  async function handleWithdraw(e: React.FormEvent) {
+    e.preventDefault();
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setErr("Enter a valid amount"); return; }
+    setSaving(true);
+    setErr("");
+    try {
+      const res = await fetch(`${BASE}/api/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: "Owner Withdrawal", amount: amt, category: "Owner Draw", date, excludeFromNetProfit: true }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setDialogOpen(false);
+      setAmount("");
+      setDate(getTodayStr());
+      setErr("");
+      qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch {
+      setErr("Failed to save. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isLoading) return <div className="animate-pulse h-36 rounded-2xl bg-muted" />;
+
+  const totalEarned    = data?.totalEarned    ?? 0;
+  const totalWithdrawn = data?.totalWithdrawn ?? 0;
+  const remaining      = data?.remaining      ?? 0;
+  const withdrawals: Array<{ id: string; date: string; amount: number; description: string }> = data?.withdrawals ?? [];
+
+  return (
+    <>
+      <Card className="shadow-md border-border/50">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-foreground">My Pay</p>
+                <p className="text-xs text-muted-foreground">What the business owes you</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setDialogOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Record Withdrawal
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Earned</p>
+              <p className="text-lg font-bold text-foreground">{formatCurrency(totalEarned)}</p>
+              <p className="text-[10px] text-muted-foreground">from jobs</p>
+            </div>
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Taken Out</p>
+              <p className="text-lg font-bold text-foreground">{formatCurrency(totalWithdrawn)}</p>
+              <p className="text-[10px] text-muted-foreground">withdrawn</p>
+            </div>
+            <div className={cn("rounded-xl p-3", remaining > 0.01 ? "bg-emerald-50 border border-emerald-200/60" : "bg-muted/40")}>
+              <p className={cn("text-[10px] font-semibold uppercase tracking-wide mb-1", remaining > 0.01 ? "text-emerald-700" : "text-muted-foreground")}>Owed to You</p>
+              <p className={cn("text-lg font-bold", remaining > 0.01 ? "text-emerald-700" : "text-foreground")}>{formatCurrency(remaining)}</p>
+              <p className={cn("text-[10px]", remaining > 0.01 ? "text-emerald-600/70" : "text-muted-foreground")}>still owed</p>
+            </div>
+          </div>
+
+          {withdrawals.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-border/60">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Recent Withdrawals</p>
+              <div className="space-y-1.5">
+                {withdrawals.slice(0, 3).map(w => (
+                  <div key={w.id} className="flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground w-16 shrink-0">
+                      {w.date ? new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+                    </span>
+                    <span className="text-foreground flex-1 px-2 truncate">{w.description}</span>
+                    <span className="font-semibold text-foreground shrink-0">{formatCurrency(w.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Withdrawal dialog */}
+      {dialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40" onClick={() => { setDialogOpen(false); setAmount(""); setDate(getTodayStr()); setErr(""); }}>
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-border" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700"><Wallet className="w-4 h-4" /></div>
+              <h2 className="text-base font-bold text-foreground">Record Withdrawal</h2>
+              <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => { setDialogOpen(false); setAmount(""); setDate(getTodayStr()); setErr(""); }}>✕</button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              Log money you've taken out of the business.{" "}
+              <span className="font-semibold text-emerald-700">{formatCurrency(remaining)}</span> still owed to you.
+            </p>
+            <form onSubmit={handleWithdraw} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
+                  <input type="number" step="0.01" min="0.01" required autoFocus
+                    value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-emerald-300" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Date *</label>
+                <input type="date" required value={date} onChange={e => setDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-emerald-300" />
+              </div>
+              {err && <p className="text-xs text-destructive">{err}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => { setDialogOpen(false); setAmount(""); setDate(getTodayStr()); setErr(""); }}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground border border-border hover:bg-muted transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={saving}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
+                  {saving ? "Saving…" : "Record"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
