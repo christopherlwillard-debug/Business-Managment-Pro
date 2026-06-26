@@ -784,15 +784,27 @@ export function InvoicePanel({
                         className="w-full mt-0.5 px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
                     </div>
                     {jobHasChecklist && (
-                      <label className="flex items-center gap-2 cursor-pointer select-none pt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={attachChecklist}
-                          onChange={e => setAttachChecklist(e.target.checked)}
-                          className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"
-                        />
-                        <span className="text-[10px] text-blue-700 font-medium">Attach checklist PDF</span>
-                      </label>
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={attachChecklist}
+                            onChange={e => setAttachChecklist(e.target.checked)}
+                            className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"
+                          />
+                          <span className="text-[10px] text-blue-700 font-medium">Attach checklist PDF</span>
+                        </label>
+                        {effectiveExistingInvoice?.jobId && (
+                          <a
+                            href={`${base}/api/jobs/${effectiveExistingInvoice.jobId}/checklist/pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-blue-500 underline hover:text-blue-700"
+                          >
+                            Preview PDF
+                          </a>
+                        )}
+                      </div>
                     )}
                     <div className="flex items-center gap-2 pt-0.5">
                       <button onClick={handleGmailSend} disabled={gmailSending || !gmailTo.trim()}

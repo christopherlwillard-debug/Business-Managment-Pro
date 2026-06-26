@@ -5,16 +5,28 @@ import { existsSync } from "node:fs";
 function resolveChromiumPath(): string {
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
     const p = process.env.PUPPETEER_EXECUTABLE_PATH;
-    if (existsSync(p)) return p;
+    if (existsSync(p)) {
+      console.log(`[launchBrowser] Using PUPPETEER_EXECUTABLE_PATH: ${p}`);
+      return p;
+    }
   }
 
-  // Login shell sources the Nix profile (~/.nix-profile/etc/profile.d/nix.sh)
-  // which puts pkgs.chromium on PATH — works in both dev and deployed containers.
+  // Prefer the bundled Chrome that Puppeteer downloaded — it is version-matched
+  // and known to work. System Chromium may be a different version and incompatible.
+  try {
+    const bundled = puppeteer.executablePath();
+    if (bundled && existsSync(bundled)) {
+      console.log(`[launchBrowser] Using bundled Chrome: ${bundled}`);
+      return bundled;
+    }
+  } catch {}
+
+  // Fall back to system Chromium via login shell (Nix profile)
   for (const cmd of ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]) {
     try {
       const p = execSync(`bash -l -c 'which ${cmd}'`, { encoding: "utf8", timeout: 5000 }).trim();
       if (p && existsSync(p)) {
-        console.log(`[launchBrowser] Found system chromium via login shell: ${p}`);
+        console.log(`[launchBrowser] Falling back to system chromium: ${p}`);
         return p;
       }
     } catch {}
@@ -27,13 +39,13 @@ function resolveChromiumPath(): string {
     "/run/current-system/sw/bin/chromium",
   ];
   for (const p of nixPaths) {
-    if (existsSync(p)) return p;
+    if (existsSync(p)) {
+      console.log(`[launchBrowser] Falling back to Nix store chromium: ${p}`);
+      return p;
+    }
   }
 
-  // Last resort: bundled puppeteer chrome
-  const bundled = puppeteer.executablePath();
-  console.log(`[launchBrowser] Falling back to bundled Chrome: ${bundled}`);
-  return bundled;
+  throw new Error("No Chromium/Chrome executable found. Cannot generate PDF.");
 }
 
 const ARGS = [
