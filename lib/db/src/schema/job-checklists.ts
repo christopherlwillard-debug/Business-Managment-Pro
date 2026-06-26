@@ -32,6 +32,7 @@ export const jobChecklistsTable = pgTable("job_checklists", {
   shareEnabled: boolean("share_enabled").notNull().default(true),
   statusOverride: text("status_override"),
   publicNotes: text("public_notes"),
+  finishedNotes: text("finished_notes"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

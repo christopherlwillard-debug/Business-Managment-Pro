@@ -341,11 +341,12 @@ router.patch("/:jobId/checklist", async (req, res) => {
       .where(eq(jobChecklistsTable.jobId, jobId));
     if (!checklist) return res.status(404).json({ error: "Checklist not found" });
 
-    const { publicNotes, statusOverride, shareEnabled } = req.body;
+    const { publicNotes, statusOverride, shareEnabled, finishedNotes } = req.body;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (publicNotes !== undefined) updates.publicNotes = publicNotes;
     if (statusOverride !== undefined) updates.statusOverride = statusOverride;
     if (shareEnabled !== undefined) updates.shareEnabled = shareEnabled;
+    if (finishedNotes !== undefined) updates.finishedNotes = finishedNotes;
 
     await db
       .update(jobChecklistsTable)

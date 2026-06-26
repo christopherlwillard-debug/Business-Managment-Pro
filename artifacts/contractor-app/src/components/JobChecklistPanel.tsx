@@ -64,6 +64,7 @@ interface JobChecklist {
   overallPercent: number;
   totalItems: number;
   completedItems: number;
+  finishedNotes: string | null;
   finishedPhotos: ChecklistFinishedPhoto[];
   sections: ChecklistSection[];
 }
@@ -155,6 +156,8 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [uploadingPhotoFor, setUploadingPhotoFor] = useState<Record<number, number>>({});
   const [uploadingFinishedPhotos, setUploadingFinishedPhotos] = useState(false);
   const [deletingFinishedPhoto, setDeletingFinishedPhoto] = useState<number | null>(null);
+  const [finishedNotesDraft, setFinishedNotesDraft] = useState("");
+  const [savingFinishedNotes, setSavingFinishedNotes] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [deletingPhoto, setDeletingPhoto] = useState<number | null>(null);
   const [splittingItem, setSplittingItem] = useState<number | null>(null);
@@ -175,6 +178,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
         if (data) {
           setPublicNotes(data.publicNotes ?? "");
           setStatusOverride(data.statusOverride ?? "");
+          setFinishedNotesDraft(data.finishedNotes ?? "");
           const notes: Record<number, string> = {};
           for (const s of data.sections) notes[s.id] = s.notes ?? "";
           setSectionNotes(notes);
@@ -222,6 +226,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       setChecklist(data);
       setPublicNotes(data.publicNotes ?? "");
       setStatusOverride(data.statusOverride ?? "");
+      setFinishedNotesDraft(data.finishedNotes ?? "");
       const notes: Record<number, string> = {};
       for (const s of data.sections) notes[s.id] = s.notes ?? "";
       setSectionNotes(notes);
@@ -436,6 +441,24 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       toast({ title: "Failed to upload photo", variant: "destructive" });
     } finally {
       setUploadingPhotoFor(prev => { const next = { ...prev }; delete next[itemId]; return next; });
+    }
+  }
+
+  async function saveFinishedNotes() {
+    setSavingFinishedNotes(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ finishedNotes: finishedNotesDraft || null }),
+      });
+      if (!r.ok) throw new Error();
+      setChecklist(await r.json());
+    } catch {
+      toast({ title: "Failed to save notes", variant: "destructive" });
+    } finally {
+      setSavingFinishedNotes(false);
     }
   }
 
@@ -1170,7 +1193,28 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                     ))}
                   </div>
                 )}
-                {(checklist.finishedPhotos ?? []).length === 0 && !canEdit("jobs") && (
+                {/* Comments / notes */}
+                {canEdit("jobs") && (
+                  <div className="mb-3">
+                    <textarea
+                      value={finishedNotesDraft}
+                      onChange={e => setFinishedNotesDraft(e.target.value)}
+                      onBlur={saveFinishedNotes}
+                      placeholder="Add comments about the finished work…"
+                      rows={2}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-border bg-muted/20 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/30 resize-none"
+                    />
+                    {savingFinishedNotes && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Saving…
+                      </p>
+                    )}
+                  </div>
+                )}
+                {!canEdit("jobs") && checklist.finishedNotes && (
+                  <p className="text-xs text-muted-foreground italic mb-3">{checklist.finishedNotes}</p>
+                )}
+                {(checklist.finishedPhotos ?? []).length === 0 && !canEdit("jobs") && !checklist.finishedNotes && (
                   <p className="text-xs text-muted-foreground italic">No finished work photos yet.</p>
                 )}
                 {canEdit("jobs") && (
