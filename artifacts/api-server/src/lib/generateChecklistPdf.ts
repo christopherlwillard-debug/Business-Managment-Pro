@@ -449,8 +449,11 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   }
 
   // ── Completion Sign-Off ───────────────────────────────────────────────────
-  // Box height: 104pt for signature image + padding; plus 30pt for labels below
-  ensureSpace(150);
+  // Block breakdown: 10 top pad + 9 heading + 8 gap + 108 box + 10 gap +
+  //   9 labels + 3 gap + 10 underline + 8 micro-footer = ~175pt total.
+  // Using 185 for safety margin.
+  const SIGNOFF_BLOCK_HEIGHT = 185;
+  ensureSpace(SIGNOFF_BLOCK_HEIGHT);
   doc.y += 10;
 
   const genDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
