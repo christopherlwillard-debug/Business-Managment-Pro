@@ -243,6 +243,18 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+router.delete("/spr/:sprId", async (req, res) => {
+  try {
+    const sprId = parseInt(req.params.sprId);
+    if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
+    await db.delete(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.id, sprId));
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete payment record" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const [toDelete] = await db.select().from(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id)));

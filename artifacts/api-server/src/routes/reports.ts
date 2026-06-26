@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
@@ -56,7 +56,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // plus full (unfiltered) data in parallel for the byBusinessLine breakdown.
     const [
       kpiInvoices, kpiExpenses, allMileage, kpiOtherIncome, kpiActiveJobs,
-      recentJobsRows, recentInvoicesRows,
+      recentJobsRows, recentInvoicesRows, kpiOwnerCapital,
     ] = await Promise.all([
       // KPI queries — DB-level filter applied when validBl is set
       db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
@@ -68,6 +68,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // Recent rows — always unfiltered
       db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
       db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
+      db.select().from(ownerCapitalEntriesTable).where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, expenseEndDate))),
     ]);
 
     // Fetch full (unfiltered) data for byBusinessLine breakdown.
@@ -107,10 +108,17 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Mileage cannot be attributed to a single business line — exclude from filtered net profit
     const mileageForNetProfit = validBl ? 0 : periodMileageDeduction;
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;
-    // Owner draws — tracked separately, never reduce taxable profit
-    const ownerDrawTotal = nonMileageExpenses
+    // Owner draws — tracked separately, never reduce taxable profit.
+    // Draws can come from two sources:
+    //   1. Legacy: expenses with category "Owner Draw" (excludeFromNetProfit=true)
+    //   2. New: owner_capital_entries with negative amount (posted via Record Draw dialog)
+    const ownerDrawFromExpenses = nonMileageExpenses
       .filter(e => e.category === "Owner Draw")
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const ownerDrawFromCapital = kpiOwnerCapital
+      .filter(e => parseFloat(e.amount as string) < 0)
+      .reduce((s, e) => s + Math.abs(parseFloat(e.amount as string)), 0);
+    const ownerDrawTotal = ownerDrawFromExpenses + ownerDrawFromCapital;
     const ytdMiles = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 

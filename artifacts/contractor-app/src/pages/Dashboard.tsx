@@ -886,15 +886,13 @@ function RecordDrawDialog({ open, onClose, onSaved }: { open: boolean; onClose: 
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`${BASE}/api/expenses`, {
+      const res = await fetch(`${BASE}/api/owner-capital`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: description.trim() || "Owner Draw",
-          amount: parseFloat(amount),
-          category: "Owner Draw",
+          amount: -Math.abs(parseFloat(amount)),
           date,
-          excludeFromNetProfit: true,
         }),
       });
       if (!res.ok) throw new Error("Failed");

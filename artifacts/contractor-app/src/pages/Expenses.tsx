@@ -221,6 +221,19 @@ function useDeleteExpense() {
   });
 }
 
+function useDeleteSpr() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sprId: number) => {
+      const res = await fetch(`${API}/expenses/spr/${sprId}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to delete payment record");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+    },
+  });
+}
+
 function useUpdateExpense() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
@@ -1344,6 +1357,7 @@ export default function Expenses() {
   const uploadMutation    = useUploadExpenseReceipt();
   const saveVendor        = useSaveVendor();
   const deleteExpense     = useDeleteExpense();
+  const deleteSpr         = useDeleteSpr();
   const updateExpense     = useUpdateExpense();
 
   const [isDialogOpen, setIsDialogOpen]               = useState(false);
@@ -1641,7 +1655,11 @@ export default function Expenses() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteExpense.mutateAsync(deleteTarget.id);
+      if ((deleteTarget as any)._source === "sub_payment_record") {
+        await deleteSpr.mutateAsync((deleteTarget as any)._sprId);
+      } else {
+        await deleteExpense.mutateAsync(deleteTarget.id);
+      }
       if (viewExpense?.id === deleteTarget.id) setViewExpense(null);
     } finally {
       setDeleting(false);
@@ -2103,9 +2121,14 @@ export default function Expenses() {
                                       <Eye className="w-4 h-4" />
                                     </button>
                                     {(exp as any)._source === "sub_payment_record" ? (
-                                      <span className="text-[10px] text-muted-foreground italic" title="Recorded via Pay-Worker on the job card">
-                                        Pay-Worker
-                                      </span>
+                                      canEdit("expenses") ? (
+                                        <button onClick={() => setDeleteTarget(exp)}
+                                          className="text-muted-foreground hover:text-destructive transition-colors" title="Delete payment record">
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      ) : (
+                                        <span className="text-[10px] text-muted-foreground italic">Pay-Worker</span>
+                                      )
                                     ) : canEdit("expenses") && !(exp as any).jobSubHoursId ? (
                                       <>
                                         <button onClick={() => { setEditReceiptFile(null); setEditingRow({
