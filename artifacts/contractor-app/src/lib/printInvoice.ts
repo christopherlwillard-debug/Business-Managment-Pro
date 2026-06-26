@@ -1,3 +1,5 @@
+import { getLogoDims } from "./invoiceLogoConstants";
+
 export interface PrintableInvoice {
   invoiceNumber: string;
   issueDate?: string | null;
@@ -68,10 +70,7 @@ export const INVOICE_PRINT_STYLES = `
 `;
 
 export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
-  // logoH = height of the container; logoW = max width (aspect-ratio cap)
-  const logoH = settings.logoSize === "small" ? 50 : settings.logoSize === "large" ? 110 : 75;
-  const logoW = settings.logoSize === "small" ? 120 : settings.logoSize === "large" ? 280 : 200;
-  const logoPx = logoH; // kept for any downstream references
+  const { h: logoH, w: logoW } = getLogoDims(settings.logoSize);
   const logoPos = settings.logoPosition ?? "top-left";
 
   const displayCompanyName = settings.dbaName

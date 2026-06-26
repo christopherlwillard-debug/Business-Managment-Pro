@@ -8,6 +8,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
+import { getLogoDims } from "@/lib/invoiceLogoConstants";
 import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
 import { buildInvoiceHtml } from "@/lib/printInvoice";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
@@ -201,7 +202,6 @@ export function InvoicePanel({
     ? (s?.dbaLogoUrl ?? s?.logoUrl) : s?.logoUrl) ?? null;
   const logoSize = s?.invoiceLogoSize ?? "medium";
   const logoPos = s?.invoiceLogoPosition ?? "top-left";
-  const logoPx = logoSize === "small" ? 64 : logoSize === "large" ? 160 : 100;
 
   useEffect(() => {
     if (open) {
@@ -588,8 +588,7 @@ export function InvoicePanel({
   const isPayable = !effectiveExistingInvoice || (effectiveExistingInvoice.status !== "paid" && effectiveExistingInvoice.status !== "cancelled");
   const generatingLink = createPaymentLink.isPending;
 
-  const logoH = logoPx === 64 ? 50 : logoPx === 160 ? 110 : 75;
-  const logoW = logoPx === 64 ? 120 : logoPx === 160 ? 280 : 200;
+  const { h: logoH, w: logoW } = getLogoDims(logoSize);
   const logoEl = logoDataUri ? (
     <div className="flex-shrink-0" style={{ width: logoW, height: logoH }}>
       <img src={logoDataUri} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
