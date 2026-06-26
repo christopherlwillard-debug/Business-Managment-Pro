@@ -68,7 +68,10 @@ export const INVOICE_PRINT_STYLES = `
 `;
 
 export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
-  const logoPx = settings.logoSize === "small" ? 64 : settings.logoSize === "large" ? 160 : 100;
+  // logoH = height of the container; logoW = max width (aspect-ratio cap)
+  const logoH = settings.logoSize === "small" ? 50 : settings.logoSize === "large" ? 110 : 75;
+  const logoW = settings.logoSize === "small" ? 120 : settings.logoSize === "large" ? 280 : 200;
+  const logoPx = logoH; // kept for any downstream references
   const logoPos = settings.logoPosition ?? "top-left";
 
   const displayCompanyName = settings.dbaName
@@ -80,7 +83,7 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
     settings.companyState || settings.companyZip || settings.companyPhone || settings.companyEmail);
 
   const logoHtml = settings.logoAbsoluteUrl
-    ? `<img src="${esc(settings.logoAbsoluteUrl)}" alt="Logo" style="height:${logoPx}px;width:auto;max-width:${logoPx * 2.5}px;object-fit:contain;display:block;" />`
+    ? `<div style="width:${logoW}px;height:${logoH}px;flex-shrink:0;"><img src="${esc(settings.logoAbsoluteUrl)}" alt="Logo" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>`
     : `<div style="width:48px;height:48px;background:#fef3c7;border-radius:8px;display:flex;align-items:center;justify-content:center;">
          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
        </div>`;

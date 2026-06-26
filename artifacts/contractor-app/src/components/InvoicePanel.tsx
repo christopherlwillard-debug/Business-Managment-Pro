@@ -588,9 +588,12 @@ export function InvoicePanel({
   const isPayable = !effectiveExistingInvoice || (effectiveExistingInvoice.status !== "paid" && effectiveExistingInvoice.status !== "cancelled");
   const generatingLink = createPaymentLink.isPending;
 
+  const logoH = logoPx === 64 ? 50 : logoPx === 160 ? 110 : 75;
+  const logoW = logoPx === 64 ? 120 : logoPx === 160 ? 280 : 200;
   const logoEl = logoDataUri ? (
-    <img src={logoDataUri} alt="Logo" className="flex-shrink-0"
-      style={{ height: logoPx, width: "auto", maxWidth: logoPx * 2.5, objectFit: "contain" }} />
+    <div className="flex-shrink-0" style={{ width: logoW, height: logoH }}>
+      <img src={logoDataUri} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+    </div>
   ) : logoUrl ? (
     <div className="flex-shrink-0 rounded-lg bg-amber-50 flex items-center justify-center" style={{ width: 44, height: 44 }}>
       <Building2 className="w-5 h-5 text-amber-400" />
