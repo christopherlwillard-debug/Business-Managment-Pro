@@ -318,7 +318,7 @@ router.get("/:id/profit", async (req, res) => {
         .where(and(
           eq(subPaymentRecordsTable.jobId, id),
           sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
-          sql`COALESCE(${jobSubcontractorsTable.compensationType}, 'allocation') != 'hourly'`,
+          sql`${jobSubcontractorsTable.compensationType} = 'fixed'`,
         )),
       db.select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
         .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
@@ -394,7 +394,7 @@ router.get("/profit-summary", async (req, res) => {
         .where(and(
           inArray(subPaymentRecordsTable.jobId, jobIds),
           sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
-          sql`COALESCE(${jobSubcontractorsTable.compensationType}, 'allocation') != 'hourly'`,
+          sql`${jobSubcontractorsTable.compensationType} = 'fixed'`,
         ))
         .groupBy(subPaymentRecordsTable.jobId),
     ]);
