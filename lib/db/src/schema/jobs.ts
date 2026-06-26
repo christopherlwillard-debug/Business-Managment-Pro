@@ -40,6 +40,7 @@ export const jobsTable = pgTable("jobs", {
   homeModel: text("home_model"),
   closedAt: date("closed_at"),
   jobNumber: integer("job_number"),
+  ownerPayIncluded: boolean("owner_pay_included").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

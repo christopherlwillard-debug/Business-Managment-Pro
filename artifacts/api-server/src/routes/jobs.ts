@@ -1440,4 +1440,19 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+// ─── Toggle owner pay inclusion per job ──────────────────────────────────────
+router.patch("/:id/owner-pay-included", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const { included } = req.body as { included: boolean };
+    if (typeof included !== "boolean") return res.status(400).json({ error: "included must be boolean" });
+    await db.update(jobsTable).set({ ownerPayIncluded: included }).where(eq(jobsTable.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update" });
+  }
+});
+
 export default router;
