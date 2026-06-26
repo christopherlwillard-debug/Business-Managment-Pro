@@ -265,6 +265,10 @@ router.post("/", async (req, res) => {
     let parsedPermitChecklist;
     try { parsedPermitChecklist = parsePermitChecklist(permitChecklist); } catch (e: unknown) { return res.status(400).json({ error: e instanceof Error ? e.message : "Invalid permitChecklist" }); }
 
+    // Assign the next sequential job number (max existing + 1, gap-free)
+    const [{ maxNum }] = await db.select({ maxNum: sql<number>`COALESCE(MAX(job_number), 0)` }).from(jobsTable);
+    const nextJobNumber = (maxNum ?? 0) + 1;
+
     const [job] = await db.insert(jobsTable).values({
       title, description,
       clientId: clientId || null,
@@ -277,6 +281,7 @@ router.post("/", async (req, res) => {
       coats: coats != null ? parseInt(coats) : null,
       phases: parsedPhases,
       permitChecklist: parsedPermitChecklist,
+      jobNumber: nextJobNumber,
     }).returning();
 
     if (Array.isArray(subcontractorIds) && subcontractorIds.length > 0) {
@@ -743,7 +748,7 @@ router.get("/closed/export", async (req, res) => {
         dateOpened,
         dateClosed,
         daysOpen,
-        jobNumber: job.id,
+        jobNumber: job.jobNumber ?? job.id,
         businessLine: job.businessLine ?? "",
         jobName: job.title,
         customer: job.clientName ?? "",

@@ -4956,7 +4956,7 @@ export default function Jobs() {
                                   onClick={() => setArchiveExpandedId(isExpanded ? null : job.id)}
                                 >
                                   <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{closedDateStr}</td>
-                                  <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">#{job.id}</td>
+                                  <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">#{job.jobNumber ?? job.id}</td>
                                   <td className="px-3 py-2.5 font-medium text-foreground truncate max-w-[160px]">{job.title}</td>
                                   <td className="px-3 py-2.5 text-muted-foreground hidden md:table-cell truncate max-w-[120px]">{job.clientName ?? "—"}</td>
                                   <td className="px-3 py-2.5 text-muted-foreground hidden lg:table-cell truncate max-w-[120px]">{locationParts.join(", ") || "—"}</td>

@@ -39,6 +39,7 @@ export const jobsTable = pgTable("jobs", {
   permitChecklist: jsonb("permit_checklist").$type<PermitChecklistItem[]>(),
   homeModel: text("home_model"),
   closedAt: date("closed_at"),
+  jobNumber: integer("job_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
