@@ -194,13 +194,15 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   let pdfBuffer: Buffer;
   try {
     const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(60000);
+    page.setDefaultTimeout(60000);
     await page.setRequestInterception(true);
     page.on("request", (r) => {
       const u = r.url();
       if (u.startsWith("data:") || u === "about:blank") r.continue();
       else r.abort();
     });
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 60000 });
     pdfBuffer = Buffer.from(await page.pdf({
       format: "Letter",
       printBackground: true,
