@@ -75,8 +75,10 @@ function buildExpenseQuery() {
 router.get("/", async (req, res) => {
   try {
     const { category, jobId, startDate, endDate, businessId } = req.query;
-    // Show ALL expenses including subcontractor payment records so users can see and delete them.
-    const conditions: any[] = [];
+    // Exclude auto-expenses linked to sub hours (jobSubHoursId IS NOT NULL).
+    // Those are internal job-cost entries used for P&L math; actual cash paid
+    // to hourly subs is captured by sub_payment_records rows (shown below).
+    const conditions: any[] = [isNull(expensesTable.jobSubHoursId)];
     if (category) conditions.push(eq(expensesTable.category, category as string));
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
