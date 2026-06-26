@@ -1224,8 +1224,7 @@ function BusinessProfileCard() {
 
   if (!activeBusiness) return null;
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave() {
     setSaving(true);
     try {
       const res = await fetch(`${BASE}/api/businesses/${activeBusiness!.id}`, {
@@ -1265,7 +1264,7 @@ function BusinessProfileCard() {
             onRemoved={() => { setLogoUrl(null); refresh(); }}
           />
         </div>
-        <form onSubmit={handleSave} className="space-y-4">
+        <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Business Name</label>
@@ -1323,13 +1322,13 @@ function BusinessProfileCard() {
             </div>
           </div>
           <div className="pt-2 flex items-center gap-3">
-            <button type="submit" disabled={saving}
+            <button type="button" onClick={handleSave} disabled={saving}
               className="px-5 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60">
               {saving ? "Saving…" : "Save Business Profile"}
             </button>
             {saved && <span className="text-sm text-emerald-600 font-medium flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Saved</span>}
           </div>
-        </form>
+        </div>
         <DeleteBusinessSection activeBusiness={activeBusiness} businesses={businesses} BASE={BASE} refresh={refresh} />
       </CardContent>
     </Card>
