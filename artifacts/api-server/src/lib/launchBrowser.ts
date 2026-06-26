@@ -11,28 +11,21 @@ function resolveChromiumPath(): string {
     }
   }
 
-  // Prefer the bundled Chrome that Puppeteer downloaded — it is version-matched
-  // and known to work. System Chromium may be a different version and incompatible.
-  try {
-    const bundled = puppeteer.executablePath();
-    if (bundled && existsSync(bundled)) {
-      console.log(`[launchBrowser] Using bundled Chrome: ${bundled}`);
-      return bundled;
-    }
-  } catch {}
-
-  // Fall back to system Chromium via login shell (Nix profile)
+  // Prefer system Chromium installed via Nix — its wrapper script sets up the
+  // correct Nix store library paths so all shared libs are available.
+  // The bundled Puppeteer Chrome binary requires system libs (libglib-2.0, etc.)
+  // that are NOT present in the production deployment container.
   for (const cmd of ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]) {
     try {
       const p = execSync(`bash -l -c 'which ${cmd}'`, { encoding: "utf8", timeout: 5000 }).trim();
       if (p && existsSync(p)) {
-        console.log(`[launchBrowser] Falling back to system chromium: ${p}`);
+        console.log(`[launchBrowser] Using system chromium: ${p}`);
         return p;
       }
     } catch {}
   }
 
-  // Direct Nix store paths as additional fallback
+  // Direct Nix store paths
   const nixPaths = [
     "/home/runner/.nix-profile/bin/chromium",
     "/nix/var/nix/profiles/default/bin/chromium",
@@ -40,12 +33,15 @@ function resolveChromiumPath(): string {
   ];
   for (const p of nixPaths) {
     if (existsSync(p)) {
-      console.log(`[launchBrowser] Falling back to Nix store chromium: ${p}`);
+      console.log(`[launchBrowser] Using Nix store chromium: ${p}`);
       return p;
     }
   }
 
-  throw new Error("No Chromium/Chrome executable found. Cannot generate PDF.");
+  // Last resort: bundled Puppeteer Chrome (may lack system libs in some envs)
+  const bundled = puppeteer.executablePath();
+  console.log(`[launchBrowser] Falling back to bundled Chrome: ${bundled}`);
+  return bundled;
 }
 
 const ARGS = [
@@ -53,7 +49,6 @@ const ARGS = [
   "--disable-setuid-sandbox",
   "--disable-dev-shm-usage",
   "--disable-gpu",
-  "--no-zygote",
   "--no-first-run",
   "--disable-extensions",
   "--disable-features=VizDisplayCompositor",
@@ -61,5 +56,10 @@ const ARGS = [
 
 export async function launchBrowser(): Promise<Browser> {
   const execPath = resolveChromiumPath();
-  return puppeteer.launch({ executablePath: execPath, headless: true, args: ARGS });
+  return puppeteer.launch({
+    executablePath: execPath,
+    headless: true,
+    args: ARGS,
+    protocolTimeout: 60000,
+  });
 }

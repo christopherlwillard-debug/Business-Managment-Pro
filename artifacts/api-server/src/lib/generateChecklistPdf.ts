@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { db } from "@workspace/db";
 import {
@@ -190,19 +191,19 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     generatedDate: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
   });
 
+  // Write HTML to a temp file and load via file:// — avoids CDP message size
+  // limits and the hangs that occur when sending large base64-heavy HTML over
+  // the DevTools Protocol with page.setContent().
+  const tmpFile = path.join(os.tmpdir(), `checklist-${jobId}-${Date.now()}.html`);
+  fs.writeFileSync(tmpFile, html, "utf8");
+
   const browser = await launchBrowser();
   let pdfBuffer: Buffer;
   try {
     const page = await browser.newPage();
     page.setDefaultNavigationTimeout(60000);
     page.setDefaultTimeout(60000);
-    await page.setRequestInterception(true);
-    page.on("request", (r) => {
-      const u = r.url();
-      if (u.startsWith("data:") || u === "about:blank") r.continue();
-      else r.abort();
-    });
-    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(`file://${tmpFile}`, { waitUntil: "domcontentloaded", timeout: 60000 });
     pdfBuffer = Buffer.from(await page.pdf({
       format: "Letter",
       printBackground: true,
@@ -211,6 +212,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     await page.close();
   } finally {
     await browser.close();
+    try { fs.unlinkSync(tmpFile); } catch {}
   }
 
   const safeTitle = (jobRow.title ?? "Checklist").replace(/[^a-z0-9 _-]/gi, "_");
