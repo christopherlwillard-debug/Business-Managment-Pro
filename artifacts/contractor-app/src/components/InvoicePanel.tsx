@@ -859,14 +859,14 @@ export function InvoicePanel({
                     {logoPos === "top-center" ? (
                       <div className="flex flex-col items-center text-center gap-1 mb-1">
                         {logoEl}
-                        <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>
+                        {!logoEl && <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>}
                       </div>
                     ) : logoPos === "top-right" ? (
-                      <p className="text-base font-extrabold text-gray-900 leading-tight mb-1">{companyName}</p>
+                      !logoEl && <p className="text-base font-extrabold text-gray-900 leading-tight mb-1">{companyName}</p>
                     ) : (
                       <div className="flex items-center gap-2 mb-1">
                         {logoEl}
-                        <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>
+                        {!logoEl && <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>}
                       </div>
                     )}
                     <div className="text-xs text-gray-400 space-y-0.5">

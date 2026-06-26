@@ -1746,7 +1746,16 @@ export default function Settings() {
                   </LF>
                 </div>
 
-                {!activeBusiness && (
+                {activeBusiness ? (
+                  <div className="border-t border-border/50 pt-4">
+                    <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
+                      <svg className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" /></svg>
+                      <p className="text-xs text-blue-700 leading-relaxed">
+                        <span className="font-semibold">Email, phone, and address</span> are managed in the <span className="font-semibold">Active Business card above</span> — edit them there and click <span className="font-semibold">Save Business Profile</span>.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
                   <>
                     <div className="border-t border-border/50 pt-4">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Contact Information</p>
