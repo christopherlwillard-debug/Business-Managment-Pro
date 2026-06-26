@@ -8,6 +8,7 @@ import {
   jobChecklistItemsTable,
   jobChecklistItemPhotosTable,
   jobChecklistItemPartsTable,
+  jobFinishedPhotosTable,
   jobsTable,
   clientsTable,
   checklistTemplatesTable,
@@ -16,11 +17,11 @@ import {
 import { eq, asc, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "./objectStorage.js";
 
-const GREEN   = "#16a34a";
-const DARK    = "#1f2937";
-const GRAY    = "#6b7280";
-const LGRAY   = "#9ca3af";
-const BORDER  = "#e5e7eb";
+const GREEN  = "#16a34a";
+const DARK   = "#1f2937";
+const GRAY   = "#6b7280";
+const LGRAY  = "#9ca3af";
+const BORDER = "#e5e7eb";
 
 async function buildChecklistData(checklistId: number) {
   const [checklist] = await db
@@ -99,35 +100,52 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     .from(settingsTable)
     .limit(1);
 
-  // ── Fetch photos as raw Buffers (pdfkit accepts Buffers directly) ──────────
-  const allItems = checklistData.sections.flatMap(s => s.items);
+  // ── Fetch per-item photos & parts as Buffers ─────────────────────────────
+  const allItems   = checklistData.sections.flatMap(s => s.items);
   const allItemIds = allItems.map(i => i.id);
-  const [rawPhotos, rawParts] = allItemIds.length > 0
-    ? await Promise.all([
-        db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds)),
-        db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder)),
-      ])
-    : [[], []];
+
+  const [rawPhotos, rawParts, rawFinishedPhotos] = await Promise.all([
+    allItemIds.length > 0
+      ? db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds))
+      : Promise.resolve([]),
+    allItemIds.length > 0
+      ? db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder))
+      : Promise.resolve([]),
+    // Finished photos are linked to the checklist, not individual items
+    db.select().from(jobFinishedPhotosTable)
+      .where(eq(jobFinishedPhotosTable.jobChecklistId, checklistRow.id))
+      .orderBy(asc(jobFinishedPhotosTable.createdAt)),
+  ]);
 
   const objStorage = new ObjectStorageService();
-  const photoBufById = new Map<number, Buffer>();
-  await Promise.all(rawPhotos.map(async (p) => {
+
+  // Resolve all photos (per-item + finished) in parallel
+  const allPhotoRows = [
+    ...rawPhotos.map(p => ({ id: p.id, objectPath: p.objectPath, kind: "item" as const, itemId: p.jobChecklistItemId })),
+    ...rawFinishedPhotos.map(p => ({ id: p.id, objectPath: p.objectPath, kind: "finished" as const, itemId: -1 })),
+  ];
+  const photoBufById = new Map<string, Buffer>();
+  await Promise.all(allPhotoRows.map(async (p) => {
     try {
       if (p.objectPath.startsWith("/objects/")) {
         const file = await objStorage.getObjectEntityFile(p.objectPath);
         const [buf] = await file.download();
-        photoBufById.set(p.id, buf as Buffer);
+        photoBufById.set(`${p.kind}-${p.id}`, buf as Buffer);
       }
     } catch { /* skip failed photos */ }
   }));
 
   const photosByItemId = new Map<number, Buffer[]>();
   for (const p of rawPhotos) {
-    const buf = photoBufById.get(p.id);
+    const buf = photoBufById.get(`item-${p.id}`);
     if (!buf) continue;
     if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
     photosByItemId.get(p.jobChecklistItemId)!.push(buf);
   }
+
+  const finishedPhotoBufs: Buffer[] = rawFinishedPhotos
+    .map(p => photoBufById.get(`finished-${p.id}`))
+    .filter((b): b is Buffer => b !== undefined);
 
   const partsByItemId = new Map<number, Array<{ label: string; completed: boolean; completedByName: string | null }>>();
   for (const p of rawParts) {
@@ -147,27 +165,27 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
       } else if (rawPath.startsWith("/uploads/") || rawPath.startsWith("/api/uploads/")) {
         const rel = rawPath.startsWith("/api/uploads/") ? rawPath.slice("/api/uploads/".length) : rawPath.slice("/uploads/".length);
         const uploadsRoot = path.resolve("uploads");
-        const filePath = path.resolve(uploadsRoot, rel);
+        const filePath   = path.resolve(uploadsRoot, rel);
         if (filePath.startsWith(uploadsRoot + path.sep) && fs.existsSync(filePath)) {
           sigBuf = fs.readFileSync(filePath);
         }
       }
-    } catch { /* skip signature */ }
+    } catch { /* skip invalid signature */ }
   }
 
-  // ── Build PDF with pdfkit ─────────────────────────────────────────────────
+  // ── Build PDF ─────────────────────────────────────────────────────────────
   const ML = 36, MR = 36;
-  const PW = 612; // Letter width
+  const PW = 612;
   const L  = ML;
   const R  = PW - MR;
   const W  = R - L;
 
   const doc = new PDFDocument({
     size: "Letter",
-    margins: { top: 36, bottom: 36, left: ML, right: MR },
+    margins: { top: ML, bottom: MR, left: ML, right: MR },
     autoFirstPage: true,
     info: {
-      Title: `Checklist - ${jobRow.title ?? "Job"}`,
+      Title:  `Checklist - ${jobRow.title ?? "Job"}`,
       Author: settings?.companyName ?? "Contractor",
     },
   }) as any;
@@ -175,18 +193,64 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
 
-  const companyName = settings?.companyName ?? "";
-  const jobTitle    = jobRow.title ?? "Job";
-  const templateName = template?.name ?? "Checklist";
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  // Helper: draw a thin horizontal rule at current y
+  /** Ensure at least `needed` points remain on the current page; add a new page if not. */
+  function ensureSpace(needed: number) {
+    const pageBottom = (doc.page.height as number) - (doc.page.margins.bottom as number);
+    if (doc.y + needed > pageBottom) {
+      doc.addPage();
+    }
+  }
+
+  /** Draw a thin horizontal rule at the current y, then advance. */
   function hRule(color = BORDER, weight = 0.5) {
     const y = doc.y;
     doc.save().moveTo(L, y).lineTo(R, y).strokeColor(color).lineWidth(weight).stroke().restore();
     doc.y = y + 6;
   }
 
-  // ── Header ──────────────────────────────────────────────────────────────
+  /**
+   * Draw images in a grid. Handles page breaks by starting a fresh row
+   * on a new page whenever a row would overflow the bottom margin.
+   */
+  function drawPhotoGrid(bufs: Buffer[], startX: number, availW: number, photoW: number, photoH: number) {
+    if (bufs.length === 0) return;
+    const gap    = 6;
+    const perRow = Math.max(1, Math.floor((availW + gap) / (photoW + gap)));
+
+    let col = 0;
+    let rowY = doc.y;
+
+    for (const buf of bufs) {
+      // Start a new row if needed
+      if (col === 0) {
+        ensureSpace(photoH + 6);
+        rowY = doc.y;
+      }
+      const px = startX + col * (photoW + gap);
+      try {
+        doc.image(buf, px, rowY, { fit: [photoW, photoH], align: "center", valign: "center" });
+      } catch { /* skip unreadable photo */ }
+
+      col++;
+      if (col >= perRow) {
+        col  = 0;
+        doc.y = rowY + photoH + gap;
+      }
+    }
+
+    // Advance past the last partial row
+    if (col > 0) {
+      doc.y = rowY + photoH + gap;
+    }
+  }
+
+  const companyName  = settings?.companyName ?? "";
+  const jobTitle     = jobRow.title ?? "Job";
+  const templateName = template?.name ?? "Checklist";
+
+  // ── Header ────────────────────────────────────────────────────────────────
   if (companyName) {
     doc.font("Helvetica").fontSize(7.5).fillColor(LGRAY)
        .text(companyName.toUpperCase(), L, doc.y, { width: W });
@@ -210,31 +274,36 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   doc.y += 8;
   hRule();
 
-  // ── Progress ─────────────────────────────────────────────────────────────
+  // ── Progress ──────────────────────────────────────────────────────────────
   doc.font("Helvetica").fontSize(8).fillColor(GRAY)
      .text(templateName, L, doc.y, { width: W });
   doc.y += 3;
 
   const progLine = `${checklistData.completedItems} / ${checklistData.totalItems} items complete`;
   const pctText  = `${checklistData.overallPercent}%`;
-  const pctW     = doc.widthOfString(pctText, { fontSize: 12 }) + 4;
+  const pctW     = doc.widthOfString(pctText, { fontSize: 12 }) + 6;
 
-  doc.font("Helvetica-Bold").fontSize(12).fillColor(DARK)
-     .text(progLine, L, doc.y, { width: W - pctW - 4, lineBreak: false });
-  doc.font("Helvetica-Bold").fontSize(12).fillColor(GREEN)
-     .text(pctText, R - pctW, doc.y - doc.currentLineHeight(), { width: pctW, align: "right", lineBreak: false });
-
-  doc.y += doc.currentLineHeight() + 4;
+  // Draw progress line + percentage on the same baseline using a saved y
+  {
+    const lineY = doc.y;
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(DARK)
+       .text(progLine, L, lineY, { width: W - pctW - 4, lineBreak: false });
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(GREEN)
+       .text(pctText, R - pctW, lineY, { width: pctW, align: "right", lineBreak: false });
+    doc.y = lineY + doc.currentLineHeight() + 4;
+  }
 
   // Progress bar
-  const barY = doc.y;
-  const barH = 7;
-  doc.save().rect(L, barY, W, barH).fillColor(BORDER).fill().restore();
-  const fillW = Math.round(W * checklistData.overallPercent / 100);
-  if (fillW > 0) {
-    doc.save().rect(L, barY, fillW, barH).fillColor(GREEN).fill().restore();
+  {
+    const barY = doc.y;
+    const barH = 7;
+    doc.save().rect(L, barY, W, barH).fillColor(BORDER).fill().restore();
+    const fillW = Math.round(W * checklistData.overallPercent / 100);
+    if (fillW > 0) {
+      doc.save().rect(L, barY, fillW, barH).fillColor(GREEN).fill().restore();
+    }
+    doc.y = barY + barH + 5;
   }
-  doc.y = barY + barH + 5;
 
   if (checklistData.overallPercent === 100) {
     doc.font("Helvetica").fontSize(8.5).fillColor(GREEN)
@@ -242,17 +311,17 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     doc.y += 3;
   }
 
-  if ((checklistData as any).publicNotes) {
+  if (checklistData.publicNotes) {
     doc.y += 3;
     doc.font("Helvetica-Oblique").fontSize(8.5).fillColor(GRAY)
-       .text((checklistData as any).publicNotes, L, doc.y, { width: W });
+       .text(checklistData.publicNotes, L, doc.y, { width: W });
     doc.y += 3;
   }
 
   doc.y += 8;
   hRule("#d1d5db", 1);
 
-  // ── Sections & Items ─────────────────────────────────────────────────────
+  // ── Sections & Items ──────────────────────────────────────────────────────
   for (const section of checklistData.sections) {
     if (!section.active) continue;
 
@@ -263,11 +332,17 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     const secMeta   = `${sComplete}/${sTotal} · ${sPct}%`;
     const secMetaW  = doc.widthOfString(secMeta, { fontSize: 8 }) + 4;
 
-    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(DARK)
-       .text(section.name.toUpperCase(), L, doc.y, { width: W - secMetaW - 4, lineBreak: false });
-    doc.font("Helvetica").fontSize(8).fillColor(GREEN)
-       .text(secMeta, R - secMetaW, doc.y - doc.currentLineHeight(), { width: secMetaW, align: "right", lineBreak: false });
-    doc.y += doc.currentLineHeight() + 3;
+    // Keep section header and at least one item together (avoid orphaned header)
+    ensureSpace(32);
+
+    {
+      const secY = doc.y;
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor(DARK)
+         .text(section.name.toUpperCase(), L, secY, { width: W - secMetaW - 4, lineBreak: false });
+      doc.font("Helvetica").fontSize(8).fillColor(GREEN)
+         .text(secMeta, R - secMetaW, secY, { width: secMetaW, align: "right", lineBreak: false });
+      doc.y = secY + doc.currentLineHeight() + 3;
+    }
 
     if (section.notes) {
       doc.font("Helvetica-Oblique").fontSize(8).fillColor(GRAY)
@@ -276,29 +351,29 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     }
 
     for (const item of section.items) {
-      const itemIndent = L + 10;
-      const itemW      = W - 10 - 14;
+      const textX = L + 24;
+      const textW = W - 24;
 
-      // Checkbox glyph + title
+      // Ensure at least one line of space before each item
+      ensureSpace(14);
+
       const isCompleted = item.completed ?? false;
       const isSkipped   = item.skipped   ?? false;
       const glyph       = isCompleted ? "✓" : isSkipped ? "—" : "□";
       const glyphColor  = isCompleted ? GREEN : isSkipped ? LGRAY : DARK;
       const titleColor  = isSkipped ? LGRAY : DARK;
-      const titleFont   = "Helvetica";
 
-      const glyphX = itemIndent;
-      const textX  = itemIndent + 14;
-      const textW  = W - 14 - 10;
-      const itemY  = doc.y;
+      {
+        const itemY = doc.y;
+        doc.font("Helvetica-Bold").fontSize(9).fillColor(glyphColor)
+           .text(glyph, L + 10, itemY, { width: 12, lineBreak: false });
+        doc.font("Helvetica").fontSize(9).fillColor(titleColor)
+           .text(item.title, textX, itemY, { width: textW });
+        // doc.y is now after the title text (which may have wrapped)
+        doc.y += 1;
+      }
 
-      doc.font("Helvetica-Bold").fontSize(9).fillColor(glyphColor)
-         .text(glyph, glyphX, itemY, { width: 12, lineBreak: false });
-      doc.font(titleFont).fontSize(9).fillColor(titleColor)
-         .text(item.title, textX, itemY, { width: textW });
-      doc.y += 1;
-
-      // Completed meta
+      // Completed-by meta
       if (isCompleted && ((item as any).completedByName || item.completedAt)) {
         const mp: string[] = [];
         if ((item as any).completedByName) mp.push((item as any).completedByName);
@@ -310,7 +385,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
         }
         if (mp.length) {
           doc.font("Helvetica").fontSize(7.5).fillColor(GREEN)
-             .text("  ✓ " + mp.join(" · "), textX, doc.y, { width: textW });
+             .text("✓ " + mp.join(" · "), textX, doc.y, { width: textW });
           doc.y += 1;
         }
       }
@@ -318,62 +393,80 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
       // Item notes
       if (item.notes) {
         doc.font("Helvetica-Oblique").fontSize(8).fillColor(GRAY)
-           .text("  " + item.notes, textX, doc.y, { width: textW });
+           .text(item.notes, textX, doc.y, { width: textW });
         doc.y += 1;
       }
 
-      // Parts
+      // Parts (split items)
       const parts = partsByItemId.get(item.id) ?? [];
       for (const part of parts) {
         const pg = part.completed ? "✓" : "□";
         const pc = part.completed ? GREEN : GRAY;
+        ensureSpace(12);
         doc.font("Helvetica").fontSize(8).fillColor(pc)
-           .text(`  ${pg} ${part.label}`, textX + 8, doc.y, { width: textW - 8 });
+           .text(`${pg}  ${part.label}`, textX + 8, doc.y, { width: textW - 8 });
       }
       if (parts.length) doc.y += 1;
 
-      // Photos (2 per row, max 6 per item to keep PDF manageable)
+      // Per-item photos
       const photos = photosByItemId.get(item.id) ?? [];
       if (photos.length > 0) {
-        const photoW   = 160;
-        const photoH   = 120;
-        const gapX     = 8;
-        const perRow   = Math.floor((textW + gapX) / (photoW + gapX));
-        const showCount = Math.min(photos.length, 6);
-
-        for (let pi = 0; pi < showCount; pi++) {
-          const col   = pi % perRow;
-          const row   = Math.floor(pi / perRow);
-          const px    = textX + col * (photoW + gapX);
-          const py    = doc.y + row * (photoH + 6);
-
-          try {
-            doc.image(photos[pi], px, py, { fit: [photoW, photoH], align: "center", valign: "center" });
-          } catch { /* skip unreadable photo */ }
-        }
-
-        const photoRows = Math.ceil(showCount / perRow);
-        doc.y += photoRows * (photoH + 6) + 2;
+        doc.y += 3;
+        drawPhotoGrid(photos.slice(0, 6), textX, textW, 150, 112);
+        doc.y += 3;
       }
 
-      doc.y += 3;
+      doc.y += 4;
     }
 
-    doc.y += 5;
+    doc.y += 4;
     hRule();
   }
 
-  // ── Footer: date + signature ──────────────────────────────────────────────
-  const genDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  const footerY = doc.y + 4;
+  // ── Finished Work section ─────────────────────────────────────────────────
+  const finishedNotes = (checklistData as any).finishedNotes as string | null | undefined;
+  if (finishedNotes || finishedPhotoBufs.length > 0) {
+    ensureSpace(30);
+    doc.y += 2;
 
-  doc.font("Helvetica").fontSize(8).fillColor(LGRAY)
-     .text(`Generated ${genDate}`, L, footerY, { width: W });
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(DARK)
+       .text("FINISHED WORK", L, doc.y, { width: W });
+    doc.y += 3;
+
+    if (finishedNotes) {
+      doc.font("Helvetica-Oblique").fontSize(9).fillColor(GRAY)
+         .text(finishedNotes, L, doc.y, { width: W });
+      doc.y += 4;
+    }
+
+    if (finishedPhotoBufs.length > 0) {
+      doc.y += 2;
+      drawPhotoGrid(finishedPhotoBufs, L, W, 160, 120);
+      doc.y += 4;
+    }
+
+    hRule();
+  }
+
+  // ── Footer: signature + generated date ───────────────────────────────────
+  // Ensure at least 55pt for the footer (date line + signature image height)
+  ensureSpace(55);
+  doc.y += 6;
+
+  const genDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   if (sigBuf) {
+    // Draw signature on the right, date on the left, aligned vertically
+    const footerY = doc.y;
     try {
-      doc.image(sigBuf, R - 100, footerY - 8, { width: 90, height: 40, fit: [90, 40] });
+      doc.image(sigBuf, R - 110, footerY, { width: 100, height: 45, fit: [100, 45] });
     } catch { /* skip invalid signature image */ }
+
+    doc.font("Helvetica").fontSize(8).fillColor(LGRAY)
+       .text(`Generated ${genDate}`, L, footerY + 14, { width: W - 120 });
+  } else {
+    doc.font("Helvetica").fontSize(8).fillColor(LGRAY)
+       .text(`Generated ${genDate}`, L, doc.y, { width: W });
   }
 
   doc.end();
