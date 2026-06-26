@@ -598,10 +598,12 @@ function ExpenseViewModal({
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={onDelete}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" /> Delete
-            </button>
+            {expense._source !== "sub_payment_record" && (
+              <button onClick={onDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors">
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+            )}
             <button onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
               <X className="w-4 h-4" />
@@ -678,6 +680,39 @@ function ExpenseViewModal({
               </div>
               <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{expense.notes}</p>
             </div>
+          )}
+
+          {/* SPR-specific fields */}
+          {expense._source === "sub_payment_record" && (
+            <>
+              {expense.paymentMethod && (
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">
+                    <DollarSign className="w-3 h-3" /> Payment Method
+                  </div>
+                  <p className="text-sm font-semibold text-gray-800">{expense.paymentMethod}</p>
+                </div>
+              )}
+              {expense.referenceNumber && (
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">
+                    <Tag className="w-3 h-3" /> Reference / Check #
+                  </div>
+                  <p className="text-sm font-semibold text-gray-800">{expense.referenceNumber}</p>
+                </div>
+              )}
+              {expense.agreedOwed != null && (
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-gray-400 mb-1">
+                    <DollarSign className="w-3 h-3" /> Agreed Owed (at time of payment)
+                  </div>
+                  <p className="text-sm font-semibold text-gray-800">{formatCurrency(expense.agreedOwed)}</p>
+                </div>
+              )}
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-700">
+                <strong>Pay-Worker record</strong> — recorded via the job card. To edit or void this payment, open the job and use the Sub Payments panel.
+              </div>
+            </>
           )}
 
           {/* Receipt */}
@@ -2002,7 +2037,11 @@ export default function Expenses() {
                                         <RotateCcw className="w-2.5 h-2.5" /> Recurring ↓
                                       </button>
                                     )}
-                                    {(exp as any).subcontractorName && exp.category?.toLowerCase() === "subcontractor" && !(exp as any).jobSubHoursId && (
+                                    {(exp as any)._source === "sub_payment_record" ? (
+                                      <span className="inline-flex items-center gap-1 bg-violet-50 text-violet-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-violet-200 flex-shrink-0" title="Recorded via Pay-Worker on the job card">
+                                        <HardHat className="w-2.5 h-2.5" /> Pay-Worker
+                                      </span>
+                                    ) : (exp as any).subcontractorName && exp.category?.toLowerCase() === "subcontractor" && !(exp as any).jobSubHoursId && (
                                       <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-100 flex-shrink-0">
                                         <HardHat className="w-2.5 h-2.5" /> Sub Payment
                                       </span>
@@ -2063,7 +2102,11 @@ export default function Expenses() {
                                       className="text-muted-foreground hover:text-primary transition-colors" title="View expense">
                                       <Eye className="w-4 h-4" />
                                     </button>
-                                    {canEdit("expenses") && !(exp as any).jobSubHoursId && (
+                                    {(exp as any)._source === "sub_payment_record" ? (
+                                      <span className="text-[10px] text-muted-foreground italic" title="Recorded via Pay-Worker on the job card">
+                                        Pay-Worker
+                                      </span>
+                                    ) : canEdit("expenses") && !(exp as any).jobSubHoursId ? (
                                       <>
                                         <button onClick={() => { setEditReceiptFile(null); setEditingRow({
                                             id: exp.id,
@@ -2086,12 +2129,11 @@ export default function Expenses() {
                                           <Trash2 className="w-4 h-4" />
                                         </button>
                                       </>
-                                    )}
-                                    {(exp as any).jobSubHoursId && (
+                                    ) : (exp as any).jobSubHoursId ? (
                                       <span className="text-[10px] text-muted-foreground italic" title="Managed from sub hours on the job card">
                                         From job card
                                       </span>
-                                    )}
+                                    ) : null}
                                   </div>
                                 </td>
                               </tr>

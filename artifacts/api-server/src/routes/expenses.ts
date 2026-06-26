@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, sql, isNull, or } from "drizzle-orm";
+import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { eq, and, gte, lte, sql, isNull, or, desc } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -83,11 +83,78 @@ router.get("/", async (req, res) => {
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
     if (businessId) conditions.push(or(eq(expensesTable.businessId, parseInt(businessId as string)), isNull(expensesTable.businessId)));
 
-    const expenses = await buildExpenseQuery()
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(expensesTable.date);
+    // sub_payment_records should appear alongside expenses for reconciliation.
+    // Only include them when the category filter is absent or set to "Subcontractor".
+    const includeSpr = !category || (category as string).toLowerCase() === "subcontractor";
 
-    res.json(expenses.map(e => formatExpense(e, e.jobTitle, e.subcontractorName)));
+    const [expenses, sprRows] = await Promise.all([
+      buildExpenseQuery()
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(expensesTable.date),
+      includeSpr
+        ? db.select({
+            id: subPaymentRecordsTable.id,
+            amount: subPaymentRecordsTable.amount,
+            paymentDate: subPaymentRecordsTable.paymentDate,
+            description: subPaymentRecordsTable.description,
+            notes: subPaymentRecordsTable.notes,
+            paymentMethod: subPaymentRecordsTable.paymentMethod,
+            referenceNumber: subPaymentRecordsTable.referenceNumber,
+            businessLine: subPaymentRecordsTable.businessLine,
+            jobId: subPaymentRecordsTable.jobId,
+            subcontractorId: subPaymentRecordsTable.subcontractorId,
+            createdAt: subPaymentRecordsTable.createdAt,
+            agreedOwedSnapshot: subPaymentRecordsTable.agreedOwedSnapshot,
+            jobTitle: jobsTable.title,
+            subcontractorName: subcontractorsTable.name,
+          })
+          .from(subPaymentRecordsTable)
+          .leftJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
+          .leftJoin(subcontractorsTable, eq(subPaymentRecordsTable.subcontractorId, subcontractorsTable.id))
+          .where(and(
+            sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+            ...(jobId ? [eq(subPaymentRecordsTable.jobId, parseInt(jobId as string))] : []),
+            ...(startDate ? [gte(subPaymentRecordsTable.paymentDate, startDate as string)] : []),
+            ...(endDate ? [lte(subPaymentRecordsTable.paymentDate, endDate as string)] : []),
+          ))
+        : Promise.resolve([]),
+    ]);
+
+    const formatted = expenses.map(e => formatExpense(e, e.jobTitle, e.subcontractorName));
+
+    const sprFormatted = (sprRows as any[]).map(spr => ({
+      // Use negative id to guarantee no collision with real expense ids
+      id: -(spr.id as number),
+      _sprId: spr.id,
+      _source: "sub_payment_record",
+      description: spr.description || `${spr.subcontractorName ?? "Sub"} — Allocation/Fixed Pay`,
+      amount: parseFloat(spr.amount ?? "0"),
+      category: "Subcontractor",
+      date: spr.paymentDate,
+      vendor: null,
+      jobId: spr.jobId,
+      jobTitle: spr.jobTitle ?? null,
+      subcontractorId: spr.subcontractorId,
+      subcontractorName: spr.subcontractorName ?? null,
+      businessLine: spr.businessLine ?? null,
+      businessId: null,
+      notes: spr.notes ?? null,
+      receiptUrl: null,
+      excludeFromNetProfit: false,
+      jobSubHoursId: null,
+      recurringExpenseId: null,
+      paymentMethod: spr.paymentMethod ?? null,
+      referenceNumber: spr.referenceNumber ?? null,
+      agreedOwed: spr.agreedOwedSnapshot ? parseFloat(spr.agreedOwedSnapshot) : null,
+      createdAt: spr.createdAt instanceof Date ? spr.createdAt.toISOString() : spr.createdAt,
+    }));
+
+    // Merge and sort descending by date so the list is chronologically consistent
+    const all = [...formatted, ...sprFormatted].sort((a, b) =>
+      (b.date ?? "").localeCompare(a.date ?? "")
+    );
+
+    res.json(all);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch expenses" });
