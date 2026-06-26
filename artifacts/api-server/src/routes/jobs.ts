@@ -298,7 +298,7 @@ router.get("/:id/profit", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    const [invRows, expRows] = await Promise.all([
+    const [invRows, expRows, sprRow, subHoursRow, subHoursSum] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
       // Fetch all expenses not auto-linked to a sub-hours row.
@@ -306,6 +306,24 @@ router.get("/:id/profit", async (req, res) => {
       // so they never double-count with hours-based sub labor cost.
       db.select({ amount: expensesTable.amount, category: expensesTable.category })
         .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId))),
+      // sub_payment_records is the authoritative ledger for fixed/allocation sub payments
+      // (pay-worker stopped writing to expenses in Task #892).
+      // Only include non-hourly subs — hourly costs are already captured via job_sub_hours.
+      db.select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          eq(subPaymentRecordsTable.jobId, id),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          sql`COALESCE(${jobSubcontractorsTable.compensationType}, 'allocation') != 'hourly'`,
+        )),
+      db.select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
+        .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
+      db.select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
+        .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
     ]);
 
     let grossInvoiced = 0;
@@ -316,33 +334,24 @@ router.get("/:id/profit", async (req, res) => {
       if (inv.status === "paid") collected += t;
     }
     let jobExpenses = 0;
-    let flatSubCost = 0; // Subcontractor-category expenses not linked to hours
+    let flatSubCost = 0; // Subcontractor-category expenses not linked to hours (legacy fallback)
     for (const exp of expRows) {
       if (exp.category === "Owner Draw") continue;
       if (exp.category === "Subcontractor") {
-        // Keep sub costs in the sub labor bucket, not in general job expenses
         flatSubCost += parseFloat(exp.amount ?? "0");
       } else {
         jobExpenses += parseFloat(exp.amount ?? "0");
       }
     }
 
-    const [subHoursRow] = await db
-      .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
-      .from(jobSubHoursTable)
-      .where(eq(jobSubHoursTable.jobId, id));
     const hoursLaborCost = parseFloat(subHoursRow?.total ?? "0");
-
-    const [subHoursSum] = await db
-      .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
-      .from(jobSubHoursTable)
-      .where(eq(jobSubHoursTable.jobId, id));
     const totalSubHours = parseFloat(subHoursSum?.total ?? "0");
-
-    // If hours are tracked, those expenses are the authoritative sub cost (auto-expenses
-    // from hours carry jobSubHoursId and were already excluded above). If no hours exist,
-    // fall back to flat sub expenses so flat-rate subs still show up.
-    const subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : flatSubCost;
+    // Non-hourly (fixed/allocation) sub cost: prefer sub_payment_records (new ledger),
+    // fall back to flat Subcontractor expenses for legacy data pre-Task #892.
+    const sprNonHoursCost = parseFloat(sprRow?.[0]?.total ?? "0");
+    const nonHoursCost = sprNonHoursCost > 0 ? sprNonHoursCost : flatSubCost;
+    // Total sub labor: hourly (hours × rate) + fixed/allocation (cash paid)
+    const subLaborCost = hoursLaborCost + nonHoursCost;
 
     res.json({ grossInvoiced, collected, jobExpenses, subLaborCost, totalSubHours, netProfit: collected - jobExpenses - subLaborCost });
   } catch (err) {
@@ -359,7 +368,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, expRows, hoursRows] = await Promise.all([
+    const [invRows, expRows, hoursRows, sprNonHoursRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
@@ -372,9 +381,26 @@ router.get("/profit-summary", async (req, res) => {
         .from(jobSubHoursTable)
         .where(inArray(jobSubHoursTable.jobId, jobIds))
         .groupBy(jobSubHoursTable.jobId),
+      // sub_payment_records for non-hourly (fixed/allocation) subs — new ledger since Task #892
+      db.select({
+        jobId: subPaymentRecordsTable.jobId,
+        total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)`,
+      })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          inArray(subPaymentRecordsTable.jobId, jobIds),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          sql`COALESCE(${jobSubcontractorsTable.compensationType}, 'allocation') != 'hourly'`,
+        ))
+        .groupBy(subPaymentRecordsTable.jobId),
     ]);
 
     const hoursMap = new Map(hoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
+    const sprNonHoursMap = new Map(sprNonHoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
@@ -402,8 +428,11 @@ router.get("/profit-summary", async (req, res) => {
     }
     for (const id of jobIds) {
       const hoursLaborCost = hoursMap.get(id) ?? 0;
-      result[id].subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : (flatSubCostMap[id] ?? 0);
-      result[id].netProfit = result[id].collected - result[id].jobExpenses;
+      const sprNonHoursCost = sprNonHoursMap.get(id) ?? 0;
+      // Prefer sub_payment_records (new ledger); fall back to flat expense entries (legacy)
+      const nonHoursCost = sprNonHoursCost > 0 ? sprNonHoursCost : (flatSubCostMap[id] ?? 0);
+      result[id].subLaborCost = hoursLaborCost + nonHoursCost;
+      result[id].netProfit = result[id].collected - result[id].jobExpenses - result[id].subLaborCost;
     }
 
     res.json(result);
