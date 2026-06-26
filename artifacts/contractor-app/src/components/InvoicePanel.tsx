@@ -178,9 +178,11 @@ export function InvoicePanel({
   const [gmailPreview, setGmailPreview] = useState(false);
   const [attachChecklist, setAttachChecklist] = useState(true);
   const [jobHasChecklist, setJobHasChecklist] = useState(false);
+  const [extraEmailFiles, setExtraEmailFiles] = useState<{ filename: string; base64: string }[]>([]);
 
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emailFileInputRef = useRef<HTMLInputElement>(null);
 
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -547,11 +549,13 @@ export function InvoicePanel({
         text: gmailMessage.trim() || `Please see invoice ${effectiveExistingInvoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
         pdfBase64,
         pdfFilename,
-        extraAttachments: checklistBase64 && checklistFilename
-          ? [{ base64: checklistBase64, filename: checklistFilename }]
-          : undefined,
+        extraAttachments: [
+          ...(checklistBase64 && checklistFilename ? [{ base64: checklistBase64, filename: checklistFilename }] : []),
+          ...extraEmailFiles,
+        ],
       });
       setGmailSent(true);
+      setExtraEmailFiles([]);
       toast({
         title: "Invoice sent via Gmail",
         description: pdfBase64
@@ -816,8 +820,50 @@ export function InvoicePanel({
                       </button>
                       <p className="text-[10px] text-blue-500">Sends from your Gmail with PDF attached</p>
                     </div>
+                                    {/* Extra file attachments */}
+                    <div className="pt-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => emailFileInputRef.current?.click()}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-[10px] text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <span>📎</span> Add file
+                        </button>
+                        {extraEmailFiles.map((f, i) => (
+                          <span key={i} className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-md text-[10px] text-blue-700">
+                            {f.filename}
+                            <button
+                              type="button"
+                              onClick={() => setExtraEmailFiles(prev => prev.filter((_, j) => j !== i))}
+                              className="ml-0.5 text-blue-400 hover:text-red-500 leading-none"
+                            >×</button>
+                          </span>
+                        ))}
+                      </div>
+                      <input
+                        ref={emailFileInputRef}
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                        multiple
+                        className="hidden"
+                        onChange={e => {
+                          const files = Array.from(e.target.files ?? []);
+                          files.forEach(file => {
+                            const reader = new FileReader();
+                            reader.onload = ev => {
+                              const result = ev.target?.result as string;
+                              const base64 = result.split(",")[1];
+                              if (base64) setExtraEmailFiles(prev => [...prev, { filename: file.name, base64 }]);
+                            };
+                            reader.readAsDataURL(file);
+                          });
+                          e.target.value = "";
+                        }}
+                      />
+                    </div>
                     <p className="text-[10px] text-blue-400">
-                      📎 {["Invoice PDF", ...(jobHasChecklist && attachChecklist ? ["Checklist PDF"] : [])].join(" · ")}
+                      📎 {["Invoice PDF", ...(jobHasChecklist && attachChecklist ? ["Checklist PDF"] : []), ...extraEmailFiles.map(f => f.filename)].join(" · ")}
                     </p>
                   </div>
                 )}
