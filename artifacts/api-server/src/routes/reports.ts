@@ -1376,7 +1376,7 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       jobNumber: jobsTable.jobNumber,
       status: jobsTable.status,
       ownerPayIncluded: jobsTable.ownerPayIncluded,
-    }).from(jobsTable).orderBy(jobsTable.jobNumber, jobsTable.id);
+    }).from(jobsTable).orderBy(desc(jobsTable.jobNumber), desc(jobsTable.id));
 
     const jobIds = allJobs.map(j => j.id);
     if (jobIds.length === 0) {
