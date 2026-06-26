@@ -60,6 +60,7 @@ export async function launchBrowser(): Promise<Browser> {
     executablePath: execPath,
     headless: true,
     args: ARGS,
-    protocolTimeout: 60000,
+    timeout: 120000,
+    protocolTimeout: 120000,
   });
 }
