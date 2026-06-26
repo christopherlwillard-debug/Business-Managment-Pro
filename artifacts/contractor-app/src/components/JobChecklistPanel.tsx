@@ -476,7 +476,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       const compressed = await Promise.all(fileArr.map(compressImage));
       const form = new FormData();
       for (const file of compressed) form.append("photos", file);
-      const r = await fetch(`${BASE}/api/job-checklists/${job.id}/checklist/finished-photos`, {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/finished-photos`, {
         method: "POST",
         credentials: "include",
         body: form,
@@ -493,7 +493,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   async function handleFinishedPhotoDelete(photoId: number) {
     setDeletingFinishedPhoto(photoId);
     try {
-      const r = await fetch(`${BASE}/api/job-checklists/${job.id}/checklist/finished-photos/${photoId}`, {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/finished-photos/${photoId}`, {
         method: "DELETE",
         credentials: "include",
       });
