@@ -82,6 +82,15 @@ export const jobChecklistItemPartsTable = pgTable("job_checklist_item_parts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const jobFinishedPhotosTable = pgTable("job_finished_photos", {
+  id: serial("id").primaryKey(),
+  jobChecklistId: integer("job_checklist_id").notNull().references(() => jobChecklistsTable.id, { onDelete: "cascade" }),
+  objectPath: text("object_path").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type JobFinishedPhoto = typeof jobFinishedPhotosTable.$inferSelect;
+
 export type ChecklistTemplate = typeof checklistTemplatesTable.$inferSelect;
 export type ChecklistTemplateSection = typeof checklistTemplateSectionsTable.$inferSelect;
 export type ChecklistTemplateItem = typeof checklistTemplateItemsTable.$inferSelect;

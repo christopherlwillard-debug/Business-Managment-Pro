@@ -10,6 +10,7 @@ import {
   jobChecklistItemsTable,
   jobChecklistItemPhotosTable,
   jobChecklistItemPartsTable,
+  jobFinishedPhotosTable,
   jobsTable,
   clientsTable,
   settingsTable,
@@ -133,12 +134,15 @@ export async function buildChecklistResponse(checklistId: number) {
     .orderBy(asc(jobChecklistItemsTable.sortOrder));
 
   const itemIds = items.map(i => i.id);
-  const [photos, parts] = itemIds.length > 0
-    ? await Promise.all([
-        db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, itemIds)),
-        db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, itemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder)),
-      ])
-    : [[], []];
+  const [photos, parts, finishedPhotos] = await Promise.all([
+    itemIds.length > 0
+      ? db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, itemIds))
+      : Promise.resolve([]),
+    itemIds.length > 0
+      ? db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, itemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder))
+      : Promise.resolve([]),
+    db.select().from(jobFinishedPhotosTable).where(eq(jobFinishedPhotosTable.jobChecklistId, checklistId)).orderBy(asc(jobFinishedPhotosTable.createdAt)),
+  ]);
 
   const photosByItemId = new Map<number, Array<{ id: number; url: string; createdAt: Date }>>();
   for (const p of photos) {
@@ -175,6 +179,7 @@ export async function buildChecklistResponse(checklistId: number) {
     overallPercent: overallPct,
     totalItems: activeItems.length,
     completedItems: fullyCompletedItems,
+    finishedPhotos: finishedPhotos.map(p => ({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt })),
     sections: sections.map(s => ({
       ...s,
       items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
@@ -791,6 +796,75 @@ router.delete("/:jobId/checklist/items/:itemId/photos/:photoId", async (req, res
       .where(eq(jobChecklistItemPhotosTable.id, photoId));
 
     res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete photo" });
+  }
+});
+
+// ── POST /:jobId/checklist/finished-photos ────────────────────────────────────
+router.post("/:jobId/checklist/finished-photos", photoUpload.array("photos", 20), async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) return res.status(400).json({ error: "No files uploaded" });
+
+    const [checklist] = await db
+      .select({ id: jobChecklistsTable.id })
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "Checklist not found" });
+
+    const objStorage = new ObjectStorageService();
+    await Promise.all(files.map(async (file) => {
+      const objectPath = await objStorage.uploadBufferWithFilename(
+        file.buffer,
+        file.mimetype,
+        "uploads/finished-photos",
+        file.originalname || `photo-${Date.now()}.jpg`,
+      );
+      await db.insert(jobFinishedPhotosTable).values({ jobChecklistId: checklist.id, objectPath });
+    }));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to upload photo" });
+  }
+});
+
+// ── DELETE /:jobId/checklist/finished-photos/:photoId ─────────────────────────
+router.delete("/:jobId/checklist/finished-photos/:photoId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    const photoId = parseInt(req.params.photoId, 10);
+    if (isNaN(jobId) || isNaN(photoId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [photo] = await db
+      .select()
+      .from(jobFinishedPhotosTable)
+      .where(eq(jobFinishedPhotosTable.id, photoId));
+    if (!photo) return res.status(404).json({ error: "Photo not found" });
+
+    const [checklist] = await db
+      .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.id, photo.jobChecklistId));
+    if (!checklist || checklist.jobId !== jobId) return res.status(403).json({ error: "Photo does not belong to this job" });
+
+    if (photo.objectPath.startsWith("/objects/")) {
+      try {
+        const objStorage = new ObjectStorageService();
+        await objStorage.deleteObject(photo.objectPath);
+      } catch { /* best-effort */ }
+    }
+
+    await db.delete(jobFinishedPhotosTable).where(eq(jobFinishedPhotosTable.id, photoId));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete photo" });

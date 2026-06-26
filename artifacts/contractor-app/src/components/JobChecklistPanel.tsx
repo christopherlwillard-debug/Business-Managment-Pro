@@ -15,6 +15,12 @@ interface ChecklistItemPhoto {
   url: string;
 }
 
+interface ChecklistFinishedPhoto {
+  id: number;
+  url: string;
+  createdAt: string;
+}
+
 interface ChecklistItemPart {
   id: number;
   label: string;
@@ -58,6 +64,7 @@ interface JobChecklist {
   overallPercent: number;
   totalItems: number;
   completedItems: number;
+  finishedPhotos: ChecklistFinishedPhoto[];
   sections: ChecklistSection[];
 }
 
@@ -146,6 +153,8 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [photoOpen, setPhotoOpen] = useState<Set<number>>(new Set());
   const [uploadingPhotoFor, setUploadingPhotoFor] = useState<Record<number, number>>({});
+  const [uploadingFinishedPhotos, setUploadingFinishedPhotos] = useState(false);
+  const [deletingFinishedPhoto, setDeletingFinishedPhoto] = useState<number | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [deletingPhoto, setDeletingPhoto] = useState<number | null>(null);
   const [splittingItem, setSplittingItem] = useState<number | null>(null);
@@ -427,6 +436,50 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       toast({ title: "Failed to upload photo", variant: "destructive" });
     } finally {
       setUploadingPhotoFor(prev => { const next = { ...prev }; delete next[itemId]; return next; });
+    }
+  }
+
+  async function handleFinishedPhotoUpload(files: FileList | File[]) {
+    const fileArr = Array.from(files);
+    if (!fileArr.length) return;
+    for (const file of fileArr) {
+      if (file.size > MAX_RAW_FILE_MB * 1024 * 1024) {
+        toast({ title: "Photo too large", description: `Each photo must be under ${MAX_RAW_FILE_MB} MB.`, variant: "destructive" });
+        return;
+      }
+    }
+    setUploadingFinishedPhotos(true);
+    try {
+      const compressed = await Promise.all(fileArr.map(compressImage));
+      const form = new FormData();
+      for (const file of compressed) form.append("photos", file);
+      const r = await fetch(`${BASE}/api/job-checklists/${job.id}/checklist/finished-photos`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      if (!r.ok) throw new Error("Upload failed");
+      setChecklist(await r.json());
+    } catch {
+      toast({ title: "Failed to upload photo", variant: "destructive" });
+    } finally {
+      setUploadingFinishedPhotos(false);
+    }
+  }
+
+  async function handleFinishedPhotoDelete(photoId: number) {
+    setDeletingFinishedPhoto(photoId);
+    try {
+      const r = await fetch(`${BASE}/api/job-checklists/${job.id}/checklist/finished-photos/${photoId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error("Delete failed");
+      setChecklist(await r.json());
+    } catch {
+      toast({ title: "Failed to delete photo", variant: "destructive" });
+    } finally {
+      setDeletingFinishedPhoto(null);
     }
   }
 
@@ -1085,6 +1138,59 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Finished Work Photos */}
+              <div className="px-5 py-4 border-t border-border/50">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                  <Camera className="w-3 h-3" /> Finished Work Photos
+                </p>
+                {(checklist.finishedPhotos ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {(checklist.finishedPhotos ?? []).map(photo => (
+                      <div key={photo.id} className="relative group">
+                        <img
+                          src={`${BASE}${photo.url}`}
+                          alt="Finished work photo"
+                          className="w-20 h-16 object-cover rounded-lg border border-border cursor-pointer"
+                          onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                        />
+                        {canEdit("jobs") && (
+                          <button
+                            onClick={() => handleFinishedPhotoDelete(photo.id)}
+                            disabled={deletingFinishedPhoto === photo.id}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100"
+                          >
+                            {deletingFinishedPhoto === photo.id
+                              ? <Loader2 className="w-2 h-2 animate-spin" />
+                              : <X className="w-2 h-2" />}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(checklist.finishedPhotos ?? []).length === 0 && !canEdit("jobs") && (
+                  <p className="text-xs text-muted-foreground italic">No finished work photos yet.</p>
+                )}
+                {canEdit("jobs") && (
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={e => {
+                        const files = e.target.files;
+                        if (files && files.length > 0) handleFinishedPhotoUpload(files);
+                        e.target.value = "";
+                      }}
+                    />
+                    {uploadingFinishedPhotos
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
+                      : <><Camera className="w-3.5 h-3.5" /> Add finished work photos</>}
+                  </label>
+                )}
               </div>
 
               {/* Meta: publicNotes + statusOverride */}
