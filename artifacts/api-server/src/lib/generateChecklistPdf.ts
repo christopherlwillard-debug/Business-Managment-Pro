@@ -448,26 +448,64 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     hRule();
   }
 
-  // ── Footer: signature + generated date ───────────────────────────────────
-  // Ensure at least 55pt for the footer (date line + signature image height)
-  ensureSpace(55);
-  doc.y += 6;
+  // ── Completion Sign-Off ───────────────────────────────────────────────────
+  // Box height: 104pt for signature image + padding; plus 30pt for labels below
+  ensureSpace(150);
+  doc.y += 10;
 
   const genDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
-  if (sigBuf) {
-    // Draw signature on the right, date on the left, aligned vertically
-    const footerY = doc.y;
-    try {
-      doc.image(sigBuf, R - 110, footerY, { width: 100, height: 45, fit: [100, 45] });
-    } catch { /* skip invalid signature image */ }
+  // Section heading
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(LGRAY)
+     .text("COMPLETION SIGN-OFF", L, doc.y, { width: W, characterSpacing: 1 });
+  doc.y += 8;
 
-    doc.font("Helvetica").fontSize(8).fillColor(LGRAY)
-       .text(`Generated ${genDate}`, L, footerY + 14, { width: W - 120 });
+  // Signature box — light background with border
+  const boxY = doc.y;
+  const boxH = 108;
+  doc.save().rect(L, boxY, W, boxH).fillColor("#f9fafb").fill().restore();
+  doc.save().rect(L, boxY, W, boxH).strokeColor("#d1d5db").lineWidth(0.75).stroke().restore();
+
+  if (sigBuf) {
+    // Center the signature image inside the box — fix: use only `fit`, no `width`/`height`
+    const sigW = 240;
+    const sigH = 92;
+    const sigX = L + (W - sigW) / 2;
+    const sigY = boxY + (boxH - sigH) / 2;
+    try {
+      doc.image(sigBuf, sigX, sigY, { fit: [sigW, sigH] });
+    } catch (err) {
+      console.error("Checklist PDF — signature render error:", err);
+    }
   } else {
-    doc.font("Helvetica").fontSize(8).fillColor(LGRAY)
-       .text(`Generated ${genDate}`, L, doc.y, { width: W });
+    // Placeholder when no signature has been saved in Settings
+    doc.font("Helvetica-Oblique").fontSize(9).fillColor(LGRAY)
+       .text("No signature on file — add one in Settings", L, boxY + boxH / 2 - 6, { width: W, align: "center" });
   }
+
+  doc.y = boxY + boxH + 10;
+
+  // Labels row: "Authorized Signature" left · "Date: …" right
+  {
+    const rowY = doc.y;
+    doc.font("Helvetica-Oblique").fontSize(8).fillColor(GRAY)
+       .text("Authorized Signature", L, rowY, { width: W / 2, lineBreak: false });
+    doc.font("Helvetica").fontSize(8).fillColor(DARK)
+       .text(`Date:  ${genDate}`, L + W / 2, rowY, { width: W / 2, align: "right", lineBreak: false });
+    doc.y = rowY + doc.currentLineHeight() + 3;
+  }
+
+  // Underlines beneath the labels
+  {
+    const lineY = doc.y;
+    doc.save().moveTo(L, lineY).lineTo(L + W * 0.44, lineY).strokeColor(BORDER).lineWidth(0.5).stroke().restore();
+    doc.save().moveTo(L + W * 0.56, lineY).lineTo(R, lineY).strokeColor(BORDER).lineWidth(0.5).stroke().restore();
+    doc.y = lineY + 10;
+  }
+
+  // Micro footer
+  doc.font("Helvetica").fontSize(7).fillColor(LGRAY)
+     .text(`Generated ${genDate}`, L, doc.y, { width: W, align: "center" });
 
   doc.end();
   await new Promise<void>((resolve) => doc.on("end", resolve));
