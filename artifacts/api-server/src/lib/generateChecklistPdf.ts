@@ -449,44 +449,40 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   }
 
   // ── Completion Sign-Off ───────────────────────────────────────────────────
-  // Block breakdown: 10 top pad + 9 heading + 8 gap + 108 box + 10 gap +
-  //   9 labels + 3 gap + 10 underline + 8 micro-footer = ~175pt total.
-  // Using 185 for safety margin.
-  const SIGNOFF_BLOCK_HEIGHT = 185;
+  // Compact block: heading + signature image (no box) + underline + labels
+  const SIGNOFF_BLOCK_HEIGHT = 110;
   ensureSpace(SIGNOFF_BLOCK_HEIGHT);
-  doc.y += 10;
+  doc.y += 12;
 
   const genDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   // Section heading
   doc.font("Helvetica-Bold").fontSize(7.5).fillColor(LGRAY)
      .text("COMPLETION SIGN-OFF", L, doc.y, { width: W, characterSpacing: 1 });
-  doc.y += 8;
+  doc.y += 10;
 
-  // Signature box — light background with border
-  const boxY = doc.y;
-  const boxH = 108;
-  doc.save().rect(L, boxY, W, boxH).fillColor("#f9fafb").fill().restore();
-  doc.save().rect(L, boxY, W, boxH).strokeColor("#d1d5db").lineWidth(0.75).stroke().restore();
+  const sigAreaY = doc.y;
 
   if (sigBuf) {
-    // Center the signature image inside the box — fix: use only `fit`, no `width`/`height`
-    const sigW = 240;
-    const sigH = 92;
-    const sigX = L + (W - sigW) / 2;
-    const sigY = boxY + (boxH - sigH) / 2;
+    // Signature image — left-aligned, compact height, no box
+    const sigW = 180;
+    const sigH = 52;
     try {
-      doc.image(sigBuf, sigX, sigY, { fit: [sigW, sigH] });
+      doc.image(sigBuf, L, sigAreaY, { fit: [sigW, sigH] });
     } catch (err) {
       console.error("Checklist PDF — signature render error:", err);
     }
+    doc.y = sigAreaY + sigH + 6;
   } else {
-    // Placeholder when no signature has been saved in Settings
-    doc.font("Helvetica-Oblique").fontSize(9).fillColor(LGRAY)
-       .text("No signature on file — add one in Settings", L, boxY + boxH / 2 - 6, { width: W, align: "center" });
+    doc.y = sigAreaY + 42;
   }
 
-  doc.y = boxY + boxH + 10;
+  // Single underline spanning full width
+  {
+    const lineY = doc.y;
+    doc.save().moveTo(L, lineY).lineTo(R, lineY).strokeColor(BORDER).lineWidth(0.5).stroke().restore();
+    doc.y = lineY + 5;
+  }
 
   // Labels row: "Authorized Signature" left · "Date: …" right
   {
@@ -495,15 +491,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
        .text("Authorized Signature", L, rowY, { width: W / 2, lineBreak: false });
     doc.font("Helvetica").fontSize(8).fillColor(DARK)
        .text(`Date:  ${genDate}`, L + W / 2, rowY, { width: W / 2, align: "right", lineBreak: false });
-    doc.y = rowY + doc.currentLineHeight() + 3;
-  }
-
-  // Underlines beneath the labels
-  {
-    const lineY = doc.y;
-    doc.save().moveTo(L, lineY).lineTo(L + W * 0.44, lineY).strokeColor(BORDER).lineWidth(0.5).stroke().restore();
-    doc.save().moveTo(L + W * 0.56, lineY).lineTo(R, lineY).strokeColor(BORDER).lineWidth(0.5).stroke().restore();
-    doc.y = lineY + 10;
+    doc.y = rowY + doc.currentLineHeight() + 10;
   }
 
   // Micro footer
