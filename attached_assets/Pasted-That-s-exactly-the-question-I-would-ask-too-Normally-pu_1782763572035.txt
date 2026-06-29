@@ -1,0 +1,65 @@
+That's exactly the question I would ask too.
+
+Normally, publishing does apply migrations to the production database. You shouldn't have to manually provide a PRODUCTION_DATABASE_URL.
+
+So one of three things is happening:
+
+Scenario 1 (Most likely) ✅
+
+Replit is trying to run your custom SQL migration outside of its normal deployment pipeline.
+
+In that case it's saying:
+
+"I can connect to your development database, but if you want me to run psql directly against production, I need the production connection string."
+
+That's different from a normal publish.
+
+Scenario 2
+
+Your app actually has two databases configured:
+
+Development DB
+Production DB
+
+and only the development one is available to the AI agent.
+
+The deployment system knows the production DB, but the AI assistant does not.
+
+Scenario 3
+
+The AI is taking the migration into its own hands because you told it to rewrite 0041 manually instead of letting Replit's migration engine handle it.
+
+That would explain why it's asking for a direct PostgreSQL connection.
+
+What I would do
+
+I would not immediately create a PRODUCTION_DATABASE_URL secret.
+
+Instead I'd ask Replit:
+
+Why can't this migration be applied through the normal Publish process?
+
+Publishing already migrates the production database. Why does this task require direct psql access instead of using the deployment migration pipeline?
+
+If it answers:
+
+"Because we generated a manual migration and need to execute it ourselves."
+
+—that's reasonable.
+
+If it answers:
+
+"Because production doesn't know about this migration."
+
+—then something is wrong with how the migration is being deployed.
+
+My suspicion
+
+Since we've been working on your app for months, I think what's happening is this:
+
+✅ Your production deployment already has a production database.
+✅ Publishing normally migrates it.
+❌ The AI rewrote 0041 manually and now wants to execute SQL itself.
+❌ To do that, it needs credentials that the deployment system normally hides.
+
+So I wouldn't add a new secret yet. I'd first make Replit justify why the normal publish process isn't sufficient. If there's a legitimate reason, then you can decide whether to grant it direct production database access.

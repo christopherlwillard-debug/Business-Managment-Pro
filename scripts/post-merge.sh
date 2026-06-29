@@ -2,6 +2,79 @@
 set -e
 pnpm install --frozen-lockfile
 
+# Migration 0041: Home Series schema restructure.
+# Runs BEFORE drizzle-kit push because the Drizzle schema already defines
+# mfh_home_series + new mfh_models. If push ran first on an old-schema
+# production DB it would create an empty mfh_home_series, trip the guard
+# below, and silently skip the data migration (data loss).
+# Guard A: skip if mfh_home_series already exists (already migrated).
+# Guard B: skip if mfh_models doesn't exist either (fresh DB — drizzle-kit
+#          push will build the correct schema from scratch; no rename needed).
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  DO \\\$\\\$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'mfh_home_series'
+    ) AND EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'mfh_models'
+    ) THEN
+      -- A: Rename old mfh_models (priced series rows) to mfh_home_series
+      ALTER TABLE mfh_models RENAME TO mfh_home_series;
+      ALTER SEQUENCE mfh_models_id_seq RENAME TO mfh_home_series_id_seq;
+      ALTER TABLE mfh_home_series RENAME CONSTRAINT mfh_models_pkey TO mfh_home_series_pkey;
+
+      -- B: Remove the dealer link from the series
+      ALTER TABLE mfh_home_series DROP COLUMN manufacturer_id;
+
+      -- C: Make pricing guides global (drop manufacturer_id)
+      ALTER TABLE mfh_pricing_guides DROP COLUMN manufacturer_id;
+
+      -- D: Align the guide-items FK column name
+      ALTER TABLE mfh_guide_items RENAME COLUMN model_id TO home_series_id;
+
+      -- E: Create the genuine model level beneath a series
+      CREATE TABLE mfh_models (
+        id              serial      PRIMARY KEY,
+        home_series_id  integer     NOT NULL REFERENCES mfh_home_series(id) ON DELETE CASCADE,
+        name            text        NOT NULL,
+        notes           text,
+        active          boolean     NOT NULL DEFAULT true,
+        introduced_year   integer,
+        discontinued_year integer,
+        created_at      timestamp   NOT NULL DEFAULT now()
+      );
+
+      -- F: Remap job-level MFH references
+      ALTER TABLE jobs ADD COLUMN mfh_series_id integer;
+      UPDATE jobs SET mfh_series_id = mfh_model_id WHERE mfh_model_id IS NOT NULL;
+      UPDATE jobs SET mfh_model_id = NULL;
+      ALTER TABLE jobs DROP CONSTRAINT jobs_mfh_manufacturer_id_fkey;
+      ALTER TABLE jobs DROP CONSTRAINT jobs_mfh_model_id_fkey;
+      ALTER TABLE jobs DROP COLUMN mfh_manufacturer_id;
+      ALTER TABLE jobs ADD CONSTRAINT jobs_mfh_series_id_fkey
+        FOREIGN KEY (mfh_series_id) REFERENCES mfh_home_series(id) ON DELETE SET NULL;
+      ALTER TABLE jobs ADD CONSTRAINT jobs_mfh_model_id_fkey
+        FOREIGN KEY (mfh_model_id)  REFERENCES mfh_models(id)      ON DELETE SET NULL;
+
+      -- G: Drop the now-obsolete manufacturer table
+      DROP TABLE mfh_manufacturers;
+
+      RAISE NOTICE '0041_mfh_home_series: migration applied';
+    ELSE
+      RAISE NOTICE '0041_mfh_home_series: skipping (already applied or fresh DB)';
+    END IF;
+  END
+  \\\$\\\$
+\`)
+  .then(() => { console.log('[post-merge] 0041_mfh_home_series: done'); pool.end(); })
+  .catch(e => { console.error('[post-merge] 0041_mfh_home_series error:', e.message); pool.end(); process.exit(1); });
+")
+
 pnpm --filter @workspace/db run push-force </dev/null 2>&1 || true
 
 # Idempotent hotfix: ensure daily_logs.author_name column exists (added in Task #35,
