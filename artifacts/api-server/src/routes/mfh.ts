@@ -410,14 +410,7 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
     const basePrice = parseFloat(guideItem?.basePrice ?? "0");
 
     // Get dealer price snapshot
-    const dealerGuides = await db.select().from(mfhPricingGuidesTable)
-      .where(and(eq(mfhPricingGuidesTable.manufacturerId, parseInt(manufacturerId)), eq(mfhPricingGuidesTable.isDealerGuide, true))).limit(1);
-    let dealerPrice = basePrice;
-    if (dealerGuides.length > 0 && dealerGuides[0].id !== parseInt(guideId)) {
-      const [di] = await db.select().from(mfhGuideItemsTable)
-        .where(and(eq(mfhGuideItemsTable.guideId, dealerGuides[0].id), eq(mfhGuideItemsTable.modelId, parseInt(modelId))));
-      if (di) dealerPrice = parseFloat(di.basePrice);
-    }
+    const dealerPrice = await getDealerPrice(parseInt(manufacturerId), parseInt(modelId), parseInt(guideId), basePrice);
 
     const addons = await db.select().from(mfhGuideAddonsTable).where(eq(mfhGuideAddonsTable.guideId, parseInt(guideId)));
     const selectedKeys: string[] = Array.isArray(selectedAddonKeys) ? selectedAddonKeys : [];
@@ -441,6 +434,32 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
         mfhTravelDays: days,
         jobType: "Manufactured Home",
       } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
+
+      // Apply the model's linked benchmark to the job. Jobs in this app are not
+      // linked to a benchmark by FK — they match by jobType (unique). Since an
+      // applied MFH job's type is always "Manufactured Home", we project the
+      // model's linked benchmark onto the "Manufactured Home" benchmark so it is
+      // the active benchmark for this job's type.
+      if (modelRow.benchmarkId) {
+        const [linked] = await tx.select().from(jobTypeBenchmarksTable).where(eq(jobTypeBenchmarksTable.id, modelRow.benchmarkId));
+        if (linked) {
+          await tx.insert(jobTypeBenchmarksTable).values({
+            jobType: "Manufactured Home",
+            estimatedHours: linked.estimatedHours,
+            estimatedLaborCost: linked.estimatedLaborCost,
+            estimatedMaterialCost: linked.estimatedMaterialCost,
+            notes: linked.notes,
+          }).onConflictDoUpdate({
+            target: jobTypeBenchmarksTable.jobType,
+            set: {
+              estimatedHours: linked.estimatedHours,
+              estimatedLaborCost: linked.estimatedLaborCost,
+              estimatedMaterialCost: linked.estimatedMaterialCost,
+              notes: linked.notes,
+            },
+          });
+        }
+      }
 
       // Find or create estimate
       const existingEstimates = await tx.select().from(estimatesTable).where(eq(estimatesTable.jobId, jobId)).limit(1);
@@ -520,45 +539,69 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
   }
 });
 
+// Resolve the dealer-guide base price for a model so the dealer-cost snapshot
+// stays consistent across apply / update-pricing / reset.
+async function getDealerPrice(manufacturerId: number, modelId: number, currentGuideId: number, basePrice: number): Promise<number> {
+  const dealerGuides = await db.select().from(mfhPricingGuidesTable)
+    .where(and(eq(mfhPricingGuidesTable.manufacturerId, manufacturerId), eq(mfhPricingGuidesTable.isDealerGuide, true))).limit(1);
+  let dealerPrice = basePrice;
+  if (dealerGuides.length > 0 && dealerGuides[0].id !== currentGuideId) {
+    const [di] = await db.select().from(mfhGuideItemsTable)
+      .where(and(eq(mfhGuideItemsTable.guideId, dealerGuides[0].id), eq(mfhGuideItemsTable.modelId, modelId)));
+    if (di) dealerPrice = parseFloat(di.basePrice);
+  }
+  return dealerPrice;
+}
+
+// Shared core for update-pricing and reset: regenerate only MFH-tagged estimate
+// lines (preserving custom lines) and refresh the full pricing snapshot —
+// dealer price, quoted price, guide name, add-ons, travel days — on BOTH the job
+// and the estimate so the snapshot never goes stale after a guide change.
+async function regenerateMfhPricing(jobId: number, body: { guideId: string | number; modelId: string | number; selectedAddonKeys?: unknown; travelDays?: string | number }) {
+  const guideId = parseInt(String(body.guideId));
+  const modelId = parseInt(String(body.modelId));
+
+  const [modelRow] = await db.select({ name: mfhModelsTable.name, manufacturerId: mfhModelsTable.manufacturerId, constructionTypeName: mfhConstructionTypesTable.name })
+    .from(mfhModelsTable).leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
+    .where(eq(mfhModelsTable.id, modelId));
+  const [guideRow] = await db.select().from(mfhPricingGuidesTable).where(eq(mfhPricingGuidesTable.id, guideId));
+  const [guideItem] = await db.select().from(mfhGuideItemsTable)
+    .where(and(eq(mfhGuideItemsTable.guideId, guideId), eq(mfhGuideItemsTable.modelId, modelId)));
+  const addons = await db.select().from(mfhGuideAddonsTable).where(eq(mfhGuideAddonsTable.guideId, guideId));
+
+  const basePrice = parseFloat(guideItem?.basePrice ?? "0");
+  const ctName = modelRow?.constructionTypeName ?? "Trim-Out";
+  const selectedKeys: string[] = Array.isArray(body.selectedAddonKeys) ? (body.selectedAddonKeys as string[]) : [];
+  const days = parseInt(String(body.travelDays ?? "1")) || 1;
+  const dealerPrice = modelRow ? await getDealerPrice(modelRow.manufacturerId, modelId, guideId, basePrice) : basePrice;
+  const newMfhLines = await buildMfhLines(guideId, modelId, selectedKeys, days, modelRow?.name ?? "", ctName, addons, basePrice);
+
+  await db.transaction(async (tx) => {
+    const [estimate] = await tx.select().from(estimatesTable).where(eq(estimatesTable.jobId, jobId)).limit(1);
+    if (estimate) {
+      const existing: unknown[] = Array.isArray(estimate.lineItems) ? (estimate.lineItems as unknown[]) : [];
+      const nonMfhLines = existing.filter((l: unknown) => (l as Record<string, unknown>).generatedBy !== "MFH");
+      const merged = [...newMfhLines, ...nonMfhLines];
+      const newTotal = merged.reduce((s: number, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
+      await tx.update(estimatesTable).set({
+        lineItems: merged, subtotal: String(newTotal), total: String(newTotal),
+        mfhDealerPrice: String(dealerPrice), mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
+      } as Record<string, unknown>).where(eq(estimatesTable.id, estimate.id));
+    }
+    await tx.update(jobsTable).set({
+      mfhDealerPrice: String(dealerPrice), mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
+      mfhSelectedAddons: selectedKeys, mfhTravelDays: days,
+    } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
+  });
+}
+
 // PATCH /api/mfh/jobs/:id/update-pricing — refresh only MFH-tagged lines (no confirmation needed)
 mfhJobRouter.patch("/jobs/:id/update-pricing", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
-    const { guideId, modelId, selectedAddonKeys, travelDays } = req.body;
+    const { guideId, modelId } = req.body;
     if (!guideId || !modelId) return res.status(400).json({ error: "guideId and modelId required" });
-
-    const [modelRow] = await db.select({ name: mfhModelsTable.name, constructionTypeName: mfhConstructionTypesTable.name })
-      .from(mfhModelsTable).leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
-      .where(eq(mfhModelsTable.id, parseInt(modelId)));
-    const [guideRow] = await db.select().from(mfhPricingGuidesTable).where(eq(mfhPricingGuidesTable.id, parseInt(guideId)));
-    const [guideItem] = await db.select().from(mfhGuideItemsTable)
-      .where(and(eq(mfhGuideItemsTable.guideId, parseInt(guideId)), eq(mfhGuideItemsTable.modelId, parseInt(modelId))));
-    const addons = await db.select().from(mfhGuideAddonsTable).where(eq(mfhGuideAddonsTable.guideId, parseInt(guideId)));
-
-    const basePrice = parseFloat(guideItem?.basePrice ?? "0");
-    const ctName = modelRow?.constructionTypeName ?? "Trim-Out";
-    const selectedKeys: string[] = Array.isArray(selectedAddonKeys) ? selectedAddonKeys : [];
-    const days = parseInt(travelDays ?? "1") || 1;
-    const newMfhLines = await buildMfhLines(parseInt(guideId), parseInt(modelId), selectedKeys, days, modelRow?.name ?? "", ctName, addons, basePrice);
-
-    await db.transaction(async (tx) => {
-      const [estimate] = await tx.select().from(estimatesTable).where(eq(estimatesTable.jobId, jobId)).limit(1);
-      if (estimate) {
-        const existing: unknown[] = Array.isArray(estimate.lineItems) ? (estimate.lineItems as unknown[]) : [];
-        const nonMfhLines = existing.filter((l: unknown) => (l as Record<string, unknown>).generatedBy !== "MFH");
-        const merged = [...newMfhLines, ...nonMfhLines];
-        const newTotal = merged.reduce((s: number, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
-        await tx.update(estimatesTable).set({
-          lineItems: merged, subtotal: String(newTotal), total: String(newTotal),
-          mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
-        } as Record<string, unknown>).where(eq(estimatesTable.id, estimate.id));
-      }
-      await tx.update(jobsTable).set({
-        mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
-        mfhSelectedAddons: selectedKeys, mfhTravelDays: days,
-      } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
-    });
-
+    await regenerateMfhPricing(jobId, req.body);
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed to update pricing" }); }
 });
@@ -567,41 +610,9 @@ mfhJobRouter.patch("/jobs/:id/update-pricing", async (req, res) => {
 mfhJobRouter.patch("/jobs/:id/reset", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
-    const { guideId, modelId, selectedAddonKeys, travelDays } = req.body;
+    const { guideId, modelId } = req.body;
     if (!guideId || !modelId) return res.status(400).json({ error: "guideId and modelId required" });
-
-    const [modelRow] = await db.select({ name: mfhModelsTable.name, constructionTypeName: mfhConstructionTypesTable.name })
-      .from(mfhModelsTable).leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
-      .where(eq(mfhModelsTable.id, parseInt(modelId)));
-    const [guideRow] = await db.select().from(mfhPricingGuidesTable).where(eq(mfhPricingGuidesTable.id, parseInt(guideId)));
-    const [guideItem] = await db.select().from(mfhGuideItemsTable)
-      .where(and(eq(mfhGuideItemsTable.guideId, parseInt(guideId)), eq(mfhGuideItemsTable.modelId, parseInt(modelId))));
-    const addons = await db.select().from(mfhGuideAddonsTable).where(eq(mfhGuideAddonsTable.guideId, parseInt(guideId)));
-
-    const basePrice = parseFloat(guideItem?.basePrice ?? "0");
-    const ctName = modelRow?.constructionTypeName ?? "Trim-Out";
-    const selectedKeys: string[] = Array.isArray(selectedAddonKeys) ? selectedAddonKeys : [];
-    const days = parseInt(travelDays ?? "1") || 1;
-    const newMfhLines = await buildMfhLines(parseInt(guideId), parseInt(modelId), selectedKeys, days, modelRow?.name ?? "", ctName, addons, basePrice);
-
-    await db.transaction(async (tx) => {
-      const [estimate] = await tx.select().from(estimatesTable).where(eq(estimatesTable.jobId, jobId)).limit(1);
-      if (estimate) {
-        const existing: unknown[] = Array.isArray(estimate.lineItems) ? (estimate.lineItems as unknown[]) : [];
-        const nonMfhLines = existing.filter((l: unknown) => (l as Record<string, unknown>).generatedBy !== "MFH");
-        const merged = [...newMfhLines, ...nonMfhLines];
-        const newTotal = merged.reduce((s: number, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
-        await tx.update(estimatesTable).set({
-          lineItems: merged, subtotal: String(newTotal), total: String(newTotal),
-          mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
-        } as Record<string, unknown>).where(eq(estimatesTable.id, estimate.id));
-      }
-      await tx.update(jobsTable).set({
-        mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
-        mfhSelectedAddons: selectedKeys, mfhTravelDays: days,
-      } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
-    });
-
+    await regenerateMfhPricing(jobId, req.body);
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed to reset" }); }
 });
