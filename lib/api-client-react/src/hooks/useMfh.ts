@@ -2,10 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "../custom-fetch";
 
 export interface MfhConstructionType { id: number; name: string; }
-export interface MfhManufacturer { id: number; name: string; createdAt?: string; }
-export interface MfhModel {
+
+// Home Series — the priced entity (construction type, pricing, benchmark,
+// checklist, default add-ons, notes). There is no dealer/manufacturer entity;
+// the dealer is captured by the job's Client field.
+export interface MfhHomeSeries {
   id: number;
-  manufacturerId: number;
   name: string;
   constructionTypeId: number;
   constructionTypeName?: string | null;
@@ -20,11 +22,26 @@ export interface MfhModel {
   introducedYear?: number | null;
   discontinuedYear?: number | null;
 }
-export interface MfhPricingGuide { id: number; manufacturerId: number; name: string; isDealerGuide: boolean; }
-export interface MfhGuideItem { id: number; guideId: number; modelId: number; basePrice: string; }
+
+// Model — the genuine model name (Farmhouse, Freedom, …) under a series.
+// Optional and descriptive; inherits the series' construction type / pricing /
+// checklist / benchmark / add-ons.
+export interface MfhModel {
+  id: number;
+  homeSeriesId: number;
+  name: string;
+  notes?: string | null;
+  active: boolean;
+  introducedYear?: number | null;
+  discontinuedYear?: number | null;
+}
+
+export interface MfhPricingGuide { id: number; name: string; isDealerGuide: boolean; }
+export interface MfhGuideItem { id: number; guideId: number; homeSeriesId: number; basePrice: string; }
 export interface MfhGuideAddon { id: number; guideId: number; addonKey: string; label: string; price: string; isPerDay: boolean; }
 
 export interface MfhPanelData {
+  series: MfhHomeSeries[];
   models: MfhModel[];
   guides: MfhPricingGuide[];
   guideItems: MfhGuideItem[];
@@ -35,7 +52,6 @@ export interface MfhPanelData {
 }
 
 export interface MfhLibraryData {
-  manufacturers: MfhManufacturer[];
   constructionTypes: MfhConstructionType[];
   benchmarks: Array<{ id: number; jobType: string; estimatedHours?: string | null }>;
   templates: Array<{ id: number; name: string }>;
@@ -43,7 +59,7 @@ export interface MfhLibraryData {
 
 export interface MfhJobData {
   id: number;
-  mfhManufacturerId?: number | null;
+  mfhSeriesId?: number | null;
   mfhModelId?: number | null;
   mfhModelYear?: number | null;
   mfhDealerPrice?: string | null;
@@ -53,39 +69,41 @@ export interface MfhJobData {
   mfhTravelDays?: number | null;
 }
 
-export function useListMfhManufacturers() {
+// ── Home Series ───────────────────────────────────────────────────────────────
+export function useListMfhSeries() {
   return useQuery({
-    queryKey: ["/api/mfh/manufacturers"],
-    queryFn: () => customFetch<MfhManufacturer[]>("/api/mfh/manufacturers", { method: "GET" }),
+    queryKey: ["/api/mfh/series"],
+    queryFn: () => customFetch<MfhHomeSeries[]>("/api/mfh/series", { method: "GET" }),
   });
 }
 
-export function useCreateMfhManufacturer() {
+export function useCreateMfhSeries() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string }) =>
-      customFetch<MfhManufacturer>("/api/mfh/manufacturers", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/manufacturers"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] }); },
+    mutationFn: (data: Partial<MfhHomeSeries> & { name: string; constructionTypeId: number }) =>
+      customFetch<MfhHomeSeries>("/api/mfh/series", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/series"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); },
   });
 }
 
-export function useUpdateMfhManufacturer() {
+export function useUpdateMfhSeries() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) =>
-      customFetch<MfhManufacturer>(`/api/mfh/manufacturers/${id}`, { method: "PATCH", body: JSON.stringify({ name }), headers: { "Content-Type": "application/json" } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/manufacturers"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] }); },
+    mutationFn: ({ id, ...data }: Partial<MfhHomeSeries> & { id: number }) =>
+      customFetch<MfhHomeSeries>(`/api/mfh/series/${id}`, { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/series"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); },
   });
 }
 
-export function useDeleteMfhManufacturer() {
+export function useDeleteMfhSeries() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => customFetch<{ ok: boolean }>(`/api/mfh/manufacturers/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/manufacturers"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] }); },
+    mutationFn: (id: number) => customFetch<{ ok: boolean }>(`/api/mfh/series/${id}`, { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/series"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); },
   });
 }
 
+// ── Construction types ──────────────────────────────────────────────────────
 export function useListMfhConstructionTypes() {
   return useQuery({
     queryKey: ["/api/mfh/construction-types"],
@@ -106,11 +124,11 @@ export function useCreateMfhConstructionType() {
   });
 }
 
-export function useMfhPanelData(manufacturerId: number | null) {
+// ── Panel / library data ────────────────────────────────────────────────────
+export function useMfhPanelData() {
   return useQuery({
-    queryKey: ["/api/mfh/panel-data", manufacturerId],
-    queryFn: () => customFetch<MfhPanelData>(`/api/mfh/panel-data?manufacturerId=${manufacturerId}`, { method: "GET" }),
-    enabled: manufacturerId != null,
+    queryKey: ["/api/mfh/panel-data"],
+    queryFn: () => customFetch<MfhPanelData>("/api/mfh/panel-data", { method: "GET" }),
   });
 }
 
@@ -128,12 +146,21 @@ export function useMfhJobData(jobId: number) {
   });
 }
 
+// ── Models ──────────────────────────────────────────────────────────────────
+export function useListMfhModels(seriesId: number | null) {
+  return useQuery({
+    queryKey: ["/api/mfh/models", seriesId],
+    queryFn: () => customFetch<MfhModel[]>(`/api/mfh/models?seriesId=${seriesId}`, { method: "GET" }),
+    enabled: seriesId != null,
+  });
+}
+
 export function useCreateMfhModel() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<MfhModel> & { manufacturerId: number; name: string; constructionTypeId: number }) =>
+    mutationFn: (data: Partial<MfhModel> & { homeSeriesId: number; name: string }) =>
       customFetch<MfhModel>("/api/mfh/models", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
-    onSuccess: (_r, vars) => { qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data", vars.manufacturerId] }); qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] }); },
+    onSuccess: (_r, vars) => { qc.invalidateQueries({ queryKey: ["/api/mfh/models", vars.homeSeriesId] }); qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); },
   });
 }
 
@@ -142,7 +169,7 @@ export function useUpdateMfhModel() {
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<MfhModel> & { id: number }) =>
       customFetch<MfhModel>(`/api/mfh/models/${id}`, { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/models"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); },
   });
 }
 
@@ -150,16 +177,17 @@ export function useDeleteMfhModel() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => customFetch<{ ok: boolean }>(`/api/mfh/models/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/models"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }); },
   });
 }
 
+// ── Guides (global) ─────────────────────────────────────────────────────────
 export function useCreateMfhGuide() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { manufacturerId: number; name: string; isDealerGuide?: boolean }) =>
+    mutationFn: (data: { name: string; isDealerGuide?: boolean }) =>
       customFetch<MfhPricingGuide>("/api/mfh/guides", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
-    onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data", vars.manufacturerId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }),
   });
 }
 
@@ -183,12 +211,13 @@ export function useDeleteMfhGuide() {
 export function useUpsertMfhGuideItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { guideId: number; modelId: number; basePrice: number }) =>
+    mutationFn: (data: { guideId: number; homeSeriesId: number; basePrice: number }) =>
       customFetch<MfhGuideItem>("/api/mfh/guide-items/upsert", { method: "PUT", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] }),
   });
 }
 
+// ── Guide add-ons ───────────────────────────────────────────────────────────
 export function useCreateMfhGuideAddon() {
   const qc = useQueryClient();
   return useMutation({
@@ -215,10 +244,11 @@ export function useDeleteMfhGuideAddon() {
   });
 }
 
+// ── Apply / update / reset on a job ─────────────────────────────────────────
 export function useApplyMfhPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { jobId: number; manufacturerId: number; modelId: number; modelYear?: number | null; guideId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
+    mutationFn: (data: { jobId: number; seriesId: number; modelId?: number | null; modelYear?: number | null; guideId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
       customFetch<{ ok: boolean; estimateId: number | null; mfhTotal: number }>(
         `/api/mfh/jobs/${data.jobId}/apply`,
         { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
@@ -235,7 +265,7 @@ export function useApplyMfhPricing() {
 export function useUpdateMfhPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { jobId: number; guideId: number; modelId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
+    mutationFn: (data: { jobId: number; guideId: number; seriesId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
       customFetch<{ ok: boolean }>(
         `/api/mfh/jobs/${data.jobId}/update-pricing`,
         { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
@@ -250,7 +280,7 @@ export function useUpdateMfhPricing() {
 export function useResetMfhPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { jobId: number; guideId: number; modelId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
+    mutationFn: (data: { jobId: number; guideId: number; seriesId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
       customFetch<{ ok: boolean }>(
         `/api/mfh/jobs/${data.jobId}/reset`,
         { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }

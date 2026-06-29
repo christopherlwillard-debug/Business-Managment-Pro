@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, subPaymentRecordsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, subPaymentRecordsTable, mfhModelsTable } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
@@ -254,7 +254,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, mfhManufacturerId, mfhModelId, mfhModelYear, address, city, state, locationName, startDate, endDate, notes, businessLine, sqFt, coats, phases, permitChecklist } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, mfhSeriesId, mfhModelId, mfhModelYear, address, city, state, locationName, startDate, endDate, notes, businessLine, sqFt, coats, phases, permitChecklist } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
@@ -274,7 +274,7 @@ router.post("/", async (req, res) => {
       clientId: clientId || null,
       status: status || "scheduled",
       jobType, homeModel: homeModel || null, address, city, state, locationName,
-      mfhManufacturerId: mfhManufacturerId != null ? parseInt(mfhManufacturerId) : null,
+      mfhSeriesId: mfhSeriesId != null ? parseInt(mfhSeriesId) : null,
       mfhModelId: mfhModelId != null ? parseInt(mfhModelId) : null,
       mfhModelYear: mfhModelYear != null ? parseInt(mfhModelYear) : null,
       startDate, endDate,
@@ -792,7 +792,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, mfhManufacturerId, mfhModelId, mfhModelYear, address, city, state, locationName, startDate, endDate, notes, businessLine, subPaid, sqFt, coats, phases, permitChecklist } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, mfhSeriesId, mfhModelId, mfhModelYear, address, city, state, locationName, startDate, endDate, notes, businessLine, subPaid, sqFt, coats, phases, permitChecklist } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -812,9 +812,26 @@ router.put("/:id", async (req, res) => {
     }
     if (jobType !== undefined) updates.jobType = jobType;
     if ("homeModel" in req.body) updates.homeModel = homeModel || null;
-    if ("mfhManufacturerId" in req.body) updates.mfhManufacturerId = mfhManufacturerId != null ? parseInt(mfhManufacturerId) : null;
+    if ("mfhSeriesId" in req.body) updates.mfhSeriesId = mfhSeriesId != null ? parseInt(mfhSeriesId) : null;
     if ("mfhModelId" in req.body) updates.mfhModelId = mfhModelId != null ? parseInt(mfhModelId) : null;
     if ("mfhModelYear" in req.body) updates.mfhModelYear = mfhModelYear != null ? parseInt(mfhModelYear) : null;
+    // A model inherits its series' pricing/checklist, so an MFH model must belong
+    // to the resolved series. Validate the effective pairing (incoming value, or
+    // the job's current value for whichever side isn't being changed).
+    if (updates.mfhModelId != null || updates.mfhSeriesId != null) {
+      const [curMfh] = await db.select({ mfhSeriesId: jobsTable.mfhSeriesId, mfhModelId: jobsTable.mfhModelId })
+        .from(jobsTable).where(eq(jobsTable.id, id));
+      const effSeriesId = "mfhSeriesId" in req.body ? (updates.mfhSeriesId as number | null) : curMfh?.mfhSeriesId ?? null;
+      const effModelId = "mfhModelId" in req.body ? (updates.mfhModelId as number | null) : curMfh?.mfhModelId ?? null;
+      if (effModelId != null) {
+        const [modelRow] = await db.select({ homeSeriesId: mfhModelsTable.homeSeriesId })
+          .from(mfhModelsTable).where(eq(mfhModelsTable.id, effModelId));
+        if (!modelRow) return res.status(404).json({ error: "MFH model not found" });
+        if (effSeriesId == null || modelRow.homeSeriesId !== effSeriesId) {
+          return res.status(400).json({ error: "MFH model does not belong to the selected series" });
+        }
+      }
+    }
     if (address !== undefined) updates.address = address;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;

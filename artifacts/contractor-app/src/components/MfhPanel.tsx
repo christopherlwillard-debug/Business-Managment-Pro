@@ -7,17 +7,16 @@ import {
   RotateCcw, Eye, ChevronRight,
 } from "lucide-react";
 import {
-  useListMfhManufacturers,
   useMfhPanelData,
   useMfhJobData,
   useApplyMfhPricing,
   useResetMfhPricing,
   useUpdateMfhPricing,
   useMfhLibraryData,
-  useCreateMfhManufacturer,
-  useUpdateMfhManufacturer,
-  useDeleteMfhManufacturer,
   useCreateMfhConstructionType,
+  useCreateMfhSeries,
+  useUpdateMfhSeries,
+  useDeleteMfhSeries,
   useCreateMfhModel,
   useUpdateMfhModel,
   useDeleteMfhModel,
@@ -27,6 +26,7 @@ import {
   useCreateMfhGuideAddon,
   useUpdateMfhGuideAddon,
   useDeleteMfhGuideAddon,
+  type MfhHomeSeries,
   type MfhModel,
   type MfhGuideAddon,
 } from "@workspace/api-client-react";
@@ -40,22 +40,21 @@ function fmt(n: string | number | null | undefined, signed = false) {
 }
 
 // ─── Home Library Modal (4 tabs) ──────────────────────────────────────────────
-type LibTab = "manufacturers" | "models" | "pricing" | "addons";
+type LibTab = "series" | "models" | "pricing" | "addons";
 
 function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const { toast } = useToast();
-  const [tab, setTab] = useState<LibTab>("manufacturers");
-  const [activeMfgId, setActiveMfgId] = useState<number | null>(null);
+  const [tab, setTab] = useState<LibTab>("series");
   const [activeGuideId, setActiveGuideId] = useState<number | null>(null);
+  const [activeSeriesId, setActiveSeriesId] = useState<number | null>(null);
 
   const { data: libData } = useMfhLibraryData();
-  const { data: manufacturers = [] } = useListMfhManufacturers();
-  const { data: panelData } = useMfhPanelData(activeMfgId);
+  const { data: panelData } = useMfhPanelData();
 
-  const createMfg = useCreateMfhManufacturer();
-  const updateMfg = useUpdateMfhManufacturer();
-  const deleteMfg = useDeleteMfhManufacturer();
   const createConstructionType = useCreateMfhConstructionType();
+  const createSeries = useCreateMfhSeries();
+  const updateSeries = useUpdateMfhSeries();
+  const deleteSeries = useDeleteMfhSeries();
   const createModel = useCreateMfhModel();
   const updateModel = useUpdateMfhModel();
   const deleteModel = useDeleteMfhModel();
@@ -66,19 +65,20 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const updateAddon = useUpdateMfhGuideAddon();
   const deleteAddon = useDeleteMfhGuideAddon();
 
-  const [newMfgName, setNewMfgName] = useState("");
-  const [editingMfgId, setEditingMfgId] = useState<number | null>(null);
-  const [editingMfgName, setEditingMfgName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: number; label: string } | null>(null);
+
+  // Home Series tab state
+  const [editingSeries, setEditingSeries] = useState<MfhHomeSeries | null>(null);
+  const [newSeriesForm, setNewSeriesForm] = useState<Partial<MfhHomeSeries> | null>(null);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [showNewType, setShowNewType] = useState(false);
 
   // Models tab state
   const [editingModel, setEditingModel] = useState<MfhModel | null>(null);
   const [newModelForm, setNewModelForm] = useState<Partial<MfhModel> | null>(null);
-  const [newTypeName, setNewTypeName] = useState("");
-  const [showNewType, setShowNewType] = useState(false);
 
   // Pricing tab state
-  const [editingPrice, setEditingPrice] = useState<{ guideId: number; modelId: number; val: string } | null>(null);
+  const [editingPrice, setEditingPrice] = useState<{ guideId: number; seriesId: number; val: string } | null>(null);
   const [newGuideName, setNewGuideName] = useState("");
   const [newGuideIsDealer, setNewGuideIsDealer] = useState(false);
 
@@ -86,14 +86,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const [editingAddon, setEditingAddon] = useState<MfhGuideAddon | null>(null);
   const [newAddonForm, setNewAddonForm] = useState<{ label: string; addonKey: string; price: string; isPerDay: boolean } | null>(null);
 
-  useEffect(() => {
-    if (activeMfgId == null && manufacturers.length > 0) setActiveMfgId(manufacturers[0].id);
-  }, [manufacturers, activeMfgId]);
-
-  useEffect(() => {
-    if (activeGuideId == null && panelData?.guides.length) setActiveGuideId(panelData.guides[0].id);
-  }, [panelData?.guides, activeGuideId]);
-
+  const series = panelData?.series ?? [];
   const models = panelData?.models ?? [];
   const guides = panelData?.guides ?? [];
   const guideItems = panelData?.guideItems ?? [];
@@ -102,12 +95,21 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const benchmarks = libData?.benchmarks ?? panelData?.benchmarks ?? [];
   const templates = libData?.templates ?? panelData?.templates ?? [];
 
+  useEffect(() => {
+    if (activeGuideId == null && guides.length) setActiveGuideId(guides[0].id);
+  }, [guides, activeGuideId]);
+
+  useEffect(() => {
+    if (activeSeriesId == null && series.length) setActiveSeriesId(series[0].id);
+  }, [series, activeSeriesId]);
+
   const addConstructionType = async () => {
     const name = newTypeName.trim();
     if (!name) return;
     try {
       const created = await createConstructionType.mutateAsync({ name });
-      setNewModelForm(prev => prev ? { ...prev, constructionTypeId: created.id } : prev);
+      setNewSeriesForm(prev => prev ? { ...prev, constructionTypeId: created.id } : prev);
+      setEditingSeries(prev => prev ? { ...prev, constructionTypeId: created.id } : prev);
       setNewTypeName("");
       setShowNewType(false);
     } catch {
@@ -115,12 +117,14 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const priceFor = (guideId: number, modelId: number) =>
-    guideItems.find(i => i.guideId === guideId && i.modelId === modelId)?.basePrice ?? "0";
+  const priceFor = (guideId: number, seriesId: number) =>
+    guideItems.find(i => i.guideId === guideId && i.homeSeriesId === seriesId)?.basePrice ?? "0";
 
+  const seriesModels = models.filter(m => m.homeSeriesId === activeSeriesId);
   const activeAddons = guideAddons.filter(a => a.guideId === activeGuideId);
+  const uniqueAddons = guideAddons.filter((a, i, arr) => arr.findIndex(x => x.addonKey === a.addonKey) === i);
   const TABS: { id: LibTab; label: string }[] = [
-    { id: "manufacturers", label: "Manufacturers" },
+    { id: "series", label: "Home Series" },
     { id: "models", label: "Models" },
     { id: "pricing", label: "Pricing" },
     { id: "addons", label: "Add-ons" },
@@ -140,20 +144,6 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Manufacturer selector */}
-        <div className="px-5 pt-3 pb-0 flex items-center gap-3 flex-shrink-0">
-          <span className="text-xs font-semibold text-muted-foreground">Manufacturer:</span>
-          <div className="flex gap-1 flex-wrap flex-1">
-            {manufacturers.map(m => (
-              <button
-                key={m.id}
-                onClick={() => { setActiveMfgId(m.id); setActiveGuideId(null); }}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${activeMfgId === m.id ? "bg-amber-500 text-white" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}
-              >{m.name}</button>
-            ))}
-          </div>
-        </div>
-
         {/* Tabs */}
         <div className="flex border-b border-border px-5 mt-3 flex-shrink-0">
           {TABS.map(t => (
@@ -168,63 +158,16 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
-          {/* ── Manufacturers Tab ── */}
-          {tab === "manufacturers" && (
+          {/* ── Home Series Tab ── */}
+          {tab === "series" && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Add, rename, or remove manufacturers. Deleting a manufacturer removes all its models, guides, and pricing.</p>
-              <div className="rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/30">
-                    <tr><th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Name</th><th className="w-20 px-4 py-2.5"></th></tr>
-                  </thead>
-                  <tbody>
-                    {manufacturers.map(m => (
-                      <tr key={m.id} className="border-t border-border hover:bg-muted/10">
-                        <td className="px-4 py-2.5">
-                          {editingMfgId === m.id ? (
-                            <div className="flex gap-2">
-                              <input className="flex-1 px-2 py-1 text-sm rounded-lg border border-border bg-background" value={editingMfgName}
-                                onChange={e => setEditingMfgName(e.target.value)}
-                                onKeyDown={e => { if (e.key === "Enter") { updateMfg.mutate({ id: m.id, name: editingMfgName }); setEditingMfgId(null); } if (e.key === "Escape") setEditingMfgId(null); }}
-                                autoFocus />
-                              <button onClick={() => { updateMfg.mutate({ id: m.id, name: editingMfgName }); setEditingMfgId(null); }} className="text-emerald-600"><Check className="w-4 h-4" /></button>
-                            </div>
-                          ) : (
-                            <span className="font-medium text-foreground">{m.name}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={() => { setEditingMfgId(m.id); setEditingMfgName(m.name); }} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => setConfirmDelete({ type: "manufacturer", id: m.id, label: m.name })} className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-border bg-muted/10">
-                      <td className="px-4 py-2.5 flex gap-2">
-                        <input className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" placeholder="New manufacturer…" value={newMfgName} onChange={e => setNewMfgName(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter" && newMfgName.trim()) { createMfg.mutate({ name: newMfgName.trim() }); setNewMfgName(""); } }} />
-                        <button onClick={() => { if (newMfgName.trim()) { createMfg.mutate({ name: newMfgName.trim() }); setNewMfgName(""); } }} disabled={!newMfgName.trim()}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-40 transition-colors">Add</button>
-                      </td>
-                      <td />
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ── Models Tab ── */}
-          {tab === "models" && activeMfgId && (
-            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">Home Series are your priced homes — each carries a construction type, pricing, benchmark, checklist, default add-ons, and notes.</p>
               <div className="rounded-xl border border-border overflow-hidden">
                 <table className="w-full text-xs">
                   <thead className="bg-muted/30">
                     <tr>
                       <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Type (auto)</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Type</th>
                       <th className="text-left px-3 py-2 font-medium text-muted-foreground">Benchmark</th>
                       <th className="text-left px-3 py-2 font-medium text-muted-foreground">Checklist</th>
                       <th className="text-left px-3 py-2 font-medium text-muted-foreground">Active</th>
@@ -232,66 +175,66 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {models.map(model => (
-                      <tr key={model.id} className="border-t border-border hover:bg-muted/10">
-                        {editingModel?.id === model.id ? (
+                    {series.map(s => (
+                      <tr key={s.id} className="border-t border-border hover:bg-muted/10">
+                        {editingSeries?.id === s.id ? (
                           <td colSpan={6} className="px-3 py-3">
                             <div className="space-y-2">
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <label className="text-[10px] text-muted-foreground font-medium">Model Name</label>
-                                  <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.name}
-                                    onChange={e => setEditingModel({ ...editingModel, name: e.target.value })} />
+                                  <label className="text-[10px] text-muted-foreground font-medium">Series Name</label>
+                                  <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingSeries.name}
+                                    onChange={e => setEditingSeries({ ...editingSeries, name: e.target.value })} />
                                 </div>
                                 <div>
                                   <label className="text-[10px] text-muted-foreground font-medium">Construction Type</label>
-                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.constructionTypeId}
-                                    onChange={e => setEditingModel({ ...editingModel, constructionTypeId: parseInt(e.target.value) })}>
+                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingSeries.constructionTypeId}
+                                    onChange={e => setEditingSeries({ ...editingSeries, constructionTypeId: parseInt(e.target.value) })}>
                                     {constructionTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
                                   </select>
                                 </div>
                                 <div>
                                   <label className="text-[10px] text-muted-foreground font-medium">Benchmark (optional)</label>
-                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.benchmarkId ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, benchmarkId: e.target.value ? parseInt(e.target.value) : null })}>
+                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingSeries.benchmarkId ?? ""}
+                                    onChange={e => setEditingSeries({ ...editingSeries, benchmarkId: e.target.value ? parseInt(e.target.value) : null })}>
                                     <option value="">— None —</option>
                                     {benchmarks.map(b => <option key={b.id} value={b.id}>{b.jobType}</option>)}
                                   </select>
                                 </div>
                                 <div>
                                   <label className="text-[10px] text-muted-foreground font-medium">Checklist Template (optional)</label>
-                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.checklistTemplateId ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, checklistTemplateId: e.target.value ? parseInt(e.target.value) : null })}>
+                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingSeries.checklistTemplateId ?? ""}
+                                    onChange={e => setEditingSeries({ ...editingSeries, checklistTemplateId: e.target.value ? parseInt(e.target.value) : null })}>
                                     <option value="">— None —</option>
                                     {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                   </select>
                                 </div>
                                 <div>
                                   <label className="text-[10px] text-muted-foreground font-medium">Introduced Year</label>
-                                  <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.introducedYear ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, introducedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2020" />
+                                  <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingSeries.introducedYear ?? ""}
+                                    onChange={e => setEditingSeries({ ...editingSeries, introducedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2020" />
                                 </div>
                                 <div>
                                   <label className="text-[10px] text-muted-foreground font-medium">Discontinued Year</label>
-                                  <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.discontinuedYear ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, discontinuedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2024" />
+                                  <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingSeries.discontinuedYear ?? ""}
+                                    onChange={e => setEditingSeries({ ...editingSeries, discontinuedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2024" />
                                 </div>
                               </div>
                               <div>
                                 <label className="text-[10px] text-muted-foreground font-medium">Notes</label>
-                                <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={editingModel.notes ?? ""}
-                                  onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim · Needs 8' porch flashing" />
+                                <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={editingSeries.notes ?? ""}
+                                  onChange={e => setEditingSeries({ ...editingSeries, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim · Needs 8' porch flashing" />
                               </div>
                               <div>
-                                <label className="text-[10px] text-muted-foreground font-medium mb-1 block">Default Add-ons (pre-checked when this model is chosen)</label>
+                                <label className="text-[10px] text-muted-foreground font-medium mb-1 block">Default Add-ons (pre-checked when this series is chosen)</label>
                                 <div className="flex gap-3 flex-wrap">
-                                  {(panelData?.guideAddons ?? []).filter((a, i, arr) => arr.findIndex(x => x.addonKey === a.addonKey) === i).map(addon => (
+                                  {uniqueAddons.map(addon => (
                                     <label key={addon.addonKey} className="flex items-center gap-1.5 cursor-pointer text-xs">
                                       <input type="checkbox"
-                                        checked={(editingModel.defaultAddonKeys ?? []).includes(addon.addonKey)}
+                                        checked={(editingSeries.defaultAddonKeys ?? []).includes(addon.addonKey)}
                                         onChange={e => {
-                                          const keys = editingModel.defaultAddonKeys ?? [];
-                                          setEditingModel({ ...editingModel, defaultAddonKeys: e.target.checked ? [...keys, addon.addonKey] : keys.filter(k => k !== addon.addonKey) });
+                                          const keys = editingSeries.defaultAddonKeys ?? [];
+                                          setEditingSeries({ ...editingSeries, defaultAddonKeys: e.target.checked ? [...keys, addon.addonKey] : keys.filter(k => k !== addon.addonKey) });
                                         }}
                                         className="w-3.5 h-3.5 accent-amber-500" />
                                       {addon.label}
@@ -301,29 +244,29 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                               </div>
                               <div className="flex items-center gap-2">
                                 <label className="flex items-center gap-2 cursor-pointer text-xs">
-                                  <input type="checkbox" checked={editingModel.active !== false}
-                                    onChange={e => setEditingModel({ ...editingModel, active: e.target.checked })}
+                                  <input type="checkbox" checked={editingSeries.active !== false}
+                                    onChange={e => setEditingSeries({ ...editingSeries, active: e.target.checked })}
                                     className="w-4 h-4 accent-amber-500" />
                                   Active (shown in job dropdowns)
                                 </label>
                               </div>
                               <div className="flex gap-2 justify-end">
-                                <button onClick={() => setEditingModel(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground transition-colors">Cancel</button>
+                                <button onClick={() => setEditingSeries(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground transition-colors">Cancel</button>
                                 <button
                                   onClick={() => {
-                                    updateModel.mutate({
-                                      id: editingModel.id,
-                                      name: editingModel.name,
-                                      constructionTypeId: editingModel.constructionTypeId,
-                                      benchmarkId: editingModel.benchmarkId ?? null,
-                                      checklistTemplateId: editingModel.checklistTemplateId ?? null,
-                                      notes: editingModel.notes ?? null,
-                                      defaultAddonKeys: editingModel.defaultAddonKeys ?? [],
-                                      active: editingModel.active !== false,
-                                      introducedYear: editingModel.introducedYear ?? null,
-                                      discontinuedYear: editingModel.discontinuedYear ?? null,
+                                    updateSeries.mutate({
+                                      id: editingSeries.id,
+                                      name: editingSeries.name,
+                                      constructionTypeId: editingSeries.constructionTypeId,
+                                      benchmarkId: editingSeries.benchmarkId ?? null,
+                                      checklistTemplateId: editingSeries.checklistTemplateId ?? null,
+                                      notes: editingSeries.notes ?? null,
+                                      defaultAddonKeys: editingSeries.defaultAddonKeys ?? [],
+                                      active: editingSeries.active !== false,
+                                      introducedYear: editingSeries.introducedYear ?? null,
+                                      discontinuedYear: editingSeries.discontinuedYear ?? null,
                                     });
-                                    setEditingModel(null);
+                                    setEditingSeries(null);
                                   }}
                                   className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold transition-colors">Save</button>
                               </div>
@@ -331,19 +274,19 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                           </td>
                         ) : (
                           <>
-                            <td className="px-3 py-2 font-medium text-foreground">{model.name}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{model.constructionTypeName ?? "—"}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{model.benchmarkName ?? "—"}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{model.checklistTemplateName ?? "—"}</td>
+                            <td className="px-3 py-2 font-medium text-foreground">{s.name}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{s.constructionTypeName ?? "—"}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{s.benchmarkName ?? "—"}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{s.checklistTemplateName ?? "—"}</td>
                             <td className="px-3 py-2">
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${model.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                {model.active ? "Active" : "Inactive"}
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${s.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                {s.active ? "Active" : "Inactive"}
                               </span>
                             </td>
                             <td className="px-3 py-2">
                               <div className="flex gap-1">
-                                <button onClick={() => setEditingModel(model)} className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3 h-3" /></button>
-                                <button onClick={() => setConfirmDelete({ type: "model", id: model.id, label: model.name })} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                <button onClick={() => setEditingSeries(s)} className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3 h-3" /></button>
+                                <button onClick={() => setConfirmDelete({ type: "series", id: s.id, label: s.name })} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3 h-3" /></button>
                               </div>
                             </td>
                           </>
@@ -354,20 +297,20 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                 </table>
               </div>
 
-              {/* Add model form */}
-              {newModelForm == null ? (
-                <button onClick={() => setNewModelForm({ manufacturerId: activeMfgId, active: true, defaultAddonKeys: [] })}
+              {/* Add series form */}
+              {newSeriesForm == null ? (
+                <button onClick={() => setNewSeriesForm({ active: true, defaultAddonKeys: [] })}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-amber-300 transition-colors w-full">
-                  <Plus className="w-3.5 h-3.5" /> Add Model
+                  <Plus className="w-3.5 h-3.5" /> Add Home Series
                 </button>
               ) : (
                 <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-4 space-y-2">
-                  <p className="text-xs font-semibold text-amber-700">New Model</p>
+                  <p className="text-xs font-semibold text-amber-700">New Home Series</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div><label className="text-[10px] text-muted-foreground font-medium">Name</label>
-                      <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.name ?? ""} onChange={e => setNewModelForm({ ...newModelForm, name: e.target.value })} placeholder="e.g. Appalachia" /></div>
+                      <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newSeriesForm.name ?? ""} onChange={e => setNewSeriesForm({ ...newSeriesForm, name: e.target.value })} placeholder="e.g. Appalachia" /></div>
                     <div><label className="text-[10px] text-muted-foreground font-medium">Construction Type</label>
-                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.constructionTypeId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, constructionTypeId: parseInt(e.target.value) })}>
+                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newSeriesForm.constructionTypeId ?? ""} onChange={e => setNewSeriesForm({ ...newSeriesForm, constructionTypeId: parseInt(e.target.value) })}>
                         <option value="">Select…</option>
                         {constructionTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
                       </select>
@@ -391,35 +334,168 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                       )}
                     </div>
                     <div><label className="text-[10px] text-muted-foreground font-medium">Benchmark (optional)</label>
-                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.benchmarkId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, benchmarkId: e.target.value ? parseInt(e.target.value) : undefined })}>
+                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newSeriesForm.benchmarkId ?? ""} onChange={e => setNewSeriesForm({ ...newSeriesForm, benchmarkId: e.target.value ? parseInt(e.target.value) : undefined })}>
                         <option value="">— None —</option>
                         {benchmarks.map(b => <option key={b.id} value={b.id}>{b.jobType}</option>)}
                       </select></div>
                     <div><label className="text-[10px] text-muted-foreground font-medium">Checklist Template (optional)</label>
-                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.checklistTemplateId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, checklistTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}>
+                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newSeriesForm.checklistTemplateId ?? ""} onChange={e => setNewSeriesForm({ ...newSeriesForm, checklistTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}>
                         <option value="">— None —</option>
                         {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select></div>
                   </div>
                   <div><label className="text-[10px] text-muted-foreground font-medium">Notes</label>
-                    <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={newModelForm.notes ?? ""} onChange={e => setNewModelForm({ ...newModelForm, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim" /></div>
+                    <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={newSeriesForm.notes ?? ""} onChange={e => setNewSeriesForm({ ...newSeriesForm, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim" /></div>
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => setNewModelForm(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
+                    <button onClick={() => setNewSeriesForm(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
                     <button
-                      disabled={!newModelForm.name?.trim() || !newModelForm.constructionTypeId}
+                      disabled={!newSeriesForm.name?.trim() || !newSeriesForm.constructionTypeId}
                       onClick={() => {
-                        createModel.mutate({ manufacturerId: activeMfgId!, name: newModelForm.name!.trim(), constructionTypeId: newModelForm.constructionTypeId!, benchmarkId: newModelForm.benchmarkId, checklistTemplateId: newModelForm.checklistTemplateId, notes: newModelForm.notes, defaultAddonKeys: newModelForm.defaultAddonKeys ?? [], active: true });
-                        setNewModelForm(null);
+                        createSeries.mutate({ name: newSeriesForm.name!.trim(), constructionTypeId: newSeriesForm.constructionTypeId!, benchmarkId: newSeriesForm.benchmarkId, checklistTemplateId: newSeriesForm.checklistTemplateId, notes: newSeriesForm.notes, defaultAddonKeys: newSeriesForm.defaultAddonKeys ?? [], active: true });
+                        setNewSeriesForm(null);
                       }}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add Model</button>
+                      className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add Series</button>
                   </div>
                 </div>
               )}
             </div>
           )}
 
+          {/* ── Models Tab ── */}
+          {tab === "models" && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">Models are the genuine model names under a Home Series (optional). They inherit the series' construction type, pricing, checklist, and benchmark.</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">Home Series:</span>
+                <select className="px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={activeSeriesId ?? ""} onChange={e => setActiveSeriesId(e.target.value ? parseInt(e.target.value) : null)}>
+                  {series.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+
+              {activeSeriesId && (
+                <>
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/30">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">Model Name</th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">Notes</th>
+                          <th className="text-left px-3 py-2 font-medium text-muted-foreground">Active</th>
+                          <th className="w-16 px-3 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {seriesModels.length === 0 && (
+                          <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">No models yet for this series.</td></tr>
+                        )}
+                        {seriesModels.map(model => (
+                          <tr key={model.id} className="border-t border-border hover:bg-muted/10">
+                            {editingModel?.id === model.id ? (
+                              <td colSpan={4} className="px-3 py-3">
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <div className="col-span-1">
+                                      <label className="text-[10px] text-muted-foreground font-medium">Model Name</label>
+                                      <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.name}
+                                        onChange={e => setEditingModel({ ...editingModel, name: e.target.value })} />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] text-muted-foreground font-medium">Introduced Year</label>
+                                      <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.introducedYear ?? ""}
+                                        onChange={e => setEditingModel({ ...editingModel, introducedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2020" />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] text-muted-foreground font-medium">Discontinued Year</label>
+                                      <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.discontinuedYear ?? ""}
+                                        onChange={e => setEditingModel({ ...editingModel, discontinuedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2024" />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] text-muted-foreground font-medium">Notes</label>
+                                    <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={editingModel.notes ?? ""}
+                                      onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} />
+                                  </div>
+                                  <label className="flex items-center gap-2 cursor-pointer text-xs">
+                                    <input type="checkbox" checked={editingModel.active !== false}
+                                      onChange={e => setEditingModel({ ...editingModel, active: e.target.checked })}
+                                      className="w-4 h-4 accent-amber-500" />
+                                    Active (shown in job dropdowns)
+                                  </label>
+                                  <div className="flex gap-2 justify-end">
+                                    <button onClick={() => setEditingModel(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground transition-colors">Cancel</button>
+                                    <button
+                                      onClick={() => {
+                                        updateModel.mutate({
+                                          id: editingModel.id,
+                                          name: editingModel.name,
+                                          notes: editingModel.notes ?? null,
+                                          active: editingModel.active !== false,
+                                          introducedYear: editingModel.introducedYear ?? null,
+                                          discontinuedYear: editingModel.discontinuedYear ?? null,
+                                        });
+                                        setEditingModel(null);
+                                      }}
+                                      className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold transition-colors">Save</button>
+                                  </div>
+                                </div>
+                              </td>
+                            ) : (
+                              <>
+                                <td className="px-3 py-2 font-medium text-foreground">{model.name}</td>
+                                <td className="px-3 py-2 text-muted-foreground truncate max-w-[200px]">{model.notes ?? "—"}</td>
+                                <td className="px-3 py-2">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${model.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                                    {model.active ? "Active" : "Inactive"}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className="flex gap-1">
+                                    <button onClick={() => setEditingModel(model)} className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3 h-3" /></button>
+                                    <button onClick={() => setConfirmDelete({ type: "model", id: model.id, label: model.name })} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Add model form */}
+                  {newModelForm == null ? (
+                    <button onClick={() => setNewModelForm({ homeSeriesId: activeSeriesId, active: true })}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-amber-300 transition-colors w-full">
+                      <Plus className="w-3.5 h-3.5" /> Add Model
+                    </button>
+                  ) : (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-4 space-y-2">
+                      <p className="text-xs font-semibold text-amber-700">New Model</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><label className="text-[10px] text-muted-foreground font-medium">Name</label>
+                          <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.name ?? ""} onChange={e => setNewModelForm({ ...newModelForm, name: e.target.value })} placeholder="e.g. Farmhouse" /></div>
+                        <div><label className="text-[10px] text-muted-foreground font-medium">Notes (optional)</label>
+                          <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.notes ?? ""} onChange={e => setNewModelForm({ ...newModelForm, notes: e.target.value })} /></div>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => setNewModelForm(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
+                        <button
+                          disabled={!newModelForm.name?.trim()}
+                          onClick={() => {
+                            createModel.mutate({ homeSeriesId: activeSeriesId, name: newModelForm.name!.trim(), notes: newModelForm.notes, active: true });
+                            setNewModelForm(null);
+                          }}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add Model</button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {/* ── Pricing Tab ── */}
-          {tab === "pricing" && activeMfgId && (
+          {tab === "pricing" && (
             <div className="space-y-4">
               {/* Guide selector + add */}
               <div className="flex items-center gap-3 flex-wrap">
@@ -439,41 +515,41 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                   <label className="flex items-center gap-1 text-xs cursor-pointer text-muted-foreground">
                     <input type="checkbox" checked={newGuideIsDealer} onChange={e => setNewGuideIsDealer(e.target.checked)} className="w-3.5 h-3.5 accent-amber-500" /> Dealer
                   </label>
-                  <button onClick={() => { if (newGuideName.trim() && activeMfgId) { createGuide.mutate({ manufacturerId: activeMfgId, name: newGuideName.trim(), isDealerGuide: newGuideIsDealer }); setNewGuideName(""); setNewGuideIsDealer(false); } }} disabled={!newGuideName.trim()}
+                  <button onClick={() => { if (newGuideName.trim()) { createGuide.mutate({ name: newGuideName.trim(), isDealerGuide: newGuideIsDealer }); setNewGuideName(""); setNewGuideIsDealer(false); } }} disabled={!newGuideName.trim()}
                     className="px-3 py-1.5 text-xs rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold disabled:opacity-40 transition-colors">Add Guide</button>
                 </div>
               </div>
 
-              {activeGuideId && models.length > 0 && (
+              {activeGuideId && series.length > 0 && (
                 <div className="rounded-xl border border-border overflow-hidden">
                   <table className="w-full text-xs">
                     <thead className="bg-muted/30">
                       <tr>
-                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Model</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Home Series</th>
                         <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Type</th>
                         <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Base Price</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {models.map(model => {
-                        const curPrice = priceFor(activeGuideId!, model.id);
-                        const isEditing = editingPrice?.guideId === activeGuideId && editingPrice?.modelId === model.id;
+                      {series.map(s => {
+                        const curPrice = priceFor(activeGuideId!, s.id);
+                        const isEditing = editingPrice?.guideId === activeGuideId && editingPrice?.seriesId === s.id;
                         return (
-                          <tr key={model.id} className="border-t border-border hover:bg-muted/10">
-                            <td className="px-4 py-2.5 font-medium text-foreground">{model.name}</td>
-                            <td className="px-4 py-2.5 text-muted-foreground">{model.constructionTypeName}</td>
+                          <tr key={s.id} className="border-t border-border hover:bg-muted/10">
+                            <td className="px-4 py-2.5 font-medium text-foreground">{s.name}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground">{s.constructionTypeName}</td>
                             <td className="px-4 py-2.5">
                               {isEditing ? (
                                 <div className="flex gap-1">
                                   <input type="number" className="w-28 px-2 py-1 rounded-lg border border-border bg-background text-xs" value={editingPrice?.val ?? ""}
                                     onChange={e => setEditingPrice(p => p ? { ...p, val: e.target.value } : null)}
-                                    onKeyDown={e => { if (e.key === "Enter") { upsertItem.mutate({ guideId: activeGuideId!, modelId: model.id, basePrice: parseFloat(editingPrice?.val ?? "0") }); setEditingPrice(null); } if (e.key === "Escape") setEditingPrice(null); }}
+                                    onKeyDown={e => { if (e.key === "Enter") { upsertItem.mutate({ guideId: activeGuideId!, homeSeriesId: s.id, basePrice: parseFloat(editingPrice?.val ?? "0") }); setEditingPrice(null); } if (e.key === "Escape") setEditingPrice(null); }}
                                     autoFocus />
-                                  <button onClick={() => { upsertItem.mutate({ guideId: activeGuideId!, modelId: model.id, basePrice: parseFloat(editingPrice?.val ?? "0") }); setEditingPrice(null); }} className="text-emerald-600"><Check className="w-3.5 h-3.5" /></button>
+                                  <button onClick={() => { upsertItem.mutate({ guideId: activeGuideId!, homeSeriesId: s.id, basePrice: parseFloat(editingPrice?.val ?? "0") }); setEditingPrice(null); }} className="text-emerald-600"><Check className="w-3.5 h-3.5" /></button>
                                   <button onClick={() => setEditingPrice(null)} className="text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
                                 </div>
                               ) : (
-                                <button onClick={() => setEditingPrice({ guideId: activeGuideId!, modelId: model.id, val: curPrice })}
+                                <button onClick={() => setEditingPrice({ guideId: activeGuideId!, seriesId: s.id, val: curPrice })}
                                   className="font-mono hover:text-amber-600 hover:underline text-left">{fmt(curPrice)}</button>
                               )}
                             </td>
@@ -488,7 +564,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
           )}
 
           {/* ── Add-ons Tab ── */}
-          {tab === "addons" && activeMfgId && (
+          {tab === "addons" && (
             <div className="space-y-4">
               <div className="flex gap-1 flex-wrap mb-3">
                 {guides.map(g => (
@@ -572,10 +648,6 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
           )}
-
-          {!activeMfgId && tab !== "manufacturers" && (
-            <p className="text-sm text-muted-foreground text-center py-8">Select or create a manufacturer first.</p>
-          )}
         </div>
 
         {/* Confirm delete */}
@@ -588,7 +660,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
               <div className="flex gap-2">
                 <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2 rounded-xl text-xs font-medium bg-muted/50 hover:bg-muted">Cancel</button>
                 <button onClick={() => {
-                  if (confirmDelete.type === "manufacturer") deleteMfg.mutate(confirmDelete.id);
+                  if (confirmDelete.type === "series") deleteSeries.mutate(confirmDelete.id);
                   if (confirmDelete.type === "model") deleteModel.mutate(confirmDelete.id);
                   if (confirmDelete.type === "guide") deleteGuide.mutate(confirmDelete.id);
                   if (confirmDelete.type === "addon") deleteAddon.mutate(confirmDelete.id);
@@ -607,7 +679,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
 export interface MfhJobData {
   id: number;
   jobType?: string | null;
-  mfhManufacturerId?: number | null;
+  mfhSeriesId?: number | null;
   mfhModelId?: number | null;
   mfhModelYear?: number | null;
   mfhDealerPrice?: string | null;
@@ -625,7 +697,6 @@ export function MfhPanel({
   onViewEstimates?: () => void;
 }) {
   const qc = useQueryClient();
-  const { data: manufacturers = [] } = useListMfhManufacturers();
 
   // The jobs list/detail does not carry MFH fields, so fetch the dedicated snapshot
   // (invalidated on apply/update/reset) as the source of truth for hydration.
@@ -633,10 +704,10 @@ export function MfhPanel({
   const j = (mfhSnapshot ?? job) as MfhJobData;
 
   // Mode: "select" = config dropdowns; "spec" = read-only spec sheet after apply
-  const alreadyApplied = j.mfhManufacturerId != null && j.mfhModelId != null;
+  const alreadyApplied = j.mfhSeriesId != null;
   const [mode, setMode] = useState<"select" | "spec">(alreadyApplied ? "spec" : "select");
 
-  const [manufacturerId, setManufacturerId] = useState<number | null>(j.mfhManufacturerId ?? null);
+  const [seriesId, setSeriesId] = useState<number | null>(j.mfhSeriesId ?? null);
   const [modelId, setModelId] = useState<number | null>(j.mfhModelId ?? null);
   const [modelYear, setModelYear] = useState<string>(j.mfhModelYear ? String(j.mfhModelYear) : "");
   const [guideId, setGuideId] = useState<number | null>(null);
@@ -646,23 +717,27 @@ export function MfhPanel({
   const [confirmReset, setConfirmReset] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const { data: panelData, isLoading } = useMfhPanelData(manufacturerId);
+  const { data: panelData, isLoading } = useMfhPanelData();
   const applyMfh = useApplyMfhPricing();
   const updatePricing = useUpdateMfhPricing();
   const resetMfh = useResetMfhPricing();
 
-  const models = panelData?.models ?? [];
+  const series = panelData?.series ?? [];
+  const allModels = panelData?.models ?? [];
   const guides = panelData?.guides ?? [];
   const guideItems = panelData?.guideItems ?? [];
   const guideAddons = panelData?.guideAddons ?? [];
+
+  const selectedSeries = series.find(s => s.id === seriesId);
+  const seriesModels = allModels.filter(m => m.homeSeriesId === seriesId);
 
   // Hydrate config + spec mode from the persisted snapshot once it loads.
   const hydrated = useRef(false);
   useEffect(() => {
     if (hydrated.current || !mfhSnapshot) return;
-    if (mfhSnapshot.mfhManufacturerId != null && mfhSnapshot.mfhModelId != null) {
-      setManufacturerId(mfhSnapshot.mfhManufacturerId);
-      setModelId(mfhSnapshot.mfhModelId);
+    if (mfhSnapshot.mfhSeriesId != null) {
+      setSeriesId(mfhSnapshot.mfhSeriesId);
+      setModelId(mfhSnapshot.mfhModelId ?? null);
       setModelYear(mfhSnapshot.mfhModelYear ? String(mfhSnapshot.mfhModelYear) : "");
       if (Array.isArray(mfhSnapshot.mfhSelectedAddons)) setSelectedAddonKeys(mfhSnapshot.mfhSelectedAddons);
       if (mfhSnapshot.mfhTravelDays != null) setTravelDays(String(mfhSnapshot.mfhTravelDays));
@@ -674,7 +749,6 @@ export function MfhPanel({
   // Auto-select first guide
   useEffect(() => {
     if (guideId == null && guides.length > 0) {
-      // If job has a saved guide name, try to match it
       if (j.mfhGuideName) {
         const match = guides.find(g => g.name === j.mfhGuideName);
         if (match) { setGuideId(match.id); return; }
@@ -683,20 +757,20 @@ export function MfhPanel({
     }
   }, [guides, guideId, j.mfhGuideName]);
 
-  // Auto-pre-check default add-ons when model changes
-  const selectedModel = models.find(m => m.id === modelId);
+  // Auto-pre-check default add-ons (from the series) when series changes
   useEffect(() => {
-    if (selectedModel && selectedAddonKeys.length === 0 && !hydrated.current) {
-      setSelectedAddonKeys(selectedModel.defaultAddonKeys ?? []);
+    if (selectedSeries && selectedAddonKeys.length === 0 && !hydrated.current) {
+      setSelectedAddonKeys(selectedSeries.defaultAddonKeys ?? []);
     }
-  }, [selectedModel]);
+  }, [selectedSeries]);
 
   const activeGuide = guides.find(g => g.id === guideId);
   const activeAddons = guideAddons.filter(a => a.guideId === guideId);
   const dealerGuide = guides.find(g => g.isDealerGuide);
+  const selectedModel = allModels.find(m => m.id === modelId);
 
-  const quotedPrice = modelId && guideId ? parseFloat(guideItems.find(i => i.guideId === guideId && i.modelId === modelId)?.basePrice ?? "0") : null;
-  const dealerPrice = modelId && dealerGuide ? parseFloat(guideItems.find(i => i.guideId === dealerGuide.id && i.modelId === modelId)?.basePrice ?? "0") : null;
+  const quotedPrice = seriesId && guideId ? parseFloat(guideItems.find(i => i.guideId === guideId && i.homeSeriesId === seriesId)?.basePrice ?? "0") : null;
+  const dealerPrice = seriesId && dealerGuide ? parseFloat(guideItems.find(i => i.guideId === dealerGuide.id && i.homeSeriesId === seriesId)?.basePrice ?? "0") : null;
 
   function addonTotal() {
     return activeAddons.filter(a => selectedAddonKeys.includes(a.addonKey))
@@ -705,8 +779,7 @@ export function MfhPanel({
 
   const baseForTotal = quotedPrice ?? 0;
   const totalQuoted = quotedPrice != null ? baseForTotal + addonTotal() : null;
-  const totalDealer = dealerPrice != null ? dealerPrice + addonTotal() : null;
-  const profit = totalQuoted != null && totalDealer != null ? totalQuoted - totalDealer : null;
+  const profit = quotedPrice != null && dealerPrice != null ? quotedPrice - dealerPrice : null;
   const hasTravelAddon = activeAddons.some(a => selectedAddonKeys.includes(a.addonKey) && a.isPerDay);
 
   // Spec-sheet values (from job snapshot when in spec mode)
@@ -720,9 +793,9 @@ export function MfhPanel({
   }
 
   async function handleApply() {
-    if (!manufacturerId || !modelId || !guideId) return;
+    if (!seriesId || !guideId) return;
     await applyMfh.mutateAsync({
-      jobId: job.id, manufacturerId, modelId,
+      jobId: job.id, seriesId, modelId: modelId ?? null,
       modelYear: modelYear ? parseInt(modelYear) : null,
       guideId, selectedAddonKeys,
       travelDays: hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
@@ -733,9 +806,9 @@ export function MfhPanel({
   }
 
   async function handleUpdatePricing() {
-    if (!guideId || !modelId) return;
+    if (!guideId || !seriesId) return;
     await updatePricing.mutateAsync({
-      jobId: job.id, guideId, modelId, selectedAddonKeys,
+      jobId: job.id, guideId, seriesId, selectedAddonKeys,
       travelDays: hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
     });
     qc.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -743,9 +816,9 @@ export function MfhPanel({
   }
 
   async function handleReset() {
-    if (!guideId || !modelId) return;
+    if (!guideId || !seriesId) return;
     await resetMfh.mutateAsync({
-      jobId: job.id, guideId, modelId, selectedAddonKeys,
+      jobId: job.id, guideId, seriesId, selectedAddonKeys,
       travelDays: hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
     });
     qc.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -785,12 +858,12 @@ export function MfhPanel({
               {/* Snapshot info */}
               <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-2.5">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <div><span className="text-muted-foreground">Manufacturer</span><p className="font-semibold text-foreground mt-0.5">{manufacturers.find(m => m.id === j.mfhManufacturerId)?.name ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Model</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.name ?? models.find(m => m.id === j.mfhModelId)?.name ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Construction <span className="text-[9px] bg-muted/50 px-1 py-0.5 rounded font-mono">(auto)</span></span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.constructionTypeName ?? models.find(m => m.id === j.mfhModelId)?.constructionTypeName ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Home Series</span><p className="font-semibold text-foreground mt-0.5">{selectedSeries?.name ?? series.find(s => s.id === j.mfhSeriesId)?.name ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Model</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.name ?? allModels.find(m => m.id === j.mfhModelId)?.name ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Construction <span className="text-[9px] bg-muted/50 px-1 py-0.5 rounded font-mono">(auto)</span></span><p className="font-semibold text-foreground mt-0.5">{selectedSeries?.constructionTypeName ?? series.find(s => s.id === j.mfhSeriesId)?.constructionTypeName ?? "—"}</p></div>
                   <div><span className="text-muted-foreground">Model Year</span><p className="font-semibold text-foreground mt-0.5">{j.mfhModelYear ?? "—"}</p></div>
                   <div><span className="text-muted-foreground">Guide</span><p className="font-semibold text-foreground mt-0.5">{j.mfhGuideName ?? activeGuide?.name ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Benchmark</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.benchmarkName ?? models.find(m => m.id === j.mfhModelId)?.benchmarkName ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Benchmark</span><p className="font-semibold text-foreground mt-0.5">{selectedSeries?.benchmarkName ?? series.find(s => s.id === j.mfhSeriesId)?.benchmarkName ?? "—"}</p></div>
                 </div>
 
                 {/* Pricing row */}
@@ -809,11 +882,11 @@ export function MfhPanel({
                   </div>
                 </div>
 
-                {/* Model notes */}
-                {(selectedModel?.notes ?? models.find(m => m.id === j.mfhModelId)?.notes) && (
+                {/* Series notes */}
+                {(selectedSeries?.notes ?? series.find(s => s.id === j.mfhSeriesId)?.notes) && (
                   <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-100/60 rounded-lg p-2">
                     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                    <p>{selectedModel?.notes ?? models.find(m => m.id === j.mfhModelId)?.notes}</p>
+                    <p>{selectedSeries?.notes ?? series.find(s => s.id === j.mfhSeriesId)?.notes}</p>
                   </div>
                 )}
 
@@ -866,26 +939,26 @@ export function MfhPanel({
           {/* ── SELECT MODE ── */}
           {mode === "select" && (
             <div className="overflow-y-auto flex-1 p-4 space-y-4">
-              {/* Manufacturer */}
+              {/* Home Series */}
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Manufacturer</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Home Series</label>
                 <select className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                  value={manufacturerId ?? ""} onChange={e => { setManufacturerId(e.target.value ? parseInt(e.target.value) : null); setModelId(null); setGuideId(null); setSelectedAddonKeys([]); }}>
-                  <option value="">Select manufacturer…</option>
-                  {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  value={seriesId ?? ""} onChange={e => { setSeriesId(e.target.value ? parseInt(e.target.value) : null); setModelId(null); setSelectedAddonKeys([]); }}>
+                  <option value="">Select home series…</option>
+                  {series.map(s => <option key={s.id} value={s.id}>{s.name} — {s.constructionTypeName}</option>)}
                 </select>
               </div>
 
               {/* Model + Year */}
-              {manufacturerId && (
+              {seriesId && (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Model</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Model <span className="text-[9px] normal-case opacity-70">(optional)</span></label>
                     {isLoading ? <div className="h-10 rounded-xl bg-muted/30 animate-pulse" /> : (
                       <select className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                        value={modelId ?? ""} onChange={e => { setModelId(e.target.value ? parseInt(e.target.value) : null); setSelectedAddonKeys([]); }}>
-                        <option value="">Select model…</option>
-                        {models.map(m => <option key={m.id} value={m.id}>{m.name} — {m.constructionTypeName}</option>)}
+                        value={modelId ?? ""} onChange={e => setModelId(e.target.value ? parseInt(e.target.value) : null)}>
+                        <option value="">— None —</option>
+                        {seriesModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </select>
                     )}
                   </div>
@@ -897,28 +970,28 @@ export function MfhPanel({
                 </div>
               )}
 
-              {/* Model info */}
-              {selectedModel && (
+              {/* Series info */}
+              {selectedSeries && (
                 <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <p className="text-xs font-bold text-amber-800">{selectedModel.name}</p>
-                    <span className="text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded font-mono">{selectedModel.constructionTypeName} <span className="opacity-60">(auto)</span></span>
+                    <p className="text-xs font-bold text-amber-800">{selectedSeries.name}</p>
+                    <span className="text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded font-mono">{selectedSeries.constructionTypeName} <span className="opacity-60">(auto)</span></span>
                   </div>
                   <div className="flex gap-4 text-xs">
-                    {selectedModel.benchmarkName && <div><span className="text-muted-foreground">Benchmark:</span> <span className="font-medium">{selectedModel.benchmarkName}</span></div>}
-                    {selectedModel.checklistTemplateName && <div><span className="text-muted-foreground">Checklist:</span> <span className="font-medium">{selectedModel.checklistTemplateName}</span></div>}
+                    {selectedSeries.benchmarkName && <div><span className="text-muted-foreground">Benchmark:</span> <span className="font-medium">{selectedSeries.benchmarkName}</span></div>}
+                    {selectedSeries.checklistTemplateName && <div><span className="text-muted-foreground">Checklist:</span> <span className="font-medium">{selectedSeries.checklistTemplateName}</span></div>}
                   </div>
-                  {selectedModel.notes && (
+                  {selectedSeries.notes && (
                     <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-100/60 rounded-lg p-2">
                       <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      <p>{selectedModel.notes}</p>
+                      <p>{selectedSeries.notes}</p>
                     </div>
                   )}
                 </div>
               )}
 
               {/* Guide selector */}
-              {manufacturerId && modelId && guides.length > 0 && (
+              {seriesId && guides.length > 0 && (
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Pricing Guide</label>
                   <div className="flex gap-2">
@@ -933,7 +1006,7 @@ export function MfhPanel({
               )}
 
               {/* Pricing side-by-side */}
-              {modelId && guideId && quotedPrice != null && (
+              {seriesId && guideId && quotedPrice != null && (
                 <div className="rounded-xl border border-border bg-muted/20 p-3 grid grid-cols-3 gap-2 text-center">
                   <div>
                     <p className="text-[10px] text-muted-foreground">Dealer Cost</p>
@@ -951,7 +1024,7 @@ export function MfhPanel({
               )}
 
               {/* Add-ons */}
-              {modelId && activeAddons.length > 0 && (
+              {seriesId && activeAddons.length > 0 && (
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Add-ons</label>
                   <div className="space-y-2">
@@ -997,11 +1070,11 @@ export function MfhPanel({
           <div className="px-4 py-3 border-t border-border space-y-2 flex-shrink-0">
             {mode === "spec" && (
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={handleUpdatePricing} disabled={!guideId || !modelId || updatePricing.isPending}
+                <button onClick={handleUpdatePricing} disabled={!guideId || !seriesId || updatePricing.isPending}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
                   <RefreshCw className="w-3.5 h-3.5" />{updatePricing.isPending ? "Updating…" : "Update Pricing"}
                 </button>
-                <button onClick={() => setConfirmReset(true)} disabled={!guideId || !modelId}
+                <button onClick={() => setConfirmReset(true)} disabled={!guideId || !seriesId}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-colors">
                   <RotateCcw className="w-3.5 h-3.5" /> Reset to Guide
                 </button>
@@ -1018,7 +1091,7 @@ export function MfhPanel({
               </div>
             )}
             {mode === "select" && (
-              <button onClick={handleApply} disabled={!manufacturerId || !modelId || !guideId || applyMfh.isPending}
+              <button onClick={handleApply} disabled={!seriesId || !guideId || applyMfh.isPending}
                 className="w-full py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
                 <Home className="w-4 h-4" />
                 {applyMfh.isPending ? "Applying…" : "Apply"}
