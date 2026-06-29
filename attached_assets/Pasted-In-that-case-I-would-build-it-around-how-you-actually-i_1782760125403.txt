@@ -1,0 +1,224 @@
+In that case, I would build it around how you actually identify homes in the field, not around the corporate structure.
+
+Your app is for your workflow, not for documenting the legal ownership of manufacturers.
+
+For example, if someone calls you and says:
+
+"We've got a Southern Farmhouse that needs trimmed."
+
+Nobody says:
+
+"We've got a Clayton Southern Division Farmhouse."
+
+So I'd make the app work exactly the way you think.
+
+I'd structure it like this:
+
+Home Series (what you're calling Manufacturer)
+
+Southern
+Giles
+Appalachia
+Wakarusa
+Norris
+Rutledge
+Middlebury
+Addison
+Champion
+Tru
+
+Each one stores:
+
+Construction type (VOG / Hybrid / Drywall)
+Base trim-out price
+Benchmark
+Checklist
+Default add-ons
+Notes
+
+Then underneath that:
+
+Model
+
+Farmhouse
+Freedom
+Heritage
+The Drake
+etc.
+
+So on the job card you'd simply see:
+
+Manufactured Home
+
+Series
+▼ Southern
+
+Model
+▼ Farmhouse
+
+Construction
+VOG
+
+Dealer Cost
+$1,500
+
+My Price
+$1,750
+
+That's much more natural for how you work.
+
+I would make one small naming change though.
+
+I wouldn't call "Southern" the Manufacturer, because technically it isn't, and later it may confuse even you.
+
+Instead I'd call that field something like:
+
+Home Series ⭐ (my favorite)
+Product Line
+Factory
+Home Family
+
+Then your data becomes:
+
+Client
+Clayton Homes Evansville
+
+Home Series
+Southern
+
+Model
+Farmhouse
+
+That instantly tells you:
+
+Who hired you (Client)
+What home you're working on (Home Series)
+Which model it is (Model)
+
+No duplicate Clayton anywhere.
+
+I think "Home Series" is the best label because it matches how you already talk about homes, avoids confusing it with the Client (dealer), and still leaves room if you ever add other builders in the future. It also avoids calling something a "manufacturer" when, in your own workflow, that's not how you identify the home.
+
+perfect
+
+I think this is the architecture I'd lock in. It's simple, matches how you actually work, and won't paint you into a corner later.
+
+#1012 - Rename Manufacturer to Home Series
+Why
+
+The Manufactured Home section should match how finish contractors identify homes in the field.
+
+The Client already identifies who assigned the work (for example, Clayton Homes Evansville), so there is no reason to duplicate that information inside the Manufactured Home section.
+
+Instead, the Manufactured Home section should identify what home is being worked on, using the series/factory designation that contractors actually use (Southern, Giles, Norris, Rutledge, etc.).
+
+Home Card
+Manufactured Home
+
+Home Series
+▼ Southern
+
+Model
+▼ Farmhouse
+
+Construction
+VOG (Auto)
+
+Model Year
+2026
+
+Dealer Cost
+$1,500
+
+My Price
+$1,750
+
+Profit
++$250
+Home Library
+
+Instead of:
+
+Manufacturers
+
+rename it to:
+
+Home Series
+
+Examples:
+
+Southern
+Giles
+Appalachia
+Wakarusa
+Champion
+Tru
+Norris
+Rutledge
+Middlebury
+Addison
+
+Each Home Series stores:
+
+Construction Type
+Base Trim-Out Price
+Pricing Guides
+Linked Benchmark
+Linked Checklist
+Default Add-ons
+Suggested Hours
+Suggested Crew
+Notes
+Active / Inactive
+Models
+
+Each Home Series can contain multiple models.
+
+Example:
+
+Southern
+
+├── Farmhouse
+├── Freedom
+├── Heritage
+├── The Drake
+└── ...
+
+A model stores:
+
+Name
+Optional Notes
+Introduced Year
+Discontinued Year
+Active / Inactive
+
+By default, models inherit pricing, checklist, benchmark, and add-ons from their Home Series.
+
+Future tasks can allow per-model overrides if needed.
+
+Client remains completely separate
+Client
+Clayton Homes Evansville
+
+is not part of the Manufactured Home Library.
+
+The Client answers:
+
+Who hired me?
+
+The Home Series answers:
+
+What home am I working on?
+
+Those are different concepts.
+
+Benefits
+Matches real-world contractor terminology.
+Eliminates duplicate dealer information.
+Keeps pricing attached to the Home Series where it belongs.
+Lets models be added over time without affecting pricing.
+Preserves all historical jobs.
+Leaves room for future model-specific pricing overrides.
+Makes reporting by Home Series and Model straightforward.
+
+I actually like this better than the earlier "Manufacturer → Model" idea. Calling it Home Series makes the intent immediately obvious, and six months from now, when you have hundreds of jobs, you'll instinctively know to select Southern → Farmhouse instead of wondering whether "Manufacturer" means Clayton, Southern, or something else. It fits the way you already think about the homes you work on.
