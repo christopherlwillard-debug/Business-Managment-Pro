@@ -439,7 +439,7 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
         mfhDealerPrice: String(dealerPrice),
         mfhQuotedPrice: String(basePrice),
         mfhGuideName: guideRow.name,
-        jobType: "Manufactured Home",
+        jobType: benchmarkJobType ?? "Manufactured Home",
       } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
 
       // Find or create estimate
@@ -451,7 +451,7 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
         const existingLines: unknown[] = Array.isArray(existing.lineItems) ? (existing.lineItems as unknown[]) : [];
         const nonMfhLines = existingLines.filter((l: unknown) => (l as Record<string, unknown>).generatedBy !== "MFH");
         const merged = [...mfhLines, ...nonMfhLines];
-        const newTotal = merged.reduce((s, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
+        const newTotal = merged.reduce((s: number, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
         await tx.update(estimatesTable).set({
           lineItems: merged,
           subtotal: String(newTotal),
@@ -547,7 +547,7 @@ mfhJobRouter.patch("/jobs/:id/update-pricing", async (req, res) => {
         const existing: unknown[] = Array.isArray(estimate.lineItems) ? (estimate.lineItems as unknown[]) : [];
         const nonMfhLines = existing.filter((l: unknown) => (l as Record<string, unknown>).generatedBy !== "MFH");
         const merged = [...newMfhLines, ...nonMfhLines];
-        const newTotal = merged.reduce((s, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
+        const newTotal = merged.reduce((s: number, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
         await tx.update(estimatesTable).set({
           lineItems: merged, subtotal: String(newTotal), total: String(newTotal),
           mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
@@ -589,7 +589,7 @@ mfhJobRouter.patch("/jobs/:id/reset", async (req, res) => {
         const existing: unknown[] = Array.isArray(estimate.lineItems) ? (estimate.lineItems as unknown[]) : [];
         const nonMfhLines = existing.filter((l: unknown) => (l as Record<string, unknown>).generatedBy !== "MFH");
         const merged = [...newMfhLines, ...nonMfhLines];
-        const newTotal = merged.reduce((s, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
+        const newTotal = merged.reduce((s: number, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
         await tx.update(estimatesTable).set({
           lineItems: merged, subtotal: String(newTotal), total: String(newTotal),
           mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
