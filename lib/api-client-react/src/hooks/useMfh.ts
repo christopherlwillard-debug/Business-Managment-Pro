@@ -98,7 +98,11 @@ export function useCreateMfhConstructionType() {
   return useMutation({
     mutationFn: (data: { name: string }) =>
       customFetch<MfhConstructionType>("/api/mfh/construction-types", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/mfh/construction-types"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/construction-types"] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/panel-data"] });
+    },
   });
 }
 

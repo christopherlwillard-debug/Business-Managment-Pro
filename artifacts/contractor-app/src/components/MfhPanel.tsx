@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import {
   Home, BookOpen, X, Plus, Trash2, Pencil, Check,
   AlertTriangle, RefreshCw, DollarSign, Info, TrendingUp,
@@ -16,6 +17,7 @@ import {
   useCreateMfhManufacturer,
   useUpdateMfhManufacturer,
   useDeleteMfhManufacturer,
+  useCreateMfhConstructionType,
   useCreateMfhModel,
   useUpdateMfhModel,
   useDeleteMfhModel,
@@ -41,6 +43,7 @@ function fmt(n: string | number | null | undefined, signed = false) {
 type LibTab = "manufacturers" | "models" | "pricing" | "addons";
 
 function HomeLibraryModal({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
   const [tab, setTab] = useState<LibTab>("manufacturers");
   const [activeMfgId, setActiveMfgId] = useState<number | null>(null);
   const [activeGuideId, setActiveGuideId] = useState<number | null>(null);
@@ -52,6 +55,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const createMfg = useCreateMfhManufacturer();
   const updateMfg = useUpdateMfhManufacturer();
   const deleteMfg = useDeleteMfhManufacturer();
+  const createConstructionType = useCreateMfhConstructionType();
   const createModel = useCreateMfhModel();
   const updateModel = useUpdateMfhModel();
   const deleteModel = useDeleteMfhModel();
@@ -70,6 +74,8 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   // Models tab state
   const [editingModel, setEditingModel] = useState<MfhModel | null>(null);
   const [newModelForm, setNewModelForm] = useState<Partial<MfhModel> | null>(null);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [showNewType, setShowNewType] = useState(false);
 
   // Pricing tab state
   const [editingPrice, setEditingPrice] = useState<{ guideId: number; modelId: number; val: string } | null>(null);
@@ -95,6 +101,19 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const constructionTypes = libData?.constructionTypes ?? panelData?.constructionTypes ?? [];
   const benchmarks = libData?.benchmarks ?? panelData?.benchmarks ?? [];
   const templates = libData?.templates ?? panelData?.templates ?? [];
+
+  const addConstructionType = async () => {
+    const name = newTypeName.trim();
+    if (!name) return;
+    try {
+      const created = await createConstructionType.mutateAsync({ name });
+      setNewModelForm(prev => prev ? { ...prev, constructionTypeId: created.id } : prev);
+      setNewTypeName("");
+      setShowNewType(false);
+    } catch {
+      toast({ title: "Couldn't add type", description: "Please try again.", variant: "destructive" });
+    }
+  };
 
   const priceFor = (guideId: number, modelId: number) =>
     guideItems.find(i => i.guideId === guideId && i.modelId === modelId)?.basePrice ?? "0";
@@ -351,7 +370,26 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                       <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.constructionTypeId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, constructionTypeId: parseInt(e.target.value) })}>
                         <option value="">Select…</option>
                         {constructionTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
-                      </select></div>
+                      </select>
+                      {showNewType ? (
+                        <div className="flex gap-1 mt-1">
+                          <input autoFocus className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background" placeholder="e.g. VOG, Hybrid, Drywall…" value={newTypeName}
+                            onChange={e => setNewTypeName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && newTypeName.trim()) addConstructionType();
+                              if (e.key === "Escape") { setNewTypeName(""); setShowNewType(false); }
+                            }} />
+                          <button type="button" disabled={!newTypeName.trim() || createConstructionType.isPending}
+                            onClick={addConstructionType}
+                            className="px-2 py-1 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add</button>
+                          <button type="button" onClick={() => { setNewTypeName(""); setShowNewType(false); }}
+                            className="px-1.5 py-1 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted/50"><X className="w-3 h-3" /></button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => setShowNewType(true)}
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 hover:text-amber-700"><Plus className="w-2.5 h-2.5" /> New type</button>
+                      )}
+                    </div>
                     <div><label className="text-[10px] text-muted-foreground font-medium">Benchmark (optional)</label>
                       <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.benchmarkId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, benchmarkId: e.target.value ? parseInt(e.target.value) : undefined })}>
                         <option value="">— None —</option>
