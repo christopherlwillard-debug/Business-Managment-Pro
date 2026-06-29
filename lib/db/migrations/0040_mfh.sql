@@ -69,3 +69,16 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS mfh_travel_days integer;
 ALTER TABLE estimates ADD COLUMN IF NOT EXISTS mfh_dealer_price numeric(12, 2);
 ALTER TABLE estimates ADD COLUMN IF NOT EXISTS mfh_quoted_price numeric(12, 2);
 ALTER TABLE estimates ADD COLUMN IF NOT EXISTS mfh_guide_name text;
+
+-- Foreign keys for the job-level MFH references (per task spec: nullable FKs).
+-- Idempotent so re-running on environments that already have them is a no-op.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'jobs_mfh_manufacturer_id_fkey') THEN
+    ALTER TABLE jobs ADD CONSTRAINT jobs_mfh_manufacturer_id_fkey
+      FOREIGN KEY (mfh_manufacturer_id) REFERENCES mfh_manufacturers(id) ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'jobs_mfh_model_id_fkey') THEN
+    ALTER TABLE jobs ADD CONSTRAINT jobs_mfh_model_id_fkey
+      FOREIGN KEY (mfh_model_id) REFERENCES mfh_models(id) ON DELETE SET NULL;
+  END IF;
+END $$;

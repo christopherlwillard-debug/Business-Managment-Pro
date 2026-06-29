@@ -10,4 +10,4 @@
 - [Admin migration key bypass](admin-migration-key.md) — admin/migrations is mounted pre-requireAuth with MIGRATION_KEY env-var intercept; allows curl-triggered one-time ops without browser session
 - [PDF generation: use pdfkit not Puppeteer](pdf-generation.md) — Puppeteer/Chrome is broken in production; use pdfkit (pure Node.js) for all server-side PDF generation
 - [api-zod codegen drift](api-zod-codegen-drift.md) — lib/api-spec/openapi.yaml is stale vs generated files; DON'T run orval codegen (wipes hand-added fields like homeModel/mfh*); edit generated schemas + openapi.yaml by hand
-- [No prod typecheck](no-prod-typecheck.md) — api-server prod build is esbuild (tsx build.ts), never tsc; 440+ TS errors (TS7030 etc) are codebase-wide & non-blocking; only fix type errors in files you own
+- [No prod typecheck](no-prod-typecheck.md) — api-server prod build is esbuild (tsx build.ts), never tsc; codebase-wide pre-existing TS errors are non-blocking; only fix type errors in files you own

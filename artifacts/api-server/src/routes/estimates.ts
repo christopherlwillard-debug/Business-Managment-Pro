@@ -30,6 +30,9 @@ function format(e: any, clientName?: string | null, jobTitle?: string | null) {
       unit: li.unit ?? null,
       unitCost: parseFloat(li.unitCost),
       total: parseFloat(li.quantity) * parseFloat(li.unitCost),
+      // Preserve ownership metadata so MFH-generated lines stay identifiable
+      // across read/edit/save cycles (update-pricing & reset rely on this).
+      ...(li.generatedBy ? { generatedBy: li.generatedBy } : {}),
     })),
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
   };

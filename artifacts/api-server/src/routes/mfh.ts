@@ -435,31 +435,12 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
         jobType: "Manufactured Home",
       } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
 
-      // Apply the model's linked benchmark to the job. Jobs in this app are not
-      // linked to a benchmark by FK — they match by jobType (unique). Since an
-      // applied MFH job's type is always "Manufactured Home", we project the
-      // model's linked benchmark onto the "Manufactured Home" benchmark so it is
-      // the active benchmark for this job's type.
-      if (modelRow.benchmarkId) {
-        const [linked] = await tx.select().from(jobTypeBenchmarksTable).where(eq(jobTypeBenchmarksTable.id, modelRow.benchmarkId));
-        if (linked) {
-          await tx.insert(jobTypeBenchmarksTable).values({
-            jobType: "Manufactured Home",
-            estimatedHours: linked.estimatedHours,
-            estimatedLaborCost: linked.estimatedLaborCost,
-            estimatedMaterialCost: linked.estimatedMaterialCost,
-            notes: linked.notes,
-          }).onConflictDoUpdate({
-            target: jobTypeBenchmarksTable.jobType,
-            set: {
-              estimatedHours: linked.estimatedHours,
-              estimatedLaborCost: linked.estimatedLaborCost,
-              estimatedMaterialCost: linked.estimatedMaterialCost,
-              notes: linked.notes,
-            },
-          });
-        }
-      }
+      // Note: applying a model intentionally does NOT mutate job_type_benchmarks.
+      // Benchmarks are generic, business-level expectations for a job type (used
+      // for reporting/planning) and are owner-managed. The model's defaults
+      // (pricing, checklist, construction type, notes, add-ons) are what get
+      // applied to the job here. The model's linked benchmark is surfaced in the
+      // panel for reference only.
 
       // Find or create estimate
       const existingEstimates = await tx.select().from(estimatesTable).where(eq(estimatesTable.jobId, jobId)).limit(1);
