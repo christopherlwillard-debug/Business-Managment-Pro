@@ -6,7 +6,7 @@
 - [Owner Capital Ledger](owner-capital-ledger.md) — owner_capital_entries table replaces single ownerPersonalInvestment setting; auto-migrates on first GET; drizzle push needs interactive TTY so use psql directly
 - [Plaid balance cache](plaid-balance-cache.md) — cache reduced to 1 hour; sync route now also refreshes balance; Banking.tsx sync must invalidate ["plaid-balance"]
 - [Compensation type & pay-worker](comp-type-pay-worker.md) — job_subcontractors has compensationType (hourly/fixed/allocation); pay-worker POST creates 'Subcontractor' expense + marks paid; owner draws use expense category 'Owner Draw' (not ownerCapitalEntriesTable)
-- [Sub payment ledger (Phase 2)](sub-payment-ledger.md) — pay-worker no longer dual-writes to expenses (Task #892 removed that); sub_payment_records is the sole ledger; admin-migrations has delete-payworker-expenses endpoint (Drizzle query builder, not raw SQL)
+- [Sub payment ledger (Phase 2)](sub-payment-ledger.md) — pay-worker no longer dual-writes to expenses; sub_payment_records is the sole ledger; admin-migrations has delete-payworker-expenses endpoint (Drizzle query builder, not raw SQL)
 - [Admin migration key bypass](admin-migration-key.md) — admin/migrations is mounted pre-requireAuth with MIGRATION_KEY env-var intercept; allows curl-triggered one-time ops without browser session
 - [PDF generation: use pdfkit not Puppeteer](pdf-generation.md) — Puppeteer/Chrome is broken in production; use pdfkit (pure Node.js) for all server-side PDF generation
 - [api-zod codegen drift](api-zod-codegen-drift.md) — lib/api-spec/openapi.yaml is stale vs generated files; DON'T run orval codegen (wipes hand-added fields like homeModel/mfh*); edit generated schemas + openapi.yaml by hand

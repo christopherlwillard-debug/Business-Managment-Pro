@@ -42,12 +42,15 @@ export interface MfhLibraryData {
 }
 
 export interface MfhJobData {
+  id: number;
   mfhManufacturerId?: number | null;
   mfhModelId?: number | null;
   mfhModelYear?: number | null;
   mfhDealerPrice?: string | null;
   mfhQuotedPrice?: string | null;
   mfhGuideName?: string | null;
+  mfhSelectedAddons?: string[] | null;
+  mfhTravelDays?: number | null;
 }
 
 export function useListMfhManufacturers() {

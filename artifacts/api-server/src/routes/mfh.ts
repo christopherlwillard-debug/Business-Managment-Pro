@@ -371,12 +371,15 @@ mfhJobRouter.get("/jobs/:id", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     const [job] = await db.select({
+      id: jobsTable.id,
       mfhManufacturerId: jobsTable.mfhManufacturerId,
       mfhModelId: jobsTable.mfhModelId,
       mfhModelYear: jobsTable.mfhModelYear,
       mfhDealerPrice: jobsTable.mfhDealerPrice,
       mfhQuotedPrice: jobsTable.mfhQuotedPrice,
       mfhGuideName: jobsTable.mfhGuideName,
+      mfhSelectedAddons: jobsTable.mfhSelectedAddons,
+      mfhTravelDays: jobsTable.mfhTravelDays,
     } as Record<string, unknown>).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
     res.json(job ?? {});
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
@@ -423,15 +426,10 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
     const mfhLines = await buildMfhLines(parseInt(guideId), parseInt(modelId), selectedKeys, days, modelRow.name, ctName, addons, basePrice);
     const mfhTotal = mfhLines.reduce((s, l) => s + l.quantity * l.unitCost, 0);
 
-    // Get benchmark for job type if linked
-    let benchmarkJobType: string | null = null;
-    if (modelRow.benchmarkId) {
-      const [bm] = await db.select().from(jobTypeBenchmarksTable).where(eq(jobTypeBenchmarksTable.id, modelRow.benchmarkId));
-      if (bm) benchmarkJobType = bm.jobType;
-    }
-
     const result = await db.transaction(async (tx) => {
-      // Update job
+      // Update job — spec requires Job Type to always be "Manufactured Home".
+      // The model's linked benchmark is surfaced in the panel (panel-data); it does
+      // not override the job type.
       await tx.update(jobsTable).set({
         mfhManufacturerId: parseInt(manufacturerId),
         mfhModelId: parseInt(modelId),
@@ -439,7 +437,9 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
         mfhDealerPrice: String(dealerPrice),
         mfhQuotedPrice: String(basePrice),
         mfhGuideName: guideRow.name,
-        jobType: benchmarkJobType ?? "Manufactured Home",
+        mfhSelectedAddons: selectedKeys,
+        mfhTravelDays: days,
+        jobType: "Manufactured Home",
       } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
 
       // Find or create estimate
@@ -555,6 +555,7 @@ mfhJobRouter.patch("/jobs/:id/update-pricing", async (req, res) => {
       }
       await tx.update(jobsTable).set({
         mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
+        mfhSelectedAddons: selectedKeys, mfhTravelDays: days,
       } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
     });
 
@@ -597,6 +598,7 @@ mfhJobRouter.patch("/jobs/:id/reset", async (req, res) => {
       }
       await tx.update(jobsTable).set({
         mfhQuotedPrice: String(basePrice), mfhGuideName: guideRow?.name ?? null,
+        mfhSelectedAddons: selectedKeys, mfhTravelDays: days,
       } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
     });
 

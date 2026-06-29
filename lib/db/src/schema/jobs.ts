@@ -44,6 +44,8 @@ export const jobsTable = pgTable("jobs", {
   mfhDealerPrice: numeric("mfh_dealer_price", { precision: 12, scale: 2 }),
   mfhQuotedPrice: numeric("mfh_quoted_price", { precision: 12, scale: 2 }),
   mfhGuideName: text("mfh_guide_name"),
+  mfhSelectedAddons: jsonb("mfh_selected_addons").$type<string[]>(),
+  mfhTravelDays: integer("mfh_travel_days"),
   closedAt: date("closed_at"),
   jobNumber: integer("job_number"),
   ownerPayIncluded: boolean("owner_pay_included").notNull().default(true),

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Home, BookOpen, X, Plus, Trash2, Pencil, Check,
@@ -8,6 +8,7 @@ import {
 import {
   useListMfhManufacturers,
   useMfhPanelData,
+  useMfhJobData,
   useApplyMfhPricing,
   useResetMfhPricing,
   useUpdateMfhPricing,
@@ -588,13 +589,18 @@ export function MfhPanel({
   const qc = useQueryClient();
   const { data: manufacturers = [] } = useListMfhManufacturers();
 
+  // The jobs list/detail does not carry MFH fields, so fetch the dedicated snapshot
+  // (invalidated on apply/update/reset) as the source of truth for hydration.
+  const { data: mfhSnapshot } = useMfhJobData(job.id);
+  const j = (mfhSnapshot ?? job) as MfhJobData;
+
   // Mode: "select" = config dropdowns; "spec" = read-only spec sheet after apply
-  const alreadyApplied = job.mfhManufacturerId != null && job.mfhModelId != null;
+  const alreadyApplied = j.mfhManufacturerId != null && j.mfhModelId != null;
   const [mode, setMode] = useState<"select" | "spec">(alreadyApplied ? "spec" : "select");
 
-  const [manufacturerId, setManufacturerId] = useState<number | null>(job.mfhManufacturerId ?? null);
-  const [modelId, setModelId] = useState<number | null>(job.mfhModelId ?? null);
-  const [modelYear, setModelYear] = useState<string>(job.mfhModelYear ? String(job.mfhModelYear) : "");
+  const [manufacturerId, setManufacturerId] = useState<number | null>(j.mfhManufacturerId ?? null);
+  const [modelId, setModelId] = useState<number | null>(j.mfhModelId ?? null);
+  const [modelYear, setModelYear] = useState<string>(j.mfhModelYear ? String(j.mfhModelYear) : "");
   const [guideId, setGuideId] = useState<number | null>(null);
   const [selectedAddonKeys, setSelectedAddonKeys] = useState<string[]>([]);
   const [travelDays, setTravelDays] = useState<string>("1");
@@ -612,22 +618,37 @@ export function MfhPanel({
   const guideItems = panelData?.guideItems ?? [];
   const guideAddons = panelData?.guideAddons ?? [];
 
+  // Hydrate config + spec mode from the persisted snapshot once it loads.
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (hydrated.current || !mfhSnapshot) return;
+    if (mfhSnapshot.mfhManufacturerId != null && mfhSnapshot.mfhModelId != null) {
+      setManufacturerId(mfhSnapshot.mfhManufacturerId);
+      setModelId(mfhSnapshot.mfhModelId);
+      setModelYear(mfhSnapshot.mfhModelYear ? String(mfhSnapshot.mfhModelYear) : "");
+      if (Array.isArray(mfhSnapshot.mfhSelectedAddons)) setSelectedAddonKeys(mfhSnapshot.mfhSelectedAddons);
+      if (mfhSnapshot.mfhTravelDays != null) setTravelDays(String(mfhSnapshot.mfhTravelDays));
+      setMode("spec");
+      hydrated.current = true;
+    }
+  }, [mfhSnapshot]);
+
   // Auto-select first guide
   useEffect(() => {
     if (guideId == null && guides.length > 0) {
       // If job has a saved guide name, try to match it
-      if (job.mfhGuideName) {
-        const match = guides.find(g => g.name === job.mfhGuideName);
+      if (j.mfhGuideName) {
+        const match = guides.find(g => g.name === j.mfhGuideName);
         if (match) { setGuideId(match.id); return; }
       }
       setGuideId(guides[0].id);
     }
-  }, [guides, guideId, job.mfhGuideName]);
+  }, [guides, guideId, j.mfhGuideName]);
 
   // Auto-pre-check default add-ons when model changes
   const selectedModel = models.find(m => m.id === modelId);
   useEffect(() => {
-    if (selectedModel && selectedAddonKeys.length === 0) {
+    if (selectedModel && selectedAddonKeys.length === 0 && !hydrated.current) {
       setSelectedAddonKeys(selectedModel.defaultAddonKeys ?? []);
     }
   }, [selectedModel]);
@@ -651,8 +672,8 @@ export function MfhPanel({
   const hasTravelAddon = activeAddons.some(a => selectedAddonKeys.includes(a.addonKey) && a.isPerDay);
 
   // Spec-sheet values (from job snapshot when in spec mode)
-  const snapDealerPrice = job.mfhDealerPrice ? parseFloat(job.mfhDealerPrice) : null;
-  const snapQuotedPrice = job.mfhQuotedPrice ? parseFloat(job.mfhQuotedPrice) : null;
+  const snapDealerPrice = j.mfhDealerPrice ? parseFloat(j.mfhDealerPrice) : null;
+  const snapQuotedPrice = j.mfhQuotedPrice ? parseFloat(j.mfhQuotedPrice) : null;
   const snapProfit = snapDealerPrice != null && snapQuotedPrice != null ? snapQuotedPrice - snapDealerPrice : null;
 
   function showFeedback(msg: string) {
@@ -726,12 +747,12 @@ export function MfhPanel({
               {/* Snapshot info */}
               <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-2.5">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <div><span className="text-muted-foreground">Manufacturer</span><p className="font-semibold text-foreground mt-0.5">{manufacturers.find(m => m.id === job.mfhManufacturerId)?.name ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Model</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.name ?? models.find(m => m.id === job.mfhModelId)?.name ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Construction <span className="text-[9px] bg-muted/50 px-1 py-0.5 rounded font-mono">(auto)</span></span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.constructionTypeName ?? models.find(m => m.id === job.mfhModelId)?.constructionTypeName ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Model Year</span><p className="font-semibold text-foreground mt-0.5">{job.mfhModelYear ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Guide</span><p className="font-semibold text-foreground mt-0.5">{job.mfhGuideName ?? activeGuide?.name ?? "—"}</p></div>
-                  <div><span className="text-muted-foreground">Benchmark</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.benchmarkName ?? models.find(m => m.id === job.mfhModelId)?.benchmarkName ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Manufacturer</span><p className="font-semibold text-foreground mt-0.5">{manufacturers.find(m => m.id === j.mfhManufacturerId)?.name ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Model</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.name ?? models.find(m => m.id === j.mfhModelId)?.name ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Construction <span className="text-[9px] bg-muted/50 px-1 py-0.5 rounded font-mono">(auto)</span></span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.constructionTypeName ?? models.find(m => m.id === j.mfhModelId)?.constructionTypeName ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Model Year</span><p className="font-semibold text-foreground mt-0.5">{j.mfhModelYear ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Guide</span><p className="font-semibold text-foreground mt-0.5">{j.mfhGuideName ?? activeGuide?.name ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Benchmark</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.benchmarkName ?? models.find(m => m.id === j.mfhModelId)?.benchmarkName ?? "—"}</p></div>
                 </div>
 
                 {/* Pricing row */}
@@ -751,10 +772,10 @@ export function MfhPanel({
                 </div>
 
                 {/* Model notes */}
-                {(selectedModel?.notes ?? models.find(m => m.id === job.mfhModelId)?.notes) && (
+                {(selectedModel?.notes ?? models.find(m => m.id === j.mfhModelId)?.notes) && (
                   <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-100/60 rounded-lg p-2">
                     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                    <p>{selectedModel?.notes ?? models.find(m => m.id === job.mfhModelId)?.notes}</p>
+                    <p>{selectedModel?.notes ?? models.find(m => m.id === j.mfhModelId)?.notes}</p>
                   </div>
                 )}
 
@@ -952,7 +973,7 @@ export function MfhPanel({
                     <Eye className="w-3.5 h-3.5" /> View Estimate
                   </button>
                 )}
-                <button onClick={() => { setMode("select"); setGuideId(null); setSelectedAddonKeys([]); }}
+                <button onClick={() => { hydrated.current = false; setMode("select"); setGuideId(null); setSelectedAddonKeys([]); }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border border-border text-muted-foreground hover:bg-muted/50 transition-colors ${onViewEstimates ? "" : "col-span-2"}`}>
                   <ChevronRight className="w-3.5 h-3.5 rotate-180" /> Change Home
                 </button>
