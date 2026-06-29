@@ -225,6 +225,21 @@ export function useApplyMfhPricing() {
   });
 }
 
+export function useUpdateMfhPricing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { jobId: number; guideId: number; modelId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
+      customFetch<{ ok: boolean }>(
+        `/api/mfh/jobs/${data.jobId}/update-pricing`,
+        { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
+      ),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/jobs", vars.jobId] });
+      qc.invalidateQueries({ queryKey: ["/api/estimates"] });
+    },
+  });
+}
+
 export function useResetMfhPricing() {
   const qc = useQueryClient();
   return useMutation({

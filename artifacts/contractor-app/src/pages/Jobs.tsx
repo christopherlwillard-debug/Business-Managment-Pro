@@ -15,6 +15,7 @@ import {
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
 } from "@workspace/api-client-react";
+import { useListMfhManufacturers, useMfhPanelData } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
@@ -3291,6 +3292,9 @@ function JobCard({
             qc.invalidateQueries({ queryKey: ["/api/jobs"] });
             qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
           }}
+          onViewEstimates={() => {
+            setEstimatesPanelOpen(true);
+          }}
         />
       )}
     </>
@@ -3412,6 +3416,14 @@ function JobFormDialog({
   const [subCompDefaults, setSubCompDefaults] = useState<Record<number, { compensationType: string; rate: string }>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // MFH structured fields (separate from form string state)
+  const [mfhMfgId, setMfhMfgId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
+  const [mfhModelId, setMfhModelId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhModelId as number | null ?? null);
+  const [mfhYear, setMfhYear] = useState<string>((editJob as Record<string, unknown>)?.mfhModelYear ? String((editJob as Record<string, unknown>).mfhModelYear) : "");
+  const { data: mfhMfgs = [] } = useListMfhManufacturers();
+  const { data: mfhPanelData } = useMfhPanelData(mfhMfgId);
+  const mfhModels = mfhPanelData?.models ?? [];
   const [clearHoursForSubIds, setClearHoursForSubIds] = useState<number[]>([]);
   const [removeSubPrompt, setRemoveSubPrompt] = useState<{ subId: number; subName: string; pendingIds: number[] } | null>(null);
 
@@ -3653,7 +3665,63 @@ function JobFormDialog({
           </div>
           )}
 
-          <HomeModelInput value={form.homeModel} onChange={v => setField("homeModel", v)} />
+          {/* Manufactured Home structured fields (replaces free-text homeModel) */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-foreground">
+              <span className="text-amber-500 font-bold text-xs mr-1">🏠</span>Manufactured Home
+              <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Manufacturer</label>
+                <select
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={mfhMfgId ?? ""}
+                  onChange={e => { setMfhMfgId(e.target.value ? parseInt(e.target.value) : null); setMfhModelId(null); }}>
+                  <option value="">Select…</option>
+                  {mfhMfgs.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Model</label>
+                <select
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={mfhModelId ?? ""}
+                  onChange={e => setMfhModelId(e.target.value ? parseInt(e.target.value) : null)}
+                  disabled={!mfhMfgId}>
+                  <option value="">Select…</option>
+                  {mfhModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Model Year</label>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder="e.g. 2022"
+                  value={mfhYear}
+                  min={1950}
+                  max={new Date().getFullYear() + 1}
+                  onChange={e => setMfhYear(e.target.value)} />
+              </div>
+              {mfhModelId && (
+                <div className="flex items-end pb-0.5">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Construction</label>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-muted/50 text-xs text-muted-foreground border border-border">
+                      {mfhModels.find(m => m.id === mfhModelId)?.constructionTypeName ?? "—"}
+                      <span className="text-[10px] opacity-60 font-mono">(auto)</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+            {!mfhMfgId && (
+              <p className="text-xs text-muted-foreground">Pricing &amp; checklists are applied from the <strong>Manufactured Home</strong> panel on the job card.</p>
+            )}
+          </div>
 
           {editJob && (
           <div>
