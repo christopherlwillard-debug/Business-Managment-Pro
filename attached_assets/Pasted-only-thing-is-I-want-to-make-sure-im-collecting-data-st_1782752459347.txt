@@ -1,0 +1,157 @@
+only thing is I want to make sure im collecting data still on the make and models of the homes so it cant just be southern vog 1500 i want it southern Farmhouse vog 1500
+
+I actually think that's one of the most important pieces of the entire feature.
+
+You're not just trying to build estimates—you want to build a historical database of manufactured homes. Years from now you'll be able to answer questions like:
+
+"How many Southern Farmhouses have we completed?"
+"What's our average profit on a Rutledge?"
+"How many warranty calls do we get on Champion homes?"
+"How long does an Addison Hybrid usually take?"
+"What models make us the most money?"
+
+If you only save "Southern VOG," you lose all of that.
+
+I'd separate the data like this
+Manufacturer
+Clayton
+Champion
+Commodore
+Cavco
+Adventure
+...
+Model
+Farmhouse
+Addison
+Rutledge
+Champion
+Norris
+...
+Construction Type
+VOG
+Hybrid
+Drywall
+
+Those are three separate fields, not one combined value.
+
+Then your pricing guide would look like this:
+
+Manufacturer	Model	Construction	Dealer Price	Your Price
+Clayton	Farmhouse	VOG	$1,500	$1,700
+Clayton	Farmhouse	Hybrid	$2,500	$2,700
+Clayton	Farmhouse	Drywall	$3,500	$3,700
+Clayton	Norris	Drywall	$3,500	$3,650
+
+Notice that Farmhouse can exist as different construction types if needed.
+
+Every estimate stores
+Manufacturer
+Clayton
+
+Model
+Farmhouse
+
+Construction
+VOG
+
+Pricing Guide
+Clayton Dealer 2026
+
+Dealer Price
+$1,500
+
+Quoted Price
+$1,700
+
+Now every job permanently knows exactly what home it was.
+
+Then your dashboard becomes incredibly valuable.
+
+Instead of only seeing revenue, you could see things like:
+
+Most completed models
+Southern Farmhouse ............ 28
+Rutledge ...................... 17
+Addison ....................... 15
+Champion ...................... 12
+Profit by model
+Southern Farmhouse
+
+Average Revenue
+$2,150
+
+Average Cost
+$1,280
+
+Average Profit
+$870
+Time by model
+Southern Farmhouse
+
+Average
+
+18.6 labor hours
+Warranty rate
+Southern Farmhouse
+
+Completed
+28
+
+Warranty Calls
+1
+
+Warranty Rate
+
+3.6%
+Even better...
+
+I would never let the estimator type the model manually.
+
+Instead:
+
+Manufacturer
+
+▼ Clayton
+
+The app loads only Clayton models.
+
+Model
+
+▼ Southern Farmhouse
+▼ Southern Heritage
+▼ Addison
+▼ Norris
+
+When you choose Southern Farmhouse, the app already knows:
+
+Construction type
+Dealer price
+Your price
+Default checklist
+Default estimate template
+
+You don't have to enter any of it.
+
+I'd also collect one more field that will pay off later
+
+Along with:
+
+Manufacturer
+Model
+Construction
+
+I'd store:
+
+Year
+
+2026
+
+or even
+
+Model Year
+
+2026
+
+That way, if Clayton changes a model in 2028, you'll know whether you worked on the 2026 Southern Farmhouse or the 2028 Southern Farmhouse. Over time you'll be able to analyze changes in labor, warranty work, and profitability by model year.
+
+I think this is the right foundation because it preserves the detailed data you're after while still making estimating fast and mostly automatic. You're not just pricing jobs—you'll be building a searchable history of every manufactured home you've ever completed, which becomes extremely valuable as your business grows.

@@ -1,0 +1,251 @@
+i dont want it just for clayton i want to make this a general thing with manufactured homes but i do like the override for claytons vs my pricing
+
+I actually think that's the better direction.
+
+Right now you have Clayton's price sheet, but your app shouldn't become "Clayton software." It should become the software for manufactured home finish contractors. Clayton's guide should just be one pricing guide among many.
+
+Here's how I'd design it.
+
+Manufacturer
+Manufacturer
+
+▼ Clayton
+▼ Champion
+▼ Commodore
+▼ Cavco
+▼ Adventure Homes
+▼ Fleetwood
+▼ Skyline
+▼ Deer Valley
+▼ Southern Energy
+▼ Other
+Pricing Guide
+
+Every manufacturer can have multiple pricing guides.
+
+Example:
+
+Clayton
+
+○ Dealer Guide
+○ Your Pricing
+
+Champion
+
+○ Dealer Guide
+○ Your Pricing
+
+Commodore
+
+○ Dealer Guide
+○ Your Pricing
+
+If no dealer guide exists:
+
+Only Your Pricing Available
+Home Models
+
+Instead of hardcoding VOG or Drywall, each model stores its own information.
+
+Example
+
+Model	Type	Dealer Price	Your Price
+Champion	VOG	$1500	$1650
+Addison	Hybrid	$2500	$2700
+Rutledge	Drywall	$3500	$3650
+
+The app knows the construction type automatically.
+
+Dealer Pricing vs Your Pricing
+
+This is my favorite part.
+
+When building an estimate:
+
+Pricing Source
+
+○ Dealer Pricing
+
+● My Pricing
+
+Dealer Pricing
+
+Champion
+
+Trim Out
+
+$1,500
+
+Your Pricing
+
+Champion
+
+Trim Out
+
+$1,650
+
+Nothing else changes.
+
+If dealer pricing changes
+
+Suppose Clayton updates Champion from
+
+$1,500
+
+to
+
+$1,650.
+
+You update ONE guide.
+
+Every future estimate uses it.
+
+Old estimates never change.
+
+The database becomes really clean
+
+Instead of
+
+ClaytonPriceSheet
+
+or
+
+ChampionPricing
+
+I'd build
+
+Manufacturers
+
+Manufacturer
+
+Models
+
+Pricing Guides
+
+Guide Items
+
+So
+
+Manufacturer
+
+Clayton
+
+Guide
+
+Dealer 2026
+
+Model
+
+Champion
+
+Type
+
+VOG
+
+Price
+
+1500
+
+and
+
+Manufacturer
+
+Clayton
+
+Guide
+
+Willard Pricing
+
+Model
+
+Champion
+
+Type
+
+VOG
+
+Price
+
+1650
+
+Then next year
+
+Dealer 2027
+
+gets added without deleting the old guide.
+
+Settings
+
+I'd actually add a whole page.
+
+Manufactured Homes
+
+Manufacturers
+
+Pricing Guides
+
+Models
+
+Construction Types
+
+Estimate Templates
+
+Job Templates
+Even better...
+
+I'd let you have multiple pricing profiles.
+
+Clayton Dealer
+
+Clayton Warranty
+
+Clayton Retail
+
+Clayton Community
+
+Clayton Insurance
+
+Willard Pricing
+
+Because in reality you may charge:
+
+Dealer
+
+$1500
+
+Warranty
+
+$1800
+
+Retail Customer
+
+$2400
+
+Insurance
+
+$3000
+
+Same model.
+
+Different customer.
+
+One feature I think would be huge
+
+Don't make the guide just a price.
+
+Make it a template.
+
+For example, the Champion (VOG) template could include:
+
+Base trim-out price
+Expected labor hours
+Standard checklist
+Standard materials
+Default invoice line items
+Typical completion time
+Required photos
+Required inspections
+
+So when you choose Champion → Dealer Pricing, the app doesn't just fill in $1,500—it builds the entire job.
+
+That turns your app from an estimating tool into a manufactured home production system, and that's something I haven't seen in contractor software aimed at your niche.

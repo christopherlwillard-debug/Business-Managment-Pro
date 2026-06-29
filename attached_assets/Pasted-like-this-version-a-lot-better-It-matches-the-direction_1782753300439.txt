@@ -1,0 +1,272 @@
+like this version a lot better. It matches the direction your app has been moving.
+
+There are just a few things I'd still change before you give it to Replit.
+
+1. Don't call it a Wizard
+
+I know that's what we've been calling it, but after thinking about your workflow, I don't think it's really a wizard.
+
+It's just another section of the Job Card.
+
+Imagine opening a job.
+
+Customer
+
+Invoices
+
+Expenses
+
+Workers
+
+Checklist
+
+Manufactured Home
+
+Open Manufactured Home.
+
+Everything happens right there.
+
+No "wizard" feeling.
+
+Maybe the button is simply
+
+Configure Home
+
+or
+
+Select Home
+
+That feels more natural.
+
+2. I would not allow editing prices inline
+
+This is the only thing I'd push back on.
+
+Right now you have
+
+Prices editable inline.
+
+That scares me a little.
+
+Imagine this:
+
+Southern Farmhouse
+
+Dealer Price
+
+1500
+
+You accidentally type
+
+15000
+
+Now every future estimate is wrong.
+
+Instead I'd make pricing intentionally edited.
+
+Dealer Guide
+
+Southern Farmhouse
+
+$1500
+
+✏ Edit Guide
+
+Click Edit.
+
+Now you're editing pricing.
+
+Not while building a job.
+
+Those are two different tasks.
+
+3. Save a pricing snapshot
+
+This is the one thing I think is missing.
+
+When you hit
+
+Apply Pricing
+
+don't just save
+
+Guide
+
+Dealer Guide
+
+Also save
+
+Dealer Price
+
+1500
+
+Quoted Price
+
+1650
+
+onto the estimate.
+
+That way if next year the guide changes to
+
+1700
+
+your old estimate is still
+
+1500
+
+Exactly what was quoted.
+
+4. Biggest thing I'd add
+
+I'd let the home information drive more than pricing.
+
+When I choose
+
+Clayton
+
+↓
+
+Southern Farmhouse
+
+I'd expect the app to automatically know
+
+Construction = VOG
+Estimate pricing
+Default checklist
+Default job type
+Suggested crew
+Suggested labor hours
+
+You already have benchmarks.
+
+Hook them together.
+
+The less typing, the better.
+
+5. I'd add a Home Summary
+
+After it's selected, instead of just
+
+Clayton
+
+Southern Farmhouse
+
+VOG
+
+I'd make it feel like a spec sheet.
+
+Manufactured Home
+
+Clayton
+
+Southern Farmhouse
+
+VOG
+
+2026
+
+Dealer Guide
+
+Dealer Price
+$1500
+
+Quoted
+$1700
+
+✔ Plumbing
+
+✔ Vinyl Ends
+
+Now one glance tells you everything.
+
+6. Don't hide it after the estimate
+
+I think this is important.
+
+Once the estimate is created,
+
+don't just leave
+
+Manufacturer
+
+Model
+
+Keep
+
+Apply Pricing Again
+
+Update Estimate
+
+View Pricing
+
+Change Home
+
+Sometimes a dealer changes the work order.
+
+You don't want to start over.
+
+7. One thing I think will make this feature incredible
+
+Instead of treating it as
+
+Manufactured Home
+
+I'd almost treat it like a vehicle selector.
+
+Example:
+
+Manufacturer
+
+▼ Clayton
+
+↓
+
+Model
+
+▼ Southern Farmhouse
+
+↓
+
+Immediately the panel fills in.
+
+Construction
+
+VOG
+
+Dealer Price
+
+1500
+
+My Price
+
+1650
+
+Default Checklist
+
+VOG Trim-Out
+
+Suggested Hours
+
+16
+
+Crew
+
+2
+
+You don't click five Next buttons.
+
+Everything just appears.
+
+I think that's actually a better direction.
+
+When you first described it, I pictured a wizard.
+
+Now that I know your workflow better, I think it should behave more like the Vehicle Information section in an auto repair program:
+
+Pick the manufacturer.
+Pick the model.
+Everything else is populated automatically.
+Review it.
+Click Apply Pricing.
+
+It's faster, keeps everything on the job card, and makes the job card the single place where manufactured-home information lives—which fits the overall simplification you're aiming for.

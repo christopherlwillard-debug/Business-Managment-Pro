@@ -1,0 +1,170 @@
+This is actually simpler than I expected, and it's a great fit for your app. From the price sheet you uploaded, there are only three trim-out tiers and then a few add-ons.
+
+Base Trim-Out Pricing
+Construction Type	Base Price
+VOG Trim-Out	$1,500
+Hybrid Drywall Trim-Out	$2,500
+Full Drywall Trim-Out	$3,500
+Add-ons
+Item	Price
+Vinyl Ends	$1,000
+Plumbing Under Home	$1,000
+Over 60 Miles	$150/day
+Home Models
+
+VOG
+
+Appalachia
+Giles
+Southern
+Wakarusa
+Champion
+Tru
+
+Hybrid
+
+Addison
+
+Drywall
+
+Norris
+Rutledge
+Middlebury
+I would not make this a "price lookup."
+
+I'd make it the Manufactured Home Estimate Wizard.
+
+Step 1
+
+Dealer
+
+Clayton
+Step 2
+
+Model
+
+Champion
+
+The app instantly knows:
+
+Construction
+✓ VOG
+
+No need to ask.
+
+Step 3
+
+Check boxes
+
+☑ Trim Out
+
+☐ Plumbing Under Home
+
+☐ Vinyl Ends
+
+☐ Over 60 Miles
+
+Days
+2
+Automatically builds
+Champion (VOG)
+
+Trim Out
+$1,500
+
+Plumbing
+$1,000
+
+Travel
+2 × $150
+$300
+
+----------------
+
+Estimate Total
+
+$2,800
+Then click
+
+Convert to Estimate
+
+Instead of creating a blank estimate, it automatically creates:
+
+Manufactured Home Finish
+
+Champion VOG Trim-Out........$1,500
+
+Plumbing Under Home..........$1,000
+
+Travel (2 Days)..............$300
+Even better...
+
+Because you already have Job Templates, this could automatically build the job checklist too.
+
+Example:
+
+Champion
+
+VOG
+
+Automatically includes:
+
+✅ Interior Trim
+
+✅ Exterior Trim
+
+✅ Marriage Line
+
+✅ Plumbing (if selected)
+
+✅ Vinyl Ends (if selected)
+
+Everything already checked into the job.
+
+I would also build in an override
+
+Because Clayton's prices aren't always what you charge.
+
+Guide Price
+
+$1,500
+
+Your Price
+
+$1,650
+
+☑ Save as my default
+
+or
+
+Use
+
+○ Dealer Pricing
+
+● My Pricing
+
+So your app can remember your pricing while still keeping the Clayton guide as a reference.
+
+One thing I would improve over the paper sheet
+
+Instead of hardcoding VOG/Hybrid/Drywall by model, create a Pricing Guide Manager in Settings.
+
+Something like:
+
+Clayton Price Guide
+
+Champion
+    Type: VOG
+    Base Price: $1,500
+
+Addison
+    Type: Hybrid
+    Base Price: $2,500
+
+Rutledge
+    Type: Drywall
+    Base Price: $3,500
+
+That way, if Clayton adds a new model next year, you don't need a developer—you just add the model yourself.
+
+I think this is a feature that would set your app apart from generic contractor software because it's tailored specifically to manufactured home contractors. Instead of starting every estimate from scratch, you'd pick the manufacturer and model, and the app would build the estimate, invoice, pricing, and even the job checklist automatically.
