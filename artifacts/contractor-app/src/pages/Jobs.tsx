@@ -30,10 +30,11 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
+import { MfhPanel } from "@/components/MfhPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -2772,6 +2773,7 @@ function JobCard({
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"pl" | "breakdown" | "hours">("pl");
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
+  const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
@@ -3086,6 +3088,32 @@ function JobCard({
           </button>
         )}
 
+        {/* Manufactured Home */}
+        {(job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhManufacturerId != null) && (
+          <button
+            onClick={() => setMfhPanelOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
+            <Home className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+            <span className="flex-1 text-left">Manufactured Home</span>
+            {(job as Record<string, unknown>).mfhQuotedPrice ? (
+              <span className="text-[10px] font-bold text-amber-600 font-mono">
+                {`$${parseFloat(String((job as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              </span>
+            ) : (
+              <span className="text-[10px] text-amber-400">Set pricing</span>
+            )}
+          </button>
+        )}
+        {job.jobType !== "Manufactured Home" && (job as Record<string, unknown>).mfhManufacturerId == null && (
+          <button
+            onClick={() => setMfhPanelOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+            <Home className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <span className="flex-1 text-left">Manufactured Home</span>
+            <span className="text-[10px] text-muted-foreground">Apply pricing</span>
+          </button>
+        )}
+
         {/* Checklist */}
         <button
           onClick={() => setChecklistPanelOpen(true)}
@@ -3254,6 +3282,16 @@ function JobCard({
           setChecklistPanelOpen(false);
           qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
         }} />
+      )}
+      {mfhPanelOpen && (
+        <MfhPanel
+          job={job as Parameters<typeof MfhPanel>[0]["job"]}
+          onClose={() => {
+            setMfhPanelOpen(false);
+            qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+            qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
+          }}
+        />
       )}
     </>
   );
