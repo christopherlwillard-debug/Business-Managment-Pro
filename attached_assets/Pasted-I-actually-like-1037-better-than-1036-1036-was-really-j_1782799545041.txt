@@ -1,0 +1,89 @@
+I actually like #1037 better than #1036.
+
+#1036 was really just "does it work?"
+
+#1037 answers:
+
+"Does it work correctly from a business perspective?"
+
+That's much more valuable.
+
+I would make one small change
+
+Right now the title is:
+
+Verify Builder Activation/Deactivation Works Correctly
+
+I'd rename it:
+
+#1037 – Validate Builder Activation/Deactivation Behavior
+
+"Validate" tells Replit this is an acceptance test, not new feature development.
+
+I'd add one more test
+
+Because this is something that will matter later.
+
+Model behavior
+
+After a builder is deactivated:
+
+Existing models remain attached.
+Models cannot be selected on new jobs because the Builder is inactive.
+Reactivating the Builder immediately restores all associated models.
+
+That explicitly tests the Builder → Model relationship.
+
+One more edge case
+
+I'd add this:
+
+Attempting to deactivate a Builder that is the only active Builder should still succeed. The application should continue to function normally and allow the Builder to be reactivated later.
+
+It seems obvious, but you'd be surprised how often software accidentally assumes "there's always at least one active Builder."
+
+This is where I'd stop
+
+After #1037, I wouldn't create any more infrastructure tasks.
+
+Instead I'd switch to using the software.
+
+For example:
+
+Southern
+    Farmhouse
+    Magnolia
+
+Champion
+    Prime
+
+Create a few test jobs.
+
+Deactivate Southern.
+
+Verify everything behaves.
+
+Reactivate Southern.
+
+If that all works, I'd consider the Builder/Model foundation complete.
+
+Then I'd move back to business features
+
+At that point your roadmap becomes:
+
+Infrastructure (Finish Here)
+
+✅ #1032 Builder/Model Library
+✅ #1033 Schema Migration
+✅ #1034 Hierarchy Migration
+✅ #1037 Activation/Deactivation Validation
+
+Business Features (Start Here)
+
+#1028 Knowledge Base
+Baseline Pricing
+Client Price Overrides
+Home Details
+Performance Statistics
+
+I actually think this is the point where you should stop thinking about the database and start thinking about how you'll use the app every day. Once the Builder/Model foundation is stable, every new milestone should make estimating, scheduling, or managing jobs easier—not just improve the underlying architecture. That's a good sign that the foundation is finally where it needs to be.
