@@ -1,0 +1,217 @@
+think this is a really good start, but I’d expand it a little so Replit understands the long-term vision. Right now it reads like “build a calculator.” I think it’s actually the billing engine for your entire service workflow.
+
+Here’s how I would rewrite it.
+
+⸻
+
+#1042 - Service Billing Worksheet & Client Billing Profiles
+
+What & Why
+
+Manufactured Home Service jobs require a billing worksheet that automatically calculates the invoice based on the selected client’s billing rules. The user should never manually calculate labor, drive time, mileage, or reimbursable parts.
+
+Every client should have a configurable Billing Profile that defines how service work is billed. When a Service job is created and the client is selected, the Billing Profile is automatically loaded into the Service Billing Worksheet.
+
+The Service Billing Worksheet should function as a live calculator. As the user enters repair hours, drive hours, mileage, and parts, the billing totals update automatically in real time.
+
+This keeps billing consistent, eliminates manual calculations, reduces invoicing mistakes, and allows different clients to have completely different billing rules while using the exact same workflow.
+
+The Service Billing Worksheet should also calculate internal profitability information for the company. These values are for internal reporting only and must never appear on customer invoices.
+
+⸻
+
+Design Philosophy
+
+The Service Billing Worksheet is not specific to Clayton Homes.
+
+It is a universal billing engine that works for any service client.
+
+The workflow should always remain the same:
+
+1. Select the client.
+2. Load the client’s Billing Profile.
+3. Enter repair hours.
+4. Enter drive hours.
+5. Enter mileage.
+6. Enter parts used.
+7. Generate the invoice.
+
+The only thing that changes is the client’s Billing Profile.
+
+⸻
+
+Done Looks Like
+
+Client Billing Profiles
+
+Every client can have one or more Billing Profiles.
+
+Each Billing Profile stores:
+
+* Profile Name
+* Repair Labor Rate
+* Drive Time Rate
+* Mileage Rate
+* Parts Reimbursable (Yes/No)
+* Default Number of Technicians
+* Billing Notes (optional)
+* Active / Inactive
+
+For Clayton Factory Warranty, the default technician count is always two.
+
+The Service Billing Worksheet should automatically use the two-technician rates unless the Billing Profile specifies otherwise.
+
+⸻
+
+Service Billing Worksheet
+
+Manufactured Home Service jobs include a new Service Billing panel.
+
+When the client is selected, the Billing Profile loads automatically.
+
+The worksheet includes:
+
+Labor
+
+* Repair Hours
+
+Automatically calculates:
+
+Repair Hours × Repair Labor Rate
+
+⸻
+
+Drive Time
+
+* Drive Hours
+
+Automatically calculates:
+
+Drive Hours × Drive Time Rate
+
+⸻
+
+Mileage
+
+* Mileage
+
+Automatically calculates:
+
+Mileage × Mileage Rate
+
+Mileage calculations always follow the selected Billing Profile.
+
+⸻
+
+Parts
+
+Multiple parts may be added.
+
+Each part contains:
+
+* Description
+* Quantity
+* Unit Cost
+* Total Cost
+* Reimbursable (Yes/No)
+
+Only reimbursable parts are included in the invoice total.
+
+⸻
+
+Billing Summary
+
+The worksheet automatically calculates:
+
+* Repair Labor
+* Drive Time
+* Mileage
+* Parts
+* Grand Total
+
+Totals update instantly as values are entered.
+
+No manual calculator should ever be required.
+
+⸻
+
+Internal Profitability
+
+Below the Billing Summary, include an internal section that is never shown on invoices.
+
+Suggested fields:
+
+* Crew Productive Hours
+* Crew Travel Hours
+* Estimated Labor Cost
+* Parts Cost
+* Fuel Estimate
+* Estimated Company Cost
+* Estimated Gross Profit
+
+These values are for internal reporting only.
+
+⸻
+
+Invoice Generation
+
+Clicking Generate Invoice creates a customer invoice using the worksheet totals.
+
+The user should never have to enter the same values twice.
+
+The worksheet becomes the source of truth for service billing.
+
+⸻
+
+Future Flexibility
+
+The Service Billing Worksheet should be completely driven by Billing Profiles.
+
+If Clayton changes its labor rates, only the Billing Profile needs to be updated.
+
+Every future Clayton service job automatically uses the new rates.
+
+The Service Billing Worksheet itself should never require modification when a client’s billing rules change.
+
+The architecture should support multiple Billing Profiles for a single client.
+
+Example:
+
+Clayton Homes - Evansville
+
+* Factory Warranty
+* Contracted Service
+* Customer Pay
+
+Each profile can have different labor rates, mileage rules, reimbursement rules, and technician counts.
+
+The user simply selects the appropriate Billing Profile when creating the service job.
+
+⸻
+
+Out of Scope
+
+* Payroll calculations
+* Employee time tracking
+* Labor analytics
+* Service Knowledge Base
+* Automatic invoice emailing
+* Automatic payment tracking
+
+These will be handled by separate tasks.
+
+⸻
+
+Relevant Files
+
+* lib/db/src/schema/clients.ts — Add Billing Profile table (preferred) or client billing fields.
+* lib/db/src/schema/jobs.ts — Add service billing data storage.
+* artifacts/api-server/src/routes/jobs.ts — Service billing calculation endpoints.
+* artifacts/contractor-app/src/pages/Jobs.tsx — Service Billing panel.
+* artifacts/contractor-app/src/components/ServiceBillingPanel.tsx (new component).
+
+One architectural change I’d make
+
+Instead of adding billing fields directly to the clients table (repair_rate_2tech, drive_rate_2tech, etc.), I’d create a separate Billing Profiles table.
+
+That way a single client can have multiple billing methods. For example, Clayton Homes of Evansville could have one profile for Factory Warranty, another for Contracted Trim-Out Work, and another for Customer Pay Repairs, each with different rates and rules. It gives you much more flexibility without complicating the service workflow. I think that small database decision now will save you from a major redesign later.
