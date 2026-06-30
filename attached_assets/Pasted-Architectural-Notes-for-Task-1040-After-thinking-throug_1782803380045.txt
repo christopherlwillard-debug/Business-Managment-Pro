@@ -1,0 +1,142 @@
+Architectural Notes for Task #1040
+
+After thinking through the Knowledge Base design, I want to establish a few architectural rules before implementation. These aren’t intended to change the core functionality of Task #1040, but rather to define how the Knowledge Base should evolve as the application grows.
+
+1. Knowledge Records are the Source of Truth
+
+Once a job has gone through the Teach the Knowledge Base workflow, the resulting Knowledge Record should become the official historical record for that completed job.
+
+The Knowledge Base should not continuously recalculate historical metrics from live operational data whenever possible. Instead, reports, averages, benchmarks, forecasting, and business intelligence should use the approved Knowledge Records.
+
+The workflow should be:
+
+Create Job
+
+↓
+
+Complete Work
+
+↓
+
+Financials
+
+↓
+
+Labor Summary
+
+↓
+
+Teach the Knowledge Base
+
+↓
+
+Knowledge Record Created
+
+↓
+
+Historical Analytics Updated
+
+This creates a reviewed and approved historical record instead of relying on operational data that may continue changing after the job is completed.
+
+⸻
+
+2. Knowledge Record Status
+
+Instead of only using a simple taught = true/false flag, I would like the Knowledge Record to support a status field so the system can grow without redesigning the database later.
+
+Suggested statuses:
+
+* Draft
+    * Automatically generated from current job data.
+    * Not yet reviewed.
+* Reviewed
+    * Chris has reviewed and possibly edited the values but has not committed them to the Knowledge Base.
+* Accepted
+    * Officially taught to the Knowledge Base.
+    * Included in historical averages.
+* Excluded
+    * Stored for historical reference and auditing but intentionally excluded from Knowledge Base averages.
+
+This provides much more flexibility than a simple boolean while preserving the current workflow.
+
+⸻
+
+3. Snapshot Builder and Model Information
+
+Knowledge Records should preserve what existed at the time the job was completed.
+
+Along with storing foreign keys, each Knowledge Record should also snapshot the builder and model names.
+
+Example:
+
+* builder_id
+* builder_name_snapshot
+* model_id
+* model_name_snapshot
+
+If a builder later changes their name or a model is renamed, the historical Knowledge Record should continue reflecting what the job was originally completed under.
+
+Historical records should never change simply because today’s master data changed.
+
+⸻
+
+4. Historical Reports Should Read Knowledge Records
+
+Whenever practical, reporting features should read from approved Knowledge Records rather than reconstructing values from live job data.
+
+Examples include:
+
+* Average Productive Hours
+* Average Travel Hours
+* Average Crew Size
+* Average Days on Site
+* Average Invoice
+* Average Material Cost
+* Average Consumables
+* Average Gross Profit
+* Average Net Profit
+* Historical Performance reports
+* Future estimating intelligence
+
+If a mistake is discovered later, the correction should be made to the Knowledge Record through the Learning History editor. The version history will preserve the original values, edit reason, and timestamps.
+
+This creates an auditable history instead of silently changing past results.
+
+⸻
+
+5. Confidence Indicator
+
+Every Builder/Model profile should display a confidence indicator based on how many accepted Knowledge Records contributed to the averages.
+
+Examples:
+
+* Based on 2 accepted jobs
+* Based on 18 accepted jobs
+* Based on 74 accepted jobs
+
+The goal is to communicate how reliable the averages are.
+
+⸻
+
+6. Long-Term Vision
+
+The Knowledge Base is becoming much more than a collection of averages.
+
+It is evolving into the company’s historical intelligence engine.
+
+Every completed job should improve future estimates by teaching the application:
+
+* How much productive labor different builders and models require.
+* Typical travel requirements.
+* Average crew size.
+* Average job duration.
+* Average financial performance.
+* Common missing materials.
+* Common factory defects.
+* Warranty frequency.
+* Historical profitability.
+* Future estimating benchmarks.
+
+The long-term objective is for every completed job to make the application smarter while keeping every learned value transparent, reviewable, editable, versioned, and traceable back to the job that created it.
+
+The application should never behave like a black box. Every average should be explainable, every learned value should be inspectable, and Chris should always retain final authority over what becomes part of the company’s historical knowledge.
