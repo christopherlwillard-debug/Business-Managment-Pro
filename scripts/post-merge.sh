@@ -75,7 +75,29 @@ pool.query(\`
   .catch(e => { console.error('[post-merge] 0041_mfh_home_series error:', e.message); pool.end(); process.exit(1); });
 ")
 
-pnpm --filter @workspace/db run push-force </dev/null 2>&1 || true
+# drizzle-kit push --force is intentionally NOT called here.
+# Every schema object has exactly one authoritative creation path: the SQL
+# migration files in lib/db/migrations/. This script applies those files;
+# it does not infer schema from TypeScript.
+#
+# drizzle-kit push --force cannot handle complex renames (e.g. the
+# mfh_manufacturers → mfh_home_series restructure in 0041) and generates
+# invalid DDL that blocks the Replit Publish validator before this script
+# even runs. For local dev / scratch DBs: pnpm --filter @workspace/db run push-force
+#
+# Architectural rule: never rename or restructure production tables via
+# automatic schema inference. All renames must be explicit SQL migrations.
+
+# Apply SQL migration 0042: explicit CREATE TABLE IF NOT EXISTS for all base
+# tables that previously had no authoritative creation file.
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const fs = require('fs');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(fs.readFileSync('migrations/0042_base_schema.sql', 'utf8'))
+  .then(() => { console.log('[post-merge] 0042_base_schema: done'); pool.end(); })
+  .catch(e => { console.error('[post-merge] 0042_base_schema error:', e.message); pool.end(); process.exit(1); });
+")
 
 # Idempotent hotfix: ensure daily_logs.author_name column exists (added in Task #35,
 # migration failed on original post-merge run)
@@ -851,3 +873,28 @@ echo "Seed response: ${SEED_RESPONSE}"
 if echo "${SEED_RESPONSE}" | grep -q '"error"'; then
   echo "Warning: checklist template seed returned an error — check logs. Continuing." >&2
 fi
+
+# Apply SQL migration 0043: extended/secondary tables (vendors, materials,
+# compliance, conversations, sub_payment_records, job_checklist extensions, etc.)
+# Must run AFTER all inline blocks above so FK references to tables created by
+# those blocks (job_checklist_items, job_checklists, etc.) are already satisfied.
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const fs = require('fs');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(fs.readFileSync('migrations/0043_extended_tables.sql', 'utf8'))
+  .then(() => { console.log('[post-merge] 0043_extended_tables: done'); pool.end(); })
+  .catch(e => { console.error('[post-merge] 0043_extended_tables error:', e.message); pool.end(); process.exit(1); });
+")
+
+# Apply SQL migration 0044: ALTER TABLE ADD COLUMN IF NOT EXISTS for all columns
+# added after initial table creation. Runs last so every table it references
+# is guaranteed to exist (created by 0042, 0043, or the inline blocks above).
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const fs = require('fs');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(fs.readFileSync('migrations/0044_gap_columns.sql', 'utf8'))
+  .then(() => { console.log('[post-merge] 0044_gap_columns: done'); pool.end(); })
+  .catch(e => { console.error('[post-merge] 0044_gap_columns error:', e.message); pool.end(); process.exit(1); });
+")
