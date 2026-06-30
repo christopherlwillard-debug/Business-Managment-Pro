@@ -1,0 +1,212 @@
+I actually think that’s the right direction, but after everything we’ve designed over the last month, I’d make one small change.
+
+I wouldn’t call it “Work Category.”
+
+I would call it Workflow.
+
+That may sound like a small wording change, but it changes how the entire app is designed.
+
+Instead of asking:
+
+What type of job is this?
+
+I’d ask:
+
+Which workflow best fits this job?
+
+Then give the user these options:
+
+Manufactured Home Production
+
+(Your primary business)
+
+Used for:
+
+* Trim outs
+* Plumbing hookups
+* Flooring
+* Marriage line
+* Underpinning
+* Dealer work
+* Factory work
+
+This workflow unlocks:
+
+* Builder & Model
+* Smart Pricing
+* Checklists
+* Labor Summary
+* Teach the Knowledge Base
+* Factory Defects
+* Missing Materials
+* Historical Analytics
+
+⸻
+
+Manufactured Home Service
+
+Used for:
+
+* Warranty work
+* Service calls
+* Dealer punch lists
+* Callbacks
+* Repairs
+
+This workflow includes:
+
+* Builder & Model (optional but recommended)
+* Warranty Tracking
+* Service Notes
+* Parts Used
+* Photos
+
+It does not feed the Knowledge Base because it isn’t representative of production labor.
+
+⸻
+
+General Contracting
+
+Used for:
+
+* Decks
+* Kitchens
+* Bathrooms
+* Windows
+* Doors
+* Drywall
+* Roofing
+* Siding
+* Remodeling
+* Repairs
+
+This workflow hides all the manufactured home fields because they aren’t relevant.
+
+⸻
+
+Then Job Type becomes specific to the workflow.
+
+For example:
+
+Manufactured Home Production
+
+Job Type:
+
+* Trim Out
+* Plumbing Hookup
+* Marriage Line
+* Flooring
+* Underpinning
+* Complete Finish
+* Warranty Completion
+
+⸻
+
+Manufactured Home Service
+
+Job Type:
+
+* Warranty Repair
+* Service Call
+* Callback
+* Inspection
+* Dealer Punch List
+
+⸻
+
+General Contracting
+
+Job Type:
+
+* Kitchen Remodel
+* Bathroom Remodel
+* Deck
+* Siding
+* Roofing
+* Window/Door
+* Addition
+* Repair
+* Other
+
+Notice how much cleaner this becomes.
+
+You’re no longer trying to fit “Kitchen Remodel” and “Marriage Line Trim” into the same dropdown.
+
+⸻
+
+Even the Job Card becomes dynamic
+
+Right now every job shows almost everything.
+
+Instead:
+
+Manufactured Home Production
+
+Shows:
+
+* Manufactured Home
+* Pricing
+* Smart Estimate
+* Phases
+* Checklist
+* Labor Summary
+* Knowledge Base
+* Job Financials
+
+⸻
+
+Manufactured Home Service
+
+Shows:
+
+* Warranty
+* Photos
+* Parts
+* Notes
+* Job Financials
+
+No Knowledge Base.
+
+⸻
+
+General Contracting
+
+Shows:
+
+* Estimate
+* Materials
+* Photos
+* Job Financials
+
+No Builder.
+No Model.
+No Factory Defects.
+No Manufactured Home cards.
+
+⸻
+
+Why I think “Workflow” is the better name
+
+A category is just a label.
+
+A workflow changes how the app behaves.
+
+That’s exactly what you’re trying to accomplish.
+
+You’re not just categorizing jobs.
+
+You’re telling the application:
+
+“Build this job using the Manufactured Home Production workflow.”
+
+or
+
+“Build this using the Residential workflow.”
+
+That gives the app permission to show different screens, different fields, different automation, different reporting, and different analytics.
+
+⸻
+
+My one addition
+
+Since manufactured homes are your core business, I’d actually make the workflow selection the very first screen when creating a job.

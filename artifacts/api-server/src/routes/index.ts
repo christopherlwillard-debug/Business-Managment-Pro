@@ -72,6 +72,7 @@ import ownerCapitalRouter from "./owner-capital";
 import checklistTemplatesRouter from "./checklist-templates";
 import jobChecklistsRouter from "./job-checklists";
 import { mfhLibraryRouter, mfhJobRouter } from "./mfh";
+import laborEntriesRouter from "./mfh-labor";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -258,6 +259,7 @@ router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
 // Job-card MFH endpoints (apply/update/reset/snapshot) — usable by anyone with Jobs permission.
 router.use("/mfh", sectionGuard("jobs"), mfhJobRouter);
 router.use("/mfh", sectionGuard("jobs"), requireOwnerForWrites, mfhLibraryRouter);
+router.use("/jobs", sectionGuard("jobs"), laborEntriesRouter);
 
 router.get("/integrations/wix/config", requireOwner, (req, res) => {
   const token = process.env["WIX_WEBHOOK_SECRET"] ?? null;

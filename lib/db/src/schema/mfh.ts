@@ -2,6 +2,8 @@ import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb } fr
 import { jobTypeBenchmarksTable } from "./job-type-benchmarks";
 import { checklistTemplatesTable } from "./job-checklists";
 import { clientsTable } from "./clients";
+import { jobsTable } from "./jobs";
+import { subcontractorsTable } from "./subcontractors";
 
 export const mfhConstructionTypesTable = pgTable("mfh_construction_types", {
   id: serial("id").primaryKey(),
@@ -67,6 +69,47 @@ export const mfhClientPricingTable = pgTable("mfh_client_pricing", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const jobLaborEntriesTable = pgTable("job_labor_entries", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => jobsTable.id, { onDelete: "cascade" }),
+  personName: text("person_name").notNull(),
+  workerType: text("worker_type").notNull().default("sub"),
+  linkedSubcontractorId: integer("linked_subcontractor_id").references(() => subcontractorsTable.id, { onDelete: "set null" }),
+  productiveHours: numeric("productive_hours", { precision: 8, scale: 2 }).notNull().default("0"),
+  travelHours: numeric("travel_hours", { precision: 8, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const jobKnowledgeRecordsTable = pgTable("job_knowledge_records", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().unique().references(() => jobsTable.id, { onDelete: "cascade" }),
+  mfhModelId: integer("mfh_model_id").references(() => mfhModelsTable.id, { onDelete: "set null" }),
+  builderId: integer("builder_id").references(() => mfhManufacturersTable.id, { onDelete: "set null" }),
+  builderNameSnapshot: text("builder_name_snapshot"),
+  modelNameSnapshot: text("model_name_snapshot"),
+  status: text("status").notNull().default("draft"),
+  taughtAt: timestamp("taught_at"),
+  productiveHours: numeric("productive_hours", { precision: 8, scale: 2 }),
+  travelHours: numeric("travel_hours", { precision: 8, scale: 2 }),
+  crewSize: integer("crew_size"),
+  daysOnSite: integer("days_on_site"),
+  invoiceAmount: numeric("invoice_amount", { precision: 12, scale: 2 }),
+  materialCost: numeric("material_cost", { precision: 12, scale: 2 }),
+  consumablesCost: numeric("consumables_cost", { precision: 12, scale: 2 }),
+  grossProfit: numeric("gross_profit", { precision: 12, scale: 2 }),
+  netProfit: numeric("net_profit", { precision: 12, scale: 2 }),
+  callbacks: integer("callbacks").notNull().default(0),
+  warrantyVisit: boolean("warranty_visit").notNull().default(false),
+  missingMaterialsNotes: text("missing_materials_notes"),
+  factoryDefectNotes: text("factory_defect_notes"),
+  originalProductiveHours: numeric("original_productive_hours", { precision: 8, scale: 2 }),
+  editReason: text("edit_reason"),
+  editedAt: timestamp("edited_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export type MfhConstructionType = typeof mfhConstructionTypesTable.$inferSelect;
 export type MfhManufacturer = typeof mfhManufacturersTable.$inferSelect;
 export type MfhModel = typeof mfhModelsTable.$inferSelect;
@@ -74,3 +117,5 @@ export type MfhPricingGuide = typeof mfhPricingGuidesTable.$inferSelect;
 export type MfhGuideItem = typeof mfhGuideItemsTable.$inferSelect;
 export type MfhGuideAddon = typeof mfhGuideAddonsTable.$inferSelect;
 export type MfhClientPricing = typeof mfhClientPricingTable.$inferSelect;
+export type JobLaborEntry = typeof jobLaborEntriesTable.$inferSelect;
+export type JobKnowledgeRecord = typeof jobKnowledgeRecordsTable.$inferSelect;

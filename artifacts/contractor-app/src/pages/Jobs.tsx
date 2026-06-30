@@ -36,6 +36,8 @@ import {
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
 import { MfhPanel } from "@/components/MfhPanel";
+import { KbTrainingModal } from "@/components/KbTrainingModal";
+import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -3115,6 +3117,13 @@ function JobCard({
           </button>
         )}
 
+        {/* Labor Summary for MFH jobs */}
+        {(job as Record<string, unknown>).mfhModelId != null && (
+          <div className="border border-border rounded-xl p-3">
+            <LaborSummaryPanel jobId={job.id} compact />
+          </div>
+        )}
+
         {/* Checklist */}
         <button
           onClick={() => setChecklistPanelOpen(true)}
@@ -4096,6 +4105,7 @@ export default function Jobs() {
 
   type CloseJobDialogSub = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid: number | null };
   const [closeJobDialog, setCloseJobDialog] = useState<{ job: Job; subs: CloseJobDialogSub[]; toSplit: number } | null>(null);
+  const [kbTrainingJob, setKbTrainingJob] = useState<Job | null>(null);
   const [closeJobBusy, setCloseJobBusy] = useState(false);
 
   function computeCloseJobSubAmount(sub: CloseJobDialogSub, toSplit: number): number {
@@ -4433,19 +4443,7 @@ export default function Jobs() {
     } finally { setDeleting(false); setDeleteTarget(null); setRelatedCounts(null); }
   }
 
-  async function handleMarkCompleted(job: Job) {
-    // Invoice gate — preserved from before: unpaid invoice blocks close with a toast
-    const invoiceSummary = invoiceSummaryMap.get(job.id);
-    if (invoiceSummary && invoiceSummary.status !== "paid") {
-      toast({
-        title: "Cannot close job",
-        description: "The invoice has not been paid yet. Collect payment or void the invoice before closing.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Fetch outstanding fixed/allocation subs and profit data in parallel
+  async function proceedWithJobCompletion(job: Job) {
     try {
       const [subsData, profitData] = await Promise.all([
         fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" })
@@ -4455,7 +4453,7 @@ export default function Jobs() {
       ]);
 
       if ((subsData as unknown[]).length === 0) {
-        // No unpaid fixed/allocation subs — close immediately (same as before)
+        // No unpaid fixed/allocation subs — close immediately
         await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
         queryClient.invalidateQueries();
         return;
@@ -4476,6 +4474,27 @@ export default function Jobs() {
         variant: "destructive",
       });
     }
+  }
+
+  async function handleMarkCompleted(job: Job) {
+    // Invoice gate — preserved from before: unpaid invoice blocks close with a toast
+    const invoiceSummary = invoiceSummaryMap.get(job.id);
+    if (invoiceSummary && invoiceSummary.status !== "paid") {
+      toast({
+        title: "Cannot close job",
+        description: "The invoice has not been paid yet. Collect payment or void the invoice before closing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // MFH jobs → show KB training review before completing
+    if ((job as Record<string, unknown>).mfhModelId) {
+      setKbTrainingJob(job);
+      return;
+    }
+
+    await proceedWithJobCompletion(job);
   }
 
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string, currentTotal: number = 0, jobId: number = 0) {
@@ -5237,6 +5256,19 @@ export default function Jobs() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* KB Training Modal — shown when marking an MFH job complete */}
+      {kbTrainingJob && (
+        <KbTrainingModal
+          job={kbTrainingJob as Parameters<typeof KbTrainingModal>[0]["job"]}
+          onClose={() => setKbTrainingJob(null)}
+          onComplete={async (_action) => {
+            const job = kbTrainingJob;
+            setKbTrainingJob(null);
+            await proceedWithJobCompletion(job);
+          }}
+        />
       )}
 
       {/* Close-Job Dialog — shown when unpaid fixed/allocation subs exist on job completion */}

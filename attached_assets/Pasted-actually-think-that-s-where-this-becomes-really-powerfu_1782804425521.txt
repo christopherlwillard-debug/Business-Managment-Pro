@@ -1,0 +1,201 @@
+actually think that’s where this becomes really powerful.
+
+Originally I was thinking, “Don’t let service calls teach the production Knowledge Base.”
+
+But after thinking about it, I think they absolutely should have their own Knowledge Base.
+
+Just not the same one.
+
+I would split it into two knowledge systems.
+
+Production Intelligence
+
+This answers:
+
+“How do we build and estimate this home?”
+
+It learns things like:
+
+* Average Productive Hours
+* Average Crew Size
+* Average Days on Site
+* Gross Profit
+* Material Cost
+* Consumables
+* Factory Defects
+* Missing Materials
+* Trim-out history
+
+This is used for estimating.
+
+⸻
+
+Service Intelligence
+
+This answers:
+
+“What happens after this home is finished?”
+
+Imagine opening a Southern Farmhouse.
+
+Instead of only seeing production data, you also see:
+
+Service History
+
+Completed Service Calls: 47
+
+Most Common Issues:
+
+* Front door adjustment (12)
+* Marriage line drywall cracks (9)
+* Kitchen faucet leaks (6)
+* Porch trim separating (5)
+* Vinyl siding loose (4)
+* Floor squeak by hallway (3)
+
+Average Warranty Visits:
+
+1.2 per home
+
+Average Warranty Cost:
+
+$185
+
+Average Time to Complete:
+
+1.8 hours
+
+Now that’s incredibly valuable.
+
+⸻
+
+Even cooler…
+
+You could break it down by Builder AND Model.
+
+Example:
+
+Southern
+
+Farmhouse
+
+Production Intelligence
+
+* Avg Productive Hours
+* Avg Invoice
+* Avg Profit
+
+Service Intelligence
+
+* 22 Service Calls
+* 11 Warranty Calls
+* Most Common Defect:
+    Marriage Line Crack
+* Most Common Missing Material:
+    Porch Trim
+
+Now you’re learning both before and after delivery.
+
+⸻
+
+Then go one level deeper…
+
+Each individual home gets its own history.
+
+VIN:
+
+123456789
+
+History:
+
+* Trim Out
+* Plumbing Hookup
+* Warranty Call
+* Service Call
+* Door Adjustment
+* Flooring Repair
+
+Five years later…
+
+Dealer calls.
+
+“Can you go back to that home?”
+
+You pull it up.
+
+You immediately know:
+
+* Every visit
+* Every repair
+* Every photo
+* Every invoice
+* Every checklist
+* Every part replaced
+
+That’s huge.
+
+⸻
+
+This is where AI becomes useful later
+
+Years from now your app could say:
+
+“Southern Farmhouse homes built in 2026 have a higher-than-normal rate of front door adjustments within the first six months.”
+
+or
+
+“Homes from Builder X average 2.3 warranty visits while Builder Y averages 0.7.”
+
+or
+
+“This model has generated $18,000 in warranty labor over the last two years.”
+
+You’d never figure that out manually.
+
+⸻
+
+I actually see three intelligence systems now
+
+1. Production Intelligence
+
+Builds estimates.
+
+Learns labor.
+
+Learns profitability.
+
+⸻
+
+2. Service Intelligence
+
+Learns failures.
+
+Learns warranty trends.
+
+Learns callbacks.
+
+Learns common repairs.
+
+⸻
+
+3. Customer Intelligence
+
+Dealer history.
+
+Homeowner history.
+
+Repeat customers.
+
+Average response time.
+
+Satisfaction.
+
+⸻
+
+I would NOT combine them
+
+This is important.
+
+A warranty call should not increase the average productive hours required to trim out a home.
+
+That would corrupt your estimating.

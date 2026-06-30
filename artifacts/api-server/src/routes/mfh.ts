@@ -20,8 +20,9 @@ import {
   jobSubHoursTable,
   invoicesTable,
   clientsTable,
+  jobKnowledgeRecordsTable,
 } from "@workspace/db/schema";
-import { eq, and, asc, inArray, sql, ilike, or } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, sql, ilike, or } from "drizzle-orm";
 import crypto from "crypto";
 
 // ── Seed ──────────────────────────────────────────────────────────────────────
@@ -756,13 +757,17 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
         avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
         avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
       }).from(jobsTable).where(completedWhere).groupBy(jobsTable.mfhModelId),
-      // Q2: avg hours (join only job_sub_hours)
+      // Q2: avg productive hours from accepted KB records
       db.select({
-        modelId: jobsTable.mfhModelId,
-        avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
-      }).from(jobsTable)
-        .innerJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
-        .where(completedWhere).groupBy(jobsTable.mfhModelId),
+        modelId: jobKnowledgeRecordsTable.mfhModelId,
+        avgProductiveHours: sql<string>`AVG(${jobKnowledgeRecordsTable.productiveHours}::numeric)`,
+        acceptedCount: sql<number>`COUNT(*)`,
+      }).from(jobKnowledgeRecordsTable)
+        .where(and(
+          sql`${jobKnowledgeRecordsTable.mfhModelId} IS NOT NULL`,
+          sql`${jobKnowledgeRecordsTable.status} = 'accepted'`,
+        ))
+        .groupBy(jobKnowledgeRecordsTable.mfhModelId),
       // Q3: avg invoice (sum per job first to avoid multiplication, then avg across jobs)
       db.execute(sql`
         SELECT j.mfh_model_id AS "modelId", AVG(inv.total) AS "avgInvoice"
@@ -776,18 +781,21 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
         GROUP BY j.mfh_model_id
       `),
     ]);
-    const hoursMap = new Map(hoursRows.map(r => [r.modelId, r.avgHours]));
+    const kbHoursMap = new Map(hoursRows.map(r => [r.modelId, { avgProductiveHours: r.avgProductiveHours, acceptedCount: r.acceptedCount }]));
     const invoiceMap = new Map((invoiceRows.rows as Array<{ modelId: number; avgInvoice: string }>).map(r => [r.modelId, r.avgInvoice]));
     const statsMap = new Map(baseRows.map(r => [r.modelId, r]));
 
     const result = models.map(m => {
       const s = statsMap.get(m.id);
+      const kb = kbHoursMap.get(m.id);
       return {
         ...m,
         jobCount: s ? Number(s.jobCount) : 0,
         avgQuotedPrice: s?.avgQuotedPrice ? parseFloat(s.avgQuotedPrice) : null,
         avgDealerPrice: s?.avgDealerPrice ? parseFloat(s.avgDealerPrice) : null,
-        avgHours: hoursMap.has(m.id) ? parseFloat(hoursMap.get(m.id)!) : null,
+        avgHours: kb?.avgProductiveHours ? parseFloat(kb.avgProductiveHours) : null,
+        avgProductiveHours: kb?.avgProductiveHours ? parseFloat(kb.avgProductiveHours) : null,
+        acceptedCount: kb ? Number(kb.acceptedCount) : 0,
         avgInvoice: invoiceMap.has(m.id) ? parseFloat(invoiceMap.get(m.id)!) : null,
       };
     });
@@ -889,17 +897,72 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
       .where(eq(mfhClientPricingTable.modelId, modelId))
       .orderBy(asc(clientsTable.name));
 
+    // Knowledge records (learning history) — accepted and excluded
+    const [kbStats, knowledgeRecords] = await Promise.all([
+      db.select({
+        avgProductiveHours: sql<string>`AVG(productive_hours::numeric)`,
+        avgTravelHours: sql<string>`AVG(travel_hours::numeric)`,
+        avgCrewSize: sql<string>`AVG(crew_size::numeric)`,
+        avgDaysOnSite: sql<string>`AVG(days_on_site::numeric)`,
+        avgMaterialCost: sql<string>`AVG(material_cost::numeric)`,
+        avgConsumablesCost: sql<string>`AVG(consumables_cost::numeric)`,
+        avgGrossProfit: sql<string>`AVG(gross_profit::numeric)`,
+        avgNetProfit: sql<string>`AVG(net_profit::numeric)`,
+        acceptedCount: sql<number>`COUNT(*)`,
+      }).from(jobKnowledgeRecordsTable)
+        .where(and(eq(jobKnowledgeRecordsTable.mfhModelId, modelId), sql`status = 'accepted'`)),
+      db.select({
+        id: jobKnowledgeRecordsTable.id,
+        jobId: jobKnowledgeRecordsTable.jobId,
+        jobTitle: jobsTable.title,
+        status: jobKnowledgeRecordsTable.status,
+        taughtAt: jobKnowledgeRecordsTable.taughtAt,
+        productiveHours: jobKnowledgeRecordsTable.productiveHours,
+        travelHours: jobKnowledgeRecordsTable.travelHours,
+        crewSize: jobKnowledgeRecordsTable.crewSize,
+        daysOnSite: jobKnowledgeRecordsTable.daysOnSite,
+        invoiceAmount: jobKnowledgeRecordsTable.invoiceAmount,
+        materialCost: jobKnowledgeRecordsTable.materialCost,
+        consumablesCost: jobKnowledgeRecordsTable.consumablesCost,
+        grossProfit: jobKnowledgeRecordsTable.grossProfit,
+        netProfit: jobKnowledgeRecordsTable.netProfit,
+        callbacks: jobKnowledgeRecordsTable.callbacks,
+        warrantyVisit: jobKnowledgeRecordsTable.warrantyVisit,
+        editReason: jobKnowledgeRecordsTable.editReason,
+        editedAt: jobKnowledgeRecordsTable.editedAt,
+      }).from(jobKnowledgeRecordsTable)
+        .innerJoin(jobsTable, eq(jobKnowledgeRecordsTable.jobId, jobsTable.id))
+        .where(and(
+          eq(jobKnowledgeRecordsTable.mfhModelId, modelId),
+          sql`${jobKnowledgeRecordsTable.status} IN ('accepted','excluded')`,
+        ))
+        .orderBy(desc(jobKnowledgeRecordsTable.taughtAt)),
+    ]);
+
+    const kb = kbStats[0];
+    const p = (v: string | null | undefined) => v ? parseFloat(v) : null;
+
     res.json({
       model: {
         ...model,
         jobCount: Number(stats.jobCount ?? 0),
         avgQuotedPrice: stats.avgQuotedPrice ? parseFloat(String(stats.avgQuotedPrice)) : null,
         avgDealerPrice: stats.avgDealerPrice ? parseFloat(String(stats.avgDealerPrice)) : null,
-        avgHours: stats.avgHours ? parseFloat(String(stats.avgHours)) : null,
+        avgHours: p(kb?.avgProductiveHours),
+        avgProductiveHours: p(kb?.avgProductiveHours),
+        avgTravelHours: p(kb?.avgTravelHours),
+        avgCrewSize: p(kb?.avgCrewSize),
+        avgDaysOnSite: p(kb?.avgDaysOnSite),
+        avgMaterialCost: p(kb?.avgMaterialCost),
+        avgConsumablesCost: p(kb?.avgConsumablesCost),
+        avgGrossProfit: p(kb?.avgGrossProfit),
+        avgNetProfit: p(kb?.avgNetProfit),
+        acceptedCount: Number(kb?.acceptedCount ?? 0),
         avgInvoice: stats.avgInvoice ? parseFloat(String(stats.avgInvoice)) : null,
       },
       jobs,
       clientPricing,
+      knowledgeRecords,
     });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });

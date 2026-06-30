@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import {
   Home, ChevronRight, BarChart2, Briefcase,
   Plus, Trash2, ArrowLeft, TrendingUp, Users, Pencil,
-  BookOpen, ChevronDown, ChevronUp, ArrowUpDown,
+  BookOpen, ChevronDown, ChevronUp, ArrowUpDown, Brain,
 } from "lucide-react";
 import {
   useMfhKnowledgeBase,
@@ -13,6 +13,7 @@ import {
   useUpdateMfhModel,
   useListClients,
   type MfhKnowledgeBaseEntry,
+  type MfhKbRecord,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -129,7 +130,7 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
   }
   if (!data) return null;
 
-  const { model, jobs, clientPricing } = data;
+  const { model, jobs, clientPricing, knowledgeRecords = [] } = data;
   const margin = (model.avgInvoice ?? model.avgQuotedPrice ?? null) != null && model.avgDealerPrice != null
     ? (model.avgInvoice ?? model.avgQuotedPrice ?? 0) - model.avgDealerPrice
     : null;
@@ -377,6 +378,88 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
       </div>
 
       {/* Related jobs */}
+      {/* Learning History */}
+      {knowledgeRecords.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+            <Brain className="w-4 h-4 text-amber-500" />
+            <p className="font-semibold text-foreground text-sm">Learning History</p>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+              {knowledgeRecords.filter((r: MfhKbRecord) => r.status === "accepted").length} taught
+            </span>
+            {knowledgeRecords.filter((r: MfhKbRecord) => r.status === "excluded").length > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                {knowledgeRecords.filter((r: MfhKbRecord) => r.status === "excluded").length} excluded
+              </span>
+            )}
+          </div>
+          {model.acceptedCount != null && model.acceptedCount > 0 && (
+            <div className="px-4 py-2.5 bg-amber-50/50 border-b border-border">
+              <div className="grid grid-cols-4 gap-2">
+                <div className="text-center">
+                  <p className="text-[10px] text-amber-600">Avg Prod. Hrs</p>
+                  <p className="font-bold text-xs text-amber-700">{model.avgProductiveHours != null ? model.avgProductiveHours.toFixed(1) : "—"}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-amber-600">Avg Invoice</p>
+                  <p className="font-bold text-xs text-amber-700">{fmt(model.avgInvoice)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-amber-600">Avg Net Profit</p>
+                  <p className="font-bold text-xs text-amber-700">{fmt(model.avgNetProfit)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-amber-600">Avg Crew</p>
+                  <p className="font-bold text-xs text-amber-700">{model.avgCrewSize != null ? model.avgCrewSize.toFixed(1) : "—"}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="divide-y divide-border/50">
+            {knowledgeRecords.map((r: MfhKbRecord) => (
+              <div key={r.id} className="px-4 py-3 text-xs space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${r.status === "accepted" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                    {r.status === "accepted" ? "Taught" : "Excluded"}
+                  </span>
+                  <span className="font-medium text-foreground truncate flex-1">{r.jobTitle}</span>
+                  {r.taughtAt && (
+                    <span className="text-muted-foreground ml-auto flex-shrink-0">
+                      {fmtDate(new Date(r.taughtAt).toISOString().split("T")[0])}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Prod. Hrs</p>
+                    <p className="font-semibold text-foreground">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Crew</p>
+                    <p className="font-semibold text-foreground">{r.crewSize ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Invoice</p>
+                    <p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Net Profit</p>
+                    <p className="font-semibold text-foreground">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p>
+                  </div>
+                </div>
+                {(r.callbacks || r.warrantyVisit || r.editReason) && (
+                  <div className="text-[10px] text-muted-foreground space-x-2 flex flex-wrap gap-y-0.5">
+                    {r.callbacks ? <span>📞 {r.callbacks} callback{r.callbacks !== 1 ? "s" : ""}</span> : null}
+                    {r.warrantyVisit && <span>🔧 Warranty visit</span>}
+                    {r.editReason && <span className="italic">Note: {r.editReason}</span>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {jobs.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">

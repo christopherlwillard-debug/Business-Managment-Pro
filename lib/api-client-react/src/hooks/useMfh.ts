@@ -22,6 +22,79 @@ export interface MfhModel {
   discontinuedYear?: number | null;
 }
 
+export interface LaborEntry {
+  id: number;
+  jobId: number;
+  personName: string;
+  workerType: string;
+  linkedSubcontractorId?: number | null;
+  productiveHours: string;
+  travelHours: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LaborSummary {
+  entries: LaborEntry[];
+  summary: {
+    crewCount: number;
+    totalProductiveHours: number;
+    totalTravelHours: number;
+    totalHours: number;
+  };
+}
+
+export interface KnowledgeRecord {
+  id?: number;
+  jobId: number;
+  mfhModelId?: number | null;
+  builderId?: number | null;
+  builderNameSnapshot?: string | null;
+  modelNameSnapshot?: string | null;
+  status: string;
+  taughtAt?: string | null;
+  productiveHours?: number | string | null;
+  travelHours?: number | string | null;
+  crewSize?: number | null;
+  daysOnSite?: number | null;
+  invoiceAmount?: number | string | null;
+  materialCost?: number | string | null;
+  consumablesCost?: number | string | null;
+  grossProfit?: number | string | null;
+  netProfit?: number | string | null;
+  callbacks?: number;
+  warrantyVisit?: boolean;
+  missingMaterialsNotes?: string | null;
+  factoryDefectNotes?: string | null;
+  originalProductiveHours?: number | string | null;
+  editReason?: string | null;
+  editedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  isDraft?: boolean;
+}
+
+export interface MfhKbRecord {
+  id: number;
+  jobId: number;
+  jobTitle: string;
+  status: string;
+  taughtAt?: string | null;
+  productiveHours?: string | null;
+  travelHours?: string | null;
+  crewSize?: number | null;
+  daysOnSite?: number | null;
+  invoiceAmount?: string | null;
+  materialCost?: string | null;
+  consumablesCost?: string | null;
+  grossProfit?: string | null;
+  netProfit?: string | null;
+  callbacks?: number;
+  warrantyVisit?: boolean;
+  editReason?: string | null;
+  editedAt?: string | null;
+}
+
 export interface MfhKnowledgeBaseEntry {
   id: number;
   manufacturerId: number;
@@ -38,6 +111,15 @@ export interface MfhKnowledgeBaseEntry {
   avgQuotedPrice?: number | null;
   avgDealerPrice?: number | null;
   avgHours?: number | null;
+  avgProductiveHours?: number | null;
+  avgTravelHours?: number | null;
+  avgCrewSize?: number | null;
+  avgDaysOnSite?: number | null;
+  avgMaterialCost?: number | null;
+  avgConsumablesCost?: number | null;
+  avgGrossProfit?: number | null;
+  avgNetProfit?: number | null;
+  acceptedCount?: number;
   avgInvoice?: number | null;
 }
 
@@ -69,6 +151,7 @@ export interface MfhModelDetail {
   model: MfhKnowledgeBaseEntry;
   jobs: MfhKbJob[];
   clientPricing: MfhKbClientPrice[];
+  knowledgeRecords?: MfhKbRecord[];
 }
 export interface MfhPricingGuide { id: number; manufacturerId: number; name: string; isDealerGuide: boolean; }
 export interface MfhGuideItem { id: number; guideId: number; modelId: number; basePrice: string; }
@@ -367,6 +450,101 @@ export function useDeleteMfhClientPrice() {
       customFetch<{ ok: boolean }>(`/api/mfh/client-pricing/${id}`, { method: "DELETE" }),
     onSuccess: (_r, vars) => {
       qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId] });
+    },
+  });
+}
+
+// ── Labor Entries ─────────────────────────────────────────────────────────────
+
+export function useJobLaborEntries(jobId: number | null | undefined) {
+  return useQuery({
+    queryKey: ["/api/jobs/labor-entries", jobId],
+    queryFn: () => customFetch<LaborSummary>(`/api/jobs/${jobId}/labor-entries`, { method: "GET" }),
+    enabled: jobId != null,
+  });
+}
+
+export function useAddLaborEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { jobId: number; personName: string; workerType: string; linkedSubcontractorId?: number | null; productiveHours: number; travelHours?: number }) =>
+      customFetch<LaborEntry>(`/api/jobs/${data.jobId}/labor-entries`, { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
+    onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: ["/api/jobs/labor-entries", vars.jobId] }),
+  });
+}
+
+export function usePatchLaborEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobId, id, ...data }: { jobId: number; id: number; personName?: string; workerType?: string; productiveHours?: number; travelHours?: number }) =>
+      customFetch<LaborEntry>(`/api/jobs/${jobId}/labor-entries/${id}`, { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
+    onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: ["/api/jobs/labor-entries", vars.jobId] }),
+  });
+}
+
+export function useDeleteLaborEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobId, id }: { jobId: number; id: number }) =>
+      customFetch<{ ok: boolean }>(`/api/jobs/${jobId}/labor-entries/${id}`, { method: "DELETE" }),
+    onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: ["/api/jobs/labor-entries", vars.jobId] }),
+  });
+}
+
+// ── Knowledge Records ─────────────────────────────────────────────────────────
+
+export function useJobKnowledgeRecord(jobId: number | null | undefined) {
+  return useQuery({
+    queryKey: ["/api/jobs/knowledge-record", jobId],
+    queryFn: () => customFetch<KnowledgeRecord>(`/api/jobs/${jobId}/knowledge-record`, { method: "GET" }),
+    enabled: jobId != null,
+  });
+}
+
+export function useSaveKnowledgeRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<KnowledgeRecord> & { jobId: number }) =>
+      customFetch<KnowledgeRecord>(`/api/jobs/${data.jobId}/knowledge-record`, { method: "PUT", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/jobs/knowledge-record", vars.jobId] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
+    },
+  });
+}
+
+export function useAcceptKnowledgeRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: number) =>
+      customFetch<KnowledgeRecord>(`/api/jobs/${jobId}/knowledge-record/accept`, { method: "POST" }),
+    onSuccess: (_r, jobId) => {
+      qc.invalidateQueries({ queryKey: ["/api/jobs/knowledge-record", jobId] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
+    },
+  });
+}
+
+export function useExcludeKnowledgeRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: number) =>
+      customFetch<KnowledgeRecord>(`/api/jobs/${jobId}/knowledge-record/exclude`, { method: "POST" }),
+    onSuccess: (_r, jobId) => {
+      qc.invalidateQueries({ queryKey: ["/api/jobs/knowledge-record", jobId] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
+    },
+  });
+}
+
+export function usePatchKnowledgeRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobId, ...data }: Partial<KnowledgeRecord> & { jobId: number }) =>
+      customFetch<KnowledgeRecord>(`/api/jobs/${jobId}/knowledge-record`, { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/jobs/knowledge-record", vars.jobId] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
     },
   });
 }
