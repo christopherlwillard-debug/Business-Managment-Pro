@@ -1,0 +1,95 @@
+I think this is a good acceptance test, but I would make one important change.
+
+This should not be a development task.
+
+It's an acceptance test.
+
+That means Replit shouldn't be writing code unless the test fails.
+
+I'd change the top to:
+
+Purpose
+
+Validate that the Builder activation/deactivation feature implemented in #1032 behaves correctly in production. This task should not introduce new functionality. Any code changes should only be made if a defect is discovered during validation.
+
+That tells them the objective is to verify behavior, not keep modifying the feature.
+
+I would also remove one thing
+
+This:
+
+Seed test data
+
+I wouldn't have them seed anything anymore.
+
+By the time #1037 runs, you should already have your actual builders.
+
+Instead I'd say:
+
+Test using existing Builder/Model records. If production data is insufficient, create temporary test Builders and Models through the Home Library UI and remove or deactivate them after validation.
+
+That tests the software the way you'll actually use it.
+
+One thing I'd add
+
+I'd add a rollback check.
+
+For example:
+
+Historical Integrity
+
+After deactivating and reactivating a Builder, verify that:
+
+Job history remains unchanged.
+Model relationships remain unchanged.
+No Builder or Model IDs are modified.
+No duplicate records are created.
+
+That's an important test because this feature should only toggle the active flag.
+
+I'd also verify the Home Library itself
+
+Add:
+
+The Home Library continues to display inactive Builders (visually identified as inactive) so they can be reactivated later.
+
+Because otherwise you could deactivate Southern and never find it again.
+
+I actually think inactive builders should still appear in the Home Library, just greyed out or marked "Inactive."
+
+But they should not appear in the Job Card Builder dropdown.
+
+Those are two different views.
+
+One more API check
+
+Instead of just:
+
+GET excludes inactive builders
+
+I'd write:
+
+GET /api/mfh/manufacturers
+
+Returns only active Builders by default.
+Returns active and inactive Builders when includeInactive=true is supplied.
+
+That tests both behaviors.
+
+Overall
+
+I think this task is 9.5/10.
+
+The only reason I don't give it a perfect score is because it still reads a little like a development task instead of an acceptance test.
+
+Once you make those small wording changes, I honestly think it's done.
+
+Then I'd stop creating infrastructure tasks and go back to building features that help you run the business:
+
+Home Knowledge Base
+Baseline Pricing
+Client Overrides
+Performance Statistics
+Eventually Benchmarks
+
+I think you're finally at the point where the foundation is solid enough that every new milestone will directly improve your day-to-day workflow instead of fixing the underlying architecture.
