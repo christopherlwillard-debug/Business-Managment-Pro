@@ -1,0 +1,118 @@
+this is where it went downhill last time, replit knowing rewrote the manufacture as clayton and i wanted the manufacture as the builders which would be southern and model i needed to be farmhouse because in the field thats what we know it as but replit changed it all on me
+
+I remember this, and I think this is exactly why the previous design became confusing.
+
+Looking at your screenshot, Replit interpreted the fields like this:
+
+Manufacturer: Clayton
+Model: Southern
+
+But that's not how you identify homes in the field.
+
+For your workflow, it's more like:
+
+Client: Clayton Homes Evansville (who hired you)
+Builder: Southern (who built the home / what everyone calls it)
+Model: Farmhouse (the floorplan/model name)
+
+So for that example it should be:
+
+Client: Clayton Homes Evansville
+Builder: Southern
+Model: Farmhouse
+Construction: VOG
+Year: 2022 (optional)
+
+Not:
+
+Manufacturer: Clayton ❌
+Model: Southern ❌
+
+The reason Replit did this is because it treated Clayton as the manufacturer of the home instead of the dealer/client. In your business, those are two completely different concepts.
+
+I think the UI should actually be simplified
+
+I'd even rename the section to remove any ambiguity.
+
+Instead of:
+
+Manufactured Home
+
+Manufacturer
+Model
+
+I'd use:
+
+Manufactured Home
+
+Builder (Southern, Giles, Norris, etc.)
+
+Model (Farmhouse, Magnolia, etc.)
+
+Construction (auto)
+
+Year (optional)
+
+That's exactly how you and everyone else in your industry refer to homes.
+
+I'd also make this explicit in your task
+
+I would add a requirement like this:
+
+Terminology
+
+The Manufactured Home selector should use Builder and Model because this matches the terminology used in day-to-day operations.
+
+The selected Client represents the dealer or customer that the job is being performed for and is independent of the Builder.
+
+Example:
+
+Client: Clayton Homes Evansville
+Builder: Southern
+Model: Farmhouse
+
+That removes any room for interpretation.
+
+One more thing
+
+Looking at your screenshot, I also noticed something else.
+
+Right now the flow is:
+
+Client
+
+↓
+
+Manufacturer
+
+↓
+
+Model
+
+For your business it should really be:
+
+Client
+
+↓
+
+Builder
+
+↓
+
+Model
+
+↓
+
+Construction (auto)
+
+↓
+
+Baseline Price
+
+↓
+
+Client Price Override (if one exists)
+
+That matches how you actually think about a job.
+
+The lesson from last time is: don't let the database terminology drive the user interface. The UI should use the words that you and your crew use every day. If your crew says "Southern Farmhouse," then the app should let you select Builder: Southern and Model: Farmhouse. The database can be structured however Replit wants behind the scenes, but the workflow should reflect how you identify homes in the real world.

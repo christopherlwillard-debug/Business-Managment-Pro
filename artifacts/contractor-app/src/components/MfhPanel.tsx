@@ -120,7 +120,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
 
   const activeAddons = guideAddons.filter(a => a.guideId === activeGuideId);
   const TABS: { id: LibTab; label: string }[] = [
-    { id: "manufacturers", label: "Manufacturers" },
+    { id: "manufacturers", label: "Builders" },
     { id: "models", label: "Models" },
     { id: "pricing", label: "Pricing" },
     { id: "addons", label: "Add-ons" },
@@ -142,7 +142,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
 
         {/* Manufacturer selector */}
         <div className="px-5 pt-3 pb-0 flex items-center gap-3 flex-shrink-0">
-          <span className="text-xs font-semibold text-muted-foreground">Manufacturer:</span>
+          <span className="text-xs font-semibold text-muted-foreground">Builder:</span>
           <div className="flex gap-1 flex-wrap flex-1">
             {manufacturers.map(m => (
               <button
@@ -171,7 +171,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
           {/* ── Manufacturers Tab ── */}
           {tab === "manufacturers" && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Add, rename, or remove manufacturers. Deleting a manufacturer removes all its models, guides, and pricing.</p>
+              <p className="text-xs text-muted-foreground">Add, rename, or remove builders. Deleting a builder removes all its models, guides, and pricing.</p>
               <div className="rounded-xl border border-border overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/30">
@@ -203,7 +203,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                     ))}
                     <tr className="border-t border-border bg-muted/10">
                       <td className="px-4 py-2.5 flex gap-2">
-                        <input className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" placeholder="New manufacturer…" value={newMfgName} onChange={e => setNewMfgName(e.target.value)}
+                        <input className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" placeholder="New builder…" value={newMfgName} onChange={e => setNewMfgName(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter" && newMfgName.trim()) { createMfg.mutate({ name: newMfgName.trim() }); setNewMfgName(""); } }} />
                         <button onClick={() => { if (newMfgName.trim()) { createMfg.mutate({ name: newMfgName.trim() }); setNewMfgName(""); } }} disabled={!newMfgName.trim()}
                           className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-40 transition-colors">Add</button>
@@ -583,7 +583,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
           )}
 
           {!activeMfgId && tab !== "manufacturers" && (
-            <p className="text-sm text-muted-foreground text-center py-8">Select or create a manufacturer first.</p>
+            <p className="text-sm text-muted-foreground text-center py-8">Select or create a builder first.</p>
           )}
         </div>
 
@@ -822,7 +822,7 @@ export function MfhPanel({
               {/* Snapshot info */}
               <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-2.5">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <div><span className="text-muted-foreground">Manufacturer</span><p className="font-semibold text-foreground mt-0.5">{manufacturers.find(m => m.id === j.mfhManufacturerId)?.name ?? "—"}</p></div>
+                  <div><span className="text-muted-foreground">Builder</span><p className="font-semibold text-foreground mt-0.5">{manufacturers.find(m => m.id === j.mfhManufacturerId)?.name ?? "—"}</p></div>
                   <div><span className="text-muted-foreground">Model</span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.name ?? models.find(m => m.id === j.mfhModelId)?.name ?? "—"}</p></div>
                   <div><span className="text-muted-foreground">Construction <span className="text-[9px] bg-muted/50 px-1 py-0.5 rounded font-mono">(auto)</span></span><p className="font-semibold text-foreground mt-0.5">{selectedModel?.constructionTypeName ?? models.find(m => m.id === j.mfhModelId)?.constructionTypeName ?? "—"}</p></div>
                   <div><span className="text-muted-foreground">Model Year</span><p className="font-semibold text-foreground mt-0.5">{j.mfhModelYear ?? "—"}</p></div>
@@ -910,12 +910,12 @@ export function MfhPanel({
           {/* ── SELECT MODE ── */}
           {mode === "select" && (
             <div className="overflow-y-auto flex-1 p-4 space-y-4">
-              {/* Manufacturer */}
+              {/* Builder */}
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Manufacturer</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Builder</label>
                 <select className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   value={manufacturerId ?? ""} onChange={e => { setManufacturerId(e.target.value ? parseInt(e.target.value) : null); setModelId(null); setGuideId(null); setSelectedAddonKeys([]); }}>
-                  <option value="">Select manufacturer…</option>
+                  <option value="">Select builder…</option>
                   {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>

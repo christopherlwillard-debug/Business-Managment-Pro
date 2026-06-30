@@ -3676,7 +3676,7 @@ function JobFormDialog({
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Manufacturer</label>
+                <label className="block text-xs text-muted-foreground mb-1">Builder</label>
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   value={mfhMfgId ?? ""}
