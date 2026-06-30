@@ -1,0 +1,96 @@
+think this is a much better task than the earlier proposal, but I’d make one important change before you let Replit implement it.
+
+What I like
+
+This is the right philosophy for where your app is now.
+
+Your contractor app has grown from a small project into something with:
+
+* 40+ tables
+* hundreds of columns
+* production accounting data
+* payroll
+* manufactured home library
+* customer history
+* photos
+* checklists
+
+At this point I would much rather have explicit migrations than schema inference.
+
+⸻
+
+The part I’d change
+
+I would not have Replit determine which tables need explicit creation by using git log.
+
+That is fragile.
+
+Instead, make the requirement deterministic.
+
+Something like:
+
+Audit every current table and column defined in the TypeScript schema. If it is not guaranteed to exist through an explicit migration or explicit post-merge block, create one. Do not rely on deployment history or git history to decide.
+
+That way it doesn’t matter when a column was added.
+
+⸻
+
+I’d also change Step 3
+
+Instead of:
+
+Check git log
+
+I’d say:
+
+Generate an inventory of every schema object in lib/db/src/schema and compare it against the explicit migration logic in post-merge.sh. For every missing table or column, add an explicit idempotent CREATE TABLE IF NOT EXISTS or ALTER TABLE ADD COLUMN IF NOT EXISTS block.
+
+That’s something a machine can verify.
+
+⸻
+
+One more thing I’d add
+
+I would require a deployment audit.
+
+For example:
+
+Produce a report listing:
+
+* Total tables in schema
+* Tables created explicitly
+* Tables relying on migrations
+* Columns added explicitly
+* Columns still relying on Drizzle inference (must be zero)
+
+That gives you confidence this doesn’t happen again.
+
+⸻
+
+One thing I would NOT remove
+
+I would leave the push-force script in lib/db/package.json, exactly as you’ve written.
+
+It’s still useful for:
+
+* local development
+* scratch databases
+* testing
+
+It just shouldn’t run automatically during production publish.
+
+⸻
+
+My version of “Done”
+
+I would actually change it to this:
+
+* ✅ Every production schema change has an explicit, idempotent migration path.
+* ✅ post-merge.sh is the only production schema migration mechanism.
+* ✅ drizzle-kit push --force is never executed automatically during Publish.
+* ✅ Zero production schema objects rely on automatic schema inference.
+* ✅ A verification report confirms complete migration coverage.
+
+⸻
+
+Overall, I think this is the right direction. The only refinement I’d make is to replace the “check git history” approach with a complete schema audit. That’s more robust, easier to verify, and won’t miss anything because of when it was committed.
