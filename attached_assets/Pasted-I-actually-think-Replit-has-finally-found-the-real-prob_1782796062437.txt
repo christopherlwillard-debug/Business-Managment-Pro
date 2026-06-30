@@ -1,0 +1,380 @@
+I actually think Replit has finally found the real problem.
+
+This is not a UI bug.
+It's not a schema bug.
+It's a bad seed data problem.
+
+From what they found:
+
+Table	Current Data	Should Be
+Clients	Clayton Homes Evansville	✅ Correct
+mfh_manufacturers	Clayton	❌ Wrong
+mfh_models	Southern, Giles, Norris...	❌ Wrong
+
+Those values are shifted down one level.
+
+What you really want is:
+
+Builders
+Southern
+Giles
+Norris
+Champion
+Tru
+Addison
+Appalachia
+Middlebury
+Rutledge
+Wakarusa
+
+Then under Southern you would create models like:
+
+Farmhouse
+Magnolia
+Breeze
+Legacy
+etc.
+
+Then when creating a job the workflow becomes:
+
+Client
+Clayton Homes Evansville
+
+↓
+
+Builder
+Southern
+
+↓
+
+Model
+Farmhouse
+
+↓
+
+Construction
+VOG
+
+↓
+
+Price
+$1,500
+
+That matches how you actually work.
+
+One thing I would not do
+
+I would not tell Replit to simply:
+
+"clear out the models table"
+
+That sounds dangerous.
+
+Instead I'd tell them something like:
+
+Since the current production data was entered using the wrong hierarchy, perform a one-time data migration that:
+
+Creates builder records from the existing builder names currently stored as models.
+Removes the incorrect "Clayton" builder record after verifying it is not referenced by valid data.
+Archives or deletes the incorrectly entered model records only after confirming they represent builders rather than actual floor plans.
+Preserve referential integrity for any existing jobs or prompt if any production jobs would be affected.
+
+The reason is simple: today it's empty or test data. Six months from now you might have 300 jobs linked to those IDs. You want migrations to be safe by design.
+
+I would also add one requirement
+
+I'd ask Replit to seed the database correctly this time.
+
+For example:
+
+Builders
+Southern
+Giles
+Norris
+Champion
+Tru
+Addison
+Appalachia
+Middlebury
+Rutledge
+Wakarusa
+
+Then leave the Models table empty until you enter real models.
+
+That way you don't accidentally repeat the mistake.
+
+After this...
+
+I think #1028 becomes incredibly simple.
+
+Because now your data model is finally:
+
+Client
+    ↓
+Builder
+    ↓
+Model
+    ↓
+Construction
+    ↓
+Baseline Price
+    ↓
+Client Override
+
+No weird translations.
+
+No "Clayton = Builder."
+
+No "Southern = Model."
+
+Everything matches the way you and your crew already identify homes in the field.
+
+This is exactly the kind of issue that's worth fixing before building more features. Once the underlying data reflects your real-world workflow, the Knowledge Base, pricing, and future statistics will all make much more sense and you'll avoid carrying this confusion into every new feature.
+
+#1032 - Fix MFH Data — Promote Brands to Builders
+What & Why
+The production MFH tables have the wrong data at every level. A one-time migration is needed to fix it before any more data is entered:
+
+mfh_manufacturers contains "Clayton" — which is a dealer/client, not a home builder
+mfh_models contains Southern, Giles, Norris, Champion, Tru, Addison, Appalachia, Middlebury, Rutledge, Wakarusa — these are home builders (brands), not floor-plan model names
+Correct structure:
+
+Builders (mfh_manufacturers): Southern, Giles, Norris, Champion, Tru, Addison, Appalachia, Middlebury, Rutledge, Wakarusa
+Models (mfh_models): empty after migration — user enters actual floor plan names (Farmhouse, Magnolia, etc.) through the UI
+Clayton: already in the clients table; must be removed from mfh_manufacturers
+Done looks like
+Home Library → Builders tab shows: Southern, Giles, Norris, Champion, Tru, Addison, Appalachia, Middlebury, Rutledge, Wakarusa
+"Clayton" is gone from the Builders list entirely
+Models tab is empty and ready for the user to add real floor plan names (Farmhouse, Magnolia, Breeze, etc.) under each builder
+The Edit Job form Builder dropdown shows Southern, Giles, Norris, etc. — not Clayton
+Any jobs that previously referenced the old wrong IDs have their mfh fields cleared (they can be re-applied correctly)
+UI has brief helper text on the Builder dropdown: "who built the home (Southern, Giles, etc.)" so the distinction from Client is crystal clear
+Out of scope
+Entering the actual model/floor-plan names — the user does this through the UI after the migration
+Any changes to the clients table
+Steps
+Write and trigger the migration — Add a new endpoint under admin/migrations that: a. Creates new mfh_manufacturers rows for each of the 10 current model names (Southern, Giles, Norris, Champion, Tru, Addison, Appalachia, Middlebury, Rutledge, Wakarusa) in both dev and production b. Deletes all rows from mfh_models c. Deletes "Clayton" (and any other non-builder entries) from mfh_manufacturers d. Sets mfhManufacturerId and mfhModelId to null on all jobs that referenced the old invalid IDs Trigger it via curl with MIGRATION_KEY against the production server.
+
+Add UI helper text — On the Builder dropdown in both the Edit Job form and the MFH job card panel, add a short subtitle/hint: "the company that built the home — e.g. Southern, Giles" so it's immediately clear this is not the client/dealer.
+
+Relevant files
+artifacts/api-server/src/routes/admin-migrations.ts
+artifacts/contractor-app/src/components/MfhPanel.tsx:910-925
+artifacts/contractor-app/src/pages/Jobs.tsx:3671-3700
+
+I think this is almost there, but I'd make two important changes before giving it to Replit.
+
+1. Don't hard-code the list of builders in the migration
+
+Right now you're saying:
+
+Create new mfh_manufacturers rows for each of the 10 current model names...
+
+I'd instead describe the outcome, not the exact implementation.
+
+For example:
+
+Migrate the existing builder names that were incorrectly stored as models into the mfh_manufacturers table. The migration should preserve unique builder names and avoid creating duplicates if it is run more than once.
+
+That's safer and more maintainable.
+
+2. Don't delete data until after it's migrated
+
+This is the one part I'd definitely change.
+
+Instead of:
+
+b. Deletes all rows from mfh_models
+
+I'd write:
+
+After confirming the builder records have been created successfully and any existing job references have been handled, remove the incorrectly entered model records so the Models list is ready for actual floor-plan names.
+
+The difference is subtle, but it makes the migration much safer.
+
+I'd also tweak the "Done looks like"
+
+Instead of:
+
+Models tab is empty...
+
+I'd say:
+
+Models tab contains no incorrectly migrated builder names and is ready for the user to add actual floor-plan models (Farmhouse, Magnolia, Breeze, etc.) under each builder.
+
+That way if you already entered one legitimate model before the migration, it doesn't get wiped just because the task expected an empty table.
+
+One more suggestion
+
+I'd add a validation rule so this never happens again.
+
+For example:
+
+Validation
+
+When creating or editing a manufactured home:
+
+Builder must be selected before a Model can be selected.
+The Model list should only display models that belong to the selected Builder.
+
+That one rule prevents someone from accidentally creating another "Southern as a model" situation in the future.
+
+Overall
+
+I think this is the right task because it fixes the data before you build on top of it. That's much better than trying to work around bad data with more code.
+
+After #1032, your hierarchy becomes clean:
+
+Client (Dealer)
+    Clayton Homes Evansville
+
+        ↓
+
+Builder
+    Southern
+
+        ↓
+
+Model
+    Farmhouse
+
+        ↓
+
+Construction
+    VOG
+
+        ↓
+
+Baseline Price
+
+That's simple, matches how you work in the field, and gives #1028 a solid foundation. I wouldn't build any more Manufactured Home features until this migration is complete.
+
+i need to be able to add builders and models as well 
+
+Absolutely. In fact, I think that's a requirement that should be explicitly stated, because otherwise Replit might assume builders and models are fixed reference data.
+
+I'd actually change the design slightly.
+
+Builder Library
+
+You should be able to:
+
+Add Builder
+Edit Builder
+Deactivate Builder
+Reactivate Builder
+
+Examples:
+
+Southern
+Giles
+Norris
+Champion
+Tru
+Wakarusa
+
+These should be managed from the Home Library, not hardcoded.
+
+Model Library
+
+Once a builder is selected, you should be able to manage its models.
+
+For example:
+
+Southern
+
+Farmhouse
+Magnolia
+Breeze
+Legacy
+
+Champion
+
+Prime
+Titan
+Aspen
+
+You should be able to:
+
+Add Model
+Edit Model
+Deactivate Model
+Reactivate Model
+
+Each model should store:
+
+Builder
+Model Name
+Construction Type
+Baseline Price
+Active/Inactive
+Job Card Workflow
+
+The workflow becomes:
+
+Client
+↓
+Builder
+↓
+Model
+↓
+Construction (auto)
+↓
+Baseline Price
+↓
+Client Price Override (if one exists)
+
+The Model dropdown should remain disabled until a Builder is selected, and it should only show models for that selected builder.
+
+Home Library
+
+I'd organize it like this:
+
+Manufactured Home Knowledge Base
+
+Builders
+    + Add Builder
+
+Southern
+    27 Models
+
+Champion
+    14 Models
+
+Giles
+    8 Models
+
+Clicking Southern would show:
+
+Southern
+
+Models
+
+Farmhouse
+Magnolia
+Breeze
+Legacy
+
++ Add Model
+
+Clicking Farmhouse opens the Home Details page.
+
+I'd also update #1032
+
+Under Done looks like, I'd add:
+
+Builders can be added, edited, activated, and deactivated from the Home Library.
+Models can be added, edited, activated, and deactivated under their respective Builder.
+The Job Card Builder dropdown displays active builders only.
+The Model dropdown displays only active models belonging to the selected Builder.
+
+That way, once the migration is complete, you don't have to ask Replit for another task just to make the library usable.
+
+One more thing
+
+I'd also ask Replit to enforce this rule:
+
+A Builder can exist with no models yet.
+A Model cannot exist without a Builder.
+
+That's how the real world works—you might add a new builder today and not know any of their floor plans until the first home arrives. That small rule keeps the data clean and prevents orphaned models.

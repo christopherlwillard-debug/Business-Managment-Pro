@@ -1,0 +1,118 @@
+I think this is in really good shape. I only have a few refinements to keep it from growing into another complicated system.
+
+1. Separate the migration from the CRUD work
+
+Right now #1032 is doing two different things:
+
+One-time migration (fix bad data)
+Permanent Builder/Model management
+
+I'd keep them under the same milestone, but make it clear they're separate deliverables.
+
+Deliverable 1 — One-Time Data Migration
+
+Fix the existing production data.
+
+Deliverable 2 — Builder & Model Management
+
+Create the permanent UI for maintaining builders and models.
+
+That makes it easier to test and, if the migration fails, the CRUD work isn't blocked.
+
+2. Don't use "delete"
+
+Instead of saying:
+
+Deletes the "Clayton" manufacturer entry...
+
+I'd say:
+
+Removes the incorrect "Clayton" Builder record after confirming it is not referenced by valid data.
+
+Likewise:
+
+removes the model records that represent builders...
+
+instead of "deletes."
+
+It leaves Replit free to archive, soft-delete, or hard-delete as appropriate.
+
+3. Add one validation rule
+
+This is the one thing I think is missing.
+
+Validation Rules
+Builder names must be unique.
+Model names must be unique within a Builder.
+The same model name may exist under different builders.
+
+For example, this should be allowed:
+
+Southern
+    Farmhouse
+
+Champion
+    Farmhouse
+
+But this should not:
+
+Southern
+    Farmhouse
+    Farmhouse
+
+That's a very common relational database rule and will save headaches later.
+
+4. Protect Builders from accidental deletion
+
+Instead of allowing deletion of builders that already have models or jobs, I'd require deactivation.
+
+Add this requirement:
+
+Builders or Models that are referenced by existing jobs cannot be permanently deleted. They may only be deactivated.
+
+That protects your historical data.
+
+5. One tiny UI improvement
+
+Instead of:
+
+Models tab...
+
+I'd make it hierarchical.
+
+Builders
+
+Southern
+    Models
+        Farmhouse
+        Magnolia
+        Breeze
+
+Champion
+    Models
+        Prime
+        Aspen
+
+That's much easier to understand than separate Builder and Model lists.
+
+I would also add one line to the philosophy
+
+This is something I think Replit should keep in mind while building:
+
+The Manufactured Home Knowledge Base should reflect how homes are identified in the field, not how the database is structured internally.
+
+That's the lesson learned from this whole issue.
+
+Your crew doesn't say:
+
+Manufacturer ID 4 → Model ID 12
+
+They say:
+
+Southern Farmhouse
+
+The UI should always match that mental model.
+
+Overall
+
+I think this is now a solid milestone. It fixes the data, gives you the tools to maintain it correctly, and establishes rules that prevent the same mistakes from happening again. Most importantly, it stays focused on making the Manufactured Home Knowledge Base accurate and easy to use, without drifting into unnecessary complexity. Once this is complete, you'll have a clean foundation for the pricing and statistics work you've planned next.

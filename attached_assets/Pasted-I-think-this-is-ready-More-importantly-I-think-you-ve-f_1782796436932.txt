@@ -1,0 +1,67 @@
+I think this is ready.
+
+More importantly, I think you've finally separated the work into logical phases:
+
+#1032: Fix the data hierarchy and build the library.
+#1028: Add pricing and the knowledge base details.
+Future: Statistics, benchmarks, forecasting.
+
+That's a much healthier progression than trying to build everything at once.
+
+I have one final suggestion
+
+There's one sentence I'd add because it answers the question you asked me earlier: "Am I building the Home Library or is Replit?"
+
+Right now it's implied, but I'd make it explicit.
+
+Under Deliverable 2 – Builder & Model Management, add this:
+
+The Home Library must be fully manageable through the UI. After this milestone, users should be able to add, edit, activate, and deactivate Builders and Models without requiring database edits, migrations, or developer assistance.
+
+That one sentence tells Replit exactly what success looks like.
+
+I would also tweak one wording
+
+You currently say:
+
+Edit (rename)
+
+I'd just say:
+
+Edit
+
+Because later you may want to edit additional fields besides the name, such as:
+
+Notes
+Default construction type
+Active status
+Future metadata
+
+You don't want the spec to accidentally limit editing to only renaming.
+
+Other than that...
+
+I wouldn't touch it.
+
+I actually think you've reached the point where adding more requirements would start making it worse instead of better.
+
+Your milestones now make sense:
+
+#1032
+Fix bad data.
+Build the Builder/Model library.
+Give you a UI to maintain it forever.
+#1028
+Add baseline pricing.
+Add client overrides.
+Add Home Details.
+Add historical statistics.
+Future
+Benchmarks.
+Reporting.
+Forecasting.
+Business intelligence.
+
+That sequence is exactly how I'd build it.
+
+One last piece of advice: once #1032 is complete, spend a little time entering real builders and models before moving on to #1028. Using the library with actual production data will often reveal small workflow improvements (searching, sorting, bulk entry, etc.) that are much easier to address before you layer pricing and analytics on top. I think you'll end up with a much better system by letting each phase settle before starting the next one.

@@ -1,0 +1,100 @@
+think this is the best version you've written so far. It's clear, scoped, and—most importantly—it fixes the foundation before adding new features.
+
+There is only one thing I would change, and I think it's important enough to change before sending it to Replit.
+
+Don't make the migration hard-coded
+
+Right now you have:
+
+Reads builder names currently stored as mfh_models and creates corresponding mfh_manufacturers rows...
+
+That assumes every model in production is actually a builder. Today that's true, but it's a brittle assumption.
+
+I'd change it to something like:
+
+Inspect the existing production data and migrate any records that represent builders but were incorrectly stored as models. The migration should be safe, idempotent, and preserve any valid floor-plan models that may already exist.
+
+That makes the migration resilient if you've added a legitimate model before running it.
+
+One more thing I'd add
+
+I think you're missing one very practical validation rule.
+
+Prevent Builder Changes on Used Models
+
+Suppose you have:
+
+Southern
+    Farmhouse
+
+and 75 completed jobs.
+
+Someone accidentally edits it to:
+
+Champion
+    Farmhouse
+
+Now those 75 jobs appear to have been Champion homes.
+
+That's bad.
+
+I'd add:
+
+If a model has been used on one or more jobs, its associated Builder cannot be changed. To move it to another Builder, create a new model under the new Builder and deactivate the old one if appropriate.
+
+That protects the integrity of your historical data.
+
+I also like your hierarchy
+
+This:
+
+Builders
+
+Southern
+    Farmhouse
+    Magnolia
+
+Champion
+    Prime
+    Aspen
+
++ Add Builder
+
+is exactly how I'd build it.
+
+No tabs.
+
+No switching between Builders and Models.
+
+Everything is visible in one hierarchy.
+
+That's how Windows Explorer works.
+
+That's how file systems work.
+
+It's intuitive.
+
+I think you should stop here
+
+One thing I've noticed over the last week is that every time you kept adding "just one more thing," the feature became harder to build and easier to misunderstand.
+
+This specification doesn't have that problem.
+
+It has:
+
+A clear philosophy.
+Two concrete deliverables.
+Validation rules.
+Out-of-scope items.
+Relevant files.
+
+That's enough.
+
+I'd resist the temptation to add baseline pricing, statistics, or anything from #1028 into this task. Those belong in the next milestone.
+
+My suggested sequence
+#1032 — Fix the hierarchy and make Builder/Model management work.
+#1028 — Add baseline pricing, client overrides, Home Details, and historical statistics.
+Future — Benchmarks, reporting, forecasting, and analytics.
+
+That sequence gives you a clean foundation and minimizes the risk of another redesign. I think this is the right place to draw the line and let Replit build it.

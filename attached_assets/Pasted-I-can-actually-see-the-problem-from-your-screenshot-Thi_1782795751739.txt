@@ -1,0 +1,126 @@
+I can actually see the problem from your screenshot.
+
+This wasn't just a terminology issue. Replit fixed the labels, but not the data model or workflow.
+
+Your screenshot now shows:
+
+Client: Clayton Homes Evansville ✅
+Builder: Clayton ❌
+Model: Southern ❌
+
+It should be:
+
+Client: Clayton Homes Evansville
+Builder: Southern
+Model: Farmhouse
+
+The problem is much deeper than renaming "Manufacturer" to "Builder."
+
+What happened
+
+Replit assumed:
+
+Manufacturer Table
+    Clayton
+        └── Southern
+
+when your data is actually:
+
+Client
+    Clayton Homes Evansville
+
+Builder
+    Southern
+
+Model
+    Farmhouse
+
+Those are three completely different things.
+
+This is the relationship you actually need
+Client (Dealer)
+    Clayton Homes Evansville
+
+Home
+    Builder: Southern
+    Model: Farmhouse
+    Construction: VOG
+
+The client should never determine the builder.
+
+Likewise, the builder should never become the model.
+
+I think I know why this happened
+
+Based on everything we've discussed, I suspect your existing tables look something like this:
+
+mfh_manufacturers
+    Clayton
+    Champion
+    Cavco
+
+Those were originally intended to be manufacturers.
+
+But in your business they're actually clients/dealers.
+
+Meanwhile:
+
+Southern
+Norris
+Giles
+
+ended up being stored as models.
+
+So when Replit simply renamed the UI:
+
+Manufacturer → Builder
+
+the underlying data was still wrong.
+
+That's why you ended up with:
+
+Builder = Clayton
+
+Model = Southern
+
+instead of:
+
+Builder = Southern
+
+Model = Farmhouse
+
+This is what I'd tell Replit
+
+I would stop them before they build anything else and send something like this:
+
+The issue is not the UI labels—it is the underlying data model.
+
+In our workflow:
+
+Client = the dealer or customer (e.g., Clayton Homes Evansville, Champion, Cavco).
+Builder = the company that built the manufactured home (e.g., Southern, Giles, Norris).
+Model = the floor plan or model name (e.g., Farmhouse, Magnolia, Breeze).
+
+These are three independent concepts and must not be conflated.
+
+The current implementation is displaying dealer data as the Builder and builder data as the Model. Simply changing labels does not fix this.
+
+Before implementing the Manufactured Home Knowledge Base, please review the existing MFH tables and determine whether the current mfh_manufacturers table is actually storing builders or dealers. If the data model is incorrect, migrate it so that:
+
+Client remains the dealer/customer.
+Builder represents the company that built the home.
+Model represents the actual home model.
+
+The Job Card should ultimately follow this workflow:
+
+Client → Builder → Model → Construction → Price
+
+I would pause #1028 until this is fixed
+
+This is one place where I wouldn't continue building.
+
+If you build the Knowledge Base on top of the wrong relationships, you'll spend months untangling it later.
+
+I'd have Replit verify the data model first. Once Builder, Model, and Client each represent the correct real-world concept, then #1028 becomes a clean, straightforward feature instead of another redesign.
+
+I think you've identified the real root cause this time: it wasn't the labels—it was that the underlying entities were modeled incorrectly. Fixing that first will make everything that follows much simpler.

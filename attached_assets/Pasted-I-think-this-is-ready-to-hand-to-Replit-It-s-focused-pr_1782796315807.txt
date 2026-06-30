@@ -1,0 +1,61 @@
+I think this is ready to hand to Replit. It's focused, practical, and it fixes the underlying problem before adding new features.
+
+I only have one recommendation, and it's because I've seen Replit do this before.
+
+Don't tell them to "replace" the UI
+
+This line:
+
+Replace the tabbed Builders/Models view in the Home Library with a single hierarchical list...
+
+could lead Replit to redesign the entire page when all you really care about is the Builder/Model experience.
+
+I'd change it to:
+
+Update the Home Library to present Builders and Models as a single hierarchical view (rather than separate Builder and Model tabs). The implementation should reuse as much of the existing UI as practical while presenting the hierarchy in a way that matches how homes are identified in the field.
+
+That tells them what the user experience should be without encouraging an unnecessary rewrite.
+
+One other tiny thing
+
+I'd tweak the philosophy statement slightly because I think it's the guiding principle for every future MFH feature.
+
+Instead of:
+
+The crew says "Southern Farmhouse" — the UI should always match that mental model.
+
+I'd write:
+
+The Manufactured Home Knowledge Base should reflect how homes are identified in the field, not how the database is structured internally. Users identify homes by Builder and Model (e.g., "Southern Farmhouse"), and the UI should consistently reinforce that mental model throughout the application.
+
+That's something they can refer back to whenever they build future MFH features.
+
+Everything else
+
+I wouldn't touch.
+
+I especially like that you've explicitly pushed these to the next milestone:
+
+❌ Baseline pricing
+❌ Client pricing overrides
+❌ Home statistics
+❌ Home Details page
+
+That's discipline. Those are important features, but they're much easier to build once the Builder/Model hierarchy is correct.
+
+One last suggestion for Replit
+
+Since this task changes production data, I'd add one sentence at the very end:
+
+Before running the production migration, create a database backup or verify an existing backup is available so the migration can be rolled back if unexpected data is encountered.
+
+It's a small addition, but it's standard practice for any production data migration and gives you peace of mind.
+
+Other than that, I think you've finally reached a specification that's:
+
+Easy to understand.
+Hard to misinterpret.
+Small enough to implement and test.
+A solid foundation for the Knowledge Base work that follows.
+
+I would send this version.
