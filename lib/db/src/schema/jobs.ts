@@ -80,7 +80,7 @@ export const jobsTable = pgTable("jobs", {
   workflow: text("workflow"),
   serviceBilling: jsonb("service_billing").$type<ServiceBilling>(),
   mfhConstructionType: text("mfh_construction_type"),
-  mhProductionServices: jsonb("mh_production_services").$type<{ id: number; name: string }[]>(),
+  mhProductionServices: jsonb("mh_production_services").$type<number[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

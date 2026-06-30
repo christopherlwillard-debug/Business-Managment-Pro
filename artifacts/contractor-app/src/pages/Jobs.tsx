@@ -2892,11 +2892,15 @@ function JobCard({
                 </span>
               )}
               {jobWorkflow === "mh_production" && Array.isArray((job as Record<string, unknown>).mhProductionServices) &&
-                ((job as Record<string, unknown>).mhProductionServices as { id: number; name: string }[]).map(s => (
-                  <span key={s.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
-                    {s.name}
-                  </span>
-                ))
+                ((job as Record<string, unknown>).mhProductionServices as number[]).map(svcId => {
+                  const svc = allProductionServiceTypes.find(t => t.id === svcId);
+                  if (!svc) return null;
+                  return (
+                    <span key={svcId} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                      {svc.name}
+                    </span>
+                  );
+                })
               }
               {hasSubExpenses && localSubPaid && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
@@ -3476,8 +3480,8 @@ function JobFormDialog({
   const [mfhConstructionType, setMfhConstructionType] = useState<string>(
     (editJob as Record<string, unknown>)?.mfhConstructionType as string ?? ""
   );
-  const [mhProductionServices, setMhProductionServices] = useState<{ id: number; name: string }[]>(
-    (editJob as Record<string, unknown>)?.mhProductionServices as { id: number; name: string }[] ?? []
+  const [mhProductionServices, setMhProductionServices] = useState<number[]>(
+    (editJob as Record<string, unknown>)?.mhProductionServices as number[] ?? []
   );
   const [showAddService, setShowAddService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
@@ -3524,7 +3528,7 @@ function JobFormDialog({
   async function handleAddService() {
     if (!newServiceName.trim()) return;
     const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim() });
-    setMhProductionServices(prev => [...prev, { id: created.id, name: created.name }]);
+    setMhProductionServices(prev => [...prev, created.id]);
     setNewServiceName("");
     setShowAddService(false);
   }
@@ -3537,7 +3541,7 @@ function JobFormDialog({
     setRemoveSubPrompt(null);
     setSelectedWorkflow(editJob?.workflow ?? null);
     setMfhConstructionType((editJob as Record<string, unknown>)?.mfhConstructionType as string ?? "");
-    setMhProductionServices((editJob as Record<string, unknown>)?.mhProductionServices as { id: number; name: string }[] ?? []);
+    setMhProductionServices((editJob as Record<string, unknown>)?.mhProductionServices as number[] ?? []);
     setBuilderQuery("");
     setModelQuery("");
     setShowAddService(false);
@@ -3821,14 +3825,14 @@ function JobFormDialog({
             </label>
             <div className="rounded-xl border border-border p-3 space-y-2">
               {productionServiceTypes.map(svc => {
-                const isChecked = mhProductionServices.some(s => s.id === svc.id);
+                const isChecked = mhProductionServices.includes(svc.id);
                 return (
                   <label key={svc.id} className="flex items-center gap-2.5 cursor-pointer group">
                     <input type="checkbox" className="rounded accent-amber-500"
                       checked={isChecked}
                       onChange={() => {
-                        if (isChecked) setMhProductionServices(prev => prev.filter(s => s.id !== svc.id));
-                        else setMhProductionServices(prev => [...prev, { id: svc.id, name: svc.name }]);
+                        if (isChecked) setMhProductionServices(prev => prev.filter(id => id !== svc.id));
+                        else setMhProductionServices(prev => [...prev, svc.id]);
                       }}
                     />
                     <span className="text-sm text-foreground group-hover:text-amber-700 transition-colors">{svc.name}</span>
@@ -4314,6 +4318,7 @@ export default function Jobs() {
   const updateJob                         = useUpdateJob();
   const { data: allLogs = [] }            = useListDailyLogs();
   const { data: allMaterialLists = [] }   = useListMaterialLists();
+  const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes();
 
   // Fetch subcontractor-category expenses to know which jobs have sub expenses
   const { data: subExpenseData = [] } = useQuery({

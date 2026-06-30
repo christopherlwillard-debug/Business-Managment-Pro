@@ -183,7 +183,7 @@ export interface CreateJobRequest {
   phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
   mfhConstructionType?: string | null;
-  mhProductionServices?: { id: number; name: string }[] | null;
+  mhProductionServices?: number[] | null;
 }
 
 export interface DraftLineItem {
