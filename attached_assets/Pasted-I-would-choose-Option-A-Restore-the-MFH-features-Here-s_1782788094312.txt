@@ -1,0 +1,61 @@
+I would choose Option A: Restore the MFH features.
+
+Here's why.
+
+You spent a lot of time building the Manufactured Home functionality because it fits your business. The problem wasn't the feature itself—it was the later database restructuring and rename attempts.
+
+Right now, your production database still contains all of your MFH tables. The rollback simply removed the schema definitions from your code. That's why Drizzle is trying to delete everything.
+
+What I would restore
+
+Restore the original MFH implementation from before today's changes:
+
+✅ lib/db/src/schema/mfh.ts
+✅ The export * from "./mfh"; line in lib/db/src/schema/index.ts
+✅ The original API routes
+✅ The original Job Card MFH panel
+✅ The original Home Library
+
+Do not restore any of the later work that:
+
+renamed Manufacturer → Home Series
+renamed Model → Series in the database
+added complex migrations
+changed foreign keys
+modified production migration logic
+
+Restore only the original feature that was already working.
+
+Then publish
+
+Once the schema files match what's already in production again, Drizzle should stop trying to delete:
+
+mfh_models
+mfh_manufacturers
+mfh_pricing_guides
+mfh_guide_items
+mfh_guide_addons
+mfh_construction_types
+
+and it should also stop trying to drop all of the jobs and estimates MFH columns.
+
+After everything is stable
+
+Then make the small changes you originally wanted:
+
+UI only
+
+"Manufacturer" → Builder
+"Model" → Series
+
+No table renames.
+No foreign key renames.
+No database migrations.
+
+That gives you the wording you wanted without risking your production database again.
+
+This is what I'd tell the Replit agent
+
+Restore the original Manufactured Home feature that existed before today's changes. Recreate lib/db/src/schema/mfh.ts, restore its export in lib/db/src/schema/index.ts, and restore the original MFH API routes and UI exactly as they were before the Home Series refactor. Do not restore or reintroduce any of the later database rename/refactor work (Home Series, table renames, FK renames, migration rewrites, or deployment changes). The goal is simply to make the code match the existing production database schema again so Drizzle no longer attempts to drop the MFH tables during publish.
+
+I think this gets you back onto solid ground, and then we can make the simple terminology changes you wanted without another migration saga.

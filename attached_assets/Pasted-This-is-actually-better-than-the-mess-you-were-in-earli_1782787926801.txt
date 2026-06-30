@@ -1,0 +1,67 @@
+This is actually better than the mess you were in earlier because it tells us exactly what's happening.
+
+The rollback restored your code, but your development database and schema are no longer in sync with production.
+
+The key error is this:
+
+constraint "jobs_mfh_manufacturer_id_fkey" of relation "jobs" does not exist
+
+That means Drizzle expected that foreign key to exist in your development schema, but it doesn't. So it's trying to generate SQL to drop something that isn't there.
+
+I would NOT publish.
+
+Don't click Copy development database schema & data to production.
+
+That could overwrite or remove production data.
+
+Here's what I'd do next
+
+I want to find out why Drizzle thinks all the MFH tables should be deleted.
+
+It usually means one of two things:
+
+The rollback restored older code that doesn't include the MFH schema files anymore, so Drizzle thinks those tables were intentionally removed.
+The rollback restored the code but not the matching schema files, leaving the schema inconsistent.
+Before changing anything, check one thing
+
+In Replit, look in:
+
+lib/db/src/schema/
+
+Do you still have an mfh.ts file (or whatever file contains the Manufactured Home tables)?
+
+Also check lib/db/src/schema/index.ts.
+
+I want to know whether it still imports something like:
+
+export * from "./mfh";
+
+or if that export disappeared during the rollback.
+
+I suspect this is what happened
+
+The checkpoint you rolled back to was before the Manufactured Home feature was committed.
+
+So the code no longer defines:
+
+mfh_models
+mfh_manufacturers
+mfh_guide_items
+mfh_pricing_guides
+etc.
+
+Drizzle is doing exactly what it's supposed to do:
+
+"These tables aren't in the schema anymore, so I'll delete them."
+
+That explains why it's trying to drop everything.
+
+I think we can fix this without another migration nightmare
+
+If my suspicion is correct, we simply need to restore the MFH schema files from before today's changes—not all the migration work—and the publish should stop trying to delete every MFH table.
+
+Can you answer these two questions?
+Does lib/db/src/schema/mfh.ts exist?
+Is it exported from lib/db/src/schema/index.ts?
+
+If the answer is "no" to either one, I think we've found the real cause. That will be much easier to fix than everything you were dealing with earlier.

@@ -15,6 +15,7 @@ import {
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
 } from "@workspace/api-client-react";
+import { useMfhPanelData } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
@@ -30,10 +31,11 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
+import { MfhPanel } from "@/components/MfhPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -2772,6 +2774,7 @@ function JobCard({
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"pl" | "breakdown" | "hours">("pl");
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
+  const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
@@ -3086,6 +3089,32 @@ function JobCard({
           </button>
         )}
 
+        {/* Manufactured Home */}
+        {(job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhSeriesId != null) && (
+          <button
+            onClick={() => setMfhPanelOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
+            <Home className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+            <span className="flex-1 text-left">Manufactured Home</span>
+            {(job as Record<string, unknown>).mfhQuotedPrice ? (
+              <span className="text-[10px] font-bold text-amber-600 font-mono">
+                {`$${parseFloat(String((job as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              </span>
+            ) : (
+              <span className="text-[10px] text-amber-400">Set pricing</span>
+            )}
+          </button>
+        )}
+        {job.jobType !== "Manufactured Home" && (job as Record<string, unknown>).mfhSeriesId == null && (
+          <button
+            onClick={() => setMfhPanelOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+            <Home className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <span className="flex-1 text-left">Manufactured Home</span>
+            <span className="text-[10px] text-muted-foreground">Apply pricing</span>
+          </button>
+        )}
+
         {/* Checklist */}
         <button
           onClick={() => setChecklistPanelOpen(true)}
@@ -3255,6 +3284,19 @@ function JobCard({
           qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
         }} />
       )}
+      {mfhPanelOpen && (
+        <MfhPanel
+          job={job as Parameters<typeof MfhPanel>[0]["job"]}
+          onClose={() => {
+            setMfhPanelOpen(false);
+            qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+            qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
+          }}
+          onViewEstimates={() => {
+            setEstimatesPanelOpen(true);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -3374,6 +3416,14 @@ function JobFormDialog({
   const [subCompDefaults, setSubCompDefaults] = useState<Record<number, { compensationType: string; rate: string }>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // MFH structured fields (separate from form string state)
+  const [mfhSeriesId, setMfhSeriesId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhSeriesId as number | null ?? null);
+  const [mfhModelId, setMfhModelId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhModelId as number | null ?? null);
+  const [mfhYear, setMfhYear] = useState<string>((editJob as Record<string, unknown>)?.mfhModelYear ? String((editJob as Record<string, unknown>).mfhModelYear) : "");
+  const { data: mfhPanelData } = useMfhPanelData();
+  const mfhSeries = mfhPanelData?.series ?? [];
+  const mfhModels = (mfhPanelData?.models ?? []).filter(m => m.homeSeriesId === mfhSeriesId);
   const [clearHoursForSubIds, setClearHoursForSubIds] = useState<number[]>([]);
   const [removeSubPrompt, setRemoveSubPrompt] = useState<{ subId: number; subName: string; pendingIds: number[] } | null>(null);
 
@@ -3424,6 +3474,9 @@ function JobFormDialog({
         status: form.status as CreateJobRequest["status"],
         jobType: form.jobType || undefined,
         homeModel: form.homeModel || undefined,
+        mfhSeriesId: mfhSeriesId,
+        mfhModelId: mfhModelId,
+        mfhModelYear: mfhYear ? parseInt(mfhYear) : null,
         address: form.address || undefined,
         locationName: form.locationName || undefined,
         city: form.city || undefined,
@@ -3615,7 +3668,63 @@ function JobFormDialog({
           </div>
           )}
 
-          <HomeModelInput value={form.homeModel} onChange={v => setField("homeModel", v)} />
+          {/* Manufactured Home structured fields (replaces free-text homeModel) */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-foreground">
+              <span className="text-amber-500 font-bold text-xs mr-1">🏠</span>Manufactured Home
+              <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Home Series</label>
+                <select
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={mfhSeriesId ?? ""}
+                  onChange={e => { setMfhSeriesId(e.target.value ? parseInt(e.target.value) : null); setMfhModelId(null); }}>
+                  <option value="">Select…</option>
+                  {mfhSeries.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Model <span className="opacity-70">(optional)</span></label>
+                <select
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={mfhModelId ?? ""}
+                  onChange={e => setMfhModelId(e.target.value ? parseInt(e.target.value) : null)}
+                  disabled={!mfhSeriesId}>
+                  <option value="">Select…</option>
+                  {mfhModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Model Year</label>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder="e.g. 2022"
+                  value={mfhYear}
+                  min={1950}
+                  max={new Date().getFullYear() + 1}
+                  onChange={e => setMfhYear(e.target.value)} />
+              </div>
+              {mfhSeriesId && (
+                <div className="flex items-end pb-0.5">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Construction</label>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-muted/50 text-xs text-muted-foreground border border-border">
+                      {mfhSeries.find(s => s.id === mfhSeriesId)?.constructionTypeName ?? "—"}
+                      <span className="text-[10px] opacity-60 font-mono">(auto)</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+            {!mfhSeriesId && (
+              <p className="text-xs text-muted-foreground">Pricing &amp; checklists are applied from the <strong>Manufactured Home</strong> panel on the job card.</p>
+            )}
+          </div>
 
           {editJob && (
           <div>

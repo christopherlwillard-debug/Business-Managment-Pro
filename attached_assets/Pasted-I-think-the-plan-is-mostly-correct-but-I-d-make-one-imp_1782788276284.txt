@@ -1,0 +1,65 @@
+I think the plan is mostly correct, but I'd make one important adjustment before you let it proceed.
+
+What I agree with
+
+✅ Restore the schema (mfh.ts).
+
+✅ Re-add the export to index.ts.
+
+✅ Restore the MFH API routes.
+
+✅ Re-mount the routes.
+
+✅ Restore the Job Card MFH panel and Home Library.
+
+Those are all restoring code that matches your production database.
+
+What I would change
+
+I would not tell it to blindly re-add the 8 columns to jobs.ts.
+
+Instead, tell it to:
+
+Restore jobs.ts exactly as it existed in Task #1019. Do not manually add columns one by one.
+
+That avoids accidentally restoring the wrong field names or missing one.
+
+The biggest thing I'd change
+
+This part:
+
+Run psql to create the MFH tables in dev DB
+
+I'd reword that.
+
+Instead say:
+
+After restoring the schema, synchronize the development database so it matches the restored schema. Only create tables that are actually missing. Do not modify production and do not recreate tables that already exist.
+
+The reason is:
+
+Your development DB is currently empty of MFH tables.
+Your production DB already has them.
+We want dev to match the restored schema—not blindly execute old SQL.
+One more thing I'd add
+
+Have it verify the restore before you publish.
+
+Something like:
+
+After the restore, verify that:
+
+mfh_home_series
+mfh_models
+mfh_construction_types
+mfh_pricing_guides
+mfh_guide_items
+mfh_guide_addons
+
+are all present in the schema and API. Then run the app locally and confirm the MFH panel loads without errors before attempting another Publish.
+
+This is the prompt I'd give Replit
+
+Restore the Manufactured Home feature from the last stable Task #1019 commit (the version that matches production). Restore lib/db/src/schema/mfh.ts, restore its export in lib/db/src/schema/index.ts, restore jobs.ts exactly as it existed in that commit, restore the MFH API routes, re-mount the routes, and restore the Job Card MFH panel and Home Library UI. Then synchronize the development database so it matches the restored schema, creating only missing development tables as needed. Do not perform any Home Series refactor, table renames, migration rewrites, deployment changes, or production modifications. Before publishing, verify that the restored schema matches the production MFH structure (mfh_home_series, mfh_models, mfh_construction_types, mfh_pricing_guides, mfh_guide_items, and mfh_guide_addons) and that the MFH panel loads correctly in development.
+
+I think this gets you back to the last known-good MFH implementation while avoiding another round of migration problems.
