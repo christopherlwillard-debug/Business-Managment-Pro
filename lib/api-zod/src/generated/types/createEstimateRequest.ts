@@ -18,5 +18,4 @@ export interface CreateEstimateRequest {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
-  businessLine?: string | null;
 }

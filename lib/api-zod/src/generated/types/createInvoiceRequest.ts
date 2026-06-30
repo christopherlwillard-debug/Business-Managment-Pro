@@ -23,5 +23,4 @@ export interface CreateInvoiceRequest {
   state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
   attachments?: InvoiceAttachment[] | null;
-  businessLine?: string | null;
 }

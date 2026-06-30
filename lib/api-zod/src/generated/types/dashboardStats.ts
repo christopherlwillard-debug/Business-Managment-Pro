@@ -5,6 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { DashboardStatsByBusinessLineItem } from "./dashboardStatsByBusinessLineItem";
 import type { DashboardStatsMonthlyRevenueItem } from "./dashboardStatsMonthlyRevenueItem";
 import type { Invoice } from "./invoice";
 import type { Job } from "./job";
@@ -15,9 +16,6 @@ export interface DashboardStats {
   activeJobs: number;
   totalExpenses: number;
   mileageDeduction: number;
-  periodMileageDeduction?: number;
-  ytdMiles?: number;
-  ytdMileageRate?: number;
   overdueInvoices: number;
   recentJobs: Job[];
   recentInvoices: Invoice[];
@@ -26,18 +24,14 @@ export interface DashboardStats {
   excludedFromProfit?: number;
   formulaExcludedFromProfit?: number;
   excludedExpenseCount?: number;
+  periodMileageDeduction?: number;
+  ytdMiles?: number;
+  ytdMileageRate?: number;
   ownerDrawTotal?: number;
   undrawnBalance?: number;
   subContractorOwed?: number;
   subContractorPaid?: number;
   subContractorRemaining?: number;
   ownerProfit?: number;
-  byBusinessLine?: Array<{
-    businessLine: string;
-    label: string;
-    totalRevenue: number;
-    totalExpenses: number;
-    operationalNetProfit: number;
-    activeJobs: number;
-  }>;
+  byBusinessLine?: DashboardStatsByBusinessLineItem[];
 }

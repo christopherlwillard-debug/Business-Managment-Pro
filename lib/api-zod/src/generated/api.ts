@@ -219,6 +219,47 @@ export const ListJobsResponseItem = zod.object({
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  subPaid: zod.boolean().optional(),
+  sqFt: zod.number().nullish(),
+  coats: zod.number().nullish(),
+  phases: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        completed: zod.boolean(),
+      }),
+    )
+    .nullish(),
+  serviceBilling: zod
+    .object({
+      profileId: zod.number().nullish(),
+      profileName: zod.string().nullish(),
+      techCount: zod.number(),
+      repairHours: zod.number(),
+      driveHours: zod.number(),
+      mileage: zod.number(),
+      parts: zod.array(
+        zod.object({
+          description: zod.string(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          reimbursable: zod.boolean(),
+        }),
+      ),
+      rateSnapshot: zod
+        .object({
+          repairRate1Tech: zod.number().nullish(),
+          repairRate2Tech: zod.number().nullish(),
+          driveRate1Tech: zod.number().nullish(),
+          driveRate2Tech: zod.number().nullish(),
+          mileageRate: zod.number().nullish(),
+        })
+        .nullish(),
+      internalLaborRate: zod.number().nullish(),
+      fuelEstimate: zod.number().nullish(),
+    })
+    .nullish(),
   createdAt: zod.string(),
 });
 export const ListJobsResponse = zod.array(ListJobsResponseItem);
@@ -249,6 +290,47 @@ export const CreateJobBody = zod.object({
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  subPaid: zod.boolean().optional(),
+  sqFt: zod.number().nullish(),
+  coats: zod.number().nullish(),
+  phases: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        completed: zod.boolean(),
+      }),
+    )
+    .nullish(),
+  serviceBilling: zod
+    .object({
+      profileId: zod.number().nullish(),
+      profileName: zod.string().nullish(),
+      techCount: zod.number(),
+      repairHours: zod.number(),
+      driveHours: zod.number(),
+      mileage: zod.number(),
+      parts: zod.array(
+        zod.object({
+          description: zod.string(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          reimbursable: zod.boolean(),
+        }),
+      ),
+      rateSnapshot: zod
+        .object({
+          repairRate1Tech: zod.number().nullish(),
+          repairRate2Tech: zod.number().nullish(),
+          driveRate1Tech: zod.number().nullish(),
+          driveRate2Tech: zod.number().nullish(),
+          mileageRate: zod.number().nullish(),
+        })
+        .nullish(),
+      internalLaborRate: zod.number().nullish(),
+      fuelEstimate: zod.number().nullish(),
+    })
+    .nullish(),
 });
 
 /**
@@ -312,6 +394,47 @@ export const GetJobResponse = zod.object({
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  subPaid: zod.boolean().optional(),
+  sqFt: zod.number().nullish(),
+  coats: zod.number().nullish(),
+  phases: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        completed: zod.boolean(),
+      }),
+    )
+    .nullish(),
+  serviceBilling: zod
+    .object({
+      profileId: zod.number().nullish(),
+      profileName: zod.string().nullish(),
+      techCount: zod.number(),
+      repairHours: zod.number(),
+      driveHours: zod.number(),
+      mileage: zod.number(),
+      parts: zod.array(
+        zod.object({
+          description: zod.string(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          reimbursable: zod.boolean(),
+        }),
+      ),
+      rateSnapshot: zod
+        .object({
+          repairRate1Tech: zod.number().nullish(),
+          repairRate2Tech: zod.number().nullish(),
+          driveRate1Tech: zod.number().nullish(),
+          driveRate2Tech: zod.number().nullish(),
+          mileageRate: zod.number().nullish(),
+        })
+        .nullish(),
+      internalLaborRate: zod.number().nullish(),
+      fuelEstimate: zod.number().nullish(),
+    })
+    .nullish(),
   createdAt: zod.string(),
 });
 
@@ -345,6 +468,47 @@ export const UpdateJobBody = zod.object({
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  subPaid: zod.boolean().optional(),
+  sqFt: zod.number().nullish(),
+  coats: zod.number().nullish(),
+  phases: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        completed: zod.boolean(),
+      }),
+    )
+    .nullish(),
+  serviceBilling: zod
+    .object({
+      profileId: zod.number().nullish(),
+      profileName: zod.string().nullish(),
+      techCount: zod.number(),
+      repairHours: zod.number(),
+      driveHours: zod.number(),
+      mileage: zod.number(),
+      parts: zod.array(
+        zod.object({
+          description: zod.string(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          reimbursable: zod.boolean(),
+        }),
+      ),
+      rateSnapshot: zod
+        .object({
+          repairRate1Tech: zod.number().nullish(),
+          repairRate2Tech: zod.number().nullish(),
+          driveRate1Tech: zod.number().nullish(),
+          driveRate2Tech: zod.number().nullish(),
+          mileageRate: zod.number().nullish(),
+        })
+        .nullish(),
+      internalLaborRate: zod.number().nullish(),
+      fuelEstimate: zod.number().nullish(),
+    })
+    .nullish(),
 });
 
 export const UpdateJobResponse = zod.object({
@@ -371,6 +535,47 @@ export const UpdateJobResponse = zod.object({
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  subPaid: zod.boolean().optional(),
+  sqFt: zod.number().nullish(),
+  coats: zod.number().nullish(),
+  phases: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        completed: zod.boolean(),
+      }),
+    )
+    .nullish(),
+  serviceBilling: zod
+    .object({
+      profileId: zod.number().nullish(),
+      profileName: zod.string().nullish(),
+      techCount: zod.number(),
+      repairHours: zod.number(),
+      driveHours: zod.number(),
+      mileage: zod.number(),
+      parts: zod.array(
+        zod.object({
+          description: zod.string(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          reimbursable: zod.boolean(),
+        }),
+      ),
+      rateSnapshot: zod
+        .object({
+          repairRate1Tech: zod.number().nullish(),
+          repairRate2Tech: zod.number().nullish(),
+          driveRate1Tech: zod.number().nullish(),
+          driveRate2Tech: zod.number().nullish(),
+          mileageRate: zod.number().nullish(),
+        })
+        .nullish(),
+      internalLaborRate: zod.number().nullish(),
+      fuelEstimate: zod.number().nullish(),
+    })
+    .nullish(),
   createdAt: zod.string(),
 });
 
@@ -810,6 +1015,92 @@ export const UploadExpenseReceiptResponse = zod.object({
   notes: zod.string().nullish(),
   recurringExpenseId: zod.number().nullish(),
   createdAt: zod.string(),
+});
+
+/**
+ * @summary List client billing profiles
+ */
+export const ListClientBillingProfilesQueryParams = zod.object({
+  clientId: zod.coerce.number().optional(),
+});
+
+export const ListClientBillingProfilesResponseItem = zod.object({
+  id: zod.number(),
+  clientId: zod.number(),
+  name: zod.string(),
+  repairRate1Tech: zod.number().nullish(),
+  repairRate2Tech: zod.number().nullish(),
+  driveRate1Tech: zod.number().nullish(),
+  driveRate2Tech: zod.number().nullish(),
+  mileageRate: zod.number().nullish(),
+  partsReimbursable: zod.boolean(),
+  defaultTechCount: zod.number(),
+  billingNotes: zod.string().nullish(),
+  active: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const ListClientBillingProfilesResponse = zod.array(
+  ListClientBillingProfilesResponseItem,
+);
+
+/**
+ * @summary Create a client billing profile
+ */
+export const CreateClientBillingProfileBody = zod.object({
+  clientId: zod.number(),
+  name: zod.string(),
+  repairRate1Tech: zod.number().nullish(),
+  repairRate2Tech: zod.number().nullish(),
+  driveRate1Tech: zod.number().nullish(),
+  driveRate2Tech: zod.number().nullish(),
+  mileageRate: zod.number().nullish(),
+  partsReimbursable: zod.boolean().optional(),
+  defaultTechCount: zod.number().optional(),
+  billingNotes: zod.string().nullish(),
+  active: zod.boolean().optional(),
+});
+
+/**
+ * @summary Update a client billing profile
+ */
+export const UpdateClientBillingProfileParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateClientBillingProfileBody = zod.object({
+  name: zod.string().optional(),
+  repairRate1Tech: zod.number().nullish(),
+  repairRate2Tech: zod.number().nullish(),
+  driveRate1Tech: zod.number().nullish(),
+  driveRate2Tech: zod.number().nullish(),
+  mileageRate: zod.number().nullish(),
+  partsReimbursable: zod.boolean().optional(),
+  defaultTechCount: zod.number().optional(),
+  billingNotes: zod.string().nullish(),
+  active: zod.boolean().optional(),
+});
+
+export const UpdateClientBillingProfileResponse = zod.object({
+  id: zod.number(),
+  clientId: zod.number(),
+  name: zod.string(),
+  repairRate1Tech: zod.number().nullish(),
+  repairRate2Tech: zod.number().nullish(),
+  driveRate1Tech: zod.number().nullish(),
+  driveRate2Tech: zod.number().nullish(),
+  mileageRate: zod.number().nullish(),
+  partsReimbursable: zod.boolean(),
+  defaultTechCount: zod.number(),
+  billingNotes: zod.string().nullish(),
+  active: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a client billing profile
+ */
+export const DeleteClientBillingProfileParams = zod.object({
+  id: zod.coerce.number(),
 });
 
 /**
@@ -1583,6 +1874,10 @@ export const UpdateSettingsResponse = zod.object({
  */
 export const GetDashboardStatsQueryParams = zod.object({
   period: zod.enum(["week", "month", "quarter", "year"]).optional(),
+  businessLine: zod
+    .enum(["asphalt_sealing", "general_contracting"])
+    .optional()
+    .describe("Filter all KPI metrics to a single business line"),
 });
 
 export const GetDashboardStatsResponse = zod.object({
@@ -1617,6 +1912,47 @@ export const GetDashboardStatsResponse = zod.object({
       startDate: zod.string().nullish(),
       endDate: zod.string().nullish(),
       notes: zod.string().nullish(),
+      businessLine: zod.string().nullish(),
+      subPaid: zod.boolean().optional(),
+      sqFt: zod.number().nullish(),
+      coats: zod.number().nullish(),
+      phases: zod
+        .array(
+          zod.object({
+            name: zod.string(),
+            completed: zod.boolean(),
+          }),
+        )
+        .nullish(),
+      serviceBilling: zod
+        .object({
+          profileId: zod.number().nullish(),
+          profileName: zod.string().nullish(),
+          techCount: zod.number(),
+          repairHours: zod.number(),
+          driveHours: zod.number(),
+          mileage: zod.number(),
+          parts: zod.array(
+            zod.object({
+              description: zod.string(),
+              quantity: zod.number(),
+              unitCost: zod.number(),
+              reimbursable: zod.boolean(),
+            }),
+          ),
+          rateSnapshot: zod
+            .object({
+              repairRate1Tech: zod.number().nullish(),
+              repairRate2Tech: zod.number().nullish(),
+              driveRate1Tech: zod.number().nullish(),
+              driveRate2Tech: zod.number().nullish(),
+              mileageRate: zod.number().nullish(),
+            })
+            .nullish(),
+          internalLaborRate: zod.number().nullish(),
+          fuelEstimate: zod.number().nullish(),
+        })
+        .nullish(),
       createdAt: zod.string(),
     }),
   ),
@@ -1670,6 +2006,31 @@ export const GetDashboardStatsResponse = zod.object({
       expenses: zod.number(),
     }),
   ),
+  operationalNetProfit: zod.number().optional(),
+  excludedFromProfit: zod.number().optional(),
+  formulaExcludedFromProfit: zod.number().optional(),
+  excludedExpenseCount: zod.number().optional(),
+  periodMileageDeduction: zod.number().optional(),
+  ytdMiles: zod.number().optional(),
+  ytdMileageRate: zod.number().optional(),
+  ownerDrawTotal: zod.number().optional(),
+  undrawnBalance: zod.number().optional(),
+  subContractorOwed: zod.number().optional(),
+  subContractorPaid: zod.number().optional(),
+  subContractorRemaining: zod.number().optional(),
+  ownerProfit: zod.number().optional(),
+  byBusinessLine: zod
+    .array(
+      zod.object({
+        businessLine: zod.string(),
+        label: zod.string(),
+        totalRevenue: zod.number(),
+        totalExpenses: zod.number(),
+        operationalNetProfit: zod.number(),
+        activeJobs: zod.number(),
+      }),
+    )
+    .optional(),
 });
 
 /**

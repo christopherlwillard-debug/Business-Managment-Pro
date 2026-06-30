@@ -19,6 +19,4 @@ export interface Expense {
   notes?: string | null;
   recurringExpenseId?: number | null;
   createdAt: string;
-  excludeFromNetProfit?: boolean | null;
-  businessLine?: string | null;
 }

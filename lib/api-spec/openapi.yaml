@@ -1533,6 +1533,12 @@ paths:
         "404":
           description: Object not found
 
+  # NOTE: /route-stops, /prospects, /assets paths are intentionally omitted from
+  # generated paths because they are served by hand-written hooks in
+  # lib/api-client-react/src/hooks/ (useProspects.ts, etc.) which add proper
+  # react-query cache invalidation. Their schemas are defined in components/schemas
+  # so that codegen preserves the TypeScript types.
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -2864,6 +2870,24 @@ components:
           type: number
         excludedExpenseCount:
           type: integer
+        periodMileageDeduction:
+          type: number
+        ytdMiles:
+          type: number
+        ytdMileageRate:
+          type: number
+        ownerDrawTotal:
+          type: number
+        undrawnBalance:
+          type: number
+        subContractorOwed:
+          type: number
+        subContractorPaid:
+          type: number
+        subContractorRemaining:
+          type: number
+        ownerProfit:
+          type: number
         byBusinessLine:
           type: array
           items:
@@ -2966,3 +2990,516 @@ components:
           description: Normalized object path (e.g. /objects/uploads/uuid). Store this in your database.
         metadata:
           $ref: "#/components/schemas/UploadUrlRequest"
+
+    RouteStopStatus:
+      type: string
+      enum: [prospect, scheduled, completed, skipped]
+
+    RouteStop:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+          nullable: true
+        address:
+          type: string
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        scheduledDate:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/RouteStopStatus"
+        estimatedDurationMinutes:
+          type: integer
+          nullable: true
+        sortOrder:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, address, status, createdAt]
+
+    CreateRouteStopRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+        address:
+          type: string
+        lat:
+          type: number
+          nullable: true
+        lng:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        scheduledDate:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/RouteStopStatus"
+        estimatedDurationMinutes:
+          type: integer
+          nullable: true
+        sortOrder:
+          type: integer
+          nullable: true
+      required: [address]
+
+    ProspectStatus:
+      type: string
+      enum: [cold, contacted, quoted, won, serviced, lost]
+
+    ProspectPropertyType:
+      type: string
+      enum: [Church, Retail, Apartment, Industrial, Other]
+
+    Prospect:
+      type: object
+      properties:
+        id:
+          type: integer
+        address:
+          type: string
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        propertyType:
+          $ref: "#/components/schemas/ProspectPropertyType"
+        estimatedSqft:
+          type: number
+          nullable: true
+        measuredSqFt:
+          type: number
+          nullable: true
+        roughQuote:
+          type: number
+          nullable: true
+        contactName:
+          type: string
+          nullable: true
+        contactPhone:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ProspectStatus"
+        linkedEstimateId:
+          type: integer
+          nullable: true
+        linkedEstimateNumber:
+          type: string
+          nullable: true
+        linkedInvoiceId:
+          type: integer
+          nullable: true
+        stripePaymentLinkId:
+          type: string
+          nullable: true
+        stripePaymentLinkUrl:
+          type: string
+          nullable: true
+        squarePaymentLinkId:
+          type: string
+          nullable: true
+        squarePaymentLinkUrl:
+          type: string
+          nullable: true
+        depositPaidAt:
+          type: string
+          nullable: true
+        depositPaidAmount:
+          type: number
+          nullable: true
+        lastPaidAt:
+          type: string
+          nullable: true
+        servicedAt:
+          type: string
+          nullable: true
+        followUpDate:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        businessLine:
+          type: string
+          nullable: true
+        clientId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, address, propertyType, status, createdAt, updatedAt]
+
+    CreateProspectRequest:
+      type: object
+      properties:
+        address:
+          type: string
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        propertyType:
+          $ref: "#/components/schemas/ProspectPropertyType"
+        estimatedSqft:
+          type: number
+          nullable: true
+        measuredSqFt:
+          type: number
+          nullable: true
+        roughQuote:
+          type: number
+          nullable: true
+        contactName:
+          type: string
+          nullable: true
+        contactPhone:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ProspectStatus"
+        linkedEstimateId:
+          type: integer
+          nullable: true
+        linkedInvoiceId:
+          type: integer
+          nullable: true
+        servicedAt:
+          type: string
+          nullable: true
+        followUpDate:
+          type: string
+          nullable: true
+        businessLine:
+          type: string
+          nullable: true
+      required: [address]
+
+    UpdateProspectRequest:
+      type: object
+      properties:
+        address:
+          type: string
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        zip:
+          type: string
+          nullable: true
+        propertyType:
+          $ref: "#/components/schemas/ProspectPropertyType"
+        estimatedSqft:
+          type: number
+          nullable: true
+        measuredSqFt:
+          type: number
+          nullable: true
+        roughQuote:
+          type: number
+          nullable: true
+        contactName:
+          type: string
+          nullable: true
+        contactPhone:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ProspectStatus"
+        linkedEstimateId:
+          type: integer
+          nullable: true
+        linkedInvoiceId:
+          type: integer
+          nullable: true
+        servicedAt:
+          type: string
+          nullable: true
+        followUpDate:
+          type: string
+          nullable: true
+        businessLine:
+          type: string
+          nullable: true
+
+    ProspectStatusEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        oldValue:
+          type: string
+          nullable: true
+        newValue:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, type, createdAt]
+
+    ProspectServiceVisit:
+      type: object
+      properties:
+        id:
+          type: integer
+        servicedAt:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, servicedAt, createdAt]
+
+    AddServiceVisitRequest:
+      type: object
+      properties:
+        servicedAt:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+      required: [servicedAt]
+
+    ProspectDetail:
+      allOf:
+        - $ref: "#/components/schemas/Prospect"
+        - type: object
+          properties:
+            statusHistory:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProspectStatusEvent"
+            serviceVisits:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProspectServiceVisit"
+          required: [statusHistory, serviceVisits]
+
+    ProspectRevenueSummary:
+      type: object
+      properties:
+        allTime:
+          type: number
+        thisYear:
+          type: number
+        thisMonth:
+          type: number
+        visitCount:
+          type: integer
+      required: [allTime, thisYear, thisMonth, visitCount]
+
+    AssetType:
+      type: string
+      enum: [Vehicle, Equipment, Tool, Trailer, "Land Improvement", Building, Other]
+
+    AssetStatus:
+      type: string
+      enum: [active, sold, retired]
+
+    DepreciationMethod:
+      type: string
+      enum: [straight-line, section-179, bonus]
+
+    Asset:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        assetType:
+          $ref: "#/components/schemas/AssetType"
+        purchaseDate:
+          type: string
+        purchasePrice:
+          type: number
+        vendor:
+          type: string
+          nullable: true
+        serialNumber:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        receiptUrl:
+          type: string
+          nullable: true
+        section179Eligible:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/AssetStatus"
+        saleDate:
+          type: string
+          nullable: true
+        salePrice:
+          type: number
+          nullable: true
+        usefulLifeYears:
+          type: integer
+          nullable: true
+        salvageValue:
+          type: number
+          nullable: true
+        depreciationMethod:
+          allOf:
+            - $ref: "#/components/schemas/DepreciationMethod"
+          nullable: true
+        bonusDepreciationPct:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, name, assetType, purchaseDate, purchasePrice, section179Eligible, status, createdAt]
+
+    CreateAssetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        assetType:
+          $ref: "#/components/schemas/AssetType"
+        purchaseDate:
+          type: string
+        purchasePrice:
+          type: number
+        vendor:
+          type: string
+          nullable: true
+        serialNumber:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        receiptUrl:
+          type: string
+          nullable: true
+        section179Eligible:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/AssetStatus"
+        saleDate:
+          type: string
+          nullable: true
+        salePrice:
+          type: number
+          nullable: true
+        usefulLifeYears:
+          type: integer
+          nullable: true
+        salvageValue:
+          type: number
+          nullable: true
+        depreciationMethod:
+          allOf:
+            - $ref: "#/components/schemas/DepreciationMethod"
+          nullable: true
+        bonusDepreciationPct:
+          type: number
+          nullable: true
+      required: [name, purchaseDate, purchasePrice]
+
+    UpdateAssetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        assetType:
+          $ref: "#/components/schemas/AssetType"
+        purchaseDate:
+          type: string
+        purchasePrice:
+          type: number
+        vendor:
+          type: string
+          nullable: true
+        serialNumber:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        receiptUrl:
+          type: string
+          nullable: true
+        section179Eligible:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/AssetStatus"
+        saleDate:
+          type: string
+          nullable: true
+        salePrice:
+          type: number
+          nullable: true
+        usefulLifeYears:
+          type: integer
+          nullable: true
+        salvageValue:
+          type: number
+          nullable: true
+        depreciationMethod:
+          allOf:
+            - $ref: "#/components/schemas/DepreciationMethod"
+          nullable: true
+        bonusDepreciationPct:
+          type: number
+          nullable: true

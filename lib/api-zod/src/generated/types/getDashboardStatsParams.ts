@@ -5,8 +5,13 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { GetDashboardStatsBusinessLine } from "./getDashboardStatsBusinessLine";
 import type { GetDashboardStatsPeriod } from "./getDashboardStatsPeriod";
 
 export type GetDashboardStatsParams = {
   period?: GetDashboardStatsPeriod;
+  /**
+   * Filter all KPI metrics to a single business line
+   */
+  businessLine?: GetDashboardStatsBusinessLine;
 };

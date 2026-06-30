@@ -61,10 +61,6 @@ export interface Client {
   state?: string | null;
   zip?: string | null;
   notes?: string | null;
-  nextServiceDate?: string | null;
-  serviceIntervalMonths?: number | null;
-  businessLine?: string | null;
-  squareCustomerId?: string | null;
   createdAt: string;
 }
 
@@ -77,7 +73,6 @@ export interface CreateClientRequest {
   state?: string | null;
   zip?: string | null;
   notes?: string | null;
-  businessLine?: string | null;
 }
 
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
@@ -89,8 +84,12 @@ export const JobStatus = {
   completed: "completed",
   invoiced: "invoiced",
   cancelled: "cancelled",
-  closed: "closed",
 } as const;
+
+export interface PhaseItem {
+  name: string;
+  completed: boolean;
+}
 
 export interface ServiceBillingPart {
   description: string;
@@ -130,7 +129,6 @@ export interface Job {
   subcontractorNames?: string[];
   status: JobStatus;
   jobType?: string | null;
-  homeModel?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -139,15 +137,12 @@ export interface Job {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
-  workflow?: string | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
-  createdAt: string;
-  closedAt?: string | null;
-  phases?: Array<{ name: string; completed: boolean }> | null;
-  permitChecklist?: Array<{ label: string; checked: boolean }> | null;
+  phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
+  createdAt: string;
 }
 
 export type CreateJobRequestStatus =
@@ -160,7 +155,6 @@ export const CreateJobRequestStatus = {
   completed: "completed",
   invoiced: "invoiced",
   cancelled: "cancelled",
-  closed: "closed",
 } as const;
 
 export interface CreateJobRequest {
@@ -170,7 +164,6 @@ export interface CreateJobRequest {
   subcontractorIds?: number[];
   status?: CreateJobRequestStatus;
   jobType?: string | null;
-  homeModel?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -179,56 +172,11 @@ export interface CreateJobRequest {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
-  workflow?: string | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
-  phases?: Array<{ name: string; completed: boolean }> | null;
-  permitChecklist?: Array<{ label: string; checked: boolean }> | null;
+  phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
-}
-
-export interface ClientBillingProfile {
-  id: number;
-  clientId: number;
-  name: string;
-  repairRate1Tech?: number | null;
-  repairRate2Tech?: number | null;
-  driveRate1Tech?: number | null;
-  driveRate2Tech?: number | null;
-  mileageRate?: number | null;
-  partsReimbursable: boolean;
-  defaultTechCount: number;
-  billingNotes?: string | null;
-  active: boolean;
-  createdAt: string;
-}
-
-export interface CreateClientBillingProfileRequest {
-  clientId: number;
-  name: string;
-  repairRate1Tech?: number | null;
-  repairRate2Tech?: number | null;
-  driveRate1Tech?: number | null;
-  driveRate2Tech?: number | null;
-  mileageRate?: number | null;
-  partsReimbursable?: boolean;
-  defaultTechCount?: number;
-  billingNotes?: string | null;
-  active?: boolean;
-}
-
-export interface UpdateClientBillingProfileRequest {
-  name?: string;
-  repairRate1Tech?: number | null;
-  repairRate2Tech?: number | null;
-  driveRate1Tech?: number | null;
-  driveRate2Tech?: number | null;
-  mileageRate?: number | null;
-  partsReimbursable?: boolean;
-  defaultTechCount?: number;
-  billingNotes?: string | null;
-  active?: boolean;
 }
 
 export interface DraftLineItem {
@@ -251,7 +199,6 @@ export interface InvoiceDraft {
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
-  businessLine?: string | null;
   lineItems: DraftLineItem[];
 }
 
@@ -300,17 +247,7 @@ export interface Invoice {
   terms?: string | null;
   lineItems?: InvoiceLineItem[];
   attachments?: InvoiceAttachment[] | null;
-  businessLine?: string | null;
   createdAt: string;
-  stripePaymentLinkId?: string | null;
-  stripePaymentLinkUrl?: string | null;
-  stripePaymentIntentId?: string | null;
-  stripePaidAt?: string | null;
-  squarePaymentLinkId?: string | null;
-  squarePaymentLinkUrl?: string | null;
-  squarePaidAt?: string | null;
-  payToken?: string | null;
-  remindersSentAt?: string[] | null;
 }
 
 export type CreateInvoiceRequestStatus =
@@ -344,7 +281,6 @@ export interface CreateInvoiceRequest {
   state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
   attachments?: InvoiceAttachment[] | null;
-  businessLine?: string | null;
 }
 
 export interface TaxReportRow {
@@ -374,8 +310,6 @@ export interface Expense {
   notes?: string | null;
   recurringExpenseId?: number | null;
   createdAt: string;
-  excludeFromNetProfit?: boolean | null;
-  businessLine?: string | null;
 }
 
 export interface CreateExpenseRequest {
@@ -385,11 +319,51 @@ export interface CreateExpenseRequest {
   date: string;
   vendor?: string | null;
   jobId?: number | null;
-  subcontractorId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
-  excludeFromNetProfit?: boolean | null;
-  businessLine?: string | null;
+}
+
+export interface ClientBillingProfile {
+  id: number;
+  clientId: number;
+  name: string;
+  repairRate1Tech?: number | null;
+  repairRate2Tech?: number | null;
+  driveRate1Tech?: number | null;
+  driveRate2Tech?: number | null;
+  mileageRate?: number | null;
+  partsReimbursable: boolean;
+  defaultTechCount: number;
+  billingNotes?: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface CreateClientBillingProfileRequest {
+  clientId: number;
+  name: string;
+  repairRate1Tech?: number | null;
+  repairRate2Tech?: number | null;
+  driveRate1Tech?: number | null;
+  driveRate2Tech?: number | null;
+  mileageRate?: number | null;
+  partsReimbursable?: boolean;
+  defaultTechCount?: number;
+  billingNotes?: string | null;
+  active?: boolean;
+}
+
+export interface UpdateClientBillingProfileRequest {
+  name?: string;
+  repairRate1Tech?: number | null;
+  repairRate2Tech?: number | null;
+  driveRate1Tech?: number | null;
+  driveRate2Tech?: number | null;
+  mileageRate?: number | null;
+  partsReimbursable?: boolean;
+  defaultTechCount?: number;
+  billingNotes?: string | null;
+  active?: boolean;
 }
 
 export type RecurringExpenseFrequency =
@@ -524,7 +498,6 @@ export interface CreateMileageLogRequest {
   miles: number;
   purpose?: string | null;
   jobId?: number | null;
-  businessId?: number | null;
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
   source?: CreateMileageLogRequestSource;
@@ -615,15 +588,6 @@ export interface Estimate {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: EstimateLineItem[];
-  jobId?: number | null;
-  jobTitle?: string | null;
-  businessLine?: string | null;
-  stripePaymentLinkId?: string | null;
-  stripePaymentLinkUrl?: string | null;
-  squarePaymentLinkId?: string | null;
-  squarePaymentLinkUrl?: string | null;
-  depositPaidAt?: string | null;
-  depositPaidAmount?: number | null;
   createdAt: string;
 }
 
@@ -655,8 +619,6 @@ export interface CreateEstimateRequest {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
-  jobId?: number | null;
-  businessLine?: string | null;
 }
 
 export interface DailyLog {
@@ -717,7 +679,6 @@ export interface AppSettings {
   companyPhone?: string | null;
   companyEmail?: string | null;
   logoUrl?: string | null;
-  dbaLogoUrl?: string | null;
   defaultTaxRate?: number | null;
   defaultPaymentTerms?: string | null;
   lateFeePercent?: number | null;
@@ -729,14 +690,6 @@ export interface AppSettings {
   thresholdAmount1099?: number | null;
   invoiceLogoSize?: AppSettingsInvoiceLogoSize;
   invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
-  bottomNavItems?: string[] | null;
-  complianceNotificationEmail?: string | null;
-  complianceEmailEnabled?: boolean | null;
-  invoiceReminderEnabled?: boolean | null;
-  invoiceReminderDay1?: number | null;
-  invoiceReminderDay2?: number | null;
-  taxFilingFrequency?: string | null;
-  calculatorDefaults?: Record<string, unknown> | null;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {
@@ -744,41 +697,6 @@ export type DashboardStatsMonthlyRevenueItem = {
   revenue: number;
   expenses: number;
 };
-
-export type RouteStopStatus = (typeof RouteStopStatus)[keyof typeof RouteStopStatus];
-
-export const RouteStopStatus = {
-  prospect: "prospect",
-  scheduled: "scheduled",
-  completed: "completed",
-  skipped: "skipped",
-} as const;
-
-export interface RouteStop {
-  id: number;
-  title?: string | null;
-  address: string;
-  lat?: number | null;
-  lng?: number | null;
-  notes?: string | null;
-  scheduledDate?: string | null;
-  status: RouteStopStatus;
-  estimatedDurationMinutes?: number | null;
-  sortOrder?: number | null;
-  createdAt: string;
-}
-
-export interface CreateRouteStopRequest {
-  title?: string | null;
-  address: string;
-  lat?: number | null;
-  lng?: number | null;
-  notes?: string | null;
-  scheduledDate?: string | null;
-  status?: RouteStopStatus;
-  estimatedDurationMinutes?: number | null;
-  sortOrder?: number | null;
-}
 
 export type DashboardStatsByBusinessLineItem = {
   businessLine: string;
@@ -795,9 +713,6 @@ export interface DashboardStats {
   activeJobs: number;
   totalExpenses: number;
   mileageDeduction: number;
-  periodMileageDeduction?: number;
-  ytdMiles: number;
-  ytdMileageRate: number;
   overdueInvoices: number;
   recentJobs: Job[];
   recentInvoices: Invoice[];
@@ -806,6 +721,9 @@ export interface DashboardStats {
   excludedFromProfit?: number;
   formulaExcludedFromProfit?: number;
   excludedExpenseCount?: number;
+  periodMileageDeduction?: number;
+  ytdMiles?: number;
+  ytdMileageRate?: number;
   ownerDrawTotal?: number;
   undrawnBalance?: number;
   subContractorOwed?: number;
@@ -869,168 +787,44 @@ export interface UploadUrlResponse {
   metadata?: UploadUrlRequest;
 }
 
-/**
- * Opaque session token — `Bearer <sid>`.
- */
-export type AuthorizationSessionHeaderParameter = string;
+export type RouteStopStatus =
+  (typeof RouteStopStatus)[keyof typeof RouteStopStatus];
 
-export type BeginBrowserLoginParams = {
-  /**
-   * Relative path to redirect to after login (must start with `/`). Defaults to `/`.
-   */
-  returnTo?: string;
-};
-
-export type HandleBrowserLoginCallbackParams = {
-  code?: string;
-  state?: string;
-  iss?: string;
-};
-
-export type ListJobsParams = {
-  status?: string;
-  clientId?: number;
-};
-
-export type ListInvoicesParams = {
-  status?: string;
-  clientId?: number;
-  startDate?: string;
-  endDate?: string;
-};
-
-export type UpdateInvoiceStatusBodyStatus =
-  (typeof UpdateInvoiceStatusBodyStatus)[keyof typeof UpdateInvoiceStatusBodyStatus];
-
-export const UpdateInvoiceStatusBodyStatus = {
-  draft: "draft",
-  sent: "sent",
-  paid: "paid",
-  overdue: "overdue",
-  cancelled: "cancelled",
+export const RouteStopStatus = {
+  prospect: "prospect",
+  scheduled: "scheduled",
+  completed: "completed",
+  skipped: "skipped",
 } as const;
 
-export type UpdateInvoiceStatusBody = {
-  status: UpdateInvoiceStatusBodyStatus;
-};
+export interface RouteStop {
+  id: number;
+  title?: string | null;
+  address: string;
+  lat?: number | null;
+  lng?: number | null;
+  notes?: string | null;
+  scheduledDate?: string | null;
+  status: RouteStopStatus;
+  estimatedDurationMinutes?: number | null;
+  sortOrder?: number | null;
+  createdAt: string;
+}
 
-export type GetInvoiceTaxReportParams = {
-  startDate?: string;
-  endDate?: string;
-};
+export interface CreateRouteStopRequest {
+  title?: string | null;
+  address: string;
+  lat?: number | null;
+  lng?: number | null;
+  notes?: string | null;
+  scheduledDate?: string | null;
+  status?: RouteStopStatus;
+  estimatedDurationMinutes?: number | null;
+  sortOrder?: number | null;
+}
 
-export type ListExpensesParams = {
-  category?: string;
-  jobId?: number;
-  startDate?: string;
-  endDate?: string;
-};
-
-export type UploadExpenseReceiptBody = {
-  receipt?: Blob;
-};
-
-export type ListClientBillingProfilesParams = {
-  clientId?: number;
-};
-
-export type ListMileageLogsParams = {
-  startDate?: string;
-  endDate?: string;
-  classified?: boolean;
-  businessId?: number;
-};
-
-export type GetMileageSummaryParams = {
-  startDate?: string;
-  endDate?: string;
-  businessId?: number;
-};
-
-export type Get1099ReportParams = {
-  year?: number;
-};
-
-export type PortalCheckSessionBody = {
-  token: string;
-};
-
-export type PortalCheckSession200 = {
-  valid: boolean;
-  pinSet: boolean;
-};
-
-export type PortalSetPinBody = {
-  token: string;
-  /**
-   * @minLength 4
-   * @maxLength 6
-   * @pattern ^\d{4,6}$
-   */
-  pin: string;
-};
-
-export type PortalSetPin200 = {
-  success: boolean;
-};
-
-export type PortalVerifyPinBody = {
-  token: string;
-  /**
-   * @minLength 4
-   * @maxLength 6
-   * @pattern ^\d{4,6}$
-   */
-  pin: string;
-};
-
-export type PortalVerifyPin200 = {
-  success: boolean;
-};
-
-export type PortalVerifyPin401 = {
-  error?: string;
-  attemptsLeft?: number;
-  locked?: boolean;
-};
-
-export type ResetPortalPin200 = {
-  success: boolean;
-};
-
-export type ListDailyLogsParams = {
-  jobId?: number;
-  startDate?: string;
-  endDate?: string;
-};
-
-export type GetDashboardStatsParams = {
-  period?: GetDashboardStatsPeriod;
-  businessLine?: GetDashboardStatsBusinessLine;
-};
-
-export type GetDashboardStatsPeriod =
-  (typeof GetDashboardStatsPeriod)[keyof typeof GetDashboardStatsPeriod];
-
-export const GetDashboardStatsPeriod = {
-  week: "week",
-  month: "month",
-  quarter: "quarter",
-  year: "year",
-} as const;
-
-export type GetDashboardStatsBusinessLine = string;
-
-export const GetDashboardStatsBusinessLine = {
-  asphalt_sealing: "asphalt_sealing",
-  general_contracting: "general_contracting",
-} as const;
-
-export type UploadFileBody = {
-  file?: Blob;
-};
-
-export type ProspectStatus = (typeof ProspectStatus)[keyof typeof ProspectStatus];
+export type ProspectStatus =
+  (typeof ProspectStatus)[keyof typeof ProspectStatus];
 
 export const ProspectStatus = {
   cold: "cold",
@@ -1107,11 +901,26 @@ export interface CreateProspectRequest {
   businessLine?: string | null;
 }
 
-export type UpdateProspectRequest = Partial<CreateProspectRequest>;
-
-export type ListProspectsParams = {
+export interface UpdateProspectRequest {
+  address?: string;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  propertyType?: ProspectPropertyType;
+  estimatedSqft?: number | null;
+  measuredSqFt?: number | null;
+  roughQuote?: number | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  notes?: string | null;
   status?: ProspectStatus;
-};
+  linkedEstimateId?: number | null;
+  linkedInvoiceId?: number | null;
+  servicedAt?: string | null;
+  followUpDate?: string | null;
+  businessLine?: string | null;
+}
 
 export interface ProspectStatusEvent {
   id: number;
@@ -1135,10 +944,10 @@ export interface AddServiceVisitRequest {
   price?: number | null;
 }
 
-export interface ProspectDetail extends Prospect {
+export type ProspectDetail = Prospect & {
   statusHistory: ProspectStatusEvent[];
   serviceVisits: ProspectServiceVisit[];
-}
+};
 
 export interface ProspectRevenueSummary {
   allTime: number;
@@ -1154,7 +963,7 @@ export const AssetType = {
   Equipment: "Equipment",
   Tool: "Tool",
   Trailer: "Trailer",
-  LandImprovement: "Land Improvement",
+  Land_Improvement: "Land Improvement",
   Building: "Building",
   Other: "Other",
 } as const;
@@ -1167,12 +976,13 @@ export const AssetStatus = {
   retired: "retired",
 } as const;
 
-export type DepreciationMethod = (typeof DepreciationMethod)[keyof typeof DepreciationMethod];
+export type DepreciationMethod =
+  (typeof DepreciationMethod)[keyof typeof DepreciationMethod];
 
 export const DepreciationMethod = {
   "straight-line": "straight-line",
   "section-179": "section-179",
-  "bonus": "bonus",
+  bonus: "bonus",
 } as const;
 
 export interface Asset {
@@ -1215,9 +1025,184 @@ export interface CreateAssetRequest {
   bonusDepreciationPct?: number | null;
 }
 
-export type UpdateAssetRequest = Partial<CreateAssetRequest>;
-
-export type ListAssetsParams = {
+export interface UpdateAssetRequest {
+  name?: string;
+  assetType?: AssetType;
+  purchaseDate?: string;
+  purchasePrice?: number;
+  vendor?: string | null;
+  serialNumber?: string | null;
+  notes?: string | null;
+  receiptUrl?: string | null;
+  section179Eligible?: boolean;
   status?: AssetStatus;
-  year?: string | number;
+  saleDate?: string | null;
+  salePrice?: number | null;
+  usefulLifeYears?: number | null;
+  salvageValue?: number | null;
+  depreciationMethod?: DepreciationMethod | null;
+  bonusDepreciationPct?: number | null;
+}
+
+/**
+ * Opaque session token — `Bearer <sid>`.
+ */
+export type AuthorizationSessionHeaderParameter = string;
+
+export type BeginBrowserLoginParams = {
+  /**
+   * Relative path to redirect to after login (must start with `/`). Defaults to `/`.
+   */
+  returnTo?: string;
+};
+
+export type HandleBrowserLoginCallbackParams = {
+  code?: string;
+  state?: string;
+  iss?: string;
+};
+
+export type ListJobsParams = {
+  status?: string;
+  clientId?: number;
+};
+
+export type ListInvoicesParams = {
+  status?: string;
+  clientId?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+export type UpdateInvoiceStatusBodyStatus =
+  (typeof UpdateInvoiceStatusBodyStatus)[keyof typeof UpdateInvoiceStatusBodyStatus];
+
+export const UpdateInvoiceStatusBodyStatus = {
+  draft: "draft",
+  sent: "sent",
+  paid: "paid",
+  overdue: "overdue",
+  cancelled: "cancelled",
+} as const;
+
+export type UpdateInvoiceStatusBody = {
+  status: UpdateInvoiceStatusBodyStatus;
+};
+
+export type GetInvoiceTaxReportParams = {
+  startDate?: string;
+  endDate?: string;
+};
+
+export type ListExpensesParams = {
+  category?: string;
+  jobId?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+export type UploadExpenseReceiptBody = {
+  receipt?: Blob;
+};
+
+export type ListClientBillingProfilesParams = {
+  clientId?: number;
+};
+
+export type ListMileageLogsParams = {
+  startDate?: string;
+  endDate?: string;
+  classified?: boolean;
+};
+
+export type GetMileageSummaryParams = {
+  startDate?: string;
+  endDate?: string;
+};
+
+export type Get1099ReportParams = {
+  year?: number;
+};
+
+export type PortalCheckSessionBody = {
+  token: string;
+};
+
+export type PortalCheckSession200 = {
+  valid: boolean;
+  pinSet: boolean;
+};
+
+export type PortalSetPinBody = {
+  token: string;
+  /**
+   * @minLength 4
+   * @maxLength 6
+   * @pattern ^\d{4,6}$
+   */
+  pin: string;
+};
+
+export type PortalSetPin200 = {
+  success: boolean;
+};
+
+export type PortalVerifyPinBody = {
+  token: string;
+  /**
+   * @minLength 4
+   * @maxLength 6
+   * @pattern ^\d{4,6}$
+   */
+  pin: string;
+};
+
+export type PortalVerifyPin200 = {
+  success: boolean;
+};
+
+export type PortalVerifyPin401 = {
+  error?: string;
+  attemptsLeft?: number;
+  locked?: boolean;
+};
+
+export type ResetPortalPin200 = {
+  success: boolean;
+};
+
+export type ListDailyLogsParams = {
+  jobId?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+export type GetDashboardStatsParams = {
+  period?: GetDashboardStatsPeriod;
+  /**
+   * Filter all KPI metrics to a single business line
+   */
+  businessLine?: GetDashboardStatsBusinessLine;
+};
+
+export type GetDashboardStatsPeriod =
+  (typeof GetDashboardStatsPeriod)[keyof typeof GetDashboardStatsPeriod];
+
+export const GetDashboardStatsPeriod = {
+  week: "week",
+  month: "month",
+  quarter: "quarter",
+  year: "year",
+} as const;
+
+export type GetDashboardStatsBusinessLine =
+  (typeof GetDashboardStatsBusinessLine)[keyof typeof GetDashboardStatsBusinessLine];
+
+export const GetDashboardStatsBusinessLine = {
+  asphalt_sealing: "asphalt_sealing",
+  general_contracting: "general_contracting",
+} as const;
+
+export type UploadFileBody = {
+  file?: Blob;
 };

@@ -17,7 +17,6 @@ export interface AppSettings {
   companyPhone?: string | null;
   companyEmail?: string | null;
   logoUrl?: string | null;
-  dbaLogoUrl?: string | null;
   defaultTaxRate?: number | null;
   defaultPaymentTerms?: string | null;
   lateFeePercent?: number | null;
@@ -29,5 +28,4 @@ export interface AppSettings {
   thresholdAmount1099?: number | null;
   invoiceLogoSize?: AppSettingsInvoiceLogoSize;
   invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
-  bottomNavItems?: string[] | null;
 }

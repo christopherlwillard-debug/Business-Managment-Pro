@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { JobStatus } from "./jobStatus";
+import type { PhaseItem } from "./phaseItem";
+import type { ServiceBilling } from "./serviceBilling";
 
 export interface Job {
   id: number;
@@ -25,7 +27,10 @@ export interface Job {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
+  phases?: PhaseItem[] | null;
+  serviceBilling?: ServiceBilling | null;
   createdAt: string;
 }

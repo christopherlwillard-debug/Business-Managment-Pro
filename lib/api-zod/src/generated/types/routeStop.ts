@@ -5,15 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
-
-export type RouteStopStatus = (typeof RouteStopStatus)[keyof typeof RouteStopStatus];
-
-export const RouteStopStatus = {
-  prospect: "prospect",
-  scheduled: "scheduled",
-  completed: "completed",
-  skipped: "skipped",
-} as const;
+import type { RouteStopStatus } from "./routeStopStatus";
 
 export interface RouteStop {
   id: number;
@@ -27,16 +19,4 @@ export interface RouteStop {
   estimatedDurationMinutes?: number | null;
   sortOrder?: number | null;
   createdAt: string;
-}
-
-export interface CreateRouteStopRequest {
-  title?: string | null;
-  address: string;
-  lat?: number | null;
-  lng?: number | null;
-  notes?: string | null;
-  scheduledDate?: string | null;
-  status?: RouteStopStatus;
-  estimatedDurationMinutes?: number | null;
-  sortOrder?: number | null;
 }

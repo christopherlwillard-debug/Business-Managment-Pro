@@ -30,6 +30,5 @@ export interface Invoice {
   terms?: string | null;
   lineItems?: InvoiceLineItem[];
   attachments?: InvoiceAttachment[] | null;
-  businessLine?: string | null;
   createdAt: string;
 }
