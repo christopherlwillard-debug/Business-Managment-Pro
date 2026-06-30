@@ -104,6 +104,7 @@ export const jobKnowledgeRecordsTable = pgTable("job_knowledge_records", {
   missingMaterialsNotes: text("missing_materials_notes"),
   factoryDefectNotes: text("factory_defect_notes"),
   originalProductiveHours: numeric("original_productive_hours", { precision: 8, scale: 2 }),
+  originalValues: jsonb("original_values").$type<Record<string, unknown>>(),
   editReason: text("edit_reason"),
   editedAt: timestamp("edited_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

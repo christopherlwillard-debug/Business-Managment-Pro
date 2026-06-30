@@ -84,7 +84,7 @@ function ModelCard({ model, onClick }: { model: MfhKnowledgeBaseEntry; onClick: 
         </div>
         <div className="text-center">
           <p className="text-[10px] text-muted-foreground">Avg Invoice</p>
-          <p className="font-bold text-sm text-amber-600">{fmt(model.avgInvoice ?? model.avgQuotedPrice)}</p>
+          <p className="font-bold text-sm text-amber-600">{fmt(model.avgInvoice)}</p>
         </div>
         <div className="text-center">
           <p className="text-[10px] text-muted-foreground">Avg Prod. Hrs</p>
@@ -110,6 +110,61 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
   const patchKbRecord = usePatchKnowledgeRecord();
   const [expandedRecordId, setExpandedRecordId] = useState<number | null>(null);
   const [showBasis, setShowBasis] = useState(false);
+  const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
+  const [editRecordForm, setEditRecordForm] = useState({
+    productiveHours: "", travelHours: "", crewSize: "", daysOnSite: "",
+    invoiceAmount: "", materialCost: "", consumablesCost: "",
+    grossProfit: "", netProfit: "", callbacks: "0",
+    warrantyVisit: false, missingMaterialsNotes: "", factoryDefectNotes: "", editReason: "",
+  });
+
+  function startEditRecord(r: MfhKbRecord) {
+    setEditingRecordId(r.id);
+    setEditRecordForm({
+      productiveHours: r.productiveHours ? parseFloat(r.productiveHours).toString() : "",
+      travelHours: r.travelHours ? parseFloat(r.travelHours).toString() : "",
+      crewSize: r.crewSize != null ? String(r.crewSize) : "",
+      daysOnSite: r.daysOnSite != null ? String(r.daysOnSite) : "",
+      invoiceAmount: r.invoiceAmount ? parseFloat(r.invoiceAmount).toString() : "",
+      materialCost: r.materialCost ? parseFloat(r.materialCost).toString() : "",
+      consumablesCost: r.consumablesCost ? parseFloat(r.consumablesCost).toString() : "",
+      grossProfit: r.grossProfit ? parseFloat(r.grossProfit).toString() : "",
+      netProfit: r.netProfit ? parseFloat(r.netProfit).toString() : "",
+      callbacks: String(r.callbacks ?? 0),
+      warrantyVisit: r.warrantyVisit ?? false,
+      missingMaterialsNotes: r.missingMaterialsNotes ?? "",
+      factoryDefectNotes: r.factoryDefectNotes ?? "",
+      editReason: "",
+    });
+  }
+
+  async function handleSaveRecord(r: MfhKbRecord) {
+    try {
+      await patchKbRecord.mutateAsync({
+        jobId: r.jobId,
+        productiveHours: editRecordForm.productiveHours ? parseFloat(editRecordForm.productiveHours) : undefined,
+        travelHours: editRecordForm.travelHours ? parseFloat(editRecordForm.travelHours) : undefined,
+        crewSize: editRecordForm.crewSize ? parseInt(editRecordForm.crewSize) : undefined,
+        daysOnSite: editRecordForm.daysOnSite ? parseInt(editRecordForm.daysOnSite) : undefined,
+        invoiceAmount: editRecordForm.invoiceAmount ? parseFloat(editRecordForm.invoiceAmount) : undefined,
+        materialCost: editRecordForm.materialCost ? parseFloat(editRecordForm.materialCost) : undefined,
+        consumablesCost: editRecordForm.consumablesCost ? parseFloat(editRecordForm.consumablesCost) : undefined,
+        grossProfit: editRecordForm.grossProfit ? parseFloat(editRecordForm.grossProfit) : undefined,
+        netProfit: editRecordForm.netProfit ? parseFloat(editRecordForm.netProfit) : undefined,
+        callbacks: parseInt(editRecordForm.callbacks) || 0,
+        warrantyVisit: editRecordForm.warrantyVisit,
+        missingMaterialsNotes: editRecordForm.missingMaterialsNotes || null,
+        factoryDefectNotes: editRecordForm.factoryDefectNotes || null,
+        editReason: editRecordForm.editReason || null,
+      });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", modelId] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
+      setEditingRecordId(null);
+      toast({ title: "Record updated" });
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    }
+  }
   const { data, isLoading } = useMfhModelDetail(modelId);
   const { data: clients = [] } = useListClients();
   const setPrice = useSetMfhClientPrice();
@@ -135,8 +190,8 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
   if (!data) return null;
 
   const { model, jobs, clientPricing, knowledgeRecords = [] } = data;
-  const margin = (model.avgInvoice ?? model.avgQuotedPrice ?? null) != null && model.avgDealerPrice != null
-    ? (model.avgInvoice ?? model.avgQuotedPrice ?? 0) - model.avgDealerPrice
+  const margin = model.avgInvoice != null && model.avgDealerPrice != null
+    ? model.avgInvoice - model.avgDealerPrice
     : null;
 
   const jobsToShow = expandedJobs ? jobs : jobs.slice(0, 5);
@@ -213,7 +268,7 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <StatTile label="Completed Jobs" value={String(model.jobCount)} />
-        <StatTile label="Avg Invoice" value={fmt(model.avgInvoice ?? model.avgQuotedPrice)} />
+        <StatTile label="Avg Invoice (KB)" value={fmt(model.avgInvoice)} />
         <StatTile label="Avg Prod. Hours" value={model.avgProductiveHours != null ? `${fmt(model.avgProductiveHours, "decimal")} hrs` : model.avgHours != null ? `${fmt(model.avgHours, "decimal")} hrs` : "—"} />
         <StatTile label="Avg Margin" value={margin != null ? fmt(margin) : "—"} sub={margin != null && model.avgDealerPrice ? `dealer ${fmt(model.avgDealerPrice)}` : undefined} />
       </div>
@@ -503,28 +558,100 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
                     {/* Expanded detail */}
                     {isExpanded && (
                       <div className="px-4 pb-3 space-y-2 bg-muted/5 border-t border-border/50">
-                        <div className="grid grid-cols-3 gap-2 pt-2">
-                          <div><p className="text-[10px] text-muted-foreground">Prod. Hrs</p><p className="font-semibold">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Travel Hrs</p><p className="font-semibold">{r.travelHours ? parseFloat(r.travelHours).toFixed(1) : "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Crew Size</p><p className="font-semibold">{r.crewSize ?? "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Days On-Site</p><p className="font-semibold">{r.daysOnSite ?? "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Invoice</p><p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Material Cost</p><p className="font-semibold">{r.materialCost ? fmt(parseFloat(r.materialCost)) : "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Gross Profit</p><p className="font-semibold">{r.grossProfit ? fmt(parseFloat(r.grossProfit)) : "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Net Profit</p><p className="font-semibold">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p></div>
-                          <div><p className="text-[10px] text-muted-foreground">Callbacks</p><p className="font-semibold">{r.callbacks ?? 0}</p></div>
-                        </div>
-                        {r.warrantyVisit && <p className="text-[10px] text-amber-600">🔧 Warranty visit needed</p>}
-                        {r.editReason && <p className="text-[10px] text-muted-foreground italic">Edit note: {r.editReason}</p>}
-                        <div className="pt-1">
-                          <button
-                            onClick={() => toggleStatus(r)}
-                            disabled={patchKbRecord.isPending}
-                            className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${r.status === "accepted" ? "border-red-200 text-red-600 hover:bg-red-50" : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"}`}
-                          >
-                            {r.status === "accepted" ? "Exclude from averages" : "Include in averages"}
-                          </button>
-                        </div>
+                        {editingRecordId === r.id ? (
+                          /* ── Edit Form ── */
+                          <div className="space-y-3 pt-2">
+                            <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Edit Record Fields</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { label: "Prod. Hrs", key: "productiveHours" as const, type: "number" },
+                                { label: "Travel Hrs", key: "travelHours" as const, type: "number" },
+                                { label: "Crew Size", key: "crewSize" as const, type: "number" },
+                                { label: "Days On-Site", key: "daysOnSite" as const, type: "number" },
+                                { label: "Invoice Amount", key: "invoiceAmount" as const, type: "number" },
+                                { label: "Material Cost", key: "materialCost" as const, type: "number" },
+                                { label: "Consumables", key: "consumablesCost" as const, type: "number" },
+                                { label: "Gross Profit", key: "grossProfit" as const, type: "number" },
+                                { label: "Net Profit", key: "netProfit" as const, type: "number" },
+                                { label: "Callbacks", key: "callbacks" as const, type: "number" },
+                              ].map(({ label, key, type }) => {
+                                const orig = r.originalValues?.[key];
+                                const curr = editRecordForm[key];
+                                const changed = orig != null && curr !== "" && Math.abs(parseFloat(String(curr)) - parseFloat(String(orig))) > 0.01;
+                                return (
+                                  <div key={key}>
+                                    <div className="flex items-center gap-1 mb-0.5">
+                                      <label className="text-[10px] font-semibold text-muted-foreground">{label}</label>
+                                      {orig != null && changed && <span className="text-[9px] text-amber-600 font-semibold">✏️ edited</span>}
+                                      {orig != null && !changed && <span className="text-[9px] text-blue-500 font-semibold">auto</span>}
+                                    </div>
+                                    <input
+                                      type={type}
+                                      step="any"
+                                      className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background"
+                                      value={editRecordForm[key] as string}
+                                      onChange={e => setEditRecordForm(f => ({ ...f, [key]: e.target.value }))}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input type="checkbox" id={`kb-warranty-${r.id}`} className="rounded"
+                                checked={editRecordForm.warrantyVisit}
+                                onChange={e => setEditRecordForm(f => ({ ...f, warrantyVisit: e.target.checked }))} />
+                              <label htmlFor={`kb-warranty-${r.id}`} className="text-xs text-foreground">Warranty visit needed</label>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-muted-foreground">Edit Reason (optional)</label>
+                              <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mt-0.5"
+                                placeholder="Why are these values being changed?"
+                                value={editRecordForm.editReason}
+                                onChange={e => setEditRecordForm(f => ({ ...f, editReason: e.target.value }))} />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button onClick={() => setEditingRecordId(null)}
+                                className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
+                              <button onClick={() => handleSaveRecord(r)} disabled={patchKbRecord.isPending}
+                                className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-50">
+                                {patchKbRecord.isPending ? "Saving…" : "Save Changes"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* ── Read-only view ── */
+                          <>
+                            <div className="grid grid-cols-3 gap-2 pt-2">
+                              <div><p className="text-[10px] text-muted-foreground">Prod. Hrs</p><p className="font-semibold">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Travel Hrs</p><p className="font-semibold">{r.travelHours ? parseFloat(r.travelHours).toFixed(1) : "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Crew Size</p><p className="font-semibold">{r.crewSize ?? "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Days On-Site</p><p className="font-semibold">{r.daysOnSite ?? "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Invoice</p><p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Material Cost</p><p className="font-semibold">{r.materialCost ? fmt(parseFloat(r.materialCost)) : "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Gross Profit</p><p className="font-semibold">{r.grossProfit ? fmt(parseFloat(r.grossProfit)) : "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Net Profit</p><p className="font-semibold">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p></div>
+                              <div><p className="text-[10px] text-muted-foreground">Callbacks</p><p className="font-semibold">{r.callbacks ?? 0}</p></div>
+                            </div>
+                            {r.warrantyVisit && <p className="text-[10px] text-amber-600">🔧 Warranty visit needed</p>}
+                            {r.editReason && <p className="text-[10px] text-muted-foreground italic">Edit note: {r.editReason}</p>}
+                            {r.originalValues && (
+                              <p className="text-[10px] text-blue-600/70">Original auto-computed values preserved for comparison.</p>
+                            )}
+                            <div className="flex items-center gap-2 pt-1">
+                              <button onClick={() => startEditRecord(r)}
+                                className="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-border text-foreground hover:bg-muted/50 transition-colors">
+                                Edit Fields
+                              </button>
+                              <button
+                                onClick={() => toggleStatus(r)}
+                                disabled={patchKbRecord.isPending}
+                                className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${r.status === "accepted" ? "border-red-200 text-red-600 hover:bg-red-50" : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"}`}
+                              >
+                                {r.status === "accepted" ? "Exclude from averages" : "Include in averages"}
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -615,7 +742,7 @@ export default function MfhKnowledgeBase() {
       else if (sortKey === "constructionTypeName") { av = a.constructionTypeName ?? ""; bv = b.constructionTypeName ?? ""; }
       else if (sortKey === "basePrice") { av = a.basePrice ? parseFloat(a.basePrice) : -1; bv = b.basePrice ? parseFloat(b.basePrice) : -1; }
       else if (sortKey === "jobCount") { av = a.jobCount; bv = b.jobCount; }
-      else if (sortKey === "avgInvoice") { av = a.avgInvoice ?? a.avgQuotedPrice ?? -1; bv = b.avgInvoice ?? b.avgQuotedPrice ?? -1; }
+      else if (sortKey === "avgInvoice") { av = a.avgInvoice ?? -1; bv = b.avgInvoice ?? -1; }
       if (av == null) av = -1;
       if (bv == null) bv = -1;
       const cmp = typeof av === "string" ? av.localeCompare(bv as string) : (av as number) - (bv as number);
@@ -630,8 +757,9 @@ export default function MfhKnowledgeBase() {
 
   const totalJobs = filtered.reduce((s, m) => s + m.jobCount, 0);
   const modelsWithJobs = filtered.filter(m => m.jobCount > 0);
-  const avgInvoiceAll = modelsWithJobs.length > 0
-    ? modelsWithJobs.reduce((s, m) => s + (m.avgInvoice ?? m.avgQuotedPrice ?? 0), 0) / modelsWithJobs.length
+  const modelsWithKbInvoice = modelsWithJobs.filter(m => m.avgInvoice != null);
+  const avgInvoiceAll = modelsWithKbInvoice.length > 0
+    ? modelsWithKbInvoice.reduce((s, m) => s + (m.avgInvoice ?? 0), 0) / modelsWithKbInvoice.length
     : null;
 
   return (
@@ -737,7 +865,7 @@ export default function MfhKnowledgeBase() {
                       </td>
                       <td className="px-3 py-3 text-right font-bold text-foreground text-sm">{m.jobCount}</td>
                       <td className="px-3 py-3 text-right text-muted-foreground text-sm hidden md:table-cell">
-                        {fmt(m.avgInvoice ?? m.avgQuotedPrice)}
+                        {fmt(m.avgInvoice)}
                       </td>
                       <td className="px-3 py-3 text-right">
                         <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-500 transition-colors ml-auto" />

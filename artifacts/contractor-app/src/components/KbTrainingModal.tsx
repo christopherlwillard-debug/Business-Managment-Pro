@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Brain, X, CheckCircle2, MinusCircle, Clock, TrendingUp } from "lucide-react";
+import { Brain, X, CheckCircle2, MinusCircle, Clock, TrendingUp, AlertCircle } from "lucide-react";
 import {
   useJobLaborEntries,
   useJobKnowledgeRecord,
@@ -38,13 +38,16 @@ function fmtCurrency(v: number | string | null | undefined) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function NumInput({ label, value, onChange, prefix, suffix, hint }: {
+function NumInput({ label, value, onChange, prefix, suffix, hint, badge }: {
   label: string; value: string; onChange: (v: string) => void;
-  prefix?: string; suffix?: string; hint?: string;
+  prefix?: string; suffix?: string; hint?: string; badge?: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</label>
+      <div className="flex items-center gap-1 mb-0.5">
+        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</label>
+        {badge}
+      </div>
       {hint && <p className="text-[9px] text-muted-foreground/70 mb-0.5">{hint}</p>}
       <div className="relative">
         {prefix && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{prefix}</span>}
@@ -159,6 +162,22 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
   const laborSummary = laborData?.summary;
   const modelInfo = kbRaw?.modelNameSnapshot ?? kbRaw?.builderNameSnapshot;
 
+  // Per-field badge: "📊 Auto" if value matches original auto-computed snapshot, "✏️ Edited" if changed
+  function fieldBadge(fieldKey: string, currentVal: string) {
+    if (!currentVal) return null;
+    const origVals = kbRaw?.originalValues;
+    if (kbRaw?.isDraft || !origVals) {
+      return <span className="text-[9px] text-blue-500 font-semibold">📊 Auto</span>;
+    }
+    const origRaw = origVals[fieldKey];
+    if (origRaw == null) return null;
+    const curr = parseFloat(currentVal);
+    const orig = parseFloat(String(origRaw));
+    if (isNaN(curr) || isNaN(orig)) return null;
+    if (Math.abs(curr - orig) < 0.01) return <span className="text-[9px] text-blue-500 font-semibold">📊 Auto</span>;
+    return <span className="text-[9px] text-amber-600 font-semibold">✏️ Edited</span>;
+  }
+
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-xl bg-card rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -219,16 +238,22 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
                       <p className="text-xs font-semibold text-foreground">Hours Summary for KB</p>
                       {kbRaw?.isDraft && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold">Auto-calculated</span>}
                     </div>
+                    {(!laborSummary || laborSummary.crewCount === 0) && (
+                      <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <p>No crew hours logged yet — add entries above so the KB knows who worked on this job.</p>
+                      </div>
+                    )}
                     {laborSummary && laborSummary.crewCount > 0 && (
                       <p className="text-[10px] text-muted-foreground bg-muted/30 rounded-lg px-2.5 py-1.5">
                         From crew log: {laborSummary.crewCount} people · {laborSummary.totalProductiveHours.toFixed(1)} productive hrs · {laborSummary.totalTravelHours.toFixed(1)} travel hrs
                       </p>
                     )}
                     <div className="grid grid-cols-2 gap-2">
-                      <NumInput label="Productive Hours" value={fields.productiveHours} onChange={v => set("productiveHours", v)} suffix="hrs" hint="Time on-site working" />
-                      <NumInput label="Travel Hours" value={fields.travelHours} onChange={v => set("travelHours", v)} suffix="hrs" hint="Drive time" />
-                      <NumInput label="Crew Size" value={fields.crewSize} onChange={v => set("crewSize", v)} suffix="people" />
-                      <NumInput label="Days On-Site" value={fields.daysOnSite} onChange={v => set("daysOnSite", v)} suffix="days" />
+                      <NumInput label="Productive Hours" value={fields.productiveHours} onChange={v => set("productiveHours", v)} suffix="hrs" hint="Time on-site working" badge={fieldBadge("productiveHours", fields.productiveHours)} />
+                      <NumInput label="Travel Hours" value={fields.travelHours} onChange={v => set("travelHours", v)} suffix="hrs" hint="Drive time" badge={fieldBadge("travelHours", fields.travelHours)} />
+                      <NumInput label="Crew Size" value={fields.crewSize} onChange={v => set("crewSize", v)} suffix="people" badge={fieldBadge("crewSize", fields.crewSize)} />
+                      <NumInput label="Days On-Site" value={fields.daysOnSite} onChange={v => set("daysOnSite", v)} suffix="days" badge={fieldBadge("daysOnSite", fields.daysOnSite)} />
                     </div>
                     {(parseFloat(fields.productiveHours) !== parseFloat(fmtNum(kbRaw?.productiveHours))) && (
                       <div>
@@ -251,12 +276,12 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
                     {kbRaw?.isDraft && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold">Auto-calculated</span>}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <NumInput label="Invoice Amount" value={fields.invoiceAmount} onChange={v => set("invoiceAmount", v)} prefix="$" />
-                    <NumInput label="Material Cost" value={fields.materialCost} onChange={v => set("materialCost", v)} prefix="$" />
-                    <NumInput label="Consumables" value={fields.consumablesCost} onChange={v => set("consumablesCost", v)} prefix="$" />
+                    <NumInput label="Invoice Amount" value={fields.invoiceAmount} onChange={v => set("invoiceAmount", v)} prefix="$" badge={fieldBadge("invoiceAmount", fields.invoiceAmount)} />
+                    <NumInput label="Material Cost" value={fields.materialCost} onChange={v => set("materialCost", v)} prefix="$" badge={fieldBadge("materialCost", fields.materialCost)} />
+                    <NumInput label="Consumables" value={fields.consumablesCost} onChange={v => set("consumablesCost", v)} prefix="$" badge={fieldBadge("consumablesCost", fields.consumablesCost)} />
                     <div />
-                    <NumInput label="Gross Profit" value={fields.grossProfit} onChange={v => set("grossProfit", v)} prefix="$" hint="Revenue − materials" />
-                    <NumInput label="Net Profit" value={fields.netProfit} onChange={v => set("netProfit", v)} prefix="$" hint="Revenue − all expenses" />
+                    <NumInput label="Gross Profit" value={fields.grossProfit} onChange={v => set("grossProfit", v)} prefix="$" hint="Revenue − materials" badge={fieldBadge("grossProfit", fields.grossProfit)} />
+                    <NumInput label="Net Profit" value={fields.netProfit} onChange={v => set("netProfit", v)} prefix="$" hint="Revenue − all expenses" badge={fieldBadge("netProfit", fields.netProfit)} />
                   </div>
 
                   {fields.invoiceAmount && fields.materialCost && (

@@ -286,6 +286,21 @@ router.put("/:jobId/knowledge-record", async (req, res) => {
       : null;
     const editedAt = originalProductiveHours ? now : null;
 
+    // Snapshot of all auto-computed values — stored once so edits are always traceable
+    const draftSnapshot = {
+      productiveHours: draft.productiveHours,
+      travelHours: draft.travelHours,
+      crewSize: draft.crewSize,
+      daysOnSite: draft.daysOnSite,
+      invoiceAmount: draft.invoiceAmount,
+      materialCost: draft.materialCost,
+      consumablesCost: draft.consumablesCost,
+      grossProfit: draft.grossProfit,
+      netProfit: draft.netProfit,
+      callbacks: draft.callbacks ?? 0,
+      warrantyVisit: false,
+    };
+
     const values = {
       jobId,
       mfhModelId: draft.mfhModelId,
@@ -312,14 +327,31 @@ router.put("/:jobId/knowledge-record", async (req, res) => {
       updatedAt: now,
     };
 
-    const [existing] = await db.select({ id: jobKnowledgeRecordsTable.id }).from(jobKnowledgeRecordsTable)
+    const [existing] = await db.select().from(jobKnowledgeRecordsTable)
       .where(eq(jobKnowledgeRecordsTable.jobId, jobId));
 
     let record;
     if (existing) {
-      [record] = await db.update(jobKnowledgeRecordsTable).set(values).where(eq(jobKnowledgeRecordsTable.id, existing.id)).returning();
+      // On first update: snapshot existing record values so we preserve what was there before any edits
+      const origToPreserve = existing.originalValues ?? {
+        productiveHours: existing.productiveHours,
+        travelHours: existing.travelHours,
+        crewSize: existing.crewSize,
+        daysOnSite: existing.daysOnSite,
+        invoiceAmount: existing.invoiceAmount,
+        materialCost: existing.materialCost,
+        consumablesCost: existing.consumablesCost,
+        grossProfit: existing.grossProfit,
+        netProfit: existing.netProfit,
+        callbacks: existing.callbacks,
+        warrantyVisit: existing.warrantyVisit,
+      };
+      [record] = await db.update(jobKnowledgeRecordsTable)
+        .set({ ...values, originalValues: origToPreserve })
+        .where(eq(jobKnowledgeRecordsTable.id, existing.id)).returning();
     } else {
-      [record] = await db.insert(jobKnowledgeRecordsTable).values(values).returning();
+      [record] = await db.insert(jobKnowledgeRecordsTable)
+        .values({ ...values, originalValues: draftSnapshot }).returning();
     }
 
     res.json({ ...record, isDraft: false });
@@ -400,6 +432,23 @@ router.patch("/:jobId/knowledge-record", async (req, res) => {
     }
     if ("productiveHours" in req.body && req.body.productiveHours !== existing.productiveHours) {
       updates.editedAt = new Date();
+    }
+
+    // Snapshot current values into originalValues on first edit so edits are always traceable
+    if (!existing.originalValues) {
+      updates.originalValues = {
+        productiveHours: existing.productiveHours,
+        travelHours: existing.travelHours,
+        crewSize: existing.crewSize,
+        daysOnSite: existing.daysOnSite,
+        invoiceAmount: existing.invoiceAmount,
+        materialCost: existing.materialCost,
+        consumablesCost: existing.consumablesCost,
+        grossProfit: existing.grossProfit,
+        netProfit: existing.netProfit,
+        callbacks: existing.callbacks,
+        warrantyVisit: existing.warrantyVisit,
+      };
     }
 
     const [record] = await db.update(jobKnowledgeRecordsTable).set(updates).where(eq(jobKnowledgeRecordsTable.id, existing.id)).returning();

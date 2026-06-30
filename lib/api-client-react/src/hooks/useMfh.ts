@@ -67,6 +67,7 @@ export interface KnowledgeRecord {
   missingMaterialsNotes?: string | null;
   factoryDefectNotes?: string | null;
   originalProductiveHours?: number | string | null;
+  originalValues?: Record<string, unknown> | null;
   editReason?: string | null;
   editedAt?: string | null;
   createdAt?: string;
@@ -91,6 +92,7 @@ export interface MfhKbRecord {
   netProfit?: string | null;
   callbacks?: number;
   warrantyVisit?: boolean;
+  originalValues?: Record<string, unknown> | null;
   editReason?: string | null;
   editedAt?: string | null;
 }

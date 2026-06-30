@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Users, Plus, Trash2, Pencil, Clock, CheckCircle2 } from "lucide-react";
+import { Users, Plus, Trash2, Pencil, Clock, CheckCircle2, Link2 } from "lucide-react";
 import {
   useJobLaborEntries,
   useAddLaborEntry,
   usePatchLaborEntry,
   useDeleteLaborEntry,
+  useListSubcontractors,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,7 +24,7 @@ function fmtHrs(n: number | string | null | undefined) {
   return v.toFixed(1) + " hrs";
 }
 
-const EMPTY_FORM = { personName: "", workerType: "sub", productiveHours: "", travelHours: "" };
+const EMPTY_FORM = { personName: "", workerType: "sub", productiveHours: "", travelHours: "", linkedSubcontractorId: "" };
 
 interface Props {
   jobId: number;
@@ -42,6 +43,7 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
 
+  const { data: subs = [] } = useListSubcontractors();
   const entries = data?.entries ?? [];
   const summary = data?.summary ?? { crewCount: 0, totalProductiveHours: 0, totalTravelHours: 0, totalHours: 0 };
 
@@ -54,6 +56,7 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
         workerType: form.workerType,
         productiveHours: parseFloat(form.productiveHours || "0") || 0,
         travelHours: parseFloat(form.travelHours || "0") || 0,
+        linkedSubcontractorId: form.linkedSubcontractorId ? parseInt(form.linkedSubcontractorId) : null,
       });
       setForm(EMPTY_FORM);
       setShowForm(false);
@@ -70,6 +73,7 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
       workerType: entry.workerType,
       productiveHours: entry.productiveHours,
       travelHours: entry.travelHours,
+      linkedSubcontractorId: entry.linkedSubcontractorId ? String(entry.linkedSubcontractorId) : "",
     });
   }
 
@@ -83,6 +87,7 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
         workerType: editForm.workerType,
         productiveHours: parseFloat(editForm.productiveHours || "0") || 0,
         travelHours: parseFloat(editForm.travelHours || "0") || 0,
+        linkedSubcontractorId: editForm.linkedSubcontractorId ? parseInt(editForm.linkedSubcontractorId) : null,
       });
       setEditingId(null);
       toast({ title: "Updated" });
@@ -175,6 +180,21 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
               </select>
             </div>
           </div>
+          {form.workerType === "sub" && subs.length > 0 && (
+            <div>
+              <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                <Link2 className="w-3 h-3" /> Link to Sub Record (optional)
+              </label>
+              <select
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background mt-0.5"
+                value={form.linkedSubcontractorId}
+                onChange={e => setForm(f => ({ ...f, linkedSubcontractorId: e.target.value }))}
+              >
+                <option value="">— None —</option>
+                {subs.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] font-semibold text-muted-foreground">Productive Hrs</label>
@@ -235,6 +255,19 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
                     </select>
                   </div>
                 </div>
+                {editForm.workerType === "sub" && subs.length > 0 && (
+                  <div>
+                    <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                      <Link2 className="w-3 h-3" /> Link to Sub Record
+                    </label>
+                    <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mt-0.5"
+                      value={editForm.linkedSubcontractorId}
+                      onChange={e => setEditForm(f => ({ ...f, linkedSubcontractorId: e.target.value }))}>
+                      <option value="">— None —</option>
+                      {subs.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] font-semibold text-muted-foreground">Productive Hrs</label>
@@ -261,7 +294,12 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
                   <span className="text-[10px] font-bold text-amber-700">{entry.personName.charAt(0).toUpperCase()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground truncate">{entry.personName}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-semibold text-foreground truncate">{entry.personName}</p>
+                    {entry.linkedSubcontractorId && (
+                      <Link2 className="w-3 h-3 text-blue-400 flex-shrink-0" title="Linked to sub record" />
+                    )}
+                  </div>
                   <p className="text-[10px] text-muted-foreground capitalize">{WORKER_TYPES.find(t => t.value === entry.workerType)?.label ?? entry.workerType}</p>
                 </div>
                 <div className="text-right">
