@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "../custom-fetch";
 
 export interface MfhConstructionType { id: number; name: string; }
-export interface MfhManufacturer { id: number; name: string; createdAt?: string; }
+export interface MfhManufacturer { id: number; name: string; active: boolean; createdAt?: string; }
 export interface MfhModel {
   id: number;
   manufacturerId: number;
@@ -87,6 +87,7 @@ export interface MfhPanelData {
 
 export interface MfhLibraryData {
   manufacturers: MfhManufacturer[];
+  models: MfhModel[];
   constructionTypes: MfhConstructionType[];
   benchmarks: Array<{ id: number; jobType: string; estimatedHours?: string | null }>;
   templates: Array<{ id: number; name: string }>;
@@ -123,8 +124,8 @@ export function useCreateMfhManufacturer() {
 export function useUpdateMfhManufacturer() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) =>
-      customFetch<MfhManufacturer>(`/api/mfh/manufacturers/${id}`, { method: "PATCH", body: JSON.stringify({ name }), headers: { "Content-Type": "application/json" } }),
+    mutationFn: ({ id, ...data }: { id: number; name?: string; active?: boolean }) =>
+      customFetch<MfhManufacturer>(`/api/mfh/manufacturers/${id}`, { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/mfh/manufacturers"] }); qc.invalidateQueries({ queryKey: ["/api/mfh/library-data"] }); },
   });
 }

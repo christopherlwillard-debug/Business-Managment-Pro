@@ -12,6 +12,7 @@ export const mfhConstructionTypesTable = pgTable("mfh_construction_types", {
 export const mfhManufacturersTable = pgTable("mfh_manufacturers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

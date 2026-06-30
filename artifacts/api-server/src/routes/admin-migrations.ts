@@ -3,8 +3,9 @@ import { db } from "@workspace/db";
 import {
   mileageLogsTable, expensesTable, businessesTable, recurringExpensesTable,
   checklistTemplatesTable, checklistTemplateSectionsTable, checklistTemplateItemsTable,
+  mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable,
 } from "@workspace/db/schema";
-import { isNull, isNotNull, and, inArray, or, like, asc, sql } from "drizzle-orm";
+import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -247,6 +248,84 @@ router.post("/seed-checklist-templates", async (_req, res) => {
   } catch (err) {
     console.error("[admin/migrations] seed-checklist-templates failed:", err);
     res.status(500).json({ error: "Seed failed" });
+  }
+});
+
+// Fix MFH data hierarchy: manufacturers that are actually dealer names (found in clients)
+// have their models (which are really builder brands) promoted to proper manufacturers.
+// Idempotent: safe to re-run — if already migrated, returns early with a clean message.
+router.post("/fix-mfh-hierarchy", async (_req, res) => {
+  try {
+    const allManufacturers = await db.select().from(mfhManufacturersTable);
+    const allClients = await db.select({ name: clientsTable.name }).from(clientsTable);
+    const clientNames = allClients.map(c => c.name?.toLowerCase() ?? "");
+
+    // Suspect manufacturers: those whose name appears inside a client's name (case-insensitive).
+    // E.g. "Clayton" is a suspect when there's a client "Clayton Homes Evansville".
+    const suspectManufacturers = allManufacturers.filter(m =>
+      clientNames.some(cn => cn.includes(m.name.toLowerCase()))
+    );
+
+    if (suspectManufacturers.length === 0) {
+      return res.json({
+        ok: true,
+        already_clean: true,
+        message: "No dealer-named manufacturers found — already migrated or data is correct",
+      });
+    }
+
+    const promoted: string[] = [];
+    const deleted: string[] = [];
+    let jobsCleared = 0;
+
+    for (const suspect of suspectManufacturers) {
+      const models = await db.select().from(mfhModelsTable)
+        .where(eq(mfhModelsTable.manufacturerId, suspect.id));
+      const modelIds = models.map(m => m.id);
+      console.log(`[fix-mfh-hierarchy] suspect="${suspect.name}" id=${suspect.id} models=${JSON.stringify(models.map(m => m.name))}`);
+
+      // Promote each wrongly-stored model to a real builder (manufacturer)
+      for (const model of models) {
+        const dup = await db.select({ id: mfhManufacturersTable.id }).from(mfhManufacturersTable)
+          .where(ilike(mfhManufacturersTable.name, model.name)).limit(1);
+        if (dup.length === 0) {
+          await db.insert(mfhManufacturersTable).values({ name: model.name });
+          promoted.push(model.name);
+          console.log(`[fix-mfh-hierarchy] promoted "${model.name}" → new manufacturer`);
+        } else {
+          console.log(`[fix-mfh-hierarchy] "${model.name}" already exists as manufacturer — skipping`);
+        }
+      }
+
+      // Null-clear job references to the wrongly-entered model IDs
+      if (modelIds.length > 0) {
+        const r1 = await db.execute(
+          sql`UPDATE jobs SET mfh_manufacturer_id = NULL, mfh_model_id = NULL WHERE mfh_model_id = ANY(ARRAY[${sql.raw(modelIds.join(","))}]::integer[])`
+        );
+        jobsCleared += r1.rowCount ?? 0;
+      }
+
+      // Null-clear job references to the suspect manufacturer itself
+      const r2 = await db.execute(
+        sql`UPDATE jobs SET mfh_manufacturer_id = NULL, mfh_model_id = NULL WHERE mfh_manufacturer_id = ${suspect.id}`
+      );
+      jobsCleared += r2.rowCount ?? 0;
+
+      // Delete the wrongly-stored model records (now that their names are proper manufacturers)
+      if (modelIds.length > 0) {
+        await db.delete(mfhModelsTable).where(inArray(mfhModelsTable.id, modelIds));
+      }
+
+      // Delete the suspect manufacturer
+      await db.delete(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, suspect.id));
+      deleted.push(suspect.name);
+    }
+
+    console.log(`[admin/migrations] fix-mfh-hierarchy complete: promoted=${JSON.stringify(promoted)}, deleted=${JSON.stringify(deleted)}, jobsCleared=${jobsCleared}`);
+    res.json({ ok: true, promoted, deleted, jobsCleared });
+  } catch (err) {
+    console.error("[admin/migrations] fix-mfh-hierarchy failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });
 

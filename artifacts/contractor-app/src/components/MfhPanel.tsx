@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Home, BookOpen, X, Plus, Trash2, Pencil, Check,
   AlertTriangle, RefreshCw, DollarSign, Info, TrendingUp,
-  RotateCcw, Eye, ChevronRight,
+  RotateCcw, Eye, EyeOff, ChevronRight, ChevronDown,
 } from "lucide-react";
 import {
   useListMfhManufacturers,
@@ -39,14 +39,15 @@ function fmt(n: string | number | null | undefined, signed = false) {
   return signed && v > 0 ? `+${s}` : s;
 }
 
-// ─── Home Library Modal (4 tabs) ──────────────────────────────────────────────
-type LibTab = "manufacturers" | "models" | "pricing" | "addons";
+// ─── Home Library Modal ───────────────────────────────────────────────────────
+type LibTab = "library" | "pricing" | "addons";
 
 function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const { toast } = useToast();
-  const [tab, setTab] = useState<LibTab>("manufacturers");
+  const [tab, setTab] = useState<LibTab>("library");
   const [activeMfgId, setActiveMfgId] = useState<number | null>(null);
   const [activeGuideId, setActiveGuideId] = useState<number | null>(null);
+  const [collapsedBuilderIds, setCollapsedBuilderIds] = useState<Set<number>>(new Set());
 
   const { data: libData } = useMfhLibraryData();
   const { data: manufacturers = [] } = useListMfhManufacturers();
@@ -120,8 +121,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
 
   const activeAddons = guideAddons.filter(a => a.guideId === activeGuideId);
   const TABS: { id: LibTab; label: string }[] = [
-    { id: "manufacturers", label: "Builders" },
-    { id: "models", label: "Models" },
+    { id: "library", label: "Builders & Models" },
     { id: "pricing", label: "Pricing" },
     { id: "addons", label: "Add-ons" },
   ];
@@ -140,19 +140,21 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Manufacturer selector */}
-        <div className="px-5 pt-3 pb-0 flex items-center gap-3 flex-shrink-0">
-          <span className="text-xs font-semibold text-muted-foreground">Builder:</span>
-          <div className="flex gap-1 flex-wrap flex-1">
-            {manufacturers.map(m => (
-              <button
-                key={m.id}
-                onClick={() => { setActiveMfgId(m.id); setActiveGuideId(null); }}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${activeMfgId === m.id ? "bg-amber-500 text-white" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}
-              >{m.name}</button>
-            ))}
+        {/* Builder selector — only shown for Pricing and Add-ons tabs */}
+        {tab !== "library" && (
+          <div className="px-5 pt-3 pb-0 flex items-center gap-3 flex-shrink-0">
+            <span className="text-xs font-semibold text-muted-foreground">Builder:</span>
+            <div className="flex gap-1 flex-wrap flex-1">
+              {manufacturers.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => { setActiveMfgId(m.id); setActiveGuideId(null); }}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${activeMfgId === m.id ? "bg-amber-500 text-white" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}
+                >{m.name}</button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b border-border px-5 mt-3 flex-shrink-0">
@@ -168,262 +170,265 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
-          {/* ── Manufacturers Tab ── */}
-          {tab === "manufacturers" && (
-            <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Add, rename, or remove builders. Deleting a builder removes all its models, guides, and pricing.</p>
-              <div className="rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/30">
-                    <tr><th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Name</th><th className="w-20 px-4 py-2.5"></th></tr>
-                  </thead>
-                  <tbody>
-                    {manufacturers.map(m => (
-                      <tr key={m.id} className="border-t border-border hover:bg-muted/10">
-                        <td className="px-4 py-2.5">
-                          {editingMfgId === m.id ? (
-                            <div className="flex gap-2">
-                              <input className="flex-1 px-2 py-1 text-sm rounded-lg border border-border bg-background" value={editingMfgName}
-                                onChange={e => setEditingMfgName(e.target.value)}
-                                onKeyDown={e => { if (e.key === "Enter") { updateMfg.mutate({ id: m.id, name: editingMfgName }); setEditingMfgId(null); } if (e.key === "Escape") setEditingMfgId(null); }}
-                                autoFocus />
-                              <button onClick={() => { updateMfg.mutate({ id: m.id, name: editingMfgName }); setEditingMfgId(null); }} className="text-emerald-600"><Check className="w-4 h-4" /></button>
-                            </div>
-                          ) : (
-                            <span className="font-medium text-foreground">{m.name}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={() => { setEditingMfgId(m.id); setEditingMfgName(m.name); }} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => setConfirmDelete({ type: "manufacturer", id: m.id, label: m.name })} className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-border bg-muted/10">
-                      <td className="px-4 py-2.5 flex gap-2">
-                        <input className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" placeholder="New builder…" value={newMfgName} onChange={e => setNewMfgName(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter" && newMfgName.trim()) { createMfg.mutate({ name: newMfgName.trim() }); setNewMfgName(""); } }} />
-                        <button onClick={() => { if (newMfgName.trim()) { createMfg.mutate({ name: newMfgName.trim() }); setNewMfgName(""); } }} disabled={!newMfgName.trim()}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-40 transition-colors">Add</button>
-                      </td>
-                      <td />
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {/* ── Library Tab — hierarchical builder → model tree ── */}
+          {tab === "library" && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground pb-1">
+                Builders are the companies that built the home (Southern, Giles, Norris, etc.). Add floor plan models under each builder.
+                Inactive builders and models are hidden from job dropdowns but kept for history.
+              </p>
 
-          {/* ── Models Tab ── */}
-          {tab === "models" && activeMfgId && (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/30">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Type (auto)</th>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Benchmark</th>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Checklist</th>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Active</th>
-                      <th className="w-16 px-3 py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {models.map(model => (
-                      <tr key={model.id} className="border-t border-border hover:bg-muted/10">
-                        {editingModel?.id === model.id ? (
-                          <td colSpan={6} className="px-3 py-3">
-                            <div className="space-y-2">
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="text-[10px] text-muted-foreground font-medium">Model Name</label>
-                                  <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.name}
-                                    onChange={e => setEditingModel({ ...editingModel, name: e.target.value })} />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] text-muted-foreground font-medium">Construction Type</label>
-                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.constructionTypeId}
-                                    onChange={e => setEditingModel({ ...editingModel, constructionTypeId: parseInt(e.target.value) })}>
-                                    {constructionTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="text-[10px] text-muted-foreground font-medium">Benchmark (optional)</label>
-                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.benchmarkId ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, benchmarkId: e.target.value ? parseInt(e.target.value) : null })}>
-                                    <option value="">— None —</option>
-                                    {benchmarks.map(b => <option key={b.id} value={b.id}>{b.jobType}</option>)}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="text-[10px] text-muted-foreground font-medium">Checklist Template (optional)</label>
-                                  <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.checklistTemplateId ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, checklistTemplateId: e.target.value ? parseInt(e.target.value) : null })}>
-                                    <option value="">— None —</option>
-                                    {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="text-[10px] text-muted-foreground font-medium">Introduced Year</label>
-                                  <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.introducedYear ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, introducedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2020" />
-                                </div>
-                                <div>
-                                  <label className="text-[10px] text-muted-foreground font-medium">Discontinued Year</label>
-                                  <input type="number" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.discontinuedYear ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, discontinuedYear: e.target.value ? parseInt(e.target.value) : null })} placeholder="e.g. 2024" />
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-muted-foreground font-medium">Baseline Price (Clayton, optional)</label>
-                                <div className="relative">
-                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                                  <input type="number" className="w-full pl-6 pr-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.basePrice ?? ""}
-                                    onChange={e => setEditingModel({ ...editingModel, basePrice: e.target.value || null })} placeholder="e.g. 1500" />
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-muted-foreground font-medium">Notes</label>
-                                <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={editingModel.notes ?? ""}
-                                  onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim · Needs 8' porch flashing" />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-muted-foreground font-medium mb-1 block">Default Add-ons (pre-checked when this model is chosen)</label>
-                                <div className="flex gap-3 flex-wrap">
-                                  {(panelData?.guideAddons ?? []).filter((a, i, arr) => arr.findIndex(x => x.addonKey === a.addonKey) === i).map(addon => (
-                                    <label key={addon.addonKey} className="flex items-center gap-1.5 cursor-pointer text-xs">
-                                      <input type="checkbox"
-                                        checked={(editingModel.defaultAddonKeys ?? []).includes(addon.addonKey)}
-                                        onChange={e => {
-                                          const keys = editingModel.defaultAddonKeys ?? [];
-                                          setEditingModel({ ...editingModel, defaultAddonKeys: e.target.checked ? [...keys, addon.addonKey] : keys.filter(k => k !== addon.addonKey) });
-                                        }}
-                                        className="w-3.5 h-3.5 accent-amber-500" />
-                                      {addon.label}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <label className="flex items-center gap-2 cursor-pointer text-xs">
-                                  <input type="checkbox" checked={editingModel.active !== false}
-                                    onChange={e => setEditingModel({ ...editingModel, active: e.target.checked })}
-                                    className="w-4 h-4 accent-amber-500" />
-                                  Active (shown in job dropdowns)
-                                </label>
-                              </div>
-                              <div className="flex gap-2 justify-end">
-                                <button onClick={() => setEditingModel(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground transition-colors">Cancel</button>
-                                <button
-                                  onClick={() => {
-                                    updateModel.mutate({
-                                      id: editingModel.id,
-                                      name: editingModel.name,
-                                      constructionTypeId: editingModel.constructionTypeId,
-                                      benchmarkId: editingModel.benchmarkId ?? null,
-                                      checklistTemplateId: editingModel.checklistTemplateId ?? null,
-                                      notes: editingModel.notes ?? null,
-                                      defaultAddonKeys: editingModel.defaultAddonKeys ?? [],
-                                      active: editingModel.active !== false,
-                                      introducedYear: editingModel.introducedYear ?? null,
-                                      discontinuedYear: editingModel.discontinuedYear ?? null,
-                                      basePrice: editingModel.basePrice ? editingModel.basePrice : null,
-                                    });
-                                    setEditingModel(null);
-                                  }}
-                                  className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold transition-colors">Save</button>
-                              </div>
-                            </div>
-                          </td>
+              {(libData?.manufacturers ?? []).map(mfg => {
+                const mfgModels = (libData?.models ?? []).filter(m => m.manufacturerId === mfg.id);
+                const isExpanded = !collapsedBuilderIds.has(mfg.id);
+                return (
+                  <div key={mfg.id} className="rounded-xl border border-border overflow-hidden">
+                    {/* Builder header */}
+                    <div className={`flex items-center gap-2 px-4 py-3 ${mfg.active ? "bg-muted/10" : "bg-slate-50/50"}`}>
+                      <button
+                        onClick={() => setCollapsedBuilderIds(prev => { const n = new Set(prev); n.has(mfg.id) ? n.delete(mfg.id) : n.add(mfg.id); return n; })}
+                        className="flex-1 flex items-center gap-2 text-left min-w-0"
+                      >
+                        {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+                        {editingMfgId === mfg.id ? (
+                          <input
+                            autoFocus
+                            className="flex-1 px-2 py-0.5 text-sm rounded border border-border bg-background"
+                            value={editingMfgName}
+                            onChange={e => setEditingMfgName(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                updateMfg.mutateAsync({ id: mfg.id, name: editingMfgName })
+                                  .then(() => setEditingMfgId(null))
+                                  .catch(err => toast({ title: "Cannot Rename", description: (err as Error)?.message ?? "Failed", variant: "destructive" }));
+                              }
+                              if (e.key === "Escape") setEditingMfgId(null);
+                            }}
+                          />
+                        ) : (
+                          <span className={`font-semibold text-sm truncate ${mfg.active ? "text-foreground" : "text-muted-foreground"}`}>{mfg.name}</span>
+                        )}
+                        {!mfg.active && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 flex-shrink-0">Inactive</span>}
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                          {mfgModels.length > 0 ? `${mfgModels.length} model${mfgModels.length !== 1 ? "s" : ""}` : "no models"}
+                        </span>
+                      </button>
+                      <div className="flex gap-0.5 items-center flex-shrink-0">
+                        {editingMfgId === mfg.id ? (
+                          <>
+                            <button onClick={() => {
+                              updateMfg.mutateAsync({ id: mfg.id, name: editingMfgName })
+                                .then(() => setEditingMfgId(null))
+                                .catch(err => toast({ title: "Cannot Rename", description: (err as Error)?.message ?? "Failed", variant: "destructive" }));
+                            }} className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 transition-colors"><Check className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setEditingMfgId(null)} className="p-1.5 rounded text-muted-foreground hover:bg-muted/50 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                          </>
                         ) : (
                           <>
-                            <td className="px-3 py-2 font-medium text-foreground">{model.name}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{model.constructionTypeName ?? "—"}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{model.benchmarkName ?? "—"}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{model.checklistTemplateName ?? "—"}</td>
-                            <td className="px-3 py-2">
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${model.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                                {model.active ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex gap-1">
-                                <button onClick={() => setEditingModel(model)} className="p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3 h-3" /></button>
-                                <button onClick={() => setConfirmDelete({ type: "model", id: model.id, label: model.name })} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                              </div>
-                            </td>
+                            <button onClick={e => { e.stopPropagation(); setEditingMfgId(mfg.id); setEditingMfgName(mfg.name); }}
+                              className="p-1.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors" title="Rename"><Pencil className="w-3.5 h-3.5" /></button>
+                            <button
+                              onClick={() => updateMfg.mutate({ id: mfg.id, active: !mfg.active })}
+                              title={mfg.active ? "Deactivate — hides from job dropdowns" : "Activate"}
+                              className={`p-1.5 rounded transition-colors ${mfg.active ? "text-emerald-600 hover:bg-muted/50 hover:text-muted-foreground" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
+                              {mfg.active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            </button>
+                            <button onClick={() => setConfirmDelete({ type: "manufacturer", id: mfg.id, label: mfg.name })}
+                              className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                           </>
                         )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Add model form */}
-              {newModelForm == null ? (
-                <button onClick={() => setNewModelForm({ manufacturerId: activeMfgId, active: true, defaultAddonKeys: [] })}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-amber-300 transition-colors w-full">
-                  <Plus className="w-3.5 h-3.5" /> Add Model
-                </button>
-              ) : (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-4 space-y-2">
-                  <p className="text-xs font-semibold text-amber-700">New Model</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><label className="text-[10px] text-muted-foreground font-medium">Name</label>
-                      <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.name ?? ""} onChange={e => setNewModelForm({ ...newModelForm, name: e.target.value })} placeholder="e.g. Appalachia" /></div>
-                    <div><label className="text-[10px] text-muted-foreground font-medium">Construction Type</label>
-                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.constructionTypeId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, constructionTypeId: parseInt(e.target.value) })}>
-                        <option value="">Select…</option>
-                        {constructionTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
-                      </select>
-                      {showNewType ? (
-                        <div className="flex gap-1 mt-1">
-                          <input autoFocus className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background" placeholder="e.g. VOG, Hybrid, Drywall…" value={newTypeName}
-                            onChange={e => setNewTypeName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter" && newTypeName.trim()) addConstructionType();
-                              if (e.key === "Escape") { setNewTypeName(""); setShowNewType(false); }
-                            }} />
-                          <button type="button" disabled={!newTypeName.trim() || createConstructionType.isPending}
-                            onClick={addConstructionType}
-                            className="px-2 py-1 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add</button>
-                          <button type="button" onClick={() => { setNewTypeName(""); setShowNewType(false); }}
-                            className="px-1.5 py-1 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted/50"><X className="w-3 h-3" /></button>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={() => setShowNewType(true)}
-                          className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 hover:text-amber-700"><Plus className="w-2.5 h-2.5" /> New type</button>
-                      )}
+                      </div>
                     </div>
-                    <div><label className="text-[10px] text-muted-foreground font-medium">Benchmark (optional)</label>
-                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.benchmarkId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, benchmarkId: e.target.value ? parseInt(e.target.value) : undefined })}>
-                        <option value="">— None —</option>
-                        {benchmarks.map(b => <option key={b.id} value={b.id}>{b.jobType}</option>)}
-                      </select></div>
-                    <div><label className="text-[10px] text-muted-foreground font-medium">Checklist Template (optional)</label>
-                      <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.checklistTemplateId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, checklistTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}>
-                        <option value="">— None —</option>
-                        {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                      </select></div>
+
+                    {/* Models */}
+                    {isExpanded && (
+                      <div className="border-t border-border">
+                        {mfgModels.length === 0 && newModelForm?.manufacturerId !== mfg.id && (
+                          <p className="text-xs text-muted-foreground px-10 py-2 italic">No models — add one below.</p>
+                        )}
+                        {mfgModels.map(model => (
+                          <div key={model.id} className="border-b border-border last:border-0">
+                            {editingModel?.id === model.id ? (
+                              <div className="px-4 py-3 pl-10 bg-amber-50/20 space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-[10px] text-muted-foreground font-medium">Model Name</label>
+                                    <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.name}
+                                      onChange={e => setEditingModel({ ...editingModel, name: e.target.value })} />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] text-muted-foreground font-medium">Construction Type</label>
+                                    <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.constructionTypeId}
+                                      onChange={e => setEditingModel({ ...editingModel, constructionTypeId: parseInt(e.target.value) })}>
+                                      {constructionTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] text-muted-foreground font-medium">Benchmark (optional)</label>
+                                    <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.benchmarkId ?? ""}
+                                      onChange={e => setEditingModel({ ...editingModel, benchmarkId: e.target.value ? parseInt(e.target.value) : null })}>
+                                      <option value="">— None —</option>
+                                      {benchmarks.map(b => <option key={b.id} value={b.id}>{b.jobType}</option>)}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] text-muted-foreground font-medium">Checklist Template (optional)</label>
+                                    <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.checklistTemplateId ?? ""}
+                                      onChange={e => setEditingModel({ ...editingModel, checklistTemplateId: e.target.value ? parseInt(e.target.value) : null })}>
+                                      <option value="">— None —</option>
+                                      {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground font-medium">Notes</label>
+                                  <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={editingModel.notes ?? ""}
+                                    onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim · 8' porch flashing" />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer text-xs">
+                                    <input type="checkbox" checked={editingModel.active !== false}
+                                      onChange={e => setEditingModel({ ...editingModel, active: e.target.checked })}
+                                      className="w-4 h-4 accent-amber-500" />
+                                    Active (shown in job dropdowns)
+                                  </label>
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                  <button onClick={() => setEditingModel(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground transition-colors">Cancel</button>
+                                  <button
+                                    onClick={() => {
+                                      updateModel.mutate({
+                                        id: editingModel.id,
+                                        name: editingModel.name,
+                                        constructionTypeId: editingModel.constructionTypeId,
+                                        benchmarkId: editingModel.benchmarkId ?? null,
+                                        checklistTemplateId: editingModel.checklistTemplateId ?? null,
+                                        notes: editingModel.notes ?? null,
+                                        defaultAddonKeys: editingModel.defaultAddonKeys ?? [],
+                                        active: editingModel.active !== false,
+                                        introducedYear: editingModel.introducedYear ?? null,
+                                        discontinuedYear: editingModel.discontinuedYear ?? null,
+                                        basePrice: editingModel.basePrice ?? null,
+                                      });
+                                      setEditingModel(null);
+                                    }}
+                                    className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold transition-colors">Save</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-3 px-4 py-2.5 pl-10 hover:bg-muted/10">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className={`text-xs font-medium ${model.active ? "text-foreground" : "text-muted-foreground"}`}>{model.name}</span>
+                                    {model.constructionTypeName && (
+                                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                                        model.constructionTypeName === "VOG" ? "bg-blue-100 text-blue-700" :
+                                        model.constructionTypeName === "Hybrid" ? "bg-purple-100 text-purple-700" :
+                                        model.constructionTypeName === "Drywall" ? "bg-emerald-100 text-emerald-700" :
+                                        "bg-slate-100 text-slate-600"
+                                      }`}>{model.constructionTypeName}</span>
+                                    )}
+                                    {!model.active && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Inactive</span>}
+                                  </div>
+                                </div>
+                                <div className="flex gap-0.5">
+                                  <button onClick={() => { setEditingModel(model); setActiveMfgId(mfg.id); }} className="p-1.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3 h-3" /></button>
+                                  <button onClick={() => setConfirmDelete({ type: "model", id: model.id, label: model.name })} className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        {/* Add model inline */}
+                        {newModelForm?.manufacturerId === mfg.id ? (
+                          <div className="px-4 py-3 pl-10 border-t border-dashed border-border bg-amber-50/20 space-y-2">
+                            <p className="text-xs font-semibold text-amber-700">New Model for {mfg.name}</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] text-muted-foreground font-medium">Name</label>
+                                <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.name ?? ""} onChange={e => setNewModelForm({ ...newModelForm, name: e.target.value })} placeholder="e.g. Farmhouse" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-muted-foreground font-medium">Construction Type</label>
+                                <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.constructionTypeId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, constructionTypeId: parseInt(e.target.value) })}>
+                                  <option value="">Select…</option>
+                                  {constructionTypes.map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-muted-foreground font-medium">Benchmark (optional)</label>
+                                <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.benchmarkId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, benchmarkId: e.target.value ? parseInt(e.target.value) : undefined })}>
+                                  <option value="">— None —</option>
+                                  {benchmarks.map(b => <option key={b.id} value={b.id}>{b.jobType}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-muted-foreground font-medium">Checklist (optional)</label>
+                                <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={newModelForm.checklistTemplateId ?? ""} onChange={e => setNewModelForm({ ...newModelForm, checklistTemplateId: e.target.value ? parseInt(e.target.value) : undefined })}>
+                                  <option value="">— None —</option>
+                                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted-foreground font-medium">Notes</label>
+                              <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={newModelForm.notes ?? ""} onChange={e => setNewModelForm({ ...newModelForm, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim" />
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <button onClick={() => setNewModelForm(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
+                              <button
+                                disabled={!newModelForm.name?.trim() || !newModelForm.constructionTypeId}
+                                onClick={() => {
+                                  createModel.mutate({ manufacturerId: mfg.id, name: newModelForm.name!.trim(), constructionTypeId: newModelForm.constructionTypeId!, benchmarkId: newModelForm.benchmarkId, checklistTemplateId: newModelForm.checklistTemplateId, notes: newModelForm.notes, defaultAddonKeys: [], active: true });
+                                  setNewModelForm(null);
+                                }}
+                                className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add Model</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setNewModelForm({ manufacturerId: mfg.id, active: true, defaultAddonKeys: [] }); setActiveMfgId(mfg.id); }}
+                            className="w-full flex items-center gap-1.5 px-4 py-2 pl-10 text-xs text-muted-foreground hover:text-amber-600 hover:bg-amber-50/30 transition-colors border-t border-dashed border-border">
+                            <Plus className="w-3 h-3" /> Add model
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div><label className="text-[10px] text-muted-foreground font-medium">Notes</label>
-                    <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={newModelForm.notes ?? ""} onChange={e => setNewModelForm({ ...newModelForm, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim" /></div>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setNewModelForm(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
-                    <button
-                      disabled={!newModelForm.name?.trim() || !newModelForm.constructionTypeId}
-                      onClick={() => {
-                        createModel.mutate({ manufacturerId: activeMfgId!, name: newModelForm.name!.trim(), constructionTypeId: newModelForm.constructionTypeId!, benchmarkId: newModelForm.benchmarkId, checklistTemplateId: newModelForm.checklistTemplateId, notes: newModelForm.notes, defaultAddonKeys: newModelForm.defaultAddonKeys ?? [], active: true });
-                        setNewModelForm(null);
-                      }}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add Model</button>
-                  </div>
-                </div>
-              )}
+                );
+              })}
+
+              {/* Add builder */}
+              <div className="flex gap-2 pt-1">
+                <input
+                  className="flex-1 px-3 py-2 text-sm rounded-xl border border-border bg-background"
+                  placeholder="New builder name… (e.g. Southern)"
+                  value={newMfgName}
+                  onChange={e => setNewMfgName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newMfgName.trim()) {
+                      createMfg.mutate({ name: newMfgName.trim() }, {
+                        onSuccess: () => setNewMfgName(""),
+                        onError: err => toast({ title: "Cannot Add Builder", description: (err as Error)?.message ?? "Failed", variant: "destructive" }),
+                      });
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (!newMfgName.trim()) return;
+                    createMfg.mutate({ name: newMfgName.trim() }, {
+                      onSuccess: () => setNewMfgName(""),
+                      onError: err => toast({ title: "Cannot Add Builder", description: (err as Error)?.message ?? "Failed", variant: "destructive" }),
+                    });
+                  }}
+                  disabled={!newMfgName.trim()}
+                  className="px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-40 transition-colors">
+                  Add Builder
+                </button>
+              </div>
             </div>
           )}
 
@@ -582,7 +587,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {!activeMfgId && tab !== "manufacturers" && (
+          {!activeMfgId && tab !== "library" && (
             <p className="text-sm text-muted-foreground text-center py-8">Select or create a builder first.</p>
           )}
         </div>
@@ -596,12 +601,18 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
               <p className="text-xs text-muted-foreground">This cannot be undone. All related data will be removed.</p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2 rounded-xl text-xs font-medium bg-muted/50 hover:bg-muted">Cancel</button>
-                <button onClick={() => {
-                  if (confirmDelete.type === "manufacturer") deleteMfg.mutate(confirmDelete.id);
-                  if (confirmDelete.type === "model") deleteModel.mutate(confirmDelete.id);
-                  if (confirmDelete.type === "guide") deleteGuide.mutate(confirmDelete.id);
-                  if (confirmDelete.type === "addon") deleteAddon.mutate(confirmDelete.id);
+                <button onClick={async () => {
+                  const target = confirmDelete;
                   setConfirmDelete(null);
+                  try {
+                    if (target.type === "manufacturer") await deleteMfg.mutateAsync(target.id);
+                    if (target.type === "model") await deleteModel.mutateAsync(target.id);
+                    if (target.type === "guide") await deleteGuide.mutateAsync(target.id);
+                    if (target.type === "addon") await deleteAddon.mutateAsync(target.id);
+                  } catch (err) {
+                    const msg = (err as Error)?.message;
+                    toast({ title: "Cannot Delete", description: msg || "Delete failed. Please try again.", variant: "destructive" });
+                  }
                 }} className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-500 text-white hover:bg-red-600">Delete</button>
               </div>
             </div>
@@ -918,6 +929,7 @@ export function MfhPanel({
                   <option value="">Select builder…</option>
                   {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
+                <p className="text-[10px] text-muted-foreground mt-1">Who built the home — e.g. Southern, Giles, Norris</p>
               </div>
 
               {/* Model + Year */}

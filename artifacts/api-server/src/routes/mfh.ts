@@ -21,7 +21,7 @@ import {
   invoicesTable,
   clientsTable,
 } from "@workspace/db/schema";
-import { eq, and, asc, inArray, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, sql, ilike, or } from "drizzle-orm";
 import crypto from "crypto";
 
 // ── Seed ──────────────────────────────────────────────────────────────────────
@@ -35,36 +35,13 @@ async function ensureSeeded() {
     { name: "VOG" }, { name: "Hybrid" }, { name: "Drywall" },
   ]).onConflictDoNothing();
 
-  const [vog, hybrid, drywall] = await db.select().from(mfhConstructionTypesTable).orderBy(asc(mfhConstructionTypesTable.id));
-  const [clayton] = await db.insert(mfhManufacturersTable).values({ name: "Clayton" }).returning();
+  // Seed builders (manufacturers) correctly — each builder brand is its own entry
+  await db.insert(mfhManufacturersTable).values([
+    { name: "Addison" }, { name: "Appalachia" }, { name: "Champion" },
+    { name: "Giles" }, { name: "Middlebury" }, { name: "Norris" },
+    { name: "Rutledge" }, { name: "Southern" }, { name: "Tru" }, { name: "Wakarusa" },
+  ]).onConflictDoNothing();
 
-  const allModelInserts = [
-    ...["Appalachia", "Giles", "Southern", "Wakarusa", "Champion", "Tru"].map(name => ({ manufacturerId: clayton.id, name, constructionTypeId: vog.id })),
-    ...["Addison"].map(name => ({ manufacturerId: clayton.id, name, constructionTypeId: hybrid.id })),
-    ...["Norris", "Rutledge", "Middlebury"].map(name => ({ manufacturerId: clayton.id, name, constructionTypeId: drywall.id })),
-  ];
-  const insertedModels = await db.insert(mfhModelsTable).values(allModelInserts).returning();
-
-  const [dealerGuide, myPricing] = await db.insert(mfhPricingGuidesTable).values([
-    { manufacturerId: clayton.id, name: "Dealer Guide", isDealerGuide: true },
-    { manufacturerId: clayton.id, name: "My Pricing", isDealerGuide: false },
-  ]).returning();
-
-  const dealerItems = insertedModels.map(m => ({
-    guideId: dealerGuide.id, modelId: m.id,
-    basePrice: m.constructionTypeId === hybrid.id ? "2500" : m.constructionTypeId === drywall.id ? "3500" : "1500",
-  }));
-  await db.insert(mfhGuideItemsTable).values([
-    ...dealerItems,
-    ...dealerItems.map(i => ({ ...i, guideId: myPricing.id })),
-  ]);
-  for (const guideId of [dealerGuide.id, myPricing.id]) {
-    await db.insert(mfhGuideAddonsTable).values([
-      { guideId, addonKey: "vinyl_ends", label: "Vinyl Ends", price: "1000", isPerDay: false },
-      { guideId, addonKey: "plumbing", label: "Plumbing Under Home", price: "1000", isPerDay: false },
-      { guideId, addonKey: "travel", label: "Over 60 Miles Travel", price: "150", isPerDay: true },
-    ]);
-  }
   seeded = true;
 }
 
@@ -121,16 +98,23 @@ mfhLibraryRouter.post("/construction-types", async (req, res) => {
 });
 
 // Manufacturers
-mfhLibraryRouter.get("/manufacturers", async (_req, res) => {
+mfhLibraryRouter.get("/manufacturers", async (req, res) => {
   try {
     await ensureSeeded();
-    res.json(await db.select().from(mfhManufacturersTable).orderBy(asc(mfhManufacturersTable.name)));
+    const { includeInactive } = req.query;
+    const rows = includeInactive
+      ? await db.select().from(mfhManufacturersTable).orderBy(asc(mfhManufacturersTable.name))
+      : await db.select().from(mfhManufacturersTable).where(eq(mfhManufacturersTable.active, true)).orderBy(asc(mfhManufacturersTable.name));
+    res.json(rows);
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 mfhLibraryRouter.post("/manufacturers", async (req, res) => {
   try {
     const { name } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: "Name required" });
+    const dup = await db.select({ id: mfhManufacturersTable.id }).from(mfhManufacturersTable)
+      .where(ilike(mfhManufacturersTable.name, name.trim())).limit(1);
+    if (dup.length > 0) return res.status(409).json({ error: `Builder "${name.trim()}" already exists` });
     const [row] = await db.insert(mfhManufacturersTable).values({ name: name.trim() }).returning();
     res.status(201).json(row);
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
@@ -138,16 +122,34 @@ mfhLibraryRouter.post("/manufacturers", async (req, res) => {
 mfhLibraryRouter.patch("/manufacturers/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name } = req.body;
-    if (!name?.trim()) return res.status(400).json({ error: "Name required" });
-    const [row] = await db.update(mfhManufacturersTable).set({ name: name.trim() }).where(eq(mfhManufacturersTable.id, id)).returning();
+    const { name, active } = req.body;
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) {
+      if (!name.trim()) return res.status(400).json({ error: "Name required" });
+      const dup = await db.select({ id: mfhManufacturersTable.id }).from(mfhManufacturersTable)
+        .where(and(ilike(mfhManufacturersTable.name, name.trim()), sql`${mfhManufacturersTable.id} != ${id}`)).limit(1);
+      if (dup.length > 0) return res.status(409).json({ error: `Builder "${name.trim()}" already exists` });
+      updates.name = name.trim();
+    }
+    if (active !== undefined) updates.active = active;
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No updates provided" });
+    const [row] = await db.update(mfhManufacturersTable).set(updates).where(eq(mfhManufacturersTable.id, id)).returning();
     if (!row) return res.status(404).json({ error: "Not found" });
     res.json(row);
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 mfhLibraryRouter.delete("/manufacturers/:id", async (req, res) => {
   try {
-    await db.delete(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id);
+    const modelIds = await db.select({ id: mfhModelsTable.id }).from(mfhModelsTable).where(eq(mfhModelsTable.manufacturerId, id));
+    const jobCheck = await db.select({ id: jobsTable.id }).from(jobsTable).where(
+      or(
+        eq(jobsTable.mfhManufacturerId, id),
+        modelIds.length > 0 ? inArray(jobsTable.mfhModelId, modelIds.map(m => m.id)) : sql`false`
+      )
+    ).limit(1);
+    if (jobCheck.length > 0) return res.status(409).json({ error: "This builder is used on jobs and cannot be deleted. Deactivate it instead to hide it from new jobs." });
+    await db.delete(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, id));
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
@@ -182,8 +184,12 @@ mfhLibraryRouter.post("/models", async (req, res) => {
   try {
     const { manufacturerId, name, constructionTypeId, benchmarkId, checklistTemplateId, defaultAddonKeys, basePrice, notes, active, introducedYear, discontinuedYear } = req.body;
     if (!manufacturerId || !name?.trim() || !constructionTypeId) return res.status(400).json({ error: "manufacturerId, name, constructionTypeId required" });
+    const mfgId = parseInt(manufacturerId);
+    const dup = await db.select({ id: mfhModelsTable.id }).from(mfhModelsTable)
+      .where(and(eq(mfhModelsTable.manufacturerId, mfgId), ilike(mfhModelsTable.name, name.trim()))).limit(1);
+    if (dup.length > 0) return res.status(409).json({ error: `Model "${name.trim()}" already exists under this builder` });
     const [row] = await db.insert(mfhModelsTable).values({
-      manufacturerId: parseInt(manufacturerId), name: name.trim(),
+      manufacturerId: mfgId, name: name.trim(),
       constructionTypeId: parseInt(constructionTypeId),
       benchmarkId: benchmarkId ? parseInt(benchmarkId) : null,
       checklistTemplateId: checklistTemplateId ? parseInt(checklistTemplateId) : null,
@@ -199,9 +205,26 @@ mfhLibraryRouter.post("/models", async (req, res) => {
 mfhLibraryRouter.patch("/models/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, constructionTypeId, benchmarkId, checklistTemplateId, defaultAddonKeys, basePrice, notes, active, introducedYear, discontinuedYear } = req.body;
+    const { name, constructionTypeId, manufacturerId: newManufacturerId, benchmarkId, checklistTemplateId, defaultAddonKeys, basePrice, notes, active, introducedYear, discontinuedYear } = req.body;
     const updates: Record<string, unknown> = {};
-    if (name !== undefined) updates.name = name.trim();
+    if (newManufacturerId !== undefined) {
+      const [current] = await db.select({ manufacturerId: mfhModelsTable.manufacturerId }).from(mfhModelsTable).where(eq(mfhModelsTable.id, id)).limit(1);
+      if (current && current.manufacturerId !== parseInt(newManufacturerId)) {
+        const jobRef = await db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.mfhModelId, id)).limit(1);
+        if (jobRef.length > 0) return res.status(409).json({ error: "Cannot reassign a model's builder once it has been used on jobs." });
+      }
+      updates.manufacturerId = parseInt(newManufacturerId);
+    }
+    if (name !== undefined) {
+      const [current] = await db.select({ manufacturerId: mfhModelsTable.manufacturerId }).from(mfhModelsTable).where(eq(mfhModelsTable.id, id)).limit(1);
+      const mfgId = updates.manufacturerId as number ?? current?.manufacturerId;
+      if (mfgId) {
+        const dup = await db.select({ id: mfhModelsTable.id }).from(mfhModelsTable)
+          .where(and(eq(mfhModelsTable.manufacturerId, mfgId), ilike(mfhModelsTable.name, name.trim()), sql`${mfhModelsTable.id} != ${id}`)).limit(1);
+        if (dup.length > 0) return res.status(409).json({ error: `Model "${name.trim()}" already exists under this builder` });
+      }
+      updates.name = name.trim();
+    }
     if (constructionTypeId !== undefined) updates.constructionTypeId = parseInt(constructionTypeId);
     if (benchmarkId !== undefined) updates.benchmarkId = benchmarkId ? parseInt(benchmarkId) : null;
     if (checklistTemplateId !== undefined) updates.checklistTemplateId = checklistTemplateId ? parseInt(checklistTemplateId) : null;
@@ -218,7 +241,10 @@ mfhLibraryRouter.patch("/models/:id", async (req, res) => {
 });
 mfhLibraryRouter.delete("/models/:id", async (req, res) => {
   try {
-    await db.delete(mfhModelsTable).where(eq(mfhModelsTable.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id);
+    const jobRef = await db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.mfhModelId, id)).limit(1);
+    if (jobRef.length > 0) return res.status(409).json({ error: "This model is used on jobs and cannot be deleted. Deactivate it instead to hide it from new jobs." });
+    await db.delete(mfhModelsTable).where(eq(mfhModelsTable.id, id));
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
@@ -380,17 +406,32 @@ mfhLibraryRouter.get("/panel-data", async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
-// Library data
+// Library data — returns ALL manufacturers (including inactive) + ALL models for the library management UI
 mfhLibraryRouter.get("/library-data", async (_req, res) => {
   try {
     await ensureSeeded();
-    const [manufacturers, constructionTypes, benchmarks, templates] = await Promise.all([
+    const [manufacturers, models, constructionTypes, benchmarks, templates] = await Promise.all([
       db.select().from(mfhManufacturersTable).orderBy(asc(mfhManufacturersTable.name)),
+      db.select({
+        id: mfhModelsTable.id, manufacturerId: mfhModelsTable.manufacturerId,
+        name: mfhModelsTable.name, constructionTypeId: mfhModelsTable.constructionTypeId,
+        constructionTypeName: mfhConstructionTypesTable.name,
+        benchmarkId: mfhModelsTable.benchmarkId, benchmarkName: jobTypeBenchmarksTable.jobType,
+        benchmarkHours: jobTypeBenchmarksTable.estimatedHours,
+        checklistTemplateId: mfhModelsTable.checklistTemplateId, checklistTemplateName: checklistTemplatesTable.name,
+        defaultAddonKeys: mfhModelsTable.defaultAddonKeys, basePrice: mfhModelsTable.basePrice,
+        notes: mfhModelsTable.notes,
+        active: mfhModelsTable.active, introducedYear: mfhModelsTable.introducedYear, discontinuedYear: mfhModelsTable.discontinuedYear,
+      }).from(mfhModelsTable)
+        .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
+        .leftJoin(jobTypeBenchmarksTable, eq(mfhModelsTable.benchmarkId, jobTypeBenchmarksTable.id))
+        .leftJoin(checklistTemplatesTable, eq(mfhModelsTable.checklistTemplateId, checklistTemplatesTable.id))
+        .orderBy(asc(mfhModelsTable.name)),
       db.select().from(mfhConstructionTypesTable).orderBy(asc(mfhConstructionTypesTable.name)),
       db.select({ id: jobTypeBenchmarksTable.id, jobType: jobTypeBenchmarksTable.jobType, estimatedHours: jobTypeBenchmarksTable.estimatedHours }).from(jobTypeBenchmarksTable).orderBy(asc(jobTypeBenchmarksTable.jobType)),
       db.select({ id: checklistTemplatesTable.id, name: checklistTemplatesTable.name }).from(checklistTemplatesTable).where(eq(checklistTemplatesTable.active, true)).orderBy(asc(checklistTemplatesTable.name)),
     ]);
-    res.json({ manufacturers, constructionTypes, benchmarks, templates });
+    res.json({ manufacturers, models, constructionTypes, benchmarks, templates });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 

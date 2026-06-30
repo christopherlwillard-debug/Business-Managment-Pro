@@ -3684,6 +3684,7 @@ function JobFormDialog({
                   <option value="">Select…</option>
                   {mfhMfgs.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
+                <p className="text-[10px] text-muted-foreground mt-1">Who built the home — e.g. Southern, Giles, Norris</p>
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Model</label>
