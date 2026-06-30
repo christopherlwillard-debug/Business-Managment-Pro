@@ -3088,6 +3088,44 @@ function JobCard({
         </button>
         )}
 
+        {/* Smart Estimate Wizard — not shown for MH Production */}
+        {jobWorkflow !== "mh_production" && onSmartEstimate && canEdit("estimates") && (
+          showSmartEstimate ? (
+            <button
+              onClick={() => onSmartEstimate(job)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-xs font-bold text-amber-700 w-full">
+              <Wand2 className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="flex-1 text-left">Smart Estimate Wizard</span>
+              <span className="text-[10px] text-amber-500 font-semibold">KY Rates</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowSmartEstimate(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-amber-600 transition-colors w-full">
+              <Wand2 className="w-3 h-3 flex-shrink-0" />
+              <span>Smart Estimate Wizard</span>
+              <ChevronDown className="w-3 h-3 ml-auto" />
+            </button>
+          )
+        )}
+
+        {/* Phases — not shown for MH Production, hidden when a checklist is active */}
+        {jobWorkflow !== "mh_production" && !checklistSummary && (
+          <button
+            onClick={() => setPhasesPanelOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+            <ListChecks className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+            <span className="flex-1 text-left">Phases</span>
+            {Array.isArray(job.phases) && job.phases.length > 0 ? (
+              <span className="text-[10px] font-bold text-blue-600">
+                {(job.phases as Phase[]).filter(p => p.completed).length}/{job.phases.length}
+              </span>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">Run wizard</span>
+            )}
+          </button>
+        )}
+
         {/* Manufactured Home panel — MH Production and MH Service only */}
         {(jobWorkflow === "mh_production" || jobWorkflow === "mh_service" || (!jobWorkflow && job.businessLine !== "general_contracting" && job.businessLine !== "asphalt_sealing")) && (
           (job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhManufacturerId != null) ? (
