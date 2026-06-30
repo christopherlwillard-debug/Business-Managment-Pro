@@ -1,0 +1,322 @@
+I actually agree with this direction, and I think it's worth designing now before you build too much historical data.
+
+The key principle is this:
+
+Hours Worked = operational data (used for production metrics, crew performance, and the Knowledge Base).
+Payroll = financial data (used for employee pay, job costing, and accounting).
+
+Those should never be calculated from each other.
+
+Using your Dewayne example
+
+Dewayne actually worked:
+
+Hours Worked: 24
+Hourly Rate: $25/hr
+Base Pay: $600
+Bonus: $200
+Total Paid: $800
+
+The Knowledge Base should record:
+
+Dewayne contributed 24 labor hours to this job.
+
+Not:
+
+32 labor hours ($800 ÷ $25).
+
+Because those extra 8 "hours" never happened.
+
+Why this matters
+
+Imagine over the course of a year you give:
+
+End-of-job bonuses
+Christmas bonuses
+Travel bonuses
+Safety bonuses
+Performance bonuses
+"Thanks for staying late" bonuses
+
+If your app converts every dollar paid back into labor hours, your data slowly becomes less accurate.
+
+For example:
+
+Actual labor required for a home:
+
+42 productive crew-hours
+
+But because of bonuses, the app learns:
+
+48 crew-hours
+
+Now every future estimate assumes the home takes six extra hours to complete, even though it doesn't.
+
+Over hundreds of jobs, that compounds into inaccurate benchmarks, inflated labor estimates, and misleading performance metrics.
+
+What I would change in the app
+
+Instead of storing only a total payment, each employee entry should capture the complete payroll breakdown.
+
+Employee Labor Record
+
+Employee: Dewayne Lamb
+
+Labor
+
+Hours Worked: 24.0
+Hourly Rate: $25.00
+
+Payroll Adjustments
+
+Bonus: $200.00
+Other Adjustment: $0.00 (optional)
+Reimbursement: $0.00 (optional)
+
+Payroll Totals
+
+Base Pay: $600.00
+Total Paid: $800.00
+How each field is used
+Field	Used For
+Hours Worked	Crew productivity, Knowledge Base, estimating
+Hourly Rate	Payroll calculations
+Bonus	Payroll only
+Reimbursements	Payroll/accounting only
+Total Paid	Job costing and financial reports
+
+This keeps each piece of information serving its own purpose instead of trying to make one value do everything.
+
+How this benefits your Knowledge Base
+
+When the job closes, the system should summarize labor like this:
+
+Productive Crew Hours: 42
+
+Travel Hours: 30
+
+Total Paid Labor Cost: $2,600
+
+Notice that bonuses increase labor cost but do not increase labor hours.
+
+That means your Knowledge Base continues learning:
+
+A Southern Farmhouse typically requires 42 productive crew-hours.
+
+Not:
+
+This home required 50 hours because Chris rewarded his crew.
+
+Should you change your old jobs?
+
+I wouldn't.
+
+Your historical jobs are still valuable, even if some labor hours are slightly overstated due to bonuses. Editing them all would take time and may not be worth the effort.
+
+Instead, I'd implement this as a new feature going forward:
+
+Existing jobs remain unchanged.
+All new jobs record Hours Worked and Bonus/Adjustment separately.
+Future Knowledge Base statistics become increasingly accurate as more jobs are completed under the new system.
+
+Over time, the newer, cleaner data will outweigh the older records, giving you much more reliable averages.
+
+One additional improvement I'd recommend
+
+I'd also distinguish between Productive Hours and Travel Hours for each employee.
+
+For example:
+
+Productive Hours: 14
+Travel Hours: 10
+Total Paid Hours: 24
+Bonus: $200
+
+Now the app knows:
+
+The home required 14 hours of Dewayne's installation work.
+He was paid for 24 hours because travel was compensated.
+He received an additional $200 bonus as a business decision.
+
+That gives you four independent metrics:
+
+Productive Hours → feeds the Knowledge Base and performance benchmarks.
+Travel Hours → helps analyze logistics and estimate travel costs.
+Total Paid Hours → supports payroll and labor cost reporting.
+Bonuses/Adjustments → reflect compensation decisions without distorting labor statistics.
+
+I think that's the cleanest long-term design because it accurately represents what happened on the job while giving you much better historical data for estimating future work.
+
+but the next issue is that i dont track me and my other sub because we split profits
+
+That's actually a bigger issue than Dewayne's bonus, and it's something we should solve before the Knowledge Base starts learning from your jobs.
+
+Right now your jobs have two different labor models:
+
+Hourly employees (like Dewayne)
+Hours are tracked.
+Pay is calculated.
+Easy to measure labor.
+Profit-sharing owners/subcontractors (you and your other sub)
+You don't pay yourselves by the hour.
+You split whatever is left after expenses.
+No hours are currently recorded.
+
+The problem is that the Knowledge Base doesn't care how people were paid—it cares how much labor the home required.
+
+Here's an example
+
+Let's say a job took:
+
+Chris: 24 hours
+Partner: 24 hours
+Dewayne: 24 hours
+
+The home required 72 crew-hours.
+
+But if the app only records Dewayne's hours because he's hourly, the Knowledge Base thinks the home only took 24 hours.
+
+That's even more inaccurate than bonuses inflating hours.
+
+I think the app needs to separate labor from compensation
+
+Every person who works on a job should have labor recorded, regardless of how they're paid.
+
+For example:
+
+Person	Compensation Type	Hours Worked
+Chris	Profit Share	24
+Partner	Profit Share	24
+Dewayne	Hourly	24
+
+Then payroll/compensation is handled separately.
+
+Chris
+
+Compensation Type: Profit Share
+Hours Worked: 24
+Profit Distribution: $1,850
+
+Partner
+
+Compensation Type: Profit Share
+Hours Worked: 24
+Profit Distribution: $1,850
+
+Dewayne
+
+Compensation Type: Hourly
+Hours Worked: 24
+Hourly Rate: $25
+Bonus: $200
+Total Paid: $800
+
+Now the app knows:
+
+Total labor on the home: 72 hours
+Payroll cost: $800
+Owner distributions: $3,700
+
+Those are three completely different things.
+
+The question is: do you want to track your own hours?
+
+I know what you're probably thinking:
+
+"I don't want to clock in and out all day."
+
+And I don't think you should have to.
+
+A simple solution would be to enter hours once when closing the job.
+
+For example:
+
+Chris: 24 productive hours
+Partner: 24 productive hours
+Dewayne: 24 productive hours
+
+It takes less than a minute, but it gives the Knowledge Base the information it needs.
+
+There's another option that might fit your business even better
+
+Since you and your partner are almost always on the job together from start to finish, the app could let you enter crew labor instead of individual labor.
+
+For example:
+
+Chris: 24 hours
+Partner: Same as Chris ✓ (checkbox)
+Dewayne: 24 hours
+
+Or even:
+
+Core Crew
+
+Chris + Partner
+Productive Hours Each: 24
+
+That reduces data entry while still capturing accurate labor.
+
+My recommendation
+
+Since your app is built around how long different manufactured home models actually take to finish, I would make labor tracking required for everyone who worked on the job, regardless of whether they're:
+
+Hourly employees
+Salary employees
+Profit-sharing partners
+Owners
+Independent subcontractors
+
+Then let the compensation system determine how each person gets paid.
+
+That keeps the Knowledge Base focused on the true labor required to complete each home, while payroll and profit sharing remain separate financial decisions. I think that's the most accurate model for both your business and the long-term value of your estimating system.
+
+well i say just manually add that info
+
+I actually think that's the best solution for your business.
+
+You don't have a large crew with dozens of employees—you typically know who was on the job and about how many hours everyone worked. Spending 30 seconds entering those numbers when you close a job is a small amount of effort for much better historical data.
+
+For example, when you finish a job, you could have a simple Labor Summary section:
+
+Person	Role	Productive Hours	Travel Hours
+Chris Willard	Owner	24	10
+Partner	Profit Share	24	10
+Dewayne Lamb	Hourly	24	10
+
+Then, compensation is handled independently:
+
+Chris: Profit Share
+Partner: Profit Share
+Dewayne: $25/hr + $200 bonus
+
+The Knowledge Base would calculate:
+
+Productive Crew Hours: 72
+Travel Crew Hours: 30
+Crew Size: 3
+Days on Site: 2
+
+Meanwhile, your financial reports would calculate:
+
+Hourly payroll
+Bonuses
+Profit distributions
+Labor cost
+Net profit
+
+None of those financial decisions would affect the labor metrics.
+
+An added benefit
+
+By manually entering labor hours, you're also protected from unusual situations.
+
+For example:
+
+You spend two hours running to the supply house.
+Your partner leaves early for an appointment.
+Dewayne comes in only on the second day.
+Someone helps for just three hours.
+
+Instead of the app trying to guess what happened, you simply enter what actually happened. The Knowledge Base stays accurate because it's learning from the real labor invested in the home.
+
+I would even make this part of the Job Closeout process. Before a job can be marked complete, the app asks you to fill in a short labor summary for everyone who worked on it. That ensures every completed job contributes reliable data to your historical averages without requiring anyone to clock in and out throughout the day. Over time, those few minutes of manual entry will give you a very accurate picture of how long different builders and models truly take to complete.
