@@ -20,6 +20,7 @@ import {
   type SessionData,
 } from "../lib/auth";
 
+
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
 const router: IRouter = Router();

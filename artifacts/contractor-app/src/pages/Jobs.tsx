@@ -31,7 +31,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";

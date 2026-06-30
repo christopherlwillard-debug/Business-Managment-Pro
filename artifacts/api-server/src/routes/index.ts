@@ -194,6 +194,32 @@ router.use("/portal", portalRouter);
 router.use("/pay", payPublicRouter);
 router.use("/public/site", websitePublicRouter);
 router.use("/integrations/wix", wixIntegrationRouter);
+
+// Development-only: inject a session for a known userId, bypassing OIDC (for automated testing)
+if (process.env.NODE_ENV !== "production") {
+  router.get("/dev-test-login", async (req: Request, res: Response) => {
+    const userId = req.query.userId as string;
+    if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+    try {
+      const { db: dbConn, usersTable: ut } = await import("@workspace/db");
+      const { eq: eqFn } = await import("drizzle-orm");
+      const { createSession, SESSION_COOKIE, SESSION_TTL } = await import("../lib/auth");
+      const [user] = await dbConn.select().from(ut).where(eqFn(ut.id, userId)).limit(1);
+      if (!user) { res.status(404).json({ error: "User not found" }); return; }
+      const sid = await createSession({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, profileImageUrl: user.profileImageUrl },
+        access_token: "dev-test-token",
+        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+      });
+      res.cookie(SESSION_COOKIE, sid, { httpOnly: true, secure: false, sameSite: "lax", path: "/", maxAge: SESSION_TTL });
+      res.redirect((req.query.returnTo as string) || "/");
+    } catch (err) {
+      console.error("dev-test-login error", err);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+}
+
 router.use(requireAuth);
 router.use(requireAccess);
 
