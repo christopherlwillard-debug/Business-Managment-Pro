@@ -25,6 +25,9 @@ export const estimatesTable = pgTable("estimates", {
   squarePaymentLinkUrl: text("square_payment_link_url"),
   depositPaidAt: timestamp("deposit_paid_at"),
   depositPaidAmount: numeric("deposit_paid_amount", { precision: 12, scale: 2 }),
+  mfhDealerPrice: numeric("mfh_dealer_price", { precision: 12, scale: 2 }),
+  mfhQuotedPrice: numeric("mfh_quoted_price", { precision: 12, scale: 2 }),
+  mfhGuideName: text("mfh_guide_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

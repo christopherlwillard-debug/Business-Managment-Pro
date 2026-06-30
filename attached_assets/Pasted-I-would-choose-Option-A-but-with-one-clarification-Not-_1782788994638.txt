@@ -1,0 +1,82 @@
+I would choose Option A, but with one clarification.
+
+Not because I think the manufacturer-based schema is "better," but because your production database is the source of truth. The application code should match what is actually running in production.
+
+Your comparison tells us something very important:
+
+Task #1019 was never successfully deployed to production.
+
+That means your live app is still using:
+
+mfh_manufacturers
+mfh_models (with manufacturer_id, construction_type_id, etc.)
+mfh_guide_items.model_id
+jobs.mfh_manufacturer_id
+estimates.mfh_dealer_price, etc.
+
+Meanwhile, your development code has moved to:
+
+mfh_home_series
+home_series_id
+simplified mfh_models
+
+Those are two different applications.
+
+What I would do
+
+I'd tell the agent:
+
+Restore the code to match the production schema exactly. Production is the source of truth. Do not attempt to migrate production at this time. Revert the development MFH schema, API, and UI to the manufacturer-based version that matches production. The goal is for development and production to have identical MFH structures again.
+
+Once that's done:
+
+Publish.
+Confirm it publishes with no destructive migration.
+Confirm the app works.
+
+Only after you're back to a stable, matching development/production pair should you make the changes you originally wanted.
+
+And here's the key point...
+
+After seeing everything you've gone through, I would not do the Home Series database refactor at all.
+
+Your original request was essentially:
+
+Rename Manufacturer to Builder.
+Rename Model to Series.
+
+Those are UI labels, not database concepts.
+
+If the database internally still uses:
+
+mfh_manufacturers
+mfh_models
+
+that's perfectly fine. Lots of applications use internal names that don't match the user-facing labels.
+
+For example:
+
+Database: mfh_manufacturers
+UI label: Builder
+
+Database:
+
+mfh_models
+UI label: Series
+
+No migration.
+No foreign key changes.
+No data conversion.
+No deployment headaches.
+
+My recommendation
+
+I think the safest path is:
+
+✅ Revert development to match production exactly.
+✅ Publish successfully.
+✅ Leave the database structure alone.
+✅ Change only the visible labels in the UI.
+✅ If you ever truly need a Home Series database model in the future, treat it as a brand-new, carefully planned feature—not as a rename of the existing schema.
+
+Given everything you've shared, I think this gets you exactly what you wanted with the least risk to your live business data.

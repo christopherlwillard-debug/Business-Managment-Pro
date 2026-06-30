@@ -15,7 +15,7 @@ import {
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
 } from "@workspace/api-client-react";
-import { useMfhPanelData } from "@workspace/api-client-react";
+import { useListMfhManufacturers, useMfhPanelData } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
@@ -3090,7 +3090,7 @@ function JobCard({
         )}
 
         {/* Manufactured Home */}
-        {(job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhSeriesId != null) && (
+        {(job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhManufacturerId != null) && (
           <button
             onClick={() => setMfhPanelOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
@@ -3105,7 +3105,7 @@ function JobCard({
             )}
           </button>
         )}
-        {job.jobType !== "Manufactured Home" && (job as Record<string, unknown>).mfhSeriesId == null && (
+        {job.jobType !== "Manufactured Home" && (job as Record<string, unknown>).mfhManufacturerId == null && (
           <button
             onClick={() => setMfhPanelOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
@@ -3418,12 +3418,12 @@ function JobFormDialog({
   const [error, setError] = useState("");
 
   // MFH structured fields (separate from form string state)
-  const [mfhSeriesId, setMfhSeriesId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhSeriesId as number | null ?? null);
+  const [mfhMfgId, setMfhMfgId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
   const [mfhModelId, setMfhModelId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhModelId as number | null ?? null);
   const [mfhYear, setMfhYear] = useState<string>((editJob as Record<string, unknown>)?.mfhModelYear ? String((editJob as Record<string, unknown>).mfhModelYear) : "");
-  const { data: mfhPanelData } = useMfhPanelData();
-  const mfhSeries = mfhPanelData?.series ?? [];
-  const mfhModels = (mfhPanelData?.models ?? []).filter(m => m.homeSeriesId === mfhSeriesId);
+  const { data: mfhMfgs = [] } = useListMfhManufacturers();
+  const { data: mfhPanelData } = useMfhPanelData(mfhMfgId);
+  const mfhModels = mfhPanelData?.models ?? [];
   const [clearHoursForSubIds, setClearHoursForSubIds] = useState<number[]>([]);
   const [removeSubPrompt, setRemoveSubPrompt] = useState<{ subId: number; subName: string; pendingIds: number[] } | null>(null);
 
@@ -3474,7 +3474,7 @@ function JobFormDialog({
         status: form.status as CreateJobRequest["status"],
         jobType: form.jobType || undefined,
         homeModel: form.homeModel || undefined,
-        mfhSeriesId: mfhSeriesId,
+        mfhManufacturerId: mfhMfgId,
         mfhModelId: mfhModelId,
         mfhModelYear: mfhYear ? parseInt(mfhYear) : null,
         address: form.address || undefined,
@@ -3676,22 +3676,22 @@ function JobFormDialog({
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Home Series</label>
+                <label className="block text-xs text-muted-foreground mb-1">Manufacturer</label>
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  value={mfhSeriesId ?? ""}
-                  onChange={e => { setMfhSeriesId(e.target.value ? parseInt(e.target.value) : null); setMfhModelId(null); }}>
+                  value={mfhMfgId ?? ""}
+                  onChange={e => { setMfhMfgId(e.target.value ? parseInt(e.target.value) : null); setMfhModelId(null); }}>
                   <option value="">Select…</option>
-                  {mfhSeries.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {mfhMfgs.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">Model <span className="opacity-70">(optional)</span></label>
+                <label className="block text-xs text-muted-foreground mb-1">Model</label>
                 <select
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   value={mfhModelId ?? ""}
                   onChange={e => setMfhModelId(e.target.value ? parseInt(e.target.value) : null)}
-                  disabled={!mfhSeriesId}>
+                  disabled={!mfhMfgId}>
                   <option value="">Select…</option>
                   {mfhModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
@@ -3709,19 +3709,19 @@ function JobFormDialog({
                   max={new Date().getFullYear() + 1}
                   onChange={e => setMfhYear(e.target.value)} />
               </div>
-              {mfhSeriesId && (
+              {mfhModelId && (
                 <div className="flex items-end pb-0.5">
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1">Construction</label>
                     <span className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-muted/50 text-xs text-muted-foreground border border-border">
-                      {mfhSeries.find(s => s.id === mfhSeriesId)?.constructionTypeName ?? "—"}
+                      {mfhModels.find(m => m.id === mfhModelId)?.constructionTypeName ?? "—"}
                       <span className="text-[10px] opacity-60 font-mono">(auto)</span>
                     </span>
                   </div>
                 </div>
               )}
             </div>
-            {!mfhSeriesId && (
+            {!mfhMfgId && (
               <p className="text-xs text-muted-foreground">Pricing &amp; checklists are applied from the <strong>Manufactured Home</strong> panel on the job card.</p>
             )}
           </div>
