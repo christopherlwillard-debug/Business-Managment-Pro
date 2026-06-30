@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, subPaymentRecordsTable } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
@@ -88,6 +88,7 @@ type JobRow = {
   coats: number | null;
   phases: PhaseItem[] | null;
   permitChecklist: PermitChecklistItem[] | null;
+  serviceBilling: ServiceBilling | null;
   createdAt: Date;
   subcontractorId?: number | null;
   subcontractorName?: string | null;
@@ -136,6 +137,7 @@ async function getJobWithSubs(jobId: number) {
       coats: jobsTable.coats,
       phases: jobsTable.phases,
       permitChecklist: jobsTable.permitChecklist,
+      serviceBilling: jobsTable.serviceBilling,
       createdAt: jobsTable.createdAt,
       subcontractorId: jobSubcontractorsTable.subcontractorId,
       subcontractorName: subcontractorsTable.name,
@@ -224,6 +226,7 @@ router.get("/", async (req, res) => {
         coats: jobsTable.coats,
         phases: jobsTable.phases,
         permitChecklist: jobsTable.permitChecklist,
+        serviceBilling: jobsTable.serviceBilling,
         homeModel: jobsTable.homeModel,
         createdAt: jobsTable.createdAt,
         subcontractorId: jobSubcontractorsTable.subcontractorId,
@@ -793,7 +796,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -830,6 +833,15 @@ router.put("/:id", async (req, res) => {
     }
     if ("permitChecklist" in req.body) {
       try { updates.permitChecklist = parsePermitChecklist(permitChecklist); } catch (e: unknown) { return res.status(400).json({ error: e instanceof Error ? e.message : "Invalid permitChecklist" }); }
+    }
+    if ("serviceBilling" in req.body) {
+      if (serviceBilling === null) {
+        updates.serviceBilling = null;
+      } else {
+        const parsed = serviceBillingSchema.safeParse(serviceBilling);
+        if (!parsed.success) return res.status(400).json({ error: "Invalid serviceBilling payload" });
+        updates.serviceBilling = parsed.data;
+      }
     }
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();

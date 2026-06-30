@@ -43,3 +43,4 @@ export * from "./owner-capital";
 export * from "./sub-payment-records";
 export * from "./job-checklists";
 export * from "./mfh";
+export * from "./client-billing-profiles";

@@ -16,6 +16,34 @@ export const permitChecklistItemSchema = z.object({
 });
 export type PermitChecklistItem = z.infer<typeof permitChecklistItemSchema>;
 
+export const serviceBillingPartSchema = z.object({
+  description: z.string(),
+  quantity: z.number(),
+  unitCost: z.number(),
+  reimbursable: z.boolean(),
+});
+export type ServiceBillingPart = z.infer<typeof serviceBillingPartSchema>;
+
+export const serviceBillingSchema = z.object({
+  profileId: z.number().nullable().optional(),
+  profileName: z.string().nullable().optional(),
+  techCount: z.number(),
+  repairHours: z.number(),
+  driveHours: z.number(),
+  mileage: z.number(),
+  parts: z.array(serviceBillingPartSchema),
+  rateSnapshot: z.object({
+    repairRate1Tech: z.number().nullable().optional(),
+    repairRate2Tech: z.number().nullable().optional(),
+    driveRate1Tech: z.number().nullable().optional(),
+    driveRate2Tech: z.number().nullable().optional(),
+    mileageRate: z.number().nullable().optional(),
+  }).nullable().optional(),
+  internalLaborRate: z.number().nullable().optional(),
+  fuelEstimate: z.number().nullable().optional(),
+});
+export type ServiceBilling = z.infer<typeof serviceBillingSchema>;
+
 export const jobsTable = pgTable("jobs", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -50,6 +78,7 @@ export const jobsTable = pgTable("jobs", {
   jobNumber: integer("job_number"),
   ownerPayIncluded: boolean("owner_pay_included").notNull().default(true),
   workflow: text("workflow"),
+  serviceBilling: jsonb("service_billing").$type<ServiceBilling>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -38,6 +38,7 @@ import { JobChecklistPanel } from "@/components/JobChecklistPanel";
 import { MfhPanel } from "@/components/MfhPanel";
 import { KbTrainingModal } from "@/components/KbTrainingModal";
 import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
+import { ServiceBillingPanel } from "@/components/ServiceBillingPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -2791,6 +2792,7 @@ function JobCard({
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
+  const [serviceBillingOpen, setServiceBillingOpen] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const jobWorkflow = getJobWorkflow(job);
   const isCompleted = displayStatus(job.status) === "completed";
@@ -3133,6 +3135,32 @@ function JobCard({
           )
         )}
 
+        {/* Service Billing worksheet — MH Service only */}
+        {jobWorkflow === "mh_service" && (
+          <button
+            onClick={() => setServiceBillingOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100/80 transition-colors text-xs font-medium text-blue-700 w-full">
+            <Wrench className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+            <span className="flex-1 text-left">Service Billing</span>
+            {job.serviceBilling ? (
+              <span className="text-[10px] font-bold text-blue-600 font-mono">
+                {(() => {
+                  const sb = job.serviceBilling;
+                  const snap = sb.rateSnapshot;
+                  const rr = sb.techCount === 1 ? (snap?.repairRate1Tech ?? 0) : (snap?.repairRate2Tech ?? 0);
+                  const dr = sb.techCount === 1 ? (snap?.driveRate1Tech ?? 0) : (snap?.driveRate2Tech ?? 0);
+                  const total = (sb.repairHours || 0) * rr + (sb.driveHours || 0) * dr
+                    + (sb.mileage || 0) * (snap?.mileageRate ?? 0)
+                    + (sb.parts || []).filter(p => p.reimbursable).reduce((s, p) => s + p.quantity * p.unitCost, 0);
+                  return `$${total.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                })()}
+              </span>
+            ) : (
+              <span className="text-[10px] text-blue-400">Build worksheet</span>
+            )}
+          </button>
+        )}
+
         {/* Labor Summary for MFH jobs */}
         {(job as Record<string, unknown>).mfhModelId != null && (
           <div className="border border-border rounded-xl p-3">
@@ -3321,6 +3349,15 @@ function JobCard({
           }}
           onViewEstimates={() => {
             setEstimatesPanelOpen(true);
+          }}
+        />
+      )}
+      {serviceBillingOpen && (
+        <ServiceBillingPanel
+          job={job as Parameters<typeof ServiceBillingPanel>[0]["job"]}
+          onClose={() => {
+            setServiceBillingOpen(false);
+            qc.invalidateQueries({ queryKey: ["/api/jobs"] });
           }}
         />
       )}

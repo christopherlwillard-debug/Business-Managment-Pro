@@ -92,6 +92,34 @@ export const JobStatus = {
   closed: "closed",
 } as const;
 
+export interface ServiceBillingPart {
+  description: string;
+  quantity: number;
+  unitCost: number;
+  reimbursable: boolean;
+}
+
+export interface ServiceBillingRateSnapshot {
+  repairRate1Tech?: number | null;
+  repairRate2Tech?: number | null;
+  driveRate1Tech?: number | null;
+  driveRate2Tech?: number | null;
+  mileageRate?: number | null;
+}
+
+export interface ServiceBilling {
+  profileId?: number | null;
+  profileName?: string | null;
+  techCount: number;
+  repairHours: number;
+  driveHours: number;
+  mileage: number;
+  parts: ServiceBillingPart[];
+  rateSnapshot?: ServiceBillingRateSnapshot | null;
+  internalLaborRate?: number | null;
+  fuelEstimate?: number | null;
+}
+
 export interface Job {
   id: number;
   title: string;
@@ -119,6 +147,7 @@ export interface Job {
   closedAt?: string | null;
   phases?: Array<{ name: string; completed: boolean }> | null;
   permitChecklist?: Array<{ label: string; checked: boolean }> | null;
+  serviceBilling?: ServiceBilling | null;
 }
 
 export type CreateJobRequestStatus =
@@ -156,6 +185,50 @@ export interface CreateJobRequest {
   coats?: number | null;
   phases?: Array<{ name: string; completed: boolean }> | null;
   permitChecklist?: Array<{ label: string; checked: boolean }> | null;
+  serviceBilling?: ServiceBilling | null;
+}
+
+export interface ClientBillingProfile {
+  id: number;
+  clientId: number;
+  name: string;
+  repairRate1Tech?: number | null;
+  repairRate2Tech?: number | null;
+  driveRate1Tech?: number | null;
+  driveRate2Tech?: number | null;
+  mileageRate?: number | null;
+  partsReimbursable: boolean;
+  defaultTechCount: number;
+  billingNotes?: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface CreateClientBillingProfileRequest {
+  clientId: number;
+  name: string;
+  repairRate1Tech?: number | null;
+  repairRate2Tech?: number | null;
+  driveRate1Tech?: number | null;
+  driveRate2Tech?: number | null;
+  mileageRate?: number | null;
+  partsReimbursable?: boolean;
+  defaultTechCount?: number;
+  billingNotes?: string | null;
+  active?: boolean;
+}
+
+export interface UpdateClientBillingProfileRequest {
+  name?: string;
+  repairRate1Tech?: number | null;
+  repairRate2Tech?: number | null;
+  driveRate1Tech?: number | null;
+  driveRate2Tech?: number | null;
+  mileageRate?: number | null;
+  partsReimbursable?: boolean;
+  defaultTechCount?: number;
+  billingNotes?: string | null;
+  active?: boolean;
 }
 
 export interface DraftLineItem {
@@ -855,6 +928,10 @@ export type ListExpensesParams = {
 
 export type UploadExpenseReceiptBody = {
   receipt?: Blob;
+};
+
+export type ListClientBillingProfilesParams = {
+  clientId?: number;
 };
 
 export type ListMileageLogsParams = {

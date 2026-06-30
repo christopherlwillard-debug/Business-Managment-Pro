@@ -21,7 +21,9 @@ import type {
   AuthUserEnvelope,
   BeginBrowserLoginParams,
   Client,
+  ClientBillingProfile,
   ComplianceReport,
+  CreateClientBillingProfileRequest,
   CreateClientRequest,
   CreateDailyLogRequest,
   CreateEstimateRequest,
@@ -49,6 +51,7 @@ import type {
   ListExpensesParams,
   ListInvoicesParams,
   ListJobsParams,
+  ListClientBillingProfilesParams,
   ListMileageLogsParams,
   LogoutSuccess,
   MileageLog,
@@ -67,6 +70,7 @@ import type {
   ResetPortalPin200,
   Subcontractor,
   TaxReportRow,
+  UpdateClientBillingProfileRequest,
   UpdateInvoiceStatusBody,
   UpdateRecurringExpenseRequest,
   UploadExpenseReceiptBody,
@@ -2765,6 +2769,374 @@ export const useUploadExpenseReceipt = <
   TContext
 > => {
   return useMutation(getUploadExpenseReceiptMutationOptions(options));
+};
+
+/**
+ * @summary List client billing profiles
+ */
+export const getListClientBillingProfilesUrl = (
+  params?: ListClientBillingProfilesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/client-billing-profiles?${stringifiedParams}`
+    : `/api/client-billing-profiles`;
+};
+
+export const listClientBillingProfiles = async (
+  params?: ListClientBillingProfilesParams,
+  options?: RequestInit,
+): Promise<ClientBillingProfile[]> => {
+  return customFetch<ClientBillingProfile[]>(
+    getListClientBillingProfilesUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListClientBillingProfilesQueryKey = (
+  params?: ListClientBillingProfilesParams,
+) => {
+  return [`/api/client-billing-profiles`, ...(params ? [params] : [])] as const;
+};
+
+export const getListClientBillingProfilesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listClientBillingProfiles>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListClientBillingProfilesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listClientBillingProfiles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListClientBillingProfilesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listClientBillingProfiles>>
+  > = ({ signal }) =>
+    listClientBillingProfiles(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listClientBillingProfiles>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListClientBillingProfilesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listClientBillingProfiles>>
+>;
+export type ListClientBillingProfilesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List client billing profiles
+ */
+
+export function useListClientBillingProfiles<
+  TData = Awaited<ReturnType<typeof listClientBillingProfiles>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListClientBillingProfilesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listClientBillingProfiles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListClientBillingProfilesQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a client billing profile
+ */
+export const getCreateClientBillingProfileUrl = () => {
+  return `/api/client-billing-profiles`;
+};
+
+export const createClientBillingProfile = async (
+  createClientBillingProfileRequest: CreateClientBillingProfileRequest,
+  options?: RequestInit,
+): Promise<ClientBillingProfile> => {
+  return customFetch<ClientBillingProfile>(getCreateClientBillingProfileUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createClientBillingProfileRequest),
+  });
+};
+
+export const getCreateClientBillingProfileMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createClientBillingProfile>>,
+    TError,
+    { data: BodyType<CreateClientBillingProfileRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createClientBillingProfile>>,
+  TError,
+  { data: BodyType<CreateClientBillingProfileRequest> },
+  TContext
+> => {
+  const mutationKey = ["createClientBillingProfile"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createClientBillingProfile>>,
+    { data: BodyType<CreateClientBillingProfileRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createClientBillingProfile(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateClientBillingProfileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createClientBillingProfile>>
+>;
+export type CreateClientBillingProfileMutationBody =
+  BodyType<CreateClientBillingProfileRequest>;
+export type CreateClientBillingProfileMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a client billing profile
+ */
+export const useCreateClientBillingProfile = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createClientBillingProfile>>,
+    TError,
+    { data: BodyType<CreateClientBillingProfileRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createClientBillingProfile>>,
+  TError,
+  { data: BodyType<CreateClientBillingProfileRequest> },
+  TContext
+> => {
+  return useMutation(getCreateClientBillingProfileMutationOptions(options));
+};
+
+/**
+ * @summary Update a client billing profile
+ */
+export const getUpdateClientBillingProfileUrl = (id: number) => {
+  return `/api/client-billing-profiles/${id}`;
+};
+
+export const updateClientBillingProfile = async (
+  id: number,
+  updateClientBillingProfileRequest: UpdateClientBillingProfileRequest,
+  options?: RequestInit,
+): Promise<ClientBillingProfile> => {
+  return customFetch<ClientBillingProfile>(
+    getUpdateClientBillingProfileUrl(id),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateClientBillingProfileRequest),
+    },
+  );
+};
+
+export const getUpdateClientBillingProfileMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateClientBillingProfile>>,
+    TError,
+    { id: number; data: BodyType<UpdateClientBillingProfileRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateClientBillingProfile>>,
+  TError,
+  { id: number; data: BodyType<UpdateClientBillingProfileRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateClientBillingProfile"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateClientBillingProfile>>,
+    { id: number; data: BodyType<UpdateClientBillingProfileRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateClientBillingProfile(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateClientBillingProfileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateClientBillingProfile>>
+>;
+export type UpdateClientBillingProfileMutationBody =
+  BodyType<UpdateClientBillingProfileRequest>;
+export type UpdateClientBillingProfileMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a client billing profile
+ */
+export const useUpdateClientBillingProfile = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateClientBillingProfile>>,
+    TError,
+    { id: number; data: BodyType<UpdateClientBillingProfileRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateClientBillingProfile>>,
+  TError,
+  { id: number; data: BodyType<UpdateClientBillingProfileRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateClientBillingProfileMutationOptions(options));
+};
+
+/**
+ * @summary Delete a client billing profile
+ */
+export const getDeleteClientBillingProfileUrl = (id: number) => {
+  return `/api/client-billing-profiles/${id}`;
+};
+
+export const deleteClientBillingProfile = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteClientBillingProfileUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteClientBillingProfileMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteClientBillingProfile>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteClientBillingProfile>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteClientBillingProfile"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteClientBillingProfile>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteClientBillingProfile(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteClientBillingProfileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteClientBillingProfile>>
+>;
+
+export type DeleteClientBillingProfileMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a client billing profile
+ */
+export const useDeleteClientBillingProfile = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteClientBillingProfile>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteClientBillingProfile>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteClientBillingProfileMutationOptions(options));
 };
 
 /**

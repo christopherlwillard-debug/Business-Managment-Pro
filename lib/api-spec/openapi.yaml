@@ -664,6 +664,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/Expense"
 
+  # CLIENT BILLING PROFILES
+  /client-billing-profiles:
+    get:
+      operationId: listClientBillingProfiles
+      tags: [clients]
+      summary: List client billing profiles
+      parameters:
+        - name: clientId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of client billing profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClientBillingProfile"
+    post:
+      operationId: createClientBillingProfile
+      tags: [clients]
+      summary: Create a client billing profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientBillingProfileRequest"
+      responses:
+        "201":
+          description: Created client billing profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientBillingProfile"
+
+  /client-billing-profiles/{id}:
+    put:
+      operationId: updateClientBillingProfile
+      tags: [clients]
+      summary: Update a client billing profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientBillingProfileRequest"
+      responses:
+        "200":
+          description: Updated client billing profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientBillingProfile"
+    delete:
+      operationId: deleteClientBillingProfile
+      tags: [clients]
+      summary: Delete a client billing profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
   # RECURRING EXPENSES
   /recurring-expenses:
     get:
@@ -1669,9 +1746,76 @@ components:
           nullable: true
           items:
             $ref: "#/components/schemas/PhaseItem"
+        serviceBilling:
+          $ref: "#/components/schemas/ServiceBilling"
+          nullable: true
         createdAt:
           type: string
       required: [id, title, status, createdAt]
+
+    ServiceBillingPart:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        reimbursable:
+          type: boolean
+      required: [description, quantity, unitCost, reimbursable]
+
+    ServiceBillingRateSnapshot:
+      type: object
+      properties:
+        repairRate1Tech:
+          type: number
+          nullable: true
+        repairRate2Tech:
+          type: number
+          nullable: true
+        driveRate1Tech:
+          type: number
+          nullable: true
+        driveRate2Tech:
+          type: number
+          nullable: true
+        mileageRate:
+          type: number
+          nullable: true
+
+    ServiceBilling:
+      type: object
+      properties:
+        profileId:
+          type: integer
+          nullable: true
+        profileName:
+          type: string
+          nullable: true
+        techCount:
+          type: number
+        repairHours:
+          type: number
+        driveHours:
+          type: number
+        mileage:
+          type: number
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceBillingPart"
+        rateSnapshot:
+          $ref: "#/components/schemas/ServiceBillingRateSnapshot"
+          nullable: true
+        internalLaborRate:
+          type: number
+          nullable: true
+        fuelEstimate:
+          type: number
+          nullable: true
+      required: [techCount, repairHours, driveHours, mileage, parts]
 
     PhaseItem:
       type: object
@@ -1740,6 +1884,9 @@ components:
           nullable: true
           items:
             $ref: "#/components/schemas/PhaseItem"
+        serviceBilling:
+          $ref: "#/components/schemas/ServiceBilling"
+          nullable: true
       required: [title]
 
     DraftLineItem:
@@ -2037,6 +2184,106 @@ components:
           type: string
           nullable: true
       required: [description, amount, category, date]
+
+    ClientBillingProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        clientId:
+          type: integer
+        name:
+          type: string
+        repairRate1Tech:
+          type: number
+          nullable: true
+        repairRate2Tech:
+          type: number
+          nullable: true
+        driveRate1Tech:
+          type: number
+          nullable: true
+        driveRate2Tech:
+          type: number
+          nullable: true
+        mileageRate:
+          type: number
+          nullable: true
+        partsReimbursable:
+          type: boolean
+        defaultTechCount:
+          type: integer
+        billingNotes:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        createdAt:
+          type: string
+      required: [id, clientId, name, partsReimbursable, defaultTechCount, active, createdAt]
+
+    CreateClientBillingProfileRequest:
+      type: object
+      properties:
+        clientId:
+          type: integer
+        name:
+          type: string
+        repairRate1Tech:
+          type: number
+          nullable: true
+        repairRate2Tech:
+          type: number
+          nullable: true
+        driveRate1Tech:
+          type: number
+          nullable: true
+        driveRate2Tech:
+          type: number
+          nullable: true
+        mileageRate:
+          type: number
+          nullable: true
+        partsReimbursable:
+          type: boolean
+        defaultTechCount:
+          type: integer
+        billingNotes:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+      required: [clientId, name]
+
+    UpdateClientBillingProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        repairRate1Tech:
+          type: number
+          nullable: true
+        repairRate2Tech:
+          type: number
+          nullable: true
+        driveRate1Tech:
+          type: number
+          nullable: true
+        driveRate2Tech:
+          type: number
+          nullable: true
+        mileageRate:
+          type: number
+          nullable: true
+        partsReimbursable:
+          type: boolean
+        defaultTechCount:
+          type: integer
+        billingNotes:
+          type: string
+          nullable: true
+        active:
+          type: boolean
 
     RecurringExpense:
       type: object

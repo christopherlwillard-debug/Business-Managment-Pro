@@ -1,10 +1,16 @@
 import { useState } from "react";
-import { useClientProfile, useUpdateClientServiceDate, useSquareStatus } from "@workspace/api-client-react";
+import {
+  useClientProfile, useUpdateClientServiceDate, useSquareStatus,
+  useListClientBillingProfiles, useCreateClientBillingProfile,
+  useUpdateClientBillingProfile, useDeleteClientBillingProfile,
+  type ClientBillingProfile,
+} from "@workspace/api-client-react";
 import {
   X, Phone, Mail, MapPin, Users, Briefcase, Receipt, CreditCard,
   Route, Calendar, Clock, ChevronRight, Edit2, Check, RefreshCw,
-  Link as LinkIcon, DollarSign, Upload, Zap, FileText,
+  Link as LinkIcon, DollarSign, Upload, Zap, FileText, Wrench, Plus, Trash2, Pencil,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -12,11 +18,12 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-type Tab = "overview" | "jobs" | "invoices" | "payments" | "route";
+type Tab = "overview" | "jobs" | "invoices" | "payments" | "route" | "billing";
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "overview",  label: "Overview",  icon: Users },
   { id: "jobs",      label: "Jobs",      icon: Briefcase },
+  { id: "billing",   label: "Billing",   icon: Wrench },
   { id: "invoices",  label: "Invoices",  icon: Receipt },
   { id: "payments",  label: "Payments",  icon: CreditCard },
   { id: "route",     label: "Route",     icon: Route },
@@ -517,6 +524,10 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
                 </div>
               )}
 
+              {tab === "billing" && (
+                <BillingProfilesTab clientId={client.id} canEdit={canEdit} />
+              )}
+
               {tab === "invoices" && (
                 <div className="p-5 space-y-3">
                   {(data?.invoices?.length ?? 0) === 0 ? (
@@ -866,6 +877,234 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Billing Profiles Tab ──────────────────────────────────────────────────────
+type ProfileForm = {
+  name: string;
+  repairRate1Tech: string;
+  repairRate2Tech: string;
+  driveRate1Tech: string;
+  driveRate2Tech: string;
+  mileageRate: string;
+  partsReimbursable: boolean;
+  defaultTechCount: number;
+  billingNotes: string;
+  active: boolean;
+};
+
+const EMPTY_PROFILE_FORM: ProfileForm = {
+  name: "", repairRate1Tech: "", repairRate2Tech: "", driveRate1Tech: "", driveRate2Tech: "",
+  mileageRate: "", partsReimbursable: true, defaultTechCount: 2, billingNotes: "", active: true,
+};
+
+function rateStr(n: number | null | undefined): string {
+  return n == null ? "" : String(n);
+}
+
+function fmtRate(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function BillingProfilesTab({ clientId, canEdit }: { clientId: number; canEdit: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: profiles = [], queryKey } = useListClientBillingProfiles({ clientId });
+  const createProfile = useCreateClientBillingProfile();
+  const updateProfile = useUpdateClientBillingProfile();
+  const deleteProfile = useDeleteClientBillingProfile();
+
+  const [editingId, setEditingId] = useState<number | "new" | null>(null);
+  const [form, setForm] = useState<ProfileForm>(EMPTY_PROFILE_FORM);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey });
+
+  function startNew() {
+    setForm(EMPTY_PROFILE_FORM);
+    setEditingId("new");
+  }
+  function startEdit(p: ClientBillingProfile) {
+    setForm({
+      name: p.name,
+      repairRate1Tech: rateStr(p.repairRate1Tech),
+      repairRate2Tech: rateStr(p.repairRate2Tech),
+      driveRate1Tech: rateStr(p.driveRate1Tech),
+      driveRate2Tech: rateStr(p.driveRate2Tech),
+      mileageRate: rateStr(p.mileageRate),
+      partsReimbursable: p.partsReimbursable,
+      defaultTechCount: p.defaultTechCount,
+      billingNotes: p.billingNotes ?? "",
+      active: p.active,
+    });
+    setEditingId(p.id);
+  }
+
+  function num(s: string): number | null {
+    if (s.trim() === "") return null;
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+  }
+
+  async function save() {
+    if (!form.name.trim()) {
+      toast({ title: "Name is required", variant: "destructive" });
+      return;
+    }
+    const body = {
+      repairRate1Tech: num(form.repairRate1Tech),
+      repairRate2Tech: num(form.repairRate2Tech),
+      driveRate1Tech: num(form.driveRate1Tech),
+      driveRate2Tech: num(form.driveRate2Tech),
+      mileageRate: num(form.mileageRate),
+      partsReimbursable: form.partsReimbursable,
+      defaultTechCount: form.defaultTechCount,
+      billingNotes: form.billingNotes.trim() || null,
+      active: form.active,
+    };
+    try {
+      if (editingId === "new") {
+        await createProfile.mutateAsync({ data: { clientId, name: form.name.trim(), ...body } });
+        toast({ title: "Profile created" });
+      } else if (typeof editingId === "number") {
+        await updateProfile.mutateAsync({ id: editingId, data: { name: form.name.trim(), ...body } });
+        toast({ title: "Profile updated" });
+      }
+      setEditingId(null);
+      invalidate();
+    } catch {
+      toast({ title: "Couldn't save profile", variant: "destructive" });
+    }
+  }
+
+  async function remove(id: number) {
+    try {
+      await deleteProfile.mutateAsync({ id });
+      setConfirmDelete(null);
+      invalidate();
+      toast({ title: "Profile deleted" });
+    } catch {
+      toast({ title: "Couldn't delete", variant: "destructive" });
+    }
+  }
+
+  const inputCls = "w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-blue-400";
+  const lblCls = "text-[10px] text-muted-foreground font-medium block mb-0.5";
+
+  if (editingId != null) {
+    return (
+      <div className="p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-foreground">{editingId === "new" ? "New Billing Profile" : "Edit Billing Profile"}</h3>
+        </div>
+        <div>
+          <label className={lblCls}>Profile Name</label>
+          <input className={inputCls} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Standard Warranty Rate" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={lblCls}>Repair / 1 Tech ($/hr)</label>
+            <input type="number" step="any" className={inputCls} value={form.repairRate1Tech} onChange={e => setForm({ ...form, repairRate1Tech: e.target.value })} placeholder="0.00" />
+          </div>
+          <div>
+            <label className={lblCls}>Repair / 2 Tech ($/hr)</label>
+            <input type="number" step="any" className={inputCls} value={form.repairRate2Tech} onChange={e => setForm({ ...form, repairRate2Tech: e.target.value })} placeholder="0.00" />
+          </div>
+          <div>
+            <label className={lblCls}>Drive / 1 Tech ($/hr)</label>
+            <input type="number" step="any" className={inputCls} value={form.driveRate1Tech} onChange={e => setForm({ ...form, driveRate1Tech: e.target.value })} placeholder="0.00" />
+          </div>
+          <div>
+            <label className={lblCls}>Drive / 2 Tech ($/hr)</label>
+            <input type="number" step="any" className={inputCls} value={form.driveRate2Tech} onChange={e => setForm({ ...form, driveRate2Tech: e.target.value })} placeholder="0.00" />
+          </div>
+          <div>
+            <label className={lblCls}>Mileage ($/mi)</label>
+            <input type="number" step="any" className={inputCls} value={form.mileageRate} onChange={e => setForm({ ...form, mileageRate: e.target.value })} placeholder="0.00" />
+          </div>
+          <div>
+            <label className={lblCls}>Default Techs</label>
+            <select className={inputCls} value={form.defaultTechCount} onChange={e => setForm({ ...form, defaultTechCount: parseInt(e.target.value) })}>
+              <option value={1}>1 Tech</option>
+              <option value={2}>2 Techs</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className={lblCls}>Billing Notes</label>
+          <textarea className={`${inputCls} resize-none`} rows={2} value={form.billingNotes} onChange={e => setForm({ ...form, billingNotes: e.target.value })} placeholder="Special terms, PO requirements, etc." />
+        </div>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={form.partsReimbursable} onChange={e => setForm({ ...form, partsReimbursable: e.target.checked })} />
+            Parts reimbursable by default
+          </label>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 accent-blue-500" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} />
+            Active
+          </label>
+        </div>
+        <div className="flex gap-2 justify-end pt-2">
+          <button onClick={() => setEditingId(null)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
+          <button onClick={save} disabled={createProfile.isPending || updateProfile.isPending}
+            className="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 font-semibold disabled:opacity-50">Save</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">Per-client rates that auto-load into the Service Billing worksheet on MH Service jobs.</p>
+        {canEdit && (
+          <button onClick={startNew} className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 flex-shrink-0">
+            <Plus className="w-3.5 h-3.5" /> Add
+          </button>
+        )}
+      </div>
+
+      {profiles.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+          <Wrench className="w-8 h-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No billing profiles yet</p>
+        </div>
+      ) : (
+        profiles.map(p => (
+          <div key={p.id} className={cn("rounded-xl border p-4", p.active ? "border-border bg-muted/30" : "border-border bg-slate-50/50")}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold truncate">{p.name}</p>
+                  {!p.active && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Inactive</span>}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Default: {p.defaultTechCount} tech{p.defaultTechCount > 1 ? "s" : ""} · Parts {p.partsReimbursable ? "billable" : "absorbed"}</p>
+              </div>
+              {canEdit && (
+                <div className="flex gap-0.5 flex-shrink-0">
+                  <button onClick={() => startEdit(p)} className="p-1.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
+                  {confirmDelete === p.id ? (
+                    <button onClick={() => remove(p.id)} className="px-2 py-1 rounded text-[10px] font-semibold bg-red-500 text-white hover:bg-red-600">Confirm</button>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(p.id)} className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-3 text-xs">
+              <div className="flex justify-between"><span className="text-muted-foreground">Repair 1T</span><span className="font-mono">{fmtRate(p.repairRate1Tech)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Repair 2T</span><span className="font-mono">{fmtRate(p.repairRate2Tech)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Drive 1T</span><span className="font-mono">{fmtRate(p.driveRate1Tech)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Drive 2T</span><span className="font-mono">{fmtRate(p.driveRate2Tech)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Mileage</span><span className="font-mono">{fmtRate(p.mileageRate)}</span></div>
+            </div>
+            {p.billingNotes && <p className="text-[11px] text-muted-foreground mt-2 italic">{p.billingNotes}</p>}
+          </div>
+        ))
+      )}
     </div>
   );
 }
