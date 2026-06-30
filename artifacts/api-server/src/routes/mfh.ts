@@ -768,21 +768,20 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
           sql`${jobKnowledgeRecordsTable.status} = 'accepted'`,
         ))
         .groupBy(jobKnowledgeRecordsTable.mfhModelId),
-      // Q3: avg invoice (sum per job first to avoid multiplication, then avg across jobs)
-      db.execute(sql`
-        SELECT j.mfh_model_id AS "modelId", AVG(inv.total) AS "avgInvoice"
-        FROM jobs j
-        JOIN (
-          SELECT job_id, SUM(total::numeric) AS total
-          FROM invoices WHERE status NOT IN ('draft','void')
-          GROUP BY job_id
-        ) inv ON inv.job_id = j.id
-        WHERE j.mfh_model_id IS NOT NULL AND j.status IN ('completed','invoiced')
-        GROUP BY j.mfh_model_id
-      `),
+      // Q3: avg invoice from accepted KB records only
+      db.select({
+        modelId: jobKnowledgeRecordsTable.mfhModelId,
+        avgInvoice: sql<string>`AVG(${jobKnowledgeRecordsTable.invoiceAmount}::numeric)`,
+      }).from(jobKnowledgeRecordsTable)
+        .where(and(
+          sql`${jobKnowledgeRecordsTable.mfhModelId} IS NOT NULL`,
+          sql`${jobKnowledgeRecordsTable.status} = 'accepted'`,
+          sql`${jobKnowledgeRecordsTable.invoiceAmount} IS NOT NULL`,
+        ))
+        .groupBy(jobKnowledgeRecordsTable.mfhModelId),
     ]);
     const kbHoursMap = new Map(hoursRows.map(r => [r.modelId, { avgProductiveHours: r.avgProductiveHours, acceptedCount: r.acceptedCount }]));
-    const invoiceMap = new Map((invoiceRows.rows as Array<{ modelId: number; avgInvoice: string }>).map(r => [r.modelId, r.avgInvoice]));
+    const invoiceMap = new Map((invoiceRows as Array<{ modelId: number; avgInvoice: string }>).map(r => [r.modelId, r.avgInvoice]));
     const statsMap = new Map(baseRows.map(r => [r.modelId, r]));
 
     const result = models.map(m => {
@@ -904,6 +903,7 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
         avgTravelHours: sql<string>`AVG(travel_hours::numeric)`,
         avgCrewSize: sql<string>`AVG(crew_size::numeric)`,
         avgDaysOnSite: sql<string>`AVG(days_on_site::numeric)`,
+        avgInvoiceAmount: sql<string>`AVG(invoice_amount::numeric)`,
         avgMaterialCost: sql<string>`AVG(material_cost::numeric)`,
         avgConsumablesCost: sql<string>`AVG(consumables_cost::numeric)`,
         avgGrossProfit: sql<string>`AVG(gross_profit::numeric)`,
@@ -953,12 +953,12 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
         avgTravelHours: p(kb?.avgTravelHours),
         avgCrewSize: p(kb?.avgCrewSize),
         avgDaysOnSite: p(kb?.avgDaysOnSite),
+        avgInvoice: p(kb?.avgInvoiceAmount),
         avgMaterialCost: p(kb?.avgMaterialCost),
         avgConsumablesCost: p(kb?.avgConsumablesCost),
         avgGrossProfit: p(kb?.avgGrossProfit),
         avgNetProfit: p(kb?.avgNetProfit),
         acceptedCount: Number(kb?.acceptedCount ?? 0),
-        avgInvoice: stats.avgInvoice ? parseFloat(String(stats.avgInvoice)) : null,
       },
       jobs,
       clientPricing,

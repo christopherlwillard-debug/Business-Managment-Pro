@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Brain, X, CheckCircle2, MinusCircle, SkipForward, AlertCircle, Pencil, Users, Clock, TrendingUp } from "lucide-react";
+import { Brain, X, CheckCircle2, MinusCircle, Clock, TrendingUp } from "lucide-react";
 import {
   useJobLaborEntries,
   useJobKnowledgeRecord,
@@ -21,7 +21,7 @@ interface Job {
 
 interface Props {
   job: Job;
-  onComplete: (action: "accept" | "exclude" | "skip") => void;
+  onComplete: (action: "accept" | "exclude") => void;
   onClose: () => void;
 }
 
@@ -154,10 +154,6 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
     } catch {
       toast({ title: "Failed to save", description: "Could not save knowledge record.", variant: "destructive" });
     } finally { setActing(false); }
-  }
-
-  function handleSkip() {
-    onComplete("skip");
   }
 
   const laborSummary = laborData?.summary;
@@ -325,16 +321,11 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
             <button onClick={handleExclude} disabled={acting || kbLoading}
               className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors">
               <MinusCircle className="w-3.5 h-3.5" />
-              Exclude
-            </button>
-            <button onClick={handleSkip} disabled={acting}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs text-muted-foreground hover:bg-muted/30 disabled:opacity-50 transition-colors">
-              <SkipForward className="w-3.5 h-3.5" />
-              Skip
+              Save Without Teaching
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground text-center mt-2">
-            <span className="font-semibold">Accept</span> — feeds into KB averages · <span className="font-semibold">Exclude</span> — saves record, won't affect averages · <span className="font-semibold">Skip</span> — decide later
+            <span className="font-semibold">Accept & Teach</span> — feeds this job into KB averages · <span className="font-semibold">Save Without Teaching</span> — records data, won't change averages
           </p>
         </div>
       </div>

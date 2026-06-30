@@ -5263,7 +5263,7 @@ export default function Jobs() {
         <KbTrainingModal
           job={kbTrainingJob as Parameters<typeof KbTrainingModal>[0]["job"]}
           onClose={() => setKbTrainingJob(null)}
-          onComplete={async (_action) => {
+          onComplete={async () => {
             const job = kbTrainingJob;
             setKbTrainingJob(null);
             await proceedWithJobCompletion(job);

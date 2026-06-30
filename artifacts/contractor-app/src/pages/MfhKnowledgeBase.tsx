@@ -12,6 +12,7 @@ import {
   useDeleteMfhClientPrice,
   useUpdateMfhModel,
   useListClients,
+  usePatchKnowledgeRecord,
   type MfhKnowledgeBaseEntry,
   type MfhKbRecord,
 } from "@workspace/api-client-react";
@@ -86,8 +87,8 @@ function ModelCard({ model, onClick }: { model: MfhKnowledgeBaseEntry; onClick: 
           <p className="font-bold text-sm text-amber-600">{fmt(model.avgInvoice ?? model.avgQuotedPrice)}</p>
         </div>
         <div className="text-center">
-          <p className="text-[10px] text-muted-foreground">Avg Hours</p>
-          <p className="font-bold text-sm text-foreground">{model.avgHours != null ? fmt(model.avgHours, "decimal") : "—"}</p>
+          <p className="text-[10px] text-muted-foreground">Avg Prod. Hrs</p>
+          <p className="font-bold text-sm text-foreground">{model.avgProductiveHours != null ? fmt(model.avgProductiveHours, "decimal") : "—"}</p>
         </div>
         <div className="text-center">
           <p className="text-[10px] text-muted-foreground">Baseline</p>
@@ -106,6 +107,9 @@ function ModelCard({ model, onClick }: { model: MfhKnowledgeBaseEntry; onClick: 
 function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const patchKbRecord = usePatchKnowledgeRecord();
+  const [expandedRecordId, setExpandedRecordId] = useState<number | null>(null);
+  const [showBasis, setShowBasis] = useState(false);
   const { data, isLoading } = useMfhModelDetail(modelId);
   const { data: clients = [] } = useListClients();
   const setPrice = useSetMfhClientPrice();
@@ -210,7 +214,7 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <StatTile label="Completed Jobs" value={String(model.jobCount)} />
         <StatTile label="Avg Invoice" value={fmt(model.avgInvoice ?? model.avgQuotedPrice)} />
-        <StatTile label="Avg Hours" value={model.avgHours != null ? `${fmt(model.avgHours, "decimal")} hrs` : "—"} />
+        <StatTile label="Avg Prod. Hours" value={model.avgProductiveHours != null ? `${fmt(model.avgProductiveHours, "decimal")} hrs` : model.avgHours != null ? `${fmt(model.avgHours, "decimal")} hrs` : "—"} />
         <StatTile label="Avg Margin" value={margin != null ? fmt(margin) : "—"} sub={margin != null && model.avgDealerPrice ? `dealer ${fmt(model.avgDealerPrice)}` : undefined} />
       </div>
 
@@ -377,88 +381,159 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
         )}
       </div>
 
-      {/* Related jobs */}
       {/* Learning History */}
-      {knowledgeRecords.length > 0 && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-            <Brain className="w-4 h-4 text-amber-500" />
-            <p className="font-semibold text-foreground text-sm">Learning History</p>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-              {knowledgeRecords.filter((r: MfhKbRecord) => r.status === "accepted").length} taught
-            </span>
-            {knowledgeRecords.filter((r: MfhKbRecord) => r.status === "excluded").length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                {knowledgeRecords.filter((r: MfhKbRecord) => r.status === "excluded").length} excluded
-              </span>
-            )}
-          </div>
-          {model.acceptedCount != null && model.acceptedCount > 0 && (
-            <div className="px-4 py-2.5 bg-amber-50/50 border-b border-border">
-              <div className="grid grid-cols-4 gap-2">
-                <div className="text-center">
-                  <p className="text-[10px] text-amber-600">Avg Prod. Hrs</p>
-                  <p className="font-bold text-xs text-amber-700">{model.avgProductiveHours != null ? model.avgProductiveHours.toFixed(1) : "—"}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-amber-600">Avg Invoice</p>
-                  <p className="font-bold text-xs text-amber-700">{fmt(model.avgInvoice)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-amber-600">Avg Net Profit</p>
-                  <p className="font-bold text-xs text-amber-700">{fmt(model.avgNetProfit)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-amber-600">Avg Crew</p>
-                  <p className="font-bold text-xs text-amber-700">{model.avgCrewSize != null ? model.avgCrewSize.toFixed(1) : "—"}</p>
-                </div>
-              </div>
+      {knowledgeRecords.length > 0 && (() => {
+        const accepted = (knowledgeRecords as MfhKbRecord[]).filter(r => r.status === "accepted");
+        const excluded = (knowledgeRecords as MfhKbRecord[]).filter(r => r.status === "excluded");
+
+        async function toggleStatus(r: MfhKbRecord) {
+          const newStatus = r.status === "accepted" ? "excluded" : "accepted";
+          try {
+            await patchKbRecord.mutateAsync({ jobId: r.jobId, status: newStatus });
+            qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", modelId] });
+            qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
+            toast({ title: newStatus === "accepted" ? "Record included in averages" : "Record excluded from averages" });
+          } catch {
+            toast({ title: "Failed to update", variant: "destructive" });
+          }
+        }
+
+        return (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+              <Brain className="w-4 h-4 text-amber-500" />
+              <p className="font-semibold text-foreground text-sm">Learning History</p>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{accepted.length} taught</span>
+              {excluded.length > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{excluded.length} excluded</span>
+              )}
             </div>
-          )}
-          <div className="divide-y divide-border/50">
-            {knowledgeRecords.map((r: MfhKbRecord) => (
-              <div key={r.id} className="px-4 py-3 text-xs space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${r.status === "accepted" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                    {r.status === "accepted" ? "Taught" : "Excluded"}
-                  </span>
-                  <span className="font-medium text-foreground truncate flex-1">{r.jobTitle}</span>
-                  {r.taughtAt && (
-                    <span className="text-muted-foreground ml-auto flex-shrink-0">
-                      {fmtDate(new Date(r.taughtAt).toISOString().split("T")[0])}
-                    </span>
+
+            {/* Averages summary with "Why?" expandable */}
+            {accepted.length > 0 && (
+              <div className="border-b border-border bg-amber-50/40">
+                <div className="px-4 py-2.5">
+                  <div className="grid grid-cols-4 gap-2 mb-1.5">
+                    <div className="text-center">
+                      <p className="text-[10px] text-amber-600">Avg Prod. Hrs</p>
+                      <p className="font-bold text-xs text-amber-700">{model.avgProductiveHours != null ? model.avgProductiveHours.toFixed(1) : "—"}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-amber-600">Avg Invoice</p>
+                      <p className="font-bold text-xs text-amber-700">{fmt(model.avgInvoice)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-amber-600">Avg Net Profit</p>
+                      <p className="font-bold text-xs text-amber-700">{fmt(model.avgNetProfit)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-amber-600">Avg Crew</p>
+                      <p className="font-bold text-xs text-amber-700">{model.avgCrewSize != null ? model.avgCrewSize.toFixed(1) : "—"}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowBasis(b => !b)}
+                    className="flex items-center gap-1 text-[10px] text-amber-600 hover:text-amber-800 font-semibold transition-colors">
+                    {showBasis ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    Why these averages? ({accepted.length} job{accepted.length !== 1 ? "s" : ""})
+                  </button>
+                  {showBasis && (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-white overflow-hidden">
+                      <table className="w-full text-[10px]">
+                        <thead className="bg-amber-50">
+                          <tr>
+                            <th className="text-left px-2 py-1.5 font-semibold text-amber-700">Job</th>
+                            <th className="text-right px-2 py-1.5 font-semibold text-amber-700">Prod. Hrs</th>
+                            <th className="text-right px-2 py-1.5 font-semibold text-amber-700">Invoice</th>
+                            <th className="text-right px-2 py-1.5 font-semibold text-amber-700">Net Profit</th>
+                            <th className="text-right px-2 py-1.5 font-semibold text-amber-700">Crew</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-amber-100">
+                          {accepted.map(r => (
+                            <tr key={r.id} className="hover:bg-amber-50/50">
+                              <td className="px-2 py-1.5 text-foreground font-medium truncate max-w-[90px]">{r.jobTitle}</td>
+                              <td className="px-2 py-1.5 text-right text-foreground">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</td>
+                              <td className="px-2 py-1.5 text-right text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</td>
+                              <td className="px-2 py-1.5 text-right text-foreground">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</td>
+                              <td className="px-2 py-1.5 text-right text-foreground">{r.crewSize ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
-                <div className="grid grid-cols-4 gap-2 text-center">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Prod. Hrs</p>
-                    <p className="font-semibold text-foreground">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Crew</p>
-                    <p className="font-semibold text-foreground">{r.crewSize ?? "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Invoice</p>
-                    <p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Net Profit</p>
-                    <p className="font-semibold text-foreground">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p>
-                  </div>
-                </div>
-                {(r.callbacks || r.warrantyVisit || r.editReason) && (
-                  <div className="text-[10px] text-muted-foreground space-x-2 flex flex-wrap gap-y-0.5">
-                    {r.callbacks ? <span>📞 {r.callbacks} callback{r.callbacks !== 1 ? "s" : ""}</span> : null}
-                    {r.warrantyVisit && <span>🔧 Warranty visit</span>}
-                    {r.editReason && <span className="italic">Note: {r.editReason}</span>}
-                  </div>
-                )}
               </div>
-            ))}
+            )}
+
+            {/* Individual records */}
+            <div className="divide-y divide-border/50">
+              {(knowledgeRecords as MfhKbRecord[]).map(r => {
+                const isExpanded = expandedRecordId === r.id;
+                return (
+                  <div key={r.id} className="text-xs">
+                    {/* Row header */}
+                    <div className="flex items-center gap-2 px-4 py-2.5 hover:bg-muted/10 cursor-pointer"
+                      onClick={() => setExpandedRecordId(isExpanded ? null : r.id)}>
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleStatus(r); }}
+                        disabled={patchKbRecord.isPending}
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full transition-colors cursor-pointer hover:opacity-80 disabled:opacity-50 ${r.status === "accepted" ? "bg-emerald-100 text-emerald-700 hover:bg-red-50 hover:text-red-600" : "bg-slate-100 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"}`}
+                        title={r.status === "accepted" ? "Click to exclude from averages" : "Click to include in averages"}
+                      >
+                        {r.status === "accepted" ? "Taught" : "Excluded"}
+                      </button>
+                      <span className="font-medium text-foreground flex-1 truncate">{r.jobTitle}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {r.taughtAt && <span className="text-[10px] text-muted-foreground">{fmtDate(new Date(r.taughtAt).toISOString().split("T")[0])}</span>}
+                        {isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
+                      </div>
+                    </div>
+
+                    {/* Collapsed preview */}
+                    {!isExpanded && (
+                      <div className="grid grid-cols-4 gap-2 px-4 pb-2.5 text-center">
+                        <div><p className="text-[10px] text-muted-foreground">Prod. Hrs</p><p className="font-semibold text-foreground">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p></div>
+                        <div><p className="text-[10px] text-muted-foreground">Crew</p><p className="font-semibold text-foreground">{r.crewSize ?? "—"}</p></div>
+                        <div><p className="text-[10px] text-muted-foreground">Invoice</p><p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p></div>
+                        <div><p className="text-[10px] text-muted-foreground">Net Profit</p><p className="font-semibold text-foreground">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p></div>
+                      </div>
+                    )}
+
+                    {/* Expanded detail */}
+                    {isExpanded && (
+                      <div className="px-4 pb-3 space-y-2 bg-muted/5 border-t border-border/50">
+                        <div className="grid grid-cols-3 gap-2 pt-2">
+                          <div><p className="text-[10px] text-muted-foreground">Prod. Hrs</p><p className="font-semibold">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Travel Hrs</p><p className="font-semibold">{r.travelHours ? parseFloat(r.travelHours).toFixed(1) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Crew Size</p><p className="font-semibold">{r.crewSize ?? "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Days On-Site</p><p className="font-semibold">{r.daysOnSite ?? "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Invoice</p><p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Material Cost</p><p className="font-semibold">{r.materialCost ? fmt(parseFloat(r.materialCost)) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Gross Profit</p><p className="font-semibold">{r.grossProfit ? fmt(parseFloat(r.grossProfit)) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Net Profit</p><p className="font-semibold">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Callbacks</p><p className="font-semibold">{r.callbacks ?? 0}</p></div>
+                        </div>
+                        {r.warrantyVisit && <p className="text-[10px] text-amber-600">🔧 Warranty visit needed</p>}
+                        {r.editReason && <p className="text-[10px] text-muted-foreground italic">Edit note: {r.editReason}</p>}
+                        <div className="pt-1">
+                          <button
+                            onClick={() => toggleStatus(r)}
+                            disabled={patchKbRecord.isPending}
+                            className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${r.status === "accepted" ? "border-red-200 text-red-600 hover:bg-red-50" : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"}`}
+                          >
+                            {r.status === "accepted" ? "Exclude from averages" : "Include in averages"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {jobs.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">

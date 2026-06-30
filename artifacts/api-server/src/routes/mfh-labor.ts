@@ -156,7 +156,21 @@ router.post("/:jobId/labor-entries", async (req, res) => {
       travelHours: String(parseFloat(travelHours ?? "0") || 0),
     }).returning();
 
-    res.status(201).json(entry);
+    const [agg] = await db.select({
+      totalProductiveHours: sql<string>`COALESCE(SUM(productive_hours::numeric), 0)`,
+      totalTravelHours: sql<string>`COALESCE(SUM(travel_hours::numeric), 0)`,
+      crewCount: sql<number>`COUNT(*)`,
+    }).from(jobLaborEntriesTable).where(eq(jobLaborEntriesTable.jobId, jobId));
+
+    res.status(201).json({
+      entry,
+      summary: {
+        crewCount: Number(agg?.crewCount ?? 0),
+        totalProductiveHours: parseFloat(agg?.totalProductiveHours ?? "0"),
+        totalTravelHours: parseFloat(agg?.totalTravelHours ?? "0"),
+        totalHours: parseFloat(agg?.totalProductiveHours ?? "0") + parseFloat(agg?.totalTravelHours ?? "0"),
+      },
+    });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
@@ -174,9 +188,29 @@ router.patch("/:jobId/labor-entries/:entryId", async (req, res) => {
     if (productiveHours !== undefined) updates.productiveHours = String(parseFloat(productiveHours) || 0);
     if (travelHours !== undefined) updates.travelHours = String(parseFloat(travelHours) || 0);
 
-    const [entry] = await db.update(jobLaborEntriesTable).set(updates).where(eq(jobLaborEntriesTable.id, entryId)).returning();
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+
+    const [entry] = await db.update(jobLaborEntriesTable).set(updates)
+      .where(and(eq(jobLaborEntriesTable.id, entryId), eq(jobLaborEntriesTable.jobId, jobId)))
+      .returning();
     if (!entry) return res.status(404).json({ error: "Not found" });
-    res.json(entry);
+
+    const [agg] = await db.select({
+      totalProductiveHours: sql<string>`COALESCE(SUM(productive_hours::numeric), 0)`,
+      totalTravelHours: sql<string>`COALESCE(SUM(travel_hours::numeric), 0)`,
+      crewCount: sql<number>`COUNT(*)`,
+    }).from(jobLaborEntriesTable).where(eq(jobLaborEntriesTable.jobId, jobId));
+
+    res.json({
+      entry,
+      summary: {
+        crewCount: Number(agg?.crewCount ?? 0),
+        totalProductiveHours: parseFloat(agg?.totalProductiveHours ?? "0"),
+        totalTravelHours: parseFloat(agg?.totalTravelHours ?? "0"),
+        totalHours: parseFloat(agg?.totalProductiveHours ?? "0") + parseFloat(agg?.totalTravelHours ?? "0"),
+      },
+    });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
@@ -185,8 +219,27 @@ router.delete("/:jobId/labor-entries/:entryId", async (req, res) => {
   try {
     const entryId = parseInt(req.params.entryId);
     if (isNaN(entryId)) return res.status(400).json({ error: "Invalid entryId" });
-    await db.delete(jobLaborEntriesTable).where(eq(jobLaborEntriesTable.id, entryId));
-    res.json({ ok: true });
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+
+    await db.delete(jobLaborEntriesTable)
+      .where(and(eq(jobLaborEntriesTable.id, entryId), eq(jobLaborEntriesTable.jobId, jobId)));
+
+    const [agg] = await db.select({
+      totalProductiveHours: sql<string>`COALESCE(SUM(productive_hours::numeric), 0)`,
+      totalTravelHours: sql<string>`COALESCE(SUM(travel_hours::numeric), 0)`,
+      crewCount: sql<number>`COUNT(*)`,
+    }).from(jobLaborEntriesTable).where(eq(jobLaborEntriesTable.jobId, jobId));
+
+    res.json({
+      ok: true,
+      summary: {
+        crewCount: Number(agg?.crewCount ?? 0),
+        totalProductiveHours: parseFloat(agg?.totalProductiveHours ?? "0"),
+        totalTravelHours: parseFloat(agg?.totalTravelHours ?? "0"),
+        totalHours: parseFloat(agg?.totalProductiveHours ?? "0") + parseFloat(agg?.totalTravelHours ?? "0"),
+      },
+    });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
