@@ -103,9 +103,6 @@ export interface Job {
   status: JobStatus;
   jobType?: string | null;
   homeModel?: string | null;
-  mfhSeriesId?: number | null;
-  mfhModelId?: number | null;
-  mfhModelYear?: number | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -144,9 +141,6 @@ export interface CreateJobRequest {
   status?: CreateJobRequestStatus;
   jobType?: string | null;
   homeModel?: string | null;
-  mfhSeriesId?: number | null;
-  mfhModelId?: number | null;
-  mfhModelYear?: number | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;

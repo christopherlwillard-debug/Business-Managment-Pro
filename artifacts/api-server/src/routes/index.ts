@@ -71,7 +71,6 @@ import adminMigrationsRouter from "./admin-migrations";
 import ownerCapitalRouter from "./owner-capital";
 import checklistTemplatesRouter from "./checklist-templates";
 import jobChecklistsRouter from "./job-checklists";
-import { mfhLibraryRouter, mfhJobRouter } from "./mfh";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -254,12 +253,6 @@ router.use("/admin/errors", requireOwner, adminErrorsRouter);
 router.use("/admin/migrations", requireOwner, adminMigrationsRouter);
 router.use("/checklist-templates", requireOwner, checklistTemplatesRouter);
 router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
-// Job-card MFH endpoints (apply/update/reset/snapshot) — usable by anyone with Jobs permission.
-// Mounted FIRST so these are not gated by the library's owner-write check below.
-router.use("/mfh", sectionGuard("jobs"), mfhJobRouter);
-// Home Library (manufacturers/models/guides/pricing) — reads available to Jobs users
-// (the job card needs them to populate dropdowns); all writes are owner-only.
-router.use("/mfh", sectionGuard("jobs"), requireOwnerForWrites, mfhLibraryRouter);
 
 router.get("/integrations/wix/config", requireOwner, (req, res) => {
   const token = process.env["WIX_WEBHOOK_SECRET"] ?? null;

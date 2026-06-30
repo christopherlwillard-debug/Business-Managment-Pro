@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, smallint, boolean, jsonb, date, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, smallint, boolean, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
@@ -38,14 +38,6 @@ export const jobsTable = pgTable("jobs", {
   phases: jsonb("phases").$type<PhaseItem[]>(),
   permitChecklist: jsonb("permit_checklist").$type<PermitChecklistItem[]>(),
   homeModel: text("home_model"),
-  mfhSeriesId: integer("mfh_series_id"),
-  mfhModelId: integer("mfh_model_id"),
-  mfhModelYear: integer("mfh_model_year"),
-  mfhDealerPrice: numeric("mfh_dealer_price", { precision: 12, scale: 2 }),
-  mfhQuotedPrice: numeric("mfh_quoted_price", { precision: 12, scale: 2 }),
-  mfhGuideName: text("mfh_guide_name"),
-  mfhSelectedAddons: jsonb("mfh_selected_addons").$type<string[]>(),
-  mfhTravelDays: integer("mfh_travel_days"),
   closedAt: date("closed_at"),
   jobNumber: integer("job_number"),
   ownerPayIncluded: boolean("owner_pay_included").notNull().default(true),
