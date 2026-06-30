@@ -4367,7 +4367,6 @@ export default function Jobs() {
   const updateJob                         = useUpdateJob();
   const { data: allLogs = [] }            = useListDailyLogs();
   const { data: allMaterialLists = [] }   = useListMaterialLists();
-  const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id);
 
   // Fetch subcontractor-category expenses to know which jobs have sub expenses
   const { data: subExpenseData = [] } = useQuery({
@@ -4423,6 +4422,7 @@ export default function Jobs() {
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const { activeBusiness, businesses } = useBusiness();
+  const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id);
   const [jobSearch, setJobSearch]       = useState("");
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
   const jobBLFilter = activeBusiness ? activeBusiness.slug : localBLFilter;
