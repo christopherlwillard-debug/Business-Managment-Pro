@@ -2892,6 +2892,11 @@ function JobCard({
                   {JOB_WORKFLOWS[jobWorkflow].emoji} {JOB_WORKFLOWS[jobWorkflow].label}
                 </span>
               )}
+              {jobWorkflow === "mh_production" && (job as Record<string, unknown>).mfhConstructionType ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-300 text-amber-700 bg-transparent">
+                  {(job as Record<string, unknown>).mfhConstructionType as string}
+                </span>
+              ) : null}
               {jobWorkflow === "mh_production" && Array.isArray((job as Record<string, unknown>).mhProductionServices) &&
                 ((job as Record<string, unknown>).mhProductionServices as number[]).map(svcId => {
                   const svc = productionServiceTypes.find(t => t.id === svcId);
