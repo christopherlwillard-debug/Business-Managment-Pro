@@ -828,36 +828,19 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
 
     if (!model) return res.status(404).json({ error: "Model not found" });
 
-    // Aggregate stats — 3 separate queries to avoid row multiplication
+    // Aggregate stats — base counts/pricing from jobs; averages from KB records
     const detailWhere = and(eq(jobsTable.mfhModelId, modelId), sql`${jobsTable.status} IN ('completed','invoiced')`);
-    const [[baseStats], detailHoursRows, detailInvoiceRows] = await Promise.all([
+    const [[baseStats]] = await Promise.all([
       db.select({
         jobCount: sql<number>`COUNT(*)`,
         avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
         avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
       }).from(jobsTable).where(detailWhere),
-      db.select({
-        avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
-      }).from(jobsTable)
-        .innerJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
-        .where(detailWhere),
-      db.execute(sql`
-        SELECT AVG(inv.total) AS "avgInvoice"
-        FROM jobs j
-        JOIN (
-          SELECT job_id, SUM(total::numeric) AS total
-          FROM invoices WHERE status NOT IN ('draft','void')
-          GROUP BY job_id
-        ) inv ON inv.job_id = j.id
-        WHERE j.mfh_model_id = ${modelId} AND j.status IN ('completed','invoiced')
-      `),
     ]);
     const stats = {
       jobCount: baseStats?.jobCount ?? 0,
       avgQuotedPrice: baseStats?.avgQuotedPrice ?? null,
       avgDealerPrice: baseStats?.avgDealerPrice ?? null,
-      avgHours: detailHoursRows[0]?.avgHours ?? null,
-      avgInvoice: (detailInvoiceRows.rows[0] as { avgInvoice: string } | undefined)?.avgInvoice ?? null,
     };
 
     // Related completed jobs

@@ -33,8 +33,19 @@ CREATE TABLE IF NOT EXISTS job_knowledge_records (
   missing_materials_notes TEXT,
   factory_defect_notes TEXT,
   original_productive_hours NUMERIC(8,2),
+  original_values JSONB,
   edit_reason TEXT,
   edited_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS job_knowledge_record_versions (
+  id SERIAL PRIMARY KEY,
+  knowledge_record_id INTEGER NOT NULL REFERENCES job_knowledge_records(id) ON DELETE CASCADE,
+  job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  snapshot_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  edit_reason TEXT,
+  before_values JSONB NOT NULL,
+  after_values JSONB NOT NULL
 );

@@ -111,6 +111,16 @@ export const jobKnowledgeRecordsTable = pgTable("job_knowledge_records", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const jobKnowledgeRecordVersionsTable = pgTable("job_knowledge_record_versions", {
+  id: serial("id").primaryKey(),
+  knowledgeRecordId: integer("knowledge_record_id").notNull().references(() => jobKnowledgeRecordsTable.id, { onDelete: "cascade" }),
+  jobId: integer("job_id").notNull().references(() => jobsTable.id, { onDelete: "cascade" }),
+  snapshotAt: timestamp("snapshot_at").defaultNow().notNull(),
+  editReason: text("edit_reason"),
+  beforeValues: jsonb("before_values").$type<Record<string, unknown>>().notNull(),
+  afterValues: jsonb("after_values").$type<Record<string, unknown>>().notNull(),
+});
+
 export type MfhConstructionType = typeof mfhConstructionTypesTable.$inferSelect;
 export type MfhManufacturer = typeof mfhManufacturersTable.$inferSelect;
 export type MfhModel = typeof mfhModelsTable.$inferSelect;
@@ -120,3 +130,4 @@ export type MfhGuideAddon = typeof mfhGuideAddonsTable.$inferSelect;
 export type MfhClientPricing = typeof mfhClientPricingTable.$inferSelect;
 export type JobLaborEntry = typeof jobLaborEntriesTable.$inferSelect;
 export type JobKnowledgeRecord = typeof jobKnowledgeRecordsTable.$inferSelect;
+export type JobKnowledgeRecordVersion = typeof jobKnowledgeRecordVersionsTable.$inferSelect;

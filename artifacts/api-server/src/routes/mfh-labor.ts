@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import {
   jobLaborEntriesTable,
   jobKnowledgeRecordsTable,
+  jobKnowledgeRecordVersionsTable,
   jobsTable,
   invoicesTable,
   expensesTable,
@@ -346,9 +347,44 @@ router.put("/:jobId/knowledge-record", async (req, res) => {
         callbacks: existing.callbacks,
         warrantyVisit: existing.warrantyVisit,
       };
+      const beforeValues: Record<string, unknown> = {
+        productiveHours: existing.productiveHours,
+        travelHours: existing.travelHours,
+        crewSize: existing.crewSize,
+        daysOnSite: existing.daysOnSite,
+        invoiceAmount: existing.invoiceAmount,
+        materialCost: existing.materialCost,
+        consumablesCost: existing.consumablesCost,
+        grossProfit: existing.grossProfit,
+        netProfit: existing.netProfit,
+        callbacks: existing.callbacks,
+        warrantyVisit: existing.warrantyVisit,
+        status: existing.status,
+      };
+      const afterValues: Record<string, unknown> = {
+        productiveHours: values.productiveHours,
+        travelHours: values.travelHours,
+        crewSize: values.crewSize,
+        daysOnSite: values.daysOnSite,
+        invoiceAmount: values.invoiceAmount,
+        materialCost: values.materialCost,
+        consumablesCost: values.consumablesCost,
+        grossProfit: values.grossProfit,
+        netProfit: values.netProfit,
+        callbacks: values.callbacks,
+        warrantyVisit: values.warrantyVisit,
+        status: values.status,
+      };
       [record] = await db.update(jobKnowledgeRecordsTable)
         .set({ ...values, originalValues: origToPreserve })
         .where(eq(jobKnowledgeRecordsTable.id, existing.id)).returning();
+      await db.insert(jobKnowledgeRecordVersionsTable).values({
+        knowledgeRecordId: existing.id,
+        jobId,
+        editReason: editReason || null,
+        beforeValues,
+        afterValues,
+      });
     } else {
       [record] = await db.insert(jobKnowledgeRecordsTable)
         .values({ ...values, originalValues: draftSnapshot }).returning();
@@ -451,7 +487,36 @@ router.patch("/:jobId/knowledge-record", async (req, res) => {
       };
     }
 
+    // Capture before/after for version history — every PATCH appends a version row
+    const beforeValues: Record<string, unknown> = {
+      productiveHours: existing.productiveHours,
+      travelHours: existing.travelHours,
+      crewSize: existing.crewSize,
+      daysOnSite: existing.daysOnSite,
+      invoiceAmount: existing.invoiceAmount,
+      materialCost: existing.materialCost,
+      consumablesCost: existing.consumablesCost,
+      grossProfit: existing.grossProfit,
+      netProfit: existing.netProfit,
+      callbacks: existing.callbacks,
+      warrantyVisit: existing.warrantyVisit,
+      status: existing.status,
+    };
+    const afterValues: Record<string, unknown> = { ...beforeValues };
+    for (const [k, v] of Object.entries(updates)) {
+      if (k !== "updatedAt" && k !== "originalValues" && k !== "editedAt" && k !== "taughtAt") {
+        afterValues[k] = v;
+      }
+    }
+
     const [record] = await db.update(jobKnowledgeRecordsTable).set(updates).where(eq(jobKnowledgeRecordsTable.id, existing.id)).returning();
+    await db.insert(jobKnowledgeRecordVersionsTable).values({
+      knowledgeRecordId: existing.id,
+      jobId,
+      editReason: (req.body.editReason as string | undefined) || null,
+      beforeValues,
+      afterValues,
+    });
     res.json({ ...record, isDraft: false });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
